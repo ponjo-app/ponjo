@@ -617,6 +617,9 @@ label.pj-setting { cursor: pointer; }
 .pj-setting-hint { margin-top: 2px; font-size: 12px; font-weight: 400; color: var(--text-soft); }
 .pj-setting-hint code { font-family: var(--mono); font-size: 0.92em; }
 .pj-setting-row { display: flex; align-items: center; gap: 8px; }
+/* what Test of an agent found: its reply, or in red its output when it failed */
+.pj-agent-test { margin: 8px 0 0; max-height: 12lh; overflow-y: auto; font: 12px/1.5 var(--mono); color: var(--text-soft); white-space: pre-wrap; overflow-wrap: anywhere; }
+.pj-agent-test[data-failed] { color: var(--red); }
 .pj-settings-intro { margin: -4px 0 16px; font-size: 12px; color: var(--text-soft); }
 /* Settings with a page of their own (a view or a rule): a row per page, the whole row its button */
 .pj-setting-pages { list-style: none; margin: 0; padding: 0; }
@@ -651,6 +654,9 @@ label.pj-setting { cursor: pointer; }
 .pj-choice { display: flex; align-items: flex-start; gap: 8px; padding: 12px 0; font-size: 13px; cursor: pointer; }
 .pj-choice .pj-radio { margin-top: 1px; }
 .pj-choice-detail { padding: 0 0 12px 24px; }
+/* the picked one: a resting card around it and its settings, its radio lined up with the others' */
+.pj-choices > li:has(> .pj-choice .pj-radio:checked) { margin: 8px -16px; padding: 0 16px; border-top: 0; border-radius: 10px; box-shadow: var(--shadow); }
+.pj-choices > li:has(> .pj-choice .pj-radio:checked) + li { border-top: 0; }
 .pj-shortcuts-body { padding-top: 4px; }
 
 /* ---- home window (desktop/start.html) ---- */
