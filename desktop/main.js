@@ -10,7 +10,8 @@ import { statSync } from 'node:fs';
 import { mkdir, realpath } from 'node:fs/promises';
 import { basename, dirname, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { SHIPPED_AGENTS, agentsDir, installAgents, listAgents, readAgent } from '../src/store/agents.js';
+import { SHIPPED_AGENTS, agentsDir, installAgents, listAgents, pickedAgent, readAgent } from '../src/store/agents.js';
+import { testAgent } from '../src/host/runner.js';
 import { readSecrets, secretTails, writeSecrets } from '../src/store/secrets.js';
 import { configDir, readSettings, updateSettings, watchSettings } from '../src/store/settings.js';
 import { readSidecarText, sidecarPath } from '../src/store/files.js';
@@ -816,6 +817,10 @@ ipcMain.handle('ponjo:action', async (event, action, arg) => {
   if (action === 'showAgents' && (fromStart || fromDoc)) return void showAgents();
   if (action === 'agentScripts' && fromStart) return agentScripts();
   if (action === 'resetAgentScript' && fromStart) return void (await resetAgentScript(arg));
+  if (action === 'testAgent' && fromStart) {
+    const now = (await readSettings()).settings; // a change just made may not have reached `settings`
+    return testAgent(await pickedAgent(now, secrets[now.agent]));
+  }
   if (action === 'saveSecret' && (fromStart || fromDoc)) return void (await saveSecret(arg));
   if (action === 'recent' && fromStart) {
     return recentProjects().map((path) => ({ name: basename(path), folder: shortFolder(path) }));

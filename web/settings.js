@@ -24,11 +24,11 @@ export function createSettings(initial, { save, onError }) {
 
   return {
     get: () => current,
-    /** Apply `patch` here at once and save it for every doc; `agent` is partial. */
+    /** Apply `patch` here at once and save it for every doc; `agent` is partial. Resolves once saved. */
     set(patch) {
       apply(mergeSettings(current, patch));
       inflight++;
-      save(patch).then(
+      return save(patch).then(
         (saved) => {
           if (--inflight === 0) apply(saved);
         },

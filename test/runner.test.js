@@ -320,6 +320,30 @@ test('a secret is kept encrypted in the config folder, reaches its agent\'s run,
   assert.doesNotMatch(await written(settingsDir), /sk-fake|sk-other/, 'not in settings.json, the runs\' log or any other file of the config folder');
 });
 
+test('Test runs the picked agent once on an empty doc, with its settings, and says what it printed or why it failed', { timeout: 30_000 }, async () => {
+  const docPath = await tempDoc();
+  const settingsDir = await fakeConfig({ agents: { fake: { model: 'small' } } });
+  await writeFile(join(settingsDir, 'agents', 'fake.json'), JSON.stringify({ name: 'Fake', settings: [
+    { key: 'model', type: 'text', label: 'Model', default: '' },
+    { key: 'key', type: 'secret', label: 'API key' },
+  ] }));
+  const { doc, call } = await openTestDoc(docPath, { settingsDir, secrets: () => ({ fake: { key: 'sk-fake-123' } }) });
+  try {
+    const works = await call('testAgent');
+    assert.equal(works.ok, true);
+    assert.equal(works.out, 'Nothing to change.');
+    const [run] = await fakeRuns(settingsDir);
+    assert.deepEqual(run.settings, { PONJO_SETTING_MODEL: 'small', PONJO_SETTING_KEY: 'sk-fake-123' });
+    assert.deepEqual(run.files.sort(), ['test.md', 'test.md.comments.jsonl'], 'an empty doc of its own, not this one');
+    await call('saveSettings', { agent: 'missing' });
+    const broken = await call('testAgent');
+    assert.equal(broken.ok, false);
+    assert.match(broken.out, /no such agent script/);
+  } finally {
+    await doc.close();
+  }
+});
+
 test('the shipped scripts pass the project folder only when there is one', () => {
   for (const name of ['claude', 'codex', 'ponjo']) assert.match(readFileSync(join(ROOT, 'agents', `${name}.cmd`), 'utf8'), /\r\n/, `${name}.cmd has Windows line ends`);
   assert.match(readFileSync(join(ROOT, 'agents', 'claude.cmd'), 'utf8'), /set ADD=--add-dir "%PONJO_PROJECT%" --disallowedTools "Edit\(\/%P%\/\*\*\)"/, 'claude.cmd keeps the project read only');

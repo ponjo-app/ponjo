@@ -208,6 +208,7 @@ const calls = {
   },
   scripts: () => ({ agents: AGENTS, shipped: ['claude', 'codex', 'ponjo'], folder: '(the desktop app\'s config folder)', secrets: {} }),
   resetScript: () => ({ agents: AGENTS }),
+  testAgent: () => ({ ok: true, ms: 4200, out: 'OK' }),
   createBuddy({ buddy }) {
     const fields = { about: '', ...buddy };
     checkBuddy(fields);

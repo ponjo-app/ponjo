@@ -50,6 +50,8 @@ export const api = {
   scripts: () => call('scripts'),
   /** Write shipped agent `name` (its program and manifest) again as it came. */
   resetScript: (name) => call('resetScript', { name }),
+  /** One run of the picked agent on an empty doc: { ok, ms, out } (src/host/runner.js testAgent). */
+  testAgent: () => call('testAgent'),
   /** A new buddy, the project's: { agents }. */
   createBuddy: (buddy) => call('createBuddy', { buddy }),
   /** Change buddy `name` here: { agents }. */

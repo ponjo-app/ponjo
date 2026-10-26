@@ -10,7 +10,7 @@ import { createHash } from 'node:crypto';
 import { chmod, copyFile, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { agentOf } from '../core/settings.js';
+import { agentOf, agentSettings } from '../core/settings.js';
 import { configDir } from './settings.js';
 
 export const SHIPPED_AGENTS = Object.freeze(['claude', 'codex', 'ponjo']);
@@ -78,4 +78,9 @@ export async function readAgent(id, dir = configDir()) {
     // none, or not JSON: shown by its file name
   }
   return agentOf(id, manifest);
+}
+
+/** The agent picked in `settings`, as a run gets it: { script, settings }, its settings with its `secrets` ({ <key>: value }). */
+export async function pickedAgent(settings, secrets = {}, dir = configDir()) {
+  return { script: agentScript(settings.agent, dir), settings: agentSettings(settings, await readAgent(settings.agent, dir), secrets) };
 }
