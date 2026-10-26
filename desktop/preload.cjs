@@ -145,6 +145,8 @@ contextBridge.exposeInMainWorld('ponjoDesktop', {
   /** The start window's Settings > Agents: { agents, shipped, folder, secrets }, and resetting a shipped agent. */
   agentScripts: () => ipcRenderer.invoke('ponjo:action', 'agentScripts'),
   resetAgentScript: (name) => act('resetAgentScript', String(name)),
+  /** The start window's Settings > Agents: one run of the picked agent on an empty doc, { ok, ms, out }. */
+  testAgent: () => act('testAgent'),
   /** Settings > Agents in any window: set agent `agent`'s secret `key` (an API key), or clear it with ''. */
   saveSecret: (agent, key, value) => act('saveSecret', { agent: String(agent), key: String(key), value: String(value) }),
   openRecent: (index) => act('openRecent', Number(index)),

@@ -16,7 +16,7 @@ import { createAnchor, locate } from '../core/anchor.js';
 import { appendedComments, askedBy, movedAnchor, newComment, newId, parseSidecar, peopleOf, serializeSidecar, threadsOf, validAnchor } from '../core/comments.js';
 import { sameName } from '../core/mentions.js';
 import { BuddyError, buddiesHere, checkBuddyPatch } from '../core/buddies.js';
-import { DEFAULT_SETTINGS, SettingsError, agentSettings } from '../core/settings.js';
+import { DEFAULT_SETTINGS, SettingsError } from '../core/settings.js';
 import { lineChanges, merge3 } from '../core/diff.js';
 import { apply, diffOps, mapOffset, transform } from '../core/ot.js';
 import { StoreError, formFor, hashText, moveDoc, readDoc, readSidecarText, sidecarPath, writeDoc, writeSidecar } from '../store/files.js';
@@ -25,10 +25,10 @@ import { configDir, defaultName, ownerOf, readSettings, settingsWithId, updateSe
 import { firstBuddies, projectBuddiesDir, readBuddies, removeBuddy, userBuddiesDir, writeBuddy } from '../store/buddies.js';
 import { secretTails } from '../store/secrets.js';
 import { watchDoc, watchFolder } from '../store/watch.js';
-import { agentScript, agentsDir, installAgents, listAgents, readAgent, SHIPPED_AGENTS } from '../store/agents.js';
+import { agentsDir, installAgents, listAgents, pickedAgent, SHIPPED_AGENTS } from '../store/agents.js';
 import { mirrorDir, snapshotMirror } from './mirror.js';
 import { linkURL, projectService } from './project-service.js';
-import { Runner } from './runner.js';
+import { Runner, testAgent } from './runner.js';
 import { RoomError } from './room.js';
 
 /**
@@ -72,13 +72,14 @@ const byOf = ({ id, name, kind }) => ({ id, name, kind });
 export async function openDoc(docPath, { folder = null, room = null, settingsDir = configDir(), secrets = () => ({}), emit = () => {} } = {}) {
   const opened = await readDoc(docPath); // fail early on a missing doc
   const broadcastAgents = () => emit('agents', agentStatuses());
+  const pickAgent = async () => {
+    const { settings } = await readSettings(settingsDir);
+    return pickedAgent(settings, secrets()[settings.agent], settingsDir);
+  };
   const runner = new Runner({
     asks: () => asks(),
     doc: async () => ({ name: basename(docPath), text, comments: await readSidecarText(docPath) }),
-    agent: async () => {
-      const { settings } = await readSettings(settingsDir);
-      return { script: agentScript(settings.agent, settingsDir), settings: agentSettings(settings, await readAgent(settings.agent, settingsDir), secrets()[settings.agent]) };
-    },
+    agent: pickAgent,
     // The project, as a run reads it: its own copy of the mirror, up to date, in `place` (none if that fails).
     folder: (place) => folder && snapshotMirror(folder, mirrorDir(folder, settingsDir), join(place, basename(folder) || 'project')).catch((error) => {
       console.error('Could not mirror the project:', error);
@@ -846,6 +847,7 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
         await installAgents(settingsDir, { reset: body.name });
         return { agents: await listAgents(settingsDir) };
       },
+      testAgent: async () => testAgent(await pickAgent()),
       // The project's room (room.js), each call answered with the room as it is then.
       room: () => inRoom().list(),
       openRoom: () => changeRoom((r) => r.open()),

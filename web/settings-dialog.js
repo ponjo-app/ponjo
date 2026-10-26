@@ -141,6 +141,7 @@ export function setupSettings({ store, getName, setName, onApply = () => {}, vie
         secretTails = (await scripts.list()).secrets;
         apply();
       },
+      test: () => scripts.test(),
       reset() {
         if (window.confirm(`Reset ${agent.name} to what Ponjo comes with?\n\nYour changes to its program and manifest are lost; its settings stay.`)) scripts.reset(agent.id).then(listAgents, () => {});
       },
@@ -302,11 +303,12 @@ function itemRowAndPage(kind, title, item, save) {
 
 // An agent in Agents: a radio that picks it to run every buddy, its name
 // and what it is; and under it while it is picked, the fields its manifest
-// declares (shown while their `when` holds) and, for one Ponjo ships,
-// Reset to Default. `change(key, value)` and `saveSecret(key, value)` save a
-// field. `paint(using, own)` shows whether it is picked and its settings
+// declares (shown while their `when` holds), Test and, for one Ponjo ships,
+// Reset to Default. `change(key, value)` and
+// `saveSecret(key, value)` save a field; `test()` runs the agent once, with
+// what is saved. `paint(using, own)` shows whether it is picked and its settings
 // `own`, a secret by its last 4 characters when set.
-function agentChoice(agent, shipped, { pick, change, saveSecret, reset }) {
+function agentChoice(agent, shipped, { pick, change, saveSecret, test, reset }) {
   const radio = el('input', 'pj-radio');
   Object.assign(radio, { type: 'radio', name: 'pj-agent' });
   radio.addEventListener('change', pick);
@@ -315,22 +317,49 @@ function agentChoice(agent, shipped, { pick, change, saveSecret, reset }) {
   const label = el('label', 'pj-choice');
   label.append(radio, text);
   const secret = (key) => agent.settings.find((field) => field.key === key).type === 'secret';
-  const fields = agent.settings.map((field) => fieldRow(field, agent.id, (key, value) => (secret(key) ? saveSecret : change)(key, value)));
+  let saving = Promise.resolve(); // the saves Test waits for: a field left by clicking Test saves first
+  const fields = agent.settings.map((field) => fieldRow(field, agent.id, (key, value) => {
+    const saved = (secret(key) ? saveSecret : change)(key, value);
+    saving = Promise.allSettled([saving, saved]);
+    return saved;
+  }));
   const detail = el('div', 'pj-choice-detail');
   detail.append(...fields.map((field) => field.node));
+  const buttons = el('div', 'pj-setting-row');
+  const testButton = el('button', 'pj-secondary', 'Test');
+  testButton.type = 'button';
+  const found = el('p', 'pj-agent-test');
+  found.hidden = true;
+  const show = (text, failed = false) => {
+    Object.assign(found, { textContent: text, hidden: false });
+    found.toggleAttribute('data-failed', failed);
+  };
+  testButton.addEventListener('click', async () => {
+    testButton.disabled = true;
+    show('Testing…');
+    try {
+      await saving;
+      const { ok, ms, out } = await test();
+      show(ok ? `Works: replied in ${(ms / 1000).toFixed(1)} s${out ? `.\n${out}` : '.'}` : out, !ok);
+    } catch (error) {
+      show(`Could not test: ${error.message}`, true);
+    } finally {
+      testButton.disabled = false;
+    }
+  });
+  buttons.append(testButton);
   if (shipped) {
-    const buttons = el('div', 'pj-setting-row');
     const button = el('button', 'pj-secondary', 'Reset to Default');
     button.type = 'button';
     button.addEventListener('click', reset);
     buttons.append(button);
-    detail.append(buttons);
   }
+  detail.append(buttons, found);
   const node = el('li');
   node.append(label, detail);
   const paint = (using, own) => {
     radio.checked = using;
-    detail.hidden = !using || detail.childElementCount === 0;
+    detail.hidden = !using;
     fields.forEach((field, i) => {
       field.node.hidden = !matches(agent.settings[i].when, own);
       field.paint(own);
@@ -391,9 +420,14 @@ function fieldRow(field, id, change) {
       if (document.activeElement !== control) control.value = own[field.key];
     };
   } else if (field.type === 'secret') {
-    // Never shown, only its last 4 characters: typing one in replaces it.
+    // Never shown, only its last 4 characters after dots; focusing the field
+    // empties it for a new one, and leaving it empty keeps the old.
     const input = el('input', 'pj-input');
-    Object.assign(input, { type: 'password', autocomplete: 'off', ariaLabel: field.label });
+    Object.assign(input, { autocomplete: 'off', spellcheck: false, ariaLabel: field.label });
+    let last4 = '';
+    const mask = () => Object.assign(input, { type: 'text', value: last4 && `••••••••${last4}`, placeholder: 'Not set' });
+    input.addEventListener('focus', () => Object.assign(input, { type: 'password', value: '', placeholder: last4 ? 'Paste a new key' : 'Paste a key' }));
+    input.addEventListener('blur', mask);
     const problem = el('span', 'pj-input-error');
     problem.hidden = true;
     text.append(problem);
@@ -408,7 +442,9 @@ function fieldRow(field, id, change) {
     });
     input.addEventListener('change', () => {
       if (input.value.trim()) save(input.value.trim());
-      input.value = '';
+    });
+    input.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') input.blur();
     });
     const clear = el('button', 'pj-link-button', 'Clear');
     clear.type = 'button';
@@ -416,8 +452,9 @@ function fieldRow(field, id, change) {
     control = el('div', 'pj-setting-row');
     control.append(input, clear);
     paint = (own) => {
-      input.placeholder = own[field.key] ? `Set: …${own[field.key]}` : 'Not set';
-      clear.hidden = !own[field.key];
+      last4 = own[field.key] ?? '';
+      if (document.activeElement !== input) mask();
+      clear.hidden = !last4;
     };
   } else {
     const step = field.step ?? 1;

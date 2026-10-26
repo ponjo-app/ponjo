@@ -20,6 +20,7 @@
     openFolder: () => log('Open project…'),
     agentScripts: () => Promise.resolve({ agents: [{ id: 'claude', name: 'Claude Code', about: '', settings: [] }, { id: 'codex', name: 'Codex', about: '', settings: [] }], shipped: ['claude', 'codex'], folder: '~/Library/Application Support/Ponjo/agents', secrets: {} }),
     resetAgentScript: (name) => log(`Reset ${name}`),
+    testAgent: () => Promise.resolve({ ok: true, ms: 4200, out: 'OK' }),
     saveSecret: (agent, key) => log(`Set ${agent}'s ${key}`),
     showAgents: () => log('Show folder'),
     openRecent: (index) => log(`Open ${recent[index]?.name}`),

@@ -14,6 +14,8 @@ import { SIDECAR_SUFFIX, decodeText } from '../store/files.js';
 const MAX_OUTPUT = 1024 * 1024;
 const TAIL_LINES = 20;
 const RUN_TIMEOUT_MS = 30 * 60 * 1000; // no one can stop a run by hand: one that hangs fails
+const TEST_TIMEOUT_MS = 2 * 60 * 1000;
+const TEST_PROMPT = 'Ponjo is testing that you run. Edit no file and reply only: OK';
 
 const keyOf = (threadId, id) => `${threadId}:${id}`;
 
@@ -133,13 +135,7 @@ export class Runner {
       const folder = await this.folder(project);
       const prompt = buildPrompt({ buddy, buddies, docName: copy, sidecarName: sidecar, thread, folder, human: await this.human(), redo });
       const at = Date.now();
-      const result = await runScript(script, { cwd: dir, prompt, timeoutMs: this.timeoutMs, env: {
-        PONJO_DOC: copy,
-        PONJO_COMMENTS: sidecar,
-        PONJO_PROJECT: folder ?? '',
-        PONJO_BUDDY: buddy.name,
-        ...Object.fromEntries(Object.entries(settings).map(([key, value]) => [`PONJO_SETTING_${key.toUpperCase()}`, String(value ?? '')])),
-      }, onChild: (child) => {
+      const result = await runScript(script, { cwd: dir, prompt, timeoutMs: this.timeoutMs, env: runEnv({ doc: copy, sidecar, folder, buddy: buddy.name, settings }), onChild: (child) => {
         run.child = child;
         if (run.cancelled) killTree(child);
       } });
@@ -155,15 +151,50 @@ export class Runner {
         const after = await readFile(sidecar, 'utf8').catch(() => before);
         await this.finish({ ...out, edited, comments: { before, after }, body: result.stdout.trim(), failed: false });
       } else {
-        const why = result.error ?? (result.timedOut ? 'timed out' : `exit code ${result.code}`);
-        const tail = lastLines(`${result.stderr}\n${result.stdout}`);
-        await this.finish({ ...out, edited: null, body: `${tail ? `${tail}\n\n` : ''}${script} (${why})`, failed: true });
+        await this.finish({ ...out, edited: null, body: failure(script, result), failed: true });
       }
     } finally {
       await rm(dir, { recursive: true, force: true });
       if (project) await rm(project, { recursive: true, force: true });
     }
   }
+}
+
+/**
+ * Test of `agent` ({ script, settings }, as Runner's `agent()` gives it): one
+ * run on an empty doc, asked only to answer. Resolves to { ok, ms, out },
+ * `out` its reply, or when it failed the end of its output and why.
+ */
+export async function testAgent({ script, settings }, timeoutMs = TEST_TIMEOUT_MS) {
+  const dir = await mkdtemp(join(tmpdir(), 'ponjo-test-'));
+  try {
+    const doc = join(dir, 'test.md');
+    await writeFile(doc, '');
+    const sidecar = doc + SIDECAR_SUFFIX;
+    await writeFile(sidecar, `${JSON.stringify({ comments: FORMAT_VERSION })}\n`);
+    const at = Date.now();
+    const result = await runScript(script, { cwd: dir, prompt: TEST_PROMPT, timeoutMs, env: runEnv({ doc, sidecar, folder: null, buddy: 'Test', settings }) });
+    const ms = Date.now() - at;
+    return result.code === 0 ? { ok: true, ms, out: result.stdout.trim() } : { ok: false, ms, out: failure(script, result) };
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+}
+
+// A run's environment (docs/agent-config.md): its copies, the project, the buddy and the agent's settings.
+const runEnv = ({ doc, sidecar, folder, buddy, settings }) => ({
+  PONJO_DOC: doc,
+  PONJO_COMMENTS: sidecar,
+  PONJO_PROJECT: folder ?? '',
+  PONJO_BUDDY: buddy,
+  ...Object.fromEntries(Object.entries(settings).map(([key, value]) => [`PONJO_SETTING_${key.toUpperCase()}`, String(value ?? '')])),
+});
+
+// What a failed run says: the end of its output, then the script and why.
+function failure(script, result) {
+  const why = result.error ?? (result.timedOut ? 'timed out' : `exit code ${result.code}`);
+  const tail = lastLines(`${result.stderr}\n${result.stdout}`);
+  return `${tail ? `${tail}\n\n` : ''}${script} (${why})`;
 }
 
 /**
