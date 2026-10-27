@@ -26,7 +26,7 @@ laptop runs (an 8B model tried) claim edits they did not make.
 
 | Interface | Called by |
 | --- | --- |
-| `turn({ prompt, doc, sidecar }, { infer, readFile }) → { edits, reply }` | the program's `main` |
+| `turn({ prompt, doc, sidecar }, { infer, readFile, resolve }) → { edits, reply }` | the program's `main`; the preview's buddies (`preview/doc-stub.js`) |
 | `infer(messages, tools) → { calls: [{ id, name, args }], sent }` | `turn`, for each step |
 | `read`, `propose` | the model, as tools |
 
@@ -38,7 +38,10 @@ saying where to set it.
 
 **`turn`** is one buddy answering one thread, with no I/O of its own: it
 thinks, and checks what it proposes. `prompt` is stdin as is; `doc` and
-`sidecar` are the copies' paths. It throws when the turn fails.
+`sidecar` are the copies' paths, and `resolve` puts a path the model wrote
+in their form (`node:path`'s on disk). It throws when the turn fails. It
+and each `infer` are in `ponjo-core.mjs`, which imports nothing, so a
+browser runs them too; `main` and `readFile` are in `ponjo.mjs`.
 
 **`readFile(path)`** gives a file's text, a folder's entries, or null, and
 is all the turn can see: the copies, and in project mode the project's files
@@ -54,6 +57,7 @@ call's result), and each `infer` translates them:
 | --- | --- | --- |
 | `anthropic` | Messages (`/v1/messages`) | `output_config.effort`, the model thinking as it needs; its messages sent back as they came, thinking included; prompt caching of the tools and the prompt; a refusal or a cut-off answer fails the turn |
 | `openai` | Chat Completions at `endpoint` (OpenAI, OpenRouter and others) | `reasoning_effort` |
+| `nebius` | Chat Completions at Nebius Token Factory, for NVIDIA's Nemotron models | no effort |
 
 Both send `tool_choice: "auto"`: current Claude models refuse a forced tool
 call, and a reply without one is sent back anyway.
@@ -88,8 +92,8 @@ steps, and the turn fails.
 
 ```mermaid
 flowchart LR
-  runner["Runner"] -- "the contract" --> main["main<br>agents/ponjo"]
-  main --> turn["turn()"]
+  runner["Runner"] -- "the contract" --> main["main<br>agents/ponjo.mjs"]
+  main --> turn["turn()<br>agents/ponjo-core.mjs"]
   turn -- "infer" --> api["Anthropic or<br>OpenAI-compatible API"]
   turn -- "readFile" --> files["the copies, the project"]
 ```
@@ -101,7 +105,7 @@ flowchart LR
 
 | Key | Type | Default |
 | --- | --- | --- |
-| `provider` | choice: Anthropic, OpenAI-compatible | `anthropic` |
+| `provider` | choice: Anthropic, OpenAI-compatible, Nebius Token Factory | `anthropic` |
 | `endpoint` | text, for OpenAI-compatible only | `https://api.openai.com/v1` |
 | `model` | text | `claude-opus-5-5` |
 | `key` | secret | none: a run without one fails, saying where to set it |
