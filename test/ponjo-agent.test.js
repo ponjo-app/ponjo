@@ -1,11 +1,12 @@
 // The Ponjo agent (docs/ponjo-agent.md): `turn` with a fake `infer`;
 // each provider's `infer` on a fake server of its API; and the shipped
-// script once, with its settings and its log.
+// script once, with its settings and its trace.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { createServer } from 'node:http';
+import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, readFile, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, delimiter, dirname, join } from 'node:path';
@@ -195,8 +196,9 @@ test('the shipped script runs a turn under the contract, with its settings from 
     await installAgents(config, { platform: 'linux' });
     const { dir, doc, sidecar } = await copies();
     const settings = { PROVIDER: 'openai', ENDPOINT: api.url, MODEL: 'gpt-5', KEY: 'sk-secret-test', EFFORT: 'low' };
+    const trace = join(config, 'trace.jsonl');
     const run = (PATH = `${dirname(process.execPath)}${delimiter}${process.env.PATH}`, own = settings) => new Promise((resolve) => {
-      const env = { ...process.env, PATH, PONJO_DOC: doc, PONJO_COMMENTS: sidecar, PONJO_PROJECT: '', PONJO_BUDDY: 'Ada' };
+      const env = { ...process.env, PATH, PONJO_DOC: doc, PONJO_COMMENTS: sidecar, PONJO_PROJECT: '', PONJO_BUDDY: 'Ada', PONJO_TRACE: trace };
       for (const [key, value] of Object.entries(own)) env[`PONJO_SETTING_${key}`] = value;
       const child = execFile(agentScript('ponjo', config, 'linux'), { cwd: dir, env }, (error, stdout, stderr) => resolve({ code: error?.code ?? 0, stdout, stderr }));
       child.stdin.on('error', () => {}); // a run that fails early need not read its prompt
@@ -204,7 +206,8 @@ test('the shipped script runs a turn under the contract, with its settings from 
     });
 
     const edits = [{ path: doc, old: 'week one', new: 'week two' }, { path: sidecar, old: '', new: '{"body":"Two weeks?"}' }];
-    answers.push([200, { choices: [{ message: { role: 'assistant', content: null, tool_calls: [{ id: 'c1', type: 'function', function: { name: 'propose', arguments: JSON.stringify({ edits, reply: 'Moved it.' }) } }] } }] }]);
+    const usage = { prompt_tokens: 1200, completion_tokens: 40 };
+    answers.push([200, { choices: [{ message: { role: 'assistant', content: null, tool_calls: [{ id: 'c1', type: 'function', function: { name: 'propose', arguments: JSON.stringify({ edits, reply: 'Moved it.' }) } }] } }], usage }]);
     assert.deepEqual(await run(), { code: 0, stdout: 'Moved it.', stderr: '' });
     assert.equal(await readFile(doc, 'utf8'), SAMPLE.replace('week one', 'week two'));
     assert.equal(await readFile(sidecar, 'utf8'), `${HEADER}{"body":"Two weeks?"}\n`);
@@ -217,13 +220,13 @@ test('the shipped script runs a turn under the contract, with its settings from 
     assert.equal(failed.stderr, `${api.url}/chat/completions: 404 {"error":"model \\"gpt-5\\" not found"}\nCheck the endpoint and the model.\nThe provider, endpoint, model and key are in Settings > Agents > Ponjo agent.\n`);
     assert.deepEqual(await run(undefined, { ...settings, KEY: '' }), { code: 1, stdout: '', stderr: 'No API key: set one in Settings > Agents > Ponjo agent.\n' });
 
-    const log = await readFile(join(config, 'logs', 'ponjo.jsonl'), 'utf8');
-    assert.deepEqual(log.trim().split('\n').map((l) => JSON.parse(l)).map((entry) => [entry.buddy, entry.messages.map((m) => m.role), entry.error]), [
-      ['Ada', ['user', 'assistant'], null],
-      ['Ada', ['user'], failed.stderr.trim()],
-      ['Ada', [], 'No API key: set one in Settings > Agents > Ponjo agent.'],
-    ], 'each turn\'s messages are logged');
-    assert.doesNotMatch(log, /sk-secret-test/, 'never the key');
+    const traced = await readFile(trace, 'utf8');
+    const [answer] = traced.trim().split('\n').map((l) => JSON.parse(l));
+    assert.equal(traced.trim().split('\n').length, 1, 'the model\'s step: not the prompt, which the app has, and none for a step that failed');
+    assert.deepEqual([answer.role, answer.calls.map((c) => c.name), answer.usage], ['assistant', ['propose'], usage]);
+    assert.ok(Number.isInteger(answer.ms));
+    assert.doesNotMatch(traced, /sk-secret-test/, 'never the key');
+    assert.ok(!existsSync(join(config, 'logs')), 'no log of its own');
 
     // A CRLF doc reads without its \r, and an edit quoting more than a line keeps its line breaks.
     await writeFile(doc, SAMPLE.replace(/\n/g, '\r\n'));

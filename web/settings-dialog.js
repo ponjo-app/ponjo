@@ -68,6 +68,7 @@ const DIALOG = `
       <div class="pj-setting-row">
         <button type="button" class="pj-secondary" data-action="show-agents" hidden>Show folder</button>
       </div>
+      <div class="pj-agents-trace"></div>
     </section>
 
     <section class="pj-settings-section" role="tabpanel" data-section="shortcuts" hidden>
@@ -118,6 +119,9 @@ export function setupSettings({ store, getName, setName, onApply = () => {}, vie
   const nameInput = dialog.querySelector('#pj-name-input');
   const nameError = dialog.querySelector('.pj-input-error');
 
+  // For whoever works on an agent: each run's trace, read in a doc's Runs.
+  const trace = fieldRow({ key: 'trace', type: 'switch', label: 'Trace runs', hint: 'Keep what each run was given, did and printed, step by step, to read in a doc\'s Runs. Traces hold the doc\'s text; the newest 200 are kept in the config folder\'s logs.' }, 'app', (key, value) => set({ [key]: value }));
+  dialog.querySelector('.pj-agents-trace').replaceWith(trace.node);
   fillShortcuts(dialog.querySelector('.pj-shortcuts-body'));
   dialog.querySelector('[data-action="show-agents"]').hidden = !scripts.showFolder;
 
@@ -167,6 +171,7 @@ export function setupSettings({ store, getName, setName, onApply = () => {}, vie
       }
     }
     paintAgents(settings);
+    trace.paint(settings);
     if (document.activeElement !== nameInput) nameInput.value = getName();
     onApply(settings);
   }

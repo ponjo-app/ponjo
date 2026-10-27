@@ -361,7 +361,7 @@ others put in; its result is your typing, merged by character.
 | Store | read, write, watch and move files | `read(path)`, `write(path, text, { ifHash })`, `watch(path, fn)`, `move(from, to)`. Settings, buddies, agent scripts and history are paths and parsers over these, not interfaces of their own |
 | DocService | order every edit to a doc, and write it | `state({ since? })` → text, `{ epoch, rev }`, the `events` missed since, and what this connection may do; `submit({ ops, epoch, rev, id })` → `{ rev }`, or `stale`, or `not_saved`; `comment({ thread?, anchor?, body, resolved? })`; `undo({ id, from? })`, a version (or the versions from `from` to it) undone as above, a turn's from its reply; `cursor({ at, epoch, rev })`; `move(to)`; events `ops` (every landed edit, written), `saved` (`{ error }`: why the file does not hold them, or null), `sidecar`, `room`, `cursors`, `missing`; a window that connects again catches up with `state`. Cursors are never queued behind writes: each is kept at the last rev windows were told of, and moved with every edit told |
 | History | keep the doc as it was at each version | `record`, `list`, `read`; a version may have several authors |
-| Runner | make the running turns equal the asks the sidecar holds | `reconcile()`, `statuses()`, `pause(on)`. The asks are people's comments: the owner's and those of players who can edit. A finished turn comes through the door as its buddy |
+| Runner | make the running turns equal the asks the sidecar holds | `reconcile()`, `statuses()`, `pause(on)`. The asks are people's comments: the owner's and those of players who can edit. A finished turn comes through the door as its buddy, then is logged with its trace |
 | Room | who plays in the project's room and what each may do, while it is open | for the owner `open()`, `close()`, `lock(locked)`, `setLevel(id, level)` with `level` `read` or `write`, `kick(id)` and `list()` (`{ link, locked, players }`, or null while closed), at the door as `openRoom`, `closeRoom`, `lockRoom`, `setLevel`, `kick` and `room`; a page that opens the link joins as `join({ id, name })`; the host asks it a player's level on each call; event `room` to the owner's windows |
 | ProjectService | the project's files, the same for everyone | `list(path)`, `read(path)`, `open(path)`, for the owner's windows and a teammate's page alike. A path must resolve inside the root and not start with `.`. An agent reads no more than this |
 | Config | own the settings, buddies and agents | `settings.get/patch`, `buddies.save/remove`, `scripts.list/reset` |
@@ -439,6 +439,7 @@ written only by the app.
 | `state.json` | recent docs and folders, window bounds |
 | `history/` | versions of each doc, saved each time typing pauses, before and after each buddy edit (tagged with its reply's id), before each outside change, undo and restore; and the windows' edits the doc's file was last written with; the comments this host took |
 | `mirrors/` | each project's mirror: a copy of what the project shows, cloned for each run (`src/host/mirror.js`) |
+| `logs/` | `runs.jsonl`, a line per turn; with Trace runs on, `traces/`, each turn's trace ([a buddy's turn](#a-buddys-turn)) |
 
 ## A buddy's turn
 
@@ -477,9 +478,16 @@ the ids of those who may ask. AI buddies run only on docs open in a window.
    The reply and comments are dated just after the last comment the turn
    was given, so a comment the user wrote meanwhile still waits on X.
 4. The private folder is deleted, and the turn gets a line in the config
-   folder's `logs/runs.jsonl`: doc, buddy, thread, start, duration, and
-   `ok`, `failed`, `timedOut` or `stopped` with the exit code. A `.jsonl`
-   log there past 10 MB, an agent's too, then keeps its newest half.
+   folder's `logs/runs.jsonl`: its run id, doc, buddy, thread, reply, start,
+   duration, and `ok`, `failed`, `timedOut` or `stopped` with the exit code.
+   A `.jsonl` log there past 10 MB, an agent's too, then keeps its newest
+   half. With Settings > Agents > Trace runs on (off by default), the turn
+   also leaves its trace in `logs/traces/<run>.json`, the newest 200 kept:
+   the prompt, the steps the agent wrote to `PONJO_TRACE`
+   ([agent config](agent-config.md#traces)), stdout and stderr, the doc
+   and sidecar copies before and after, and what landed. The owner's
+   window reads them in the doc's Runs (`runs()`, `trace({ run })`), and a
+   buddy's reply links to its run's.
 
 Resolving a thread ends its turns at once, with no answer; a turn that
 ended but is not merged yet is dropped. Deleting a buddy ends its turns too.

@@ -14,7 +14,7 @@
 //   tamper                              change the first comment's line, and append one that resolves its thread
 // Commands after the first may follow `;;`.
 // Each run logs one JSON line to $FAKE_DIR/runs.log when it starts, with
-// the PONJO_SETTING_* it was given.
+// the PONJO_SETTING_* it was given, and writes { started: <ask> } to its trace.
 
 import { appendFileSync, existsSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { delimiter, join } from 'node:path';
@@ -27,6 +27,7 @@ const { PONJO_DOC: doc, PONJO_COMMENTS: comments, PONJO_PROJECT: project, PONJO_
 const settings = Object.fromEntries(Object.entries(process.env).filter(([key]) => key.startsWith('PONJO_SETTING_')));
 const onPath = (process.env.PATH ?? '').split(delimiter).some((d) => d && ['ponjo', 'ponjo.cmd'].some((f) => existsSync(join(d, f))));
 appendFileSync(join(dir, 'runs.log'), JSON.stringify({ buddy, ask, cwd: process.cwd(), files: readdirSync(process.cwd()), doc, comments, project, projectFiles: project ? readdirSync(project).sort() : null, prompt, settings, ponjo: onPath }) + '\n');
+if (process.env.PONJO_TRACE) appendFileSync(process.env.PONJO_TRACE, `${JSON.stringify({ started: ask })}\nnot JSON\n`);
 
 const written = ask.match(/\bwrite (\S+)/)?.[1];
 if (written) writeFileSync(join(project, written), 'written by a run\n');

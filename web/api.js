@@ -52,6 +52,10 @@ export const api = {
   resetScript: (name) => call('resetScript', { name }),
   /** One run of the picked agent on an empty doc: { ok, ms, out } (src/host/runner.js testAgent). */
   testAgent: () => call('testAgent'),
+  /** This doc's runs that left a trace, newest first: [{ run, buddy, thread, reply, at, ms, outcome, code }]. */
+  runs: async () => (await call('runs')).runs,
+  /** Run `run`'s trace (src/host/runner.js): { script, prompt, steps, stdout, stderr, base, edited, comments, landed, ... }. */
+  trace: async (run) => (await call('trace', { run })).trace,
   /** A new buddy, the project's: { agents }. */
   createBuddy: (buddy) => call('createBuddy', { buddy }),
   /** Change buddy `name` here: { agents }. */

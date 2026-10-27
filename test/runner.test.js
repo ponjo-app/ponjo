@@ -183,13 +183,56 @@ test('a log past 10 MB keeps its newest half, from a line\'s start: runs.jsonl a
     await mkdir(logs, { recursive: true });
     const old = `${JSON.stringify({ old: 'x'.repeat(1000) })}\n`.repeat(11 * 1024);
     await writeFile(join(logs, 'runs.jsonl'), old);
-    await writeFile(join(logs, 'ponjo.jsonl'), old);
+    await writeFile(join(logs, 'agent.jsonl'), old);
     const id = await comment(call, '@Clippy replace "extra load" with "extra peak load"');
-    const sizes = () => Promise.all(['runs.jsonl', 'ponjo.jsonl'].map(async (name) => (await stat(join(logs, name))).size));
+    const sizes = () => Promise.all(['runs.jsonl', 'agent.jsonl'].map(async (name) => (await stat(join(logs, name))).size));
     await until(async () => (await sizes()).every((size) => size <= 5 * 1024 * 1024), 'the logs trimmed');
     assert.equal((await runLog(settingsDir)).at(-1).thread, id, 'the new line is kept');
-    const agents = (await readFile(join(logs, 'ponjo.jsonl'), 'utf8')).trim().split('\n');
+    const agents = (await readFile(join(logs, 'agent.jsonl'), 'utf8')).trim().split('\n');
     assert.ok(agents.every((line) => JSON.parse(line).old), 'whole lines');
+  });
+});
+
+test('with Trace runs on, each run leaves its trace, read by the doc\'s runs: what it was given, did and printed, and what landed; off, none', { timeout: 30_000 }, async () => {
+  await withDoc(async ({ settingsDir, call, state, runs, release }) => {
+    const traced = async (n) => until(async () => {
+      const { runs: list } = await call('runs');
+      return list.length === n && list;
+    }, `${n} traced runs`);
+    const off = await comment(call, '@Clippy replace "extra load" with "extra peak load"');
+    await until(async () => (await repliesIn(state, off)).length, 'the reply');
+    await until(async () => (await runLog(settingsDir).catch(() => [])).length === 1, 'the run logged');
+    assert.ok(!existsSync(join(settingsDir, 'logs', 'traces')), 'none while off');
+    assert.deepEqual((await call('runs')).runs, []);
+
+    await call('saveSettings', { trace: true });
+    const id = await comment(call, '@Clippy replace "week one" with "week 1"');
+    const [answer] = await until(async () => (await repliesIn(state, id)).length && repliesIn(state, id), 'the reply');
+    const [run] = await traced(1);
+    assert.deepEqual([run.buddy, run.thread, run.reply, run.outcome], ['Clippy', id, answer.id, 'ok']);
+    const { trace } = await call('trace', { run: run.run });
+    assert.match(trace.prompt, /fzhan: @Clippy replace "week one"/);
+    assert.deepEqual(trace.steps, [{ started: 'fzhan: @Clippy replace "week one" with "week 1"' }, 'not JSON'], 'the lines it wrote to PONJO_TRACE');
+    assert.equal(trace.stdout.trim(), answer.body);
+    assert.ok(trace.base.includes('week one') && trace.edited.includes('week 1') && !trace.edited.includes('week one'));
+    assert.ok(trace.comments.before.includes(id), 'the sidecar\'s copy it was given');
+    assert.equal(trace.landed, 'Posted');
+
+    const failed = await comment(call, '@Clippy fail');
+    const [last] = await traced(2);
+    assert.deepEqual([last.thread, last.outcome], [failed, 'failed']);
+    assert.match((await call('trace', { run: last.run })).trace.stderr, /fake agent: something went wrong/);
+
+    // A run ended without an answer keeps what it wrote before it was ended.
+    const held = await comment(call, '@Clippy hold');
+    await until(async () => (await runs()).length === 4, 'the run to start');
+    await call('comment', { thread: held, body: '', resolved: true });
+    const [ended] = await traced(3);
+    const { trace: cut } = await call('trace', { run: ended.run });
+    assert.deepEqual([ended.outcome, ended.reply, cut.landed, cut.steps[0]], ['stopped', null, 'Ended without an answer', { started: 'fzhan: @Clippy hold' }]);
+    await release('Clippy');
+
+    await assert.rejects(call('trace', { run: '../settings' }), { code: 'not_found' });
   });
 });
 

@@ -4,7 +4,8 @@
 // replies, and its face at work while it works. A reply whose run failed, or
 // whose edit was partly dropped for the human's text, says so; one that
 // edited the doc on this machine shows its edits in the text and offers
-// Undo. Only people resolve and reopen threads.
+// Undo; one whose run left a trace links to it. Only people resolve and
+// reopen threads.
 
 import { icon } from './icons.js';
 import { agentFace, buddyColor, nameOf, personFace } from './faces.js';
@@ -22,7 +23,8 @@ const MENTION_BEFORE_CARET = /(^|[^A-Za-z0-9._-])@([A-Za-z0-9._-]*)$/;
  *           onSelect: (threadId: string | null) => void, onHover: (threadId: string | null) => void,
  *           anchorTops: (items: { id: string, anchor: object }[]) => Map<string, number>,
  *           mentionChoices?: (query: string, me: string) => { id?, name, kind, group, tagline? }[],
- *           mentionable?: () => { id?: string, name: string, kind: string }[] }} handlers
+ *           mentionable?: () => { id?: string, name: string, kind: string }[],
+ *           traceOf?: (replyId: string) => string | undefined, onTrace?: (run: string) => void }} handlers
  */
 export function createCommentMargin(margin, handlers) {
   let threads = [];
@@ -138,6 +140,8 @@ export function createCommentMargin(margin, handlers) {
     who.append(name, el('time', 'pj-time', relativeTime(comment.at)));
     namecardFor(name, shown, kind, 'click');
     head.append(namecardFor(avatar(shown, kind, false, comment.by.id), shown, kind, 'click'), who);
+    const run = handlers.traceOf?.(comment.id);
+    if (run) head.append(linkButton('Trace', () => handlers.onTrace(run)));
     if (action) head.append(action);
     const open = unfolded.has(comment.id);
     const body = el('div', `pj-body${open ? '' : ' pj-body-folded'}`);

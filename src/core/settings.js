@@ -15,7 +15,8 @@ export const SETTINGS_VERSION = 3;
  * (src/store/buddies.js), never settings. `views` and `agents` hold the
  * settings of each view and agent by its id (`{ <id>: { enabled: false } }`);
  * one not there takes the default its declaration gives (viewSettings,
- * agentSettings).
+ * agentSettings). `trace` keeps each run's trace (src/host/doc-service.js
+ * logRun), to read in a doc's Runs.
  */
 export const DEFAULT_SETTINGS = Object.freeze({
   id: null,
@@ -25,6 +26,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
   views: Object.freeze({}),
   agents: Object.freeze({}),
   agent: 'claude',
+  trace: false,
 });
 
 const oneOf = (...values) => (v) => values.includes(v);
@@ -41,6 +43,7 @@ const VALID = {
   views: perId,
   agents: perId,
   agent: (v) => typeof v === 'string' && NAME_PATTERN.test(v),
+  trace: boolean,
 };
 
 export class SettingsError extends Error {
