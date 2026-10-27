@@ -19,6 +19,7 @@ import { BuddyError, buddiesHere, checkBuddyPatch } from '../core/buddies.js';
 import { DEFAULT_SETTINGS, SettingsError } from '../core/settings.js';
 import { lineChanges, merge3 } from '../core/diff.js';
 import { apply, diffOps, mapOffset, transform } from '../core/ot.js';
+import { PROTOCOL } from '../core/protocol.js';
 import { StoreError, formFor, hashText, moveDoc, readDoc, readSidecarText, sidecarPath, writeDoc, writeSidecar } from '../store/files.js';
 import { VERSION_ID, moveHistory, noteTaken, noteWritten, readHistory, readTaken, readVersion, recordVersion, writtenEdits } from '../store/history.js';
 import { configDir, defaultName, ownerOf, readSettings, settingsWithId, updateSettings, watchSettings } from '../store/settings.js';
@@ -877,8 +878,8 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
     leave(id) {
       if (cursors.delete(id)) tellCursors();
     },
-    /** What a window hears first: whether the doc is missing, and who is at work. */
-    hello: () => ({ missing, agents: agentStatuses() }),
+    /** What a window hears first: the version of the messages, whether the doc is missing, and who is at work. */
+    hello: () => ({ protocol: PROTOCOL, missing, agents: agentStatuses() }),
     runner,
     docPath: () => docPath,
     moveTo,

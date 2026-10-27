@@ -13,6 +13,7 @@ import { basename, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createClient } from '../web/client.js';
 import { LATENCY } from '../web/views/index.js';
+import { PROTOCOL } from '../src/core/protocol.js';
 import { launchElectron, waitFor } from '../scripts/devtools.js';
 import { until } from './helpers.js';
 import { idOf, page as playerPage, player, project as newProject, roomOf, startHost as hostOn, startRelay } from './relay/harness.js';
@@ -62,7 +63,7 @@ test('anyone with the link is in at once, at Edit, and writes and reads through 
     assert.equal(state.level, 'write');
     assert.deepEqual(state.me, { id: idOf(sam.key), name: 'Sam', kind: 'human' });
     assert.notEqual(state.settings.name, 'owner', 'the owner\'s settings stay theirs');
-    assert.ok(teammate.events.some((e) => e.event === 'hello'));
+    assert.equal(teammate.events.find((e) => e.event === 'hello')?.data.protocol, PROTOCOL);
 
     // One DocService for the owner's window and the page: each sees the other type.
     const owner = await host.call('state');
@@ -453,6 +454,54 @@ test('the relay limits pages, message sizes, hosts and pages an address opens, s
   } finally {
     for (const socket of opened) socket.close();
     await limited.stop();
+  }
+});
+
+test('the browser build, on a host with another version of the messages, says which side to update', { timeout: 120_000 }, async () => {
+  const shared = await project();
+  const host = await startHost(shared);
+  const dir = await mkdtemp(join(tmpdir(), 'ponjo-relay-page-'));
+  const electron = createRequire(import.meta.url)('electron');
+  const env = { ...process.env, RELAY_PAGE: host.link };
+  delete env.ELECTRON_RUN_AS_NODE;
+  const app = await launchElectron(electron, [join(root, 'test', 'relay', 'main.js'), '--no-sandbox', `--user-data-dir=${join(dir, 'profile')}`], { env });
+  try {
+    const shown = await app.page('Ponjo');
+    // Every hello the page hears says the version window.protocol names (null: none; unset: the host's own).
+    await shown.send('Page.enable');
+    await shown.send('Page.addScriptToEvaluateOnNewDocument', { source: `{
+      const Line = WebSocket;
+      window.sockets = [];
+      window.WebSocket = class extends Line {
+        constructor(url) {
+          super(url);
+          sockets.push(this);
+        }
+        addEventListener(type, fn, ...rest) {
+          super.addEventListener(type, type !== 'message' ? fn : (event) => {
+            const message = String(event.data).startsWith('{') ? JSON.parse(event.data) : null;
+            if (message?.event !== 'hello' || !('protocol' in window)) return fn(event);
+            if (window.protocol === null) delete message.data.protocol;
+            else message.data.protocol = window.protocol;
+            fn(new MessageEvent('message', { data: JSON.stringify(message) }));
+          }, ...rest);
+        }
+      };
+    }` });
+    await shown.send('Page.navigate', { url: host.link });
+    await waitFor(() => shown.evaluate(`document.querySelector('.pj-join')?.hidden === false`).catch(() => false), 30_000, 'the name asked');
+    await shown.evaluate(`document.querySelector('.pj-join input').value = 'Noor'; document.querySelector('.pj-join').requestSubmit()`);
+    await waitFor(() => shown.evaluate(`Boolean(document.querySelector('.pj-stage [contenteditable]'))`), 30_000, 'the doc');
+    const notice = () => shown.evaluate(`(n => n.hidden ? '' : n.querySelector('.pj-banner-text').textContent)(document.querySelector('.pj-notice'))`);
+    assert.equal(await notice(), '', 'the same version');
+    // The hello on each line made again, after the last one dropped, says the version anew.
+    for (const [protocol, says] of [[PROTOCOL - 1, 'Ask them to update the app'], [PROTOCOL + 1, 'Reload it'], [null, ''], [PROTOCOL, '']]) {
+      await shown.evaluate(`window.protocol = ${protocol}; sockets.at(-1).dispatchEvent(new CloseEvent('close'))`);
+      await waitFor(async () => (says ? (await notice()).includes(says) : (await notice()) === ''), 30_000, `the notice for ${protocol}`);
+    }
+  } finally {
+    await app.quit();
+    host.kill();
   }
 });
 

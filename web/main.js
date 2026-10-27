@@ -27,6 +27,7 @@ import { askName, named } from './join.js';
 import { REFUSED } from './relay.js';
 import { NAME_PATTERN } from '../src/core/mentions.js';
 import { FORMAT_VERSION } from '../src/core/comments.js';
+import { PROTOCOL } from '../src/core/protocol.js';
 
 const ON_DISK = 'Edited on disk'; // a change no collaborator is known to have made
 // Comment updates wait for a pause in typing this long, but never longer
@@ -384,6 +385,7 @@ async function start() {
   // started, since `state`, and the doc host may have started again. A
   // player's page whose line dropped edits again once it has caught up.
   events.on('hello', async (data) => {
+    showProtocol(data.protocol ?? 1);
     if (stranded) return;
     if (Boolean(data.missing) !== missing) setMissing(!missing);
     showAgents(data.agents);
@@ -614,8 +616,19 @@ function showSize(chosen, text) {
   paintNotice();
 }
 
+// A doc host on another version of the messages (src/core/protocol.js) than
+// this page: the banner says which side to update, before the size's or the
+// comments' notice.
+let protocolNotice = null;
+function showProtocol(theirs) {
+  protocolNotice = theirs === PROTOCOL ? null
+    : theirs < PROTOCOL ? { text: 'The owner\'s Ponjo app is older than this page, so some of it may not work. Ask them to update the app.' }
+    : { text: 'This page is older than the owner\'s Ponjo app, so some of it may not work. Reload it to get the new one.' };
+  paintNotice();
+}
+
 function paintNotice() {
-  const notice = comments?.notice ? { text: comments.notice } : sizeNotice;
+  const notice = protocolNotice ?? (comments?.notice ? { text: comments.notice } : sizeNotice);
   noticeBanner.hidden = !notice;
   noticeBanner.querySelector('.pj-banner-text').textContent = notice?.text ?? '';
   const action = noticeBanner.querySelector('[data-action="any-size"]');

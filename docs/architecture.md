@@ -556,6 +556,12 @@ sharing.
   host; a page's first message is its key, name and doc. The app's
   relay is `wss://share.ponjo.app` unless `PONJO_RELAY` names another
   (empty: nothing is shared).
+- **Versions.** The page comes from the relay, deployed from main with the
+  nightly, and the host from the app its owner installed, so the two can be
+  apart. The messages between them have a version (`PROTOCOL`,
+  `src/core/protocol.js`), raised by a change the other side would
+  misread; the host says its own in `hello`, and a page told another one
+  says which side to update: the owner's app, or the page (reload it).
 - **Limits**, so the relay is no free pipe and stays within the Workers
   free plan: at most 20 pages in a room (one more is turned away, `full`),
   no message over 8 MiB characters (its sender is closed), and at most 60
