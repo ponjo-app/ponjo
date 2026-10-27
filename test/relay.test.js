@@ -505,7 +505,7 @@ test('the browser build, on a host with another version of the messages, says wh
   }
 });
 
-test('C2 C6 D7: the browser build asks a name, then shows the doc live at Edit: its tree, the owner\'s cursor, read only at Read; a comment draft stays, typing lands before it lets go; a dropped line is read only; a closed room leaves nothing', { timeout: 240_000 }, async () => {
+test('C2 C6 D7 E1: the browser build asks a name, then shows the doc live at Edit, Saved: its tree, the owner\'s cursor, read only at Read; a comment draft stays, typing lands before it lets go; a dropped line is read only, Offline, and Not saved with typing not sent; a closed room leaves nothing', { timeout: 240_000 }, async () => {
   const shared = await project();
   const host = await startHost(shared);
   const dir = await mkdtemp(join(tmpdir(), 'ponjo-relay-page-'));
@@ -536,14 +536,17 @@ test('C2 C6 D7: the browser build asks a name, then shows the doc live at Edit: 
     await shown.evaluate(`document.querySelector('.pj-join input').value = 'Noor'; document.querySelector('.pj-join').requestSubmit()`);
     const editable = () => shown.evaluate(`document.querySelector('.pj-stage [contenteditable]')?.contentEditable`).catch(() => '');
     const text = () => shown.evaluate(`document.querySelector('.pj-stage [contenteditable]')?.innerText ?? ''`);
-    const status = () => shown.evaluate(`document.querySelector('.pj-status-text').textContent`);
+    // E1: the one save state, and why.
+    const save = () => shown.evaluate(`(m => [m.textContent, m.dataset.tip])(document.querySelector('.pj-save'))`);
     await waitFor(async () => (await editable()) === 'true', 30_000, 'the doc, at Edit at once');
     assert.ok((await text()).includes('Ship the preview first.'));
+    assert.equal((await save())[0], 'Saved');
     const [noor] = (await host.call('room')).players;
     assert.equal(noor.name, 'Noor');
 
     await host.call('setLevel', { id: noor.id, level: 'read' });
     await waitFor(async () => (await editable()) === 'false', 30_000, 'the page at Read');
+    assert.deepEqual(await save(), ['Read-only', 'You can only read this doc.']);
     assert.equal(await shown.evaluate(`document.querySelectorAll('.pj-toolbar [data-command]').length`), 0, 'no formatting tools');
 
     const owner = await host.call('state');
@@ -624,18 +627,20 @@ test('C2 C6 D7: the browser build asks a name, then shows the doc live at Edit: 
     let lines = await cut();
     await waitFor(async () => (await editable()) === 'false', 20_000, 'read only');
     assert.ok(Date.now() - cutAt < 15_000, `within 15 s: ${Date.now() - cutAt} ms`);
-    assert.equal(await status(), 'Cannot reach the relay: read only until it is back');
+    assert.deepEqual(await save(), ['Offline', 'Cannot reach the relay: read only until it is back']);
     await lineBack(lines);
     await waitFor(async () => (await editable()) === 'true', 10_000, 'editable again');
+    assert.equal((await save())[0], 'Saved');
 
     // Typing not sent when it drops is shown as it was left, to copy, and never sent.
     await typeAt('Then');
     cutAt = Date.now();
     lines = await cut();
     await shown.send('Input.insertText', { text: 'Lost: ' });
+    assert.equal((await save())[0], 'Saving…', 'on its way, the drop not noticed yet');
     await waitFor(async () => (await editable()) === 'false', 20_000, 'read only');
     assert.ok(Date.now() - cutAt < 15_000, `within 15 s: ${Date.now() - cutAt} ms`);
-    assert.match(await status(), /^Not saved: the line dropped\./);
+    assert.match((await save())[0], /^Not saved: the line dropped\./);
     assert.match(await text(), /Lost: Then ask/);
     await lineBack(lines);
     await new Promise((done) => setTimeout(done, 1000));

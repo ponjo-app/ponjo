@@ -231,7 +231,7 @@ numbers are `LATENCY` in `web/views/index.js`, which the tests read:
 
 | Id | Rule |
 | --- | --- |
-| E1 | At any moment the page is in exactly one true state: Saved, Saving, Not saved (and why), Offline or Read-only. Alone too. No test yet: the page shows these apart, but not as one state. |
+| E1 | At any moment the page is in exactly one true state: Saved, Saving, Not saved (and why), Offline or Read-only. Alone too. The toolbar shows it (`paintSave` in `web/main.js`); other problems show apart, beside the doc's name. |
 
 A view keeps the B rules only up to a size, its `limits`: how long the doc is, and
 for the Markdown view how long a run of text without a blank line is (one

@@ -109,7 +109,7 @@ const LINE = {
   nohost: 'No room is open at this link. It may have closed: ask the host for a new link. Waiting…',
   relay: 'Cannot reach the relay: read only until it is back',
 };
-const UNSENT = 'Not saved: the line dropped. Your last typing is shown as you left it, to copy. Reload to edit again.';
+const UNSENT = 'the line dropped. Your last typing is shown as you left it, to copy. Reload to edit again.';
 function showLine(line) {
   if (line?.reason === 'refused') {
     reloading = true;
@@ -121,9 +121,9 @@ function showLine(line) {
     stranded = !client.idle();
     followReading();
   }
-  if (stranded) setStatus(UNSENT, 'error');
-  else if (line) setStatus(LINE[line.reason], 'error');
-  else if (!lineDown) setStatus('');
+  if (line) lineWhy = LINE[line.reason];
+  else if (!lineDown) lineWhy = null;
+  paintSave();
 }
 
 // The page may edit or not (its level, its line): the view and the tools follow.
@@ -202,11 +202,11 @@ async function start() {
     // typing is saved once it is back. A player's page hears its line instead (showLine).
     onLine: (online) => {
       if (!window.ponjoHost) return;
-      if (!online) setStatus('Offline: what you type stays here, and is saved once the line is back', 'error');
-      else if (offline) setStatus('');
       offline = !online;
+      paintSave();
     },
-    onError: (error) => (error.code === 'not_saved' ? showUnsaved(error.message) : setStatus(`Not saved: ${error.message}`, 'error')),
+    onLanded: paintSave,
+    onError: (error) => (error.code === 'not_saved' ? showUnsaved(error.message) : setStatus(error.message, 'error')),
   });
   client.start(initial);
   chrome = createChrome({
@@ -274,7 +274,6 @@ async function start() {
   margin.setAgents(initial.agents);
   shownAgents = JSON.stringify(initial.agents);
   applyComments(initial);
-  setStatus('Saved');
   showUnsaved(initial.notSaved);
   setInterval(() => margin.rerender(), 30_000); // relative times, stale "working"
 
@@ -391,7 +390,8 @@ async function start() {
     showAgents(data.agents);
     if (!lineDown) return client.catchUp();
     lineDown = false;
-    setStatus('');
+    lineWhy = null;
+    paintSave();
     await client.catchUp();
     await followReading();
   });
@@ -409,7 +409,10 @@ function makeView(chosen, text) {
     name: docName,
     toolbar: document.querySelector('.pj-toolbar'),
     onComment: requestComment,
-    onEdit: () => client.edited(),
+    onEdit: () => {
+      client.edited();
+      paintSave();
+    },
     onChange: () => {
       hideRun();
       paintMarks();
@@ -480,8 +483,7 @@ async function setLevel(next) {
     return;
   }
   await followReading();
-  if (level === 'read') setStatus('Not saved: you can only read this doc now. Your last typing is shown as you left it, to copy.', 'error');
-  else setStatus('');
+  paintSave();
 }
 
 // ---- others' edits ----
@@ -558,10 +560,8 @@ function setMissing(on) {
   if (on) {
     const name = document.querySelector('.pj-doc-name').textContent;
     missingBanner.querySelector('.pj-banner-text').textContent = `${name} was moved or deleted outside Ponjo. Changes here are not being saved.`;
-    setStatus('Not saved: the doc is missing', 'error');
-    return;
   }
-  setStatus('Saved');
+  paintSave();
 }
 
 missingBanner.querySelector('[data-action="recreate"]').addEventListener('click', async () => {
@@ -604,11 +604,14 @@ async function refreshThreads() {
 // with, so the view changes only when the person changes it, not as the doc
 // grows.
 let anySize = false;
+let tooLong = false; // too long for any view to edit
 let openedText = '';
 let sizeNotice = null;
 const chooseView = (text) => viewFor(docName, settings.get(), text, { anySize });
 function showSize(chosen, text) {
   const size = `${text.length.toLocaleString()} characters`;
+  tooLong = !chosen.editable;
+  paintSave();
   sizeNotice = !chosen.editable ? { text: `This doc is too long to edit here (${size}), so it opens read-only.` }
     : !chosen.tooLong ? null
     : chosen.id === 'plain' ? { text: `This doc is long for the Markdown view (${size}), so it opens as plain text.`, action: 'Use the Markdown view' }
@@ -995,12 +998,13 @@ function renameMe(next) {
   repaintThreads();
 }
 
-// Saving is automatic and local, so the header says nothing while it works;
-// it speaks up only when something fails.
-let unsavedShown = false; // the status says why the file does not hold the doc
+// A problem that is not the save state (a view, the settings, a comment),
+// beside the doc's name: until the next one, or for 10 seconds.
+let statusTimer;
 function setStatus(text, state = 'saved') {
-  unsavedShown = false;
   const problem = state === 'error';
+  clearTimeout(statusTimer);
+  if (problem) statusTimer = setTimeout(() => setStatus(''), 10_000);
   status.hidden = !problem;
   status.dataset.state = state;
   status.querySelector('.pj-status-text').textContent = problem ? text : '';
@@ -1009,11 +1013,41 @@ function setStatus(text, state = 'saved') {
 }
 
 // What the doc host says of the file: why it does not hold the doc as
-// shown, or null once it does, which clears only that.
+// shown, or null once it does.
 function showUnsaved(reason) {
-  if (reason) setStatus(`Not saved: ${reason}`, 'error');
-  else if (unsavedShown) setStatus('');
-  unsavedShown = Boolean(reason);
+  unsaved = reason ?? null;
+  paintSave();
+}
+
+// ---- the save state ----
+
+// The page is in one save state at a time (docs/architecture.md, E1),
+// shown in the toolbar: the first that holds of Not saved, and why;
+// Offline; Read-only; Saving; Saved.
+const saveMark = document.querySelector('.pj-save');
+let unsaved = null; // why the doc host does not hold the doc as shown (showUnsaved), or null
+let lineWhy = null; // why a player's line is down (showLine), or null
+let savePainted = '';
+function saveState() {
+  const typing = Boolean(client && !client.idle());
+  const notSaved = missing ? 'the doc was moved or deleted outside Ponjo' : stranded ? UNSENT : unsaved
+    ?? (level === 'read' && typing ? 'you can only read this doc now. Your last typing is shown as you left it, to copy.' : null);
+  if (notSaved) return { state: 'unsaved', text: 'Not saved', why: notSaved };
+  if (lineWhy) return { state: 'offline', text: 'Offline', why: lineWhy };
+  if (offline) return { state: 'offline', text: 'Offline', why: 'What you type stays here, and is saved once the doc host is back.' };
+  if (level === 'read') return { state: 'read-only', text: 'Read-only', why: 'You can only read this doc.' };
+  if (tooLong) return { state: 'read-only', text: 'Read-only', why: 'This doc is too long to edit here.' };
+  if (typing) return { state: 'saving', text: 'Saving…', why: 'Your typing is on its way to the file.' };
+  return { state: 'saved', text: 'Saved', why: 'Everything you typed is in the file.' };
+}
+function paintSave() {
+  const { state, text, why } = saveState();
+  if (`${state} ${why}` === savePainted) return;
+  savePainted = `${state} ${why}`;
+  saveMark.dataset.state = state;
+  saveMark.querySelector('.pj-save-text').textContent = state === 'unsaved' ? `${text}: ${why}` : text;
+  saveMark.dataset.tip = state === 'unsaved' ? saveMark.textContent : why;
+  saveMark.querySelector('.pj-save-icon').replaceChildren(...(state === 'saved' ? [icon('check')] : state === 'unsaved' ? [icon('alert')] : []));
 }
 
 // Ready once drawn: two frames after the page is built. A hidden page (a new

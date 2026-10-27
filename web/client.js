@@ -17,13 +17,14 @@ import { apply, diffOps, mapOffset, transform } from '../src/core/ot.js';
  * host's `ops` event (null for the edits of a host that started again);
  * `caughtUp(state)` hears the host's `state` each catch-up brings,
  * `onLine(online)` whether the line to the host is up: false once a call
- * fails as `offline`, true again once the page has caught up.
+ * fails as `offline`, true again once the page has caught up; `onLanded()`
+ * that all the view's typing has landed, as `idle()` may say.
  * Start it with the host's `state`; call `edited()` on every change the
  * person makes in the view, and `moved()` when their caret moves; give it
  * each `ops` and `cursors` event, and `catchUp()` on a new connection.
  * A view that composes calls `edited()` when its composition ends.
  */
-export function createClient({ view, call, show, caughtUp = () => {}, onLine = () => {}, onError = () => {} }) {
+export function createClient({ view, call, show, caughtUp = () => {}, onLine = () => {}, onLanded = () => {}, onError = () => {} }) {
   const name = Math.random().toString(36).slice(2);
   let sends = 0;
   let epoch = null;
@@ -75,6 +76,7 @@ export function createClient({ view, call, show, caughtUp = () => {}, onLine = (
       post(sent);
     } else {
       for (const done of idle.splice(0)) done();
+      onLanded();
       sendCaret();
     }
   }
