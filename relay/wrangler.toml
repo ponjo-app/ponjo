@@ -34,7 +34,7 @@ namespace_id = "1002"
 simple = { limit = 120, period = 60 }
 
 # The preview's buddies' model (worker.js), at https://infer.ponjo.app,
-# deployed with the relay (README.md, Deploying the relay). Its key, the
+# deployed by CI (README.md, The preview's buddies). Its key, the
 # secret TOKEN_FACTORY_KEY, is the repo's secret of that name.
 [env.hackathon]
 name = "ponjo-hackathon"
