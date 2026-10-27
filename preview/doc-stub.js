@@ -7,9 +7,10 @@
 // A buddy asked runs the Ponjo agent's turn (agents/ponjo-core.mjs) here,
 // on Nemotron through the preview's Worker (relay/worker.js, at INFER), and
 // its edit lands as the app lands one: merged with what was typed
-// meanwhile, its reply showing its edits, which undo. No version history,
-// no menus. A project's room is a sample: once opened, Noor and Sam are in
-// it, and its link leads nowhere.
+// meanwhile, its reply showing its edits, which undo; Settings' Agents
+// say so, fixed (agents.js). No version history, no menus. A project's
+// room is a sample: once opened, Noor and Sam are in it, and its link
+// leads nowhere.
 
 import { createAnchor, locate } from '../src/core/anchor.js';
 import { apply, diffOps } from '../src/core/ot.js';
@@ -19,10 +20,8 @@ import { buildPrompt } from '../src/core/prompt.js';
 import { INFER, apply as applyProposal, turn } from '../agents/ponjo-core.mjs';
 import { buddiesHere, checkBuddyPatch } from '../src/core/buddies.js';
 import { sameName } from '../src/core/mentions.js';
-import { DEFAULT_SETTINGS, agentOf, checkSettingsPatch, mergeSettings } from '../src/core/settings.js';
-import claude from '../agents/claude.json' with { type: 'json' };
-import codex from '../agents/codex.json' with { type: 'json' };
-import ponjo from '../agents/ponjo.json' with { type: 'json' };
+import { DEFAULT_SETTINGS, checkSettingsPatch, mergeSettings } from '../src/core/settings.js';
+import { PICKED, SCRIPTS } from './agents.js';
 
 const params = new URLSearchParams(location.search);
 const inFolder = params.has('folder');
@@ -83,12 +82,11 @@ const THREADS = inFolder
   ]
   : [{ doc: 'Welcome.md', quote: 'Each AI buddy has a name and a persona', ask: '@Clippy what does a persona do?', by: 'Clippy', answer: 'It says who the buddy is: one told to tighten prose edits differently from one told to check facts.' }];
 
-const AGENTS = Object.entries({ claude, codex, ponjo }).map(([id, manifest]) => agentOf(id, manifest));
 const ai = (name) => ({ id: name, name, kind: 'ai' });
 const ago = (minutes) => new Date(Date.now() - minutes * 60_000).toISOString();
 
 function seed() {
-  const settings = { ...DEFAULT_SETTINGS, id: 'u_preview', name: 'you' };
+  const settings = { ...DEFAULT_SETTINGS, ...PICKED, id: 'u_preview', name: 'you' };
   const me = { id: settings.id, name: settings.name, kind: 'human' };
   const files = inFolder ? { ...PROJECT } : { 'Welcome.md': WELCOME };
   const comments = {};
@@ -285,9 +283,7 @@ const calls = {
     emit('settings', s.settings);
     return { settings: s.settings };
   },
-  scripts: () => ({ agents: AGENTS, shipped: ['claude', 'codex', 'ponjo'], folder: '(the desktop app\'s config folder)', secrets: {} }),
-  resetScript: () => ({ agents: AGENTS }),
-  testAgent: () => ({ ok: true, ms: 4200, out: 'OK' }),
+  scripts: () => SCRIPTS,
   createBuddy({ buddy }) {
     const fields = { about: '', ...buddy };
     checkBuddy(fields);
@@ -434,6 +430,5 @@ if (inFolder) {
     openLink: () => Promise.resolve(),
     rename: () => Promise.resolve(),
     revealSidecar: () => Promise.resolve(),
-    showAgents: () => Promise.resolve(),
   };
 }

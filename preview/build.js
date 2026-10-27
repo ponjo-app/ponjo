@@ -4,7 +4,7 @@
 // the app played by preview/start-stub.js). Run after `npm run build`:
 // node preview/build.js
 import { build } from 'esbuild';
-import { copyFile, cp, readFile, rm, writeFile } from 'node:fs/promises';
+import { cp, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -21,20 +21,21 @@ const doc = page
   .replace("default-src 'none';", "default-src 'none'; connect-src https://infer.ponjo.app;"); // the buddies' model (doc-stub.js)
 if (!doc.includes('doc-stub.js') || !doc.includes('connect-src')) throw new Error('web/index.html changed: update preview/build.js');
 await writeFile(join(out, 'index.html'), doc);
-await build({
-  entryPoints: [join(root, 'preview', 'doc-stub.js')],
-  outfile: join(out, 'doc-stub.js'),
+const stub = (name, format) => build({
+  entryPoints: [join(root, 'preview', name)],
+  outfile: join(out, name),
   bundle: true,
-  format: 'esm',
+  format,
   target: 'es2022',
   minify: true,
   logLevel: 'warning',
 });
+await stub('doc-stub.js', 'esm');
 
 const start = (await readFile(join(root, 'desktop', 'start.html'), 'utf8'))
   .replaceAll('../dist/web/', '')
   .replace('<script src="start.js" defer></script>', '<script src="start-stub.js"></script>\n  <script src="start.js" defer></script>');
 if (start.includes('../') || !start.includes('start-stub.js')) throw new Error('desktop/start.html changed: update preview/build.js');
 await writeFile(join(out, 'start.html'), start);
-await copyFile(join(root, 'preview', 'start-stub.js'), join(out, 'start-stub.js'));
+await stub('start-stub.js', 'iife'); // a classic script, run before start.js
 console.log(`preview: ${join(out, 'index.html')}`);

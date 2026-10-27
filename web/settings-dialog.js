@@ -64,11 +64,14 @@ const DIALOG = `
     <section class="pj-settings-section" role="tabpanel" data-section="agents" hidden>
       <h2>Agents</h2>
       <p class="pj-settings-intro">What does a buddy's work: a program in <code class="pj-agents-folder"></code>, with the prompt on stdin and the reply on stdout. The one picked runs every buddy.</p>
-      <ul class="pj-choices" role="radiogroup" aria-label="Agents"></ul>
-      <div class="pj-setting-row">
-        <button type="button" class="pj-secondary" data-action="show-agents" hidden>Show folder</button>
-      </div>
-      <div class="pj-agents-trace"></div>
+      <p class="pj-settings-intro pj-agents-fixed" hidden></p>
+      <fieldset class="pj-agents-body">
+        <ul class="pj-choices" role="radiogroup" aria-label="Agents"></ul>
+        <div class="pj-setting-row">
+          <button type="button" class="pj-secondary" data-action="show-agents" hidden>Show folder</button>
+        </div>
+        <div class="pj-agents-trace"></div>
+      </fieldset>
     </section>
 
     <section class="pj-settings-section" role="tabpanel" data-section="shortcuts" hidden>
@@ -93,10 +96,11 @@ export function keyLabel(keys) {
  * Mod+/ (Shortcuts). `onApply(settings)` follows every change, for what only
  * one page shows. `views` (web/views/index.js) fill Views, which shows only
  * when there are some: a list of them, each opening its own page.
- * `scripts` ({ list() → { agents, shipped, folder, secrets }, reset(id),
+ * `scripts` ({ list() → { agents, shipped, folder, secrets, fixed? }, reset(id),
  * saveSecret(id, key, value), showFolder? }, see web/api.js) backs Agents:
  * the agents, read again each time it shows, one of them picked to run
- * every buddy, its settings open under it.
+ * every buddy, its settings open under it; with `fixed`, why they can't
+ * be changed here, said in place of the intro, the section read only.
  * @param {{ store: ReturnType<typeof import('./settings.js').createSettings>, getName: () => string,
  *           setName: (name: string) => boolean, onApply?: (settings: object) => void, views?: object[],
  *           scripts: object }} options
@@ -137,6 +141,10 @@ export function setupSettings({ store, getName, setName, onApply = () => {}, vie
     }
     secretTails = found.secrets;
     dialog.querySelector('.pj-agents-folder').textContent = found.folder;
+    const fixed = dialog.querySelector('.pj-agents-fixed');
+    Object.assign(fixed, { textContent: found.fixed ?? '', hidden: !found.fixed });
+    fixed.previousElementSibling.hidden = Boolean(found.fixed);
+    dialog.querySelector('.pj-agents-body').disabled = Boolean(found.fixed);
     const choices = found.agents.map((agent) => agentChoice(agent, found.shipped.includes(agent.id), {
       pick: () => set({ agent: agent.id }),
       change: (key, value) => set({ agents: { [agent.id]: { [key]: value } } }),
