@@ -634,9 +634,18 @@ export async function createMarkdownView({
     quote: onLines((state, dispatch) => (ancestor(state, (node) => node.type.name === 'blockquote')
       ? lift(state, dispatch)
       : editor.action(callCommand(wrapInBlockquoteCommand.key)))),
-    // Its lines stay lines: each line break becomes a newline in the code.
+    // Its lines stay lines: each line break becomes a newline in the code,
+    // and the blocks the selection touches go in one code block, a block a line.
     codeBlock: onLines((state, dispatch) => {
-      const { $from } = state.selection;
+      const { $from, $to } = state.selection;
+      const range = !$from.sameParent($to) && $from.blockRange($to);
+      const blocks = range ? range.parent.content.content.slice(range.startIndex, range.endIndex) : [];
+      if (blocks.length > 1 && blocks.every((node) => node.isTextblock)) {
+        const code = blocks.map((node) => node.textBetween(0, node.content.size, null, (leaf) => (leaf.type.name === 'hardbreak' ? '\n' : ''))).join('\n');
+        const tr = state.tr.replaceWith(range.start, range.end, state.schema.nodes.code_block.create(null, code ? state.schema.text(code) : null));
+        dispatch(tr.setSelection(TextSelection.create(tr.doc, range.start + 1, range.start + 1 + code.length)).scrollIntoView());
+        return true;
+      }
       const tr = state.tr;
       $from.parent.forEach((child, offset) => {
         if (child.type.name === 'hardbreak') tr.replaceWith(tr.mapping.map($from.start() + offset), tr.mapping.map($from.start() + offset + 1), state.schema.text('\n'));

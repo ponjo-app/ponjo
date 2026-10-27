@@ -436,6 +436,13 @@ test('markdown view: a block style changes only the lines the selection touches,
     await run(`contract.tool('${tool}')`);
     assert.equal(await getText(), saved, `${tool} over two lines`);
   }
+  // Lines that are paragraphs of their own (typed with Enter) go in one code block too, a block a line.
+  await make('markdown', 'Before\n\nfirst line\n\n## Second\n\nAfter\n', { toolbar: true });
+  await select('first line', 2, 2);
+  await selectTo('Second', 2);
+  await new Promise((done) => setTimeout(done, 50));
+  await run(`contract.tool('codeBlock')`);
+  assert.equal(await getText(), 'Before\n\n```\nfirst line\nSecond\n```\n\nAfter\n', 'codeBlock over a paragraph and a heading');
 });
 
 test('markdown view: a change applied with who made it glows, with their name', async () => {
