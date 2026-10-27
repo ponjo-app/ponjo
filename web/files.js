@@ -62,6 +62,7 @@ export function createFileList({ place = null, onError = () => {}, onCarry = () 
   let focusNext = null; // the row to focus once the tree is drawn again
   let created = null; // the doc just made here, which the next page opens ready to type in
   let previewing = null; // the file shown read only, if any
+  let opening = null; // the file clicked, marked current while the app switches to it
   let drag = null;
   let justDragged = false;
   let everything = null; // allFiles(), read once a filter is typed or paths() asked, dropped when the folder changes
@@ -318,7 +319,7 @@ export function createFileList({ place = null, onError = () => {}, onCarry = () 
   const rows = () => [...tree.querySelectorAll('.pj-files-row[data-path]')].filter((node) => !node.closest('[hidden]'));
   const rowFor = (path) => tree.querySelector(`.pj-files-row[data-path="${CSS.escape(path)}"]`);
   const visibleRow = (path) => rows().find((node) => node.dataset.path === path) ?? null;
-  const shown = () => previewing ?? view?.current;
+  const shown = () => opening ?? previewing ?? view?.current;
 
   // One row takes Tab; the arrows move between the others.
   function rove(node) {
@@ -358,11 +359,24 @@ export function createFileList({ place = null, onError = () => {}, onCarry = () 
     node.setAttribute('aria-busy', 'true');
     openPath(node.dataset.path).finally(() => node.removeAttribute('aria-busy'));
   }
+  // Until the next doc is shown, the file is marked current and the page left
+  // fades (data-switching), so the click shows at once.
   async function openPath(path) {
     if (path === view.current) return closePreview();
-    // The page saves any edit still on its way before it is replaced.
-    return desktop.openInFolder(path).then((opened) => opened || showFile(path))
-      .catch((error) => onError(`Could not open ${nameOf(path)}: ${error.message}`));
+    opening = path;
+    markShown();
+    document.documentElement.setAttribute('data-switching', '');
+    let opened = true;
+    try {
+      // The page saves any edit still on its way before it is replaced.
+      opened = await desktop.openInFolder(path);
+    } catch (error) {
+      onError(`Could not open ${nameOf(path)}: ${error.message}`);
+    } finally {
+      opening = null;
+      document.documentElement.removeAttribute('data-switching');
+    }
+    return opened ? markShown() : showFile(path);
   }
 
   // Show the file `path` read only, in place of the doc.
