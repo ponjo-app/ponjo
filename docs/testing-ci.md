@@ -185,7 +185,8 @@ on machine B, on another network (a phone's hotspot will do), in a browser.
 | Release | version tag | all of main, draft release | blocks publishing |
 
 - A PR that changes `spec/` changes `spec/conformance/` too.
-- The nightly is built, and the relay with the teammate's page deployed,
+- The nightly is built, and the relay with the teammate's page and the
+  preview's buddies' model deployed,
   only when `npm test`, `npm run test:stress` and `npm run test:perf` pass
   too (`release` and `relay` in `.github/workflows/desktop.yml`).
 - A test that fails now and then is a bug, in the code or the test: it is
