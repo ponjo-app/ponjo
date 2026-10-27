@@ -7,11 +7,12 @@ import assert from 'node:assert/strict';
 import { mkdir, mkdtemp, realpath, rename, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { createRequire, syncBuiltinESMExports } from 'node:module';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { MAX_TEXT_BYTES } from '../src/store/files.js';
 import { projectService, resolve } from '../src/host/project-service.js';
 
 const fsp = createRequire(import.meta.url)('node:fs/promises');
+const childProcess = createRequire(import.meta.url)('node:child_process');
 const isWindows = process.platform === 'win32';
 const notFound = (error) => error.code === 'not_found';
 
@@ -56,6 +57,65 @@ test('list: what git ignores is marked, but not a file it tracks; outside a git 
   assert.deepEqual(await ignored('dist'), ['sub'], 'inside an ignored folder');
   assert.deepEqual(await ignored('notes'), []);
   for (const rel of ['out', 'ci', '.github', 'missing', 'b.md']) await assert.rejects(service.list(rel), notFound, rel);
+});
+
+// The git commands run during `fn`, by their first argument.
+async function gitRuns(fn) {
+  const runs = [];
+  const real = childProcess.spawn;
+  childProcess.spawn = (command, args, ...rest) => {
+    if (command === 'git') runs.push(args[0]);
+    return real(command, args, ...rest);
+  };
+  syncBuiltinESMExports();
+  try {
+    await fn();
+  } finally {
+    childProcess.spawn = real;
+    syncBuiltinESMExports();
+  }
+  return runs;
+}
+
+test('list: outside a git repository it runs no git; in one, git is asked again only when a folder\'s names or what git ignores change', async () => {
+  const { root, service } = await project({ 'a.md': '', 'debug.log': '', 'notes/b.md': '', 'notes/c.log': '' });
+  const ignored = async (rel) => (await service.list(rel)).filter((e) => e.ignored).map((e) => e.name);
+  assert.deepEqual(await gitRuns(() => Promise.all([service.list(''), service.list('notes'), service.list('')])), [], 'not a git repository');
+  execFileSync('git', ['init', '-q'], { cwd: root });
+  await writeFile(join(root, '.gitignore'), '*.log\n');
+  assert.deepEqual(await gitRuns(async () => {
+    assert.deepEqual(await ignored(''), ['debug.log']);
+    assert.deepEqual(await ignored('notes'), ['c.log']);
+  }), ['check-ignore', 'check-ignore'], 'a repository now: each folder asked once');
+  assert.deepEqual(await gitRuns(async () => {
+    assert.deepEqual(await ignored(''), ['debug.log']);
+    assert.deepEqual(await ignored('notes'), ['c.log']);
+  }), [], 'nothing changed: nothing asked');
+  await writeFile(join(root, 'notes', 'd.log'), '');
+  assert.deepEqual(await gitRuns(async () => assert.deepEqual(await ignored('notes'), ['c.log', 'd.log'])), ['check-ignore'], 'a file came');
+  await writeFile(join(root, '.gitignore'), '*.log\n!c.log\n');
+  assert.deepEqual(await gitRuns(async () => assert.deepEqual(await ignored('notes'), ['d.log'])), ['check-ignore'], 'the .gitignore above changed');
+  await writeFile(join(root, 'notes', '.gitignore'), 'b.md\n');
+  assert.deepEqual(await gitRuns(async () => assert.deepEqual(await ignored('notes'), ['b.md', 'd.log'])), ['check-ignore'], 'a .gitignore of its own');
+  await writeFile(join(root, '.git', 'info', 'exclude'), 'a.md\n');
+  assert.deepEqual(await gitRuns(async () => assert.deepEqual(await ignored(''), ['a.md', 'debug.log'])), ['check-ignore'], 'info/exclude changed');
+  execFileSync('git', ['add', '-f', 'debug.log'], { cwd: root });
+  assert.deepEqual(await gitRuns(async () => assert.deepEqual(await ignored(''), ['a.md'])), ['check-ignore'], 'a file git now tracks');
+});
+
+test('list: in a worktree, whose .git is a file naming the repository, what git ignores is marked and follows its .gitignore', async () => {
+  const { root } = await project({ 'main.md': '' });
+  const git = (...args) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...args], { cwd: root });
+  git('init', '-q');
+  git('commit', '-q', '--allow-empty', '-m', 'start');
+  const tree = join(dirname(root), `${basename(root)}-tree`);
+  git('worktree', 'add', '-q', tree);
+  await writeFile(join(tree, 'a.log'), '');
+  await writeFile(join(tree, '.gitignore'), '*.log\n');
+  const service = projectService(await realpath(tree));
+  assert.deepEqual((await service.list('')).filter((e) => e.ignored).map((e) => e.name), ['a.log']);
+  await writeFile(join(tree, '.gitignore'), 'none\n');
+  assert.deepEqual((await service.list('')).filter((e) => e.ignored).map((e) => e.name), []);
 });
 
 test('resolve: the real path of what the project shows; any other path is not found', async () => {
@@ -151,4 +211,21 @@ test('names are compared as the disk does: on a disk that ignores case, either c
   }
   assert.deepEqual(await service.read('readme.MD'), { text: 'hi\n' });
   assert.deepEqual(await projectService(root.toUpperCase()).read('README.md'), { text: 'hi\n' }, 'the project opened in another case');
+});
+
+// Last: it leaves this process without git.
+test('list: once git is found not installed, it is not run again, and nothing is marked ignored', async () => {
+  const { root, service } = await project({ '.gitignore': '*.log\n', 'debug.log': '' });
+  execFileSync('git', ['init', '-q'], { cwd: root });
+  const real = childProcess.spawn;
+  childProcess.spawn = (command, ...rest) => real(command === 'git' ? join(root, 'no-such-git') : command, ...rest);
+  syncBuiltinESMExports();
+  try {
+    assert.deepEqual((await service.list('')).filter((e) => e.ignored), [], 'no git');
+  } finally {
+    childProcess.spawn = real;
+    syncBuiltinESMExports();
+  }
+  await writeFile(join(root, 'more.log'), '');
+  assert.deepEqual(await gitRuns(() => service.list('')), [], 'not looked for again');
 });

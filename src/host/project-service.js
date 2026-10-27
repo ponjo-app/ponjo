@@ -6,8 +6,8 @@
 // of either may start with `.`. Anything else is as if it were not there.
 
 import { spawn } from 'node:child_process';
-import { lstat, open, readdir, realpath, stat } from 'node:fs/promises';
-import { extname, isAbsolute, join, relative, sep } from 'node:path';
+import { lstat, open, readFile, readdir, realpath, stat } from 'node:fs/promises';
+import { dirname, extname, isAbsolute, join, relative, resolve as resolvePath, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { MAX_TEXT_BYTES, SIDECAR_SUFFIX } from '../store/files.js';
 
@@ -51,19 +51,71 @@ export async function resolve(root, rel) {
   throw notFound(rel);
 }
 
+// Whether git can be run here: false once a spawn found no git.
+let gitInstalled = true;
+// What git ignored in each folder, by real path: { key, ignored }, kept while
+// `key` (signature()) is the same.
+const ignoredCache = new Map();
+
+/**
+ * The git repository `dir` is in: { top, gitDir }, or null. Found by its
+ * `.git` (a folder, or a file naming one, as in a worktree) in `dir` or a
+ * folder above it, so a folder in no repository runs no git.
+ */
+async function repositoryOf(dir) {
+  const above = [dir];
+  while (dirname(above.at(-1)) !== above.at(-1)) above.push(dirname(above.at(-1)));
+  const found = await Promise.all(above.map((at) => stat(join(at, '.git')).catch(() => null)));
+  const at = found.findIndex(Boolean);
+  if (at < 0) return null;
+  const [top, dotGit] = [above[at], join(above[at], '.git')];
+  if (found[at].isDirectory()) return { top, gitDir: dotGit };
+  const named = (await readFile(dotGit, 'utf8').catch(() => '')).match(/^gitdir: (.+)$/m);
+  return named ? { top, gitDir: resolvePath(top, named[1].trim()) } : null;
+}
+
+// What says which of `names` in `dir` git ignores, as text: the names, and
+// the size and time of every .gitignore from `dir` up to the repository's
+// top, its info/exclude and its index (what it tracks).
+async function signature(dir, { top, gitDir }, names) {
+  const files = [join(gitDir, 'info', 'exclude'), join(gitDir, 'index')];
+  for (let at = dir; ; at = dirname(at)) {
+    files.push(join(at, '.gitignore'));
+    if (at === top || dirname(at) === at) break;
+  }
+  const stats = await Promise.all(files.map((file) => stat(file).then(({ size, mtimeMs }) => `${size}:${mtimeMs}`, () => '-')));
+  return `${names.join('\0')}\n${stats.join(' ')}`;
+}
+
 /**
  * Which of `names` in folder `dir` git ignores (its .gitignore files and its
  * other rules; never a file it tracks): none when `dir` is not in a git
- * repository or git is not installed.
+ * repository or git is not installed. Asked of git again only once the names
+ * or what says what it ignores (signature()) change.
  */
-function ignoredIn(dir, names) {
+async function ignoredIn(dir, names) {
+  const repository = gitInstalled && (await repositoryOf(dir));
+  if (!repository) return new Set();
+  const key = await signature(dir, repository, names);
+  const cached = ignoredCache.get(dir);
+  if (cached?.key === key) return cached.ignored;
+  const ignored = await checkIgnore(dir, names);
+  if (ignored) ignoredCache.set(dir, { key, ignored });
+  return ignored ?? new Set();
+}
+
+// git check-ignore on `names` in `dir`; null when git could not run.
+function checkIgnore(dir, names) {
   return new Promise((done) => {
     const git = spawn('git', ['check-ignore', '-z', '--stdin'], { cwd: dir, stdio: ['pipe', 'pipe', 'ignore'] });
     let out = '';
     git.stdout.setEncoding('utf8').on('data', (chunk) => {
       out += chunk;
     });
-    git.on('error', () => done(new Set()));
+    git.on('error', (error) => {
+      if (error.code === 'ENOENT') gitInstalled = false;
+      done(null);
+    });
     git.on('close', () => done(new Set(out.split('\0'))));
     git.stdin.on('error', () => {}); // git is gone: `error` or `close` says so
     git.stdin.end(names.map((name) => `${name}\0`).join(''));

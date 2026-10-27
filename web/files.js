@@ -147,12 +147,13 @@ export function createFileList({ place = null, onError = () => {}, onCarry = () 
 
   // Every file's path: { paths, ignored }, the files git ignores in `ignored`
   // and last in `paths`. A folder git ignores (build output, installed
-  // packages) is not read: a filter never opens into it.
+  // packages) is not read: a filter never opens into it. One the tree holds
+  // (`lists`) is not read again.
   async function allFiles() {
     const paths = [];
     const ignored = new Set();
     async function read(path) {
-      const entries = await api.list(path).catch(() => []);
+      const entries = lists.get(path) ?? await api.list(path).catch(() => []);
       await Promise.all(entries.map(({ name, folder, ignored: skip }) => {
         const at = join(path, name);
         if (folder) return skip ? null : read(at);
