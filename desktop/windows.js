@@ -28,6 +28,9 @@ const CASCADE = 26;
 const CLOSE_PATIENCE_MS = 5000;
 const READY_PATIENCE_MS = 5000;
 const EXTERNAL = new Set(['http:', 'https:', 'mailto:']);
+// With PONJO_TIMING set, each switch prints when each of its steps ended,
+// and the next page's (`ponjo:` marks, web/main.js), on stderr.
+const TIMING = Boolean(process.env.PONJO_TIMING);
 // Installed apps take their icon from the installer; this one shows in dev runs.
 const ICON = join(here, '..', 'build', 'icon.png');
 const WINDOW_ICON = existsSync(ICON) ? { icon: ICON } : {};
@@ -206,17 +209,24 @@ export async function switchDoc(entry, path) {
 
 async function switchTo(entry, docPath) {
   const { win } = entry;
+  const steps = TIMING ? { start: performance.now() } : null;
+  const step = (name) => steps && (steps[name] = performance.now());
   entry.carry = await leave(entry.view);
+  step('leave');
   let hosted = null;
   let view = null;
   try {
     hosted = await hooks.openHostedDoc(docPath, { folder: entry.folder });
+    step('open');
     view = createView(entry, hosted);
     entry.pending = { view, docPath };
     expandTo(entry, docPath);
     win.contentView.addChildView(view, 0); // under the page shown, until it is drawn
+    step('view');
     await view.webContents.loadFile(PAGE);
+    step('loaded');
     await drawn(view);
+    step('drawn');
   } catch (error) {
     if (view) {
       win.contentView.removeChildView(view);
@@ -235,11 +245,29 @@ async function switchTo(entry, docPath) {
   docs.set(docPath, entry);
   win.contentView.removeChildView(previous.view);
   previous.view.webContents.close();
+  step('shown');
   win.setTitle(view.webContents.getTitle());
   if (process.platform === 'darwin') win.setRepresentedFilename(docPath);
   if (win.isFocused()) view.webContents.focus();
   previous.hosted.close().catch((error) => console.error(error));
+  if (steps) printSteps(steps, view).catch((error) => console.error(error));
   return entry;
+}
+
+// One line: the ms from the switch's start to the end of each of its
+// `steps` and the page's, both on the main process's clock.
+async function printSteps(steps, view) {
+  const page = await view.webContents.executeJavaScript(`({
+    origin: performance.timeOrigin,
+    marks: [
+      ...['responseEnd', 'domInteractive', 'loadEventEnd'].map((name) => ({ name, startTime: performance.getEntriesByType('navigation')[0]?.[name] ?? 0 })),
+      ...performance.getEntriesByType('mark').filter(({ name }) => name.startsWith('ponjo:')),
+    ].map(({ name, startTime }) => [name, startTime]),
+  })`);
+  const shift = page.origin - performance.timeOrigin;
+  const all = { ...steps, ...Object.fromEntries(page.marks.map(([name, at]) => [`page:${name.replace(/^ponjo:/, '')}`, at + shift])) };
+  const line = Object.entries(all).sort((a, b) => a[1] - b[1]).map(([name, at]) => [name, Math.round(at - steps.start)]);
+  console.error(`ponjo-timing ${JSON.stringify({ switch: Object.fromEntries(line.slice(1)) })}`);
 }
 
 // Ask the page in `view` to let go of its doc: it saves the last edit and
