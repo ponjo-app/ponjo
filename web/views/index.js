@@ -37,10 +37,13 @@ const CLAIMING = [markdown];
  * screen (B2) and in the file (B3, `saved`); from another writer's edit
  * arriving to it shown, the network aside (B4); from a key to its character
  * shown at a teammate, while the person types on, the network aside (B5);
- * from a person's cursor moving to it shown at the others (B6); and the
- * longest the page is ever busy at once after it opens (B7).
+ * from a person's cursor moving to it shown at the others (B6); the
+ * longest the page is ever busy at once after it opens (B7); and from a
+ * file clicked in the sidebar to its doc drawn in place of the one before,
+ * for a doc of everyday size (B8, `switch`).
  * test/perf/latency.test.js holds every view to it at its limits,
  * test/perf/typing.test.js the key to the file and to a teammate's page,
+ * test/perf/open.test.js a file opened from the sidebar,
  * test/relay.test.js a cursor to the others.
  */
 export const LATENCY = Object.freeze({
@@ -51,6 +54,7 @@ export const LATENCY = Object.freeze({
   typed: { median: 50, p95: 100 },
   cursor: { p95: 100 },
   task: 500,
+  switch: 500,
 });
 
 export const VIEWS = [markdown, plain];

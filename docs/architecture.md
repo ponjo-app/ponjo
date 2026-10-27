@@ -199,6 +199,7 @@ numbers are `LATENCY` in `web/views/index.js`, which the tests read:
 | B5 | a key | its character shown at a teammate | 50 ms, 100 ms |
 | B6 | a person's cursor moving | it shown at the others | 100 ms p95 |
 | B7 | the doc opened | the end of any one task that keeps the page busy | 500 ms |
+| B8 | a file clicked in the sidebar | its doc drawn in place of the one before, for a doc of everyday size | 500 ms median |
 
 **C. Recovery:**
 
