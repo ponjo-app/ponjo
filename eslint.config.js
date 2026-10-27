@@ -8,7 +8,7 @@ import globals from 'globals';
 const browser = ['web/**/*.js', 'test/views/page.js', 'test/collab/page.js', 'site/*.js', 'preview/doc-stub.js', 'preview/start-stub.js'];
 
 export default [
-  { ignores: ['dist/**', 'release/**', 'node_modules/**'] },
+  { ignores: ['dist/**', 'release/**', 'node_modules/**', '.claude/worktrees/**'] },
   js.configs.recommended,
   {
     languageOptions: { ecmaVersion: 'latest', sourceType: 'module', globals: globals.node },
