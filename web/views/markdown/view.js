@@ -304,6 +304,7 @@ const uiPlugin = (hooks) => $prose(() => new Plugin({
  * @param {{ stage: HTMLElement, text: string, editable?: boolean, onChange?: () => void, onEdit?: () => void,
  *           onMarkClick?: (id: string) => void, onLayout?: () => void,
  *           toolbar?: HTMLElement, onComment?: () => void, image?: (src: string) => Promise<string | null>,
+ *           files?: () => { paths: string[], current: string } | null,
  *           settings?: object, saveSettings?: (patch: object) => void }} options
  */
 // `onChange` fires once the person pauses after changing the doc, `onEdit`
@@ -316,10 +317,11 @@ const uiPlugin = (hooks) => $prose(() => new Plugin({
 // follows the view's `settings` (web/views/markdown/index.js) and changes
 // them through `saveSettings` (the focus mode shortcut).
 // An image at a path, not on the web, shows what `image` gives for its `src`
-// as written: a URL the page may show, or null for none.
+// as written: a URL the page may show, or null for none. `files` says the
+// project's files and the doc's path in it, for the link popover to offer.
 export async function createMarkdownView({
   stage, text, editable = true, onChange = () => {}, onEdit = () => {}, onMarkClick = () => {}, onLayout = () => {}, toolbar = null, onComment = () => {},
-  image = async () => null,
+  image = async () => null, files = () => null,
   settings = null, saveSettings = () => {},
 }) {
   // The human changed the doc since `updated` last fired: any change not
@@ -942,7 +944,7 @@ export async function createMarkdownView({
     chrome = createChrome({
       run, formatState, getText: currentText, selection, headings, scrollToHeading, scrollToAnchor,
       selectionRect, beginLink, endLink, linkRect, caretLink,
-    }, { toolbar, stage, host, onComment, settings, saveSettings, editable });
+    }, { toolbar, stage, host, onComment, files, settings, saveSettings, editable });
   }
 
   return {

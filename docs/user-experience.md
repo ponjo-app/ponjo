@@ -254,10 +254,15 @@ works, or what went wrong.
   app, a banner says so and saving pauses.
 - **A project's sidebar** shows every file and folder as it is on disk,
   except names starting with `.` and comment files, each folder read as you
-  open it. What git ignores (build output, installed packages) is dimmed,
-  and the filter leaves it out. Everyone on the team sees the same tree. A
+  open it. What git ignores (build output, installed packages) is dimmed.
+  Mod+P finds a file by its path in the sidebar's filter (a regular
+  expression): the matches show in their folders, those git ignores
+  dimmed and last (not inside a folder it ignores), and Enter opens the
+  first. Everyone on the team sees the same tree. A
   doc opens in the editor; any other file shows read only in its place
-  (Escape goes back).
+  (Escape goes back). A file's path in a comment, as Copy Path writes it,
+  is a link that opens it; in the link popover, typing finds the
+  project's files and links one by its path from the doc.
   Its menu, the same for every row and only yours: New File and New Folder
   (in a folder; `/` in a name makes folders), Rename (F2), Copy Path (relative to the
   project, as AI buddies read it), Reveal, and Delete (to the Trash). Drag a

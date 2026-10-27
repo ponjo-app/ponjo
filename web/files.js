@@ -33,9 +33,10 @@ const NOT_SHOWN = {
  * things (`carry` from the app; `startTyping` when it made this doc), once; `onError(message)` hears what could
  * not be done. `place` is the doc's in its project ({ name, path }), for a
  * teammate's page. Returns `ready`, which resolves once the sidebar is drawn,
- * `state()`, how this page leaves it, and `create(kind)`.
+ * `state()`, how this page leaves it, `create(kind)`, and the project's files:
+ * `paths()`, then `onPaths()` each time they are read again, and `open(path)`.
  */
-export function createFileList({ place = null, onError = () => {}, onCarry = () => {} } = {}) {
+export function createFileList({ place = null, onError = () => {}, onCarry = () => {}, onPaths = () => {} } = {}) {
   const owner = Boolean(window.ponjoDesktop); // only the owner changes files
   const desktop = window.ponjoDesktop ?? (place && browserFolder(place));
   const aside = document.querySelector('.pj-files');
@@ -45,7 +46,7 @@ export function createFileList({ place = null, onError = () => {}, onCarry = () 
   const toggle = document.querySelector('.pj-files-toggle');
   const preview = document.querySelector('.pj-preview');
   const previewName = document.querySelector('.pj-preview-name');
-  if (!desktop?.folder) return { ready: Promise.resolve(), state: () => ({}) };
+  if (!desktop?.folder) return { ready: Promise.resolve(), state: () => ({}), paths: async () => null };
   let view = null;
   let lists = new Map(); // what the top folder ('') and each open subfolder hold: [{ name, folder }]
   let first = true;
@@ -63,7 +64,8 @@ export function createFileList({ place = null, onError = () => {}, onCarry = () 
   let previewing = null; // the file shown read only, if any
   let drag = null;
   let justDragged = false;
-  let everything = null; // every file's path, read once a filter is typed, dropped when the folder changes
+  let everything = null; // allFiles(), read once a filter is typed or paths() asked, dropped when the folder changes
+  let pathsAsked = false; // paths() was: read everything again as the folder changes
 
   async function refresh() {
     if (field) {
@@ -74,7 +76,8 @@ export function createFileList({ place = null, onError = () => {}, onCarry = () 
       view = await desktop.folder();
       if (view) lists = await load(new Set(view.expanded));
       everything = null;
-      if (view && filter.value) everything = await allFiles();
+      if (view && (filter.value || pathsAsked)) everything = await allFiles();
+      if (view && pathsAsked) onPaths();
     } catch {
       view = null;
     }
@@ -130,21 +133,31 @@ export function createFileList({ place = null, onError = () => {}, onCarry = () 
 
   // ---- filtering: grep the files' paths with a regular expression ----
 
-  // What git ignores (build output, installed packages) is left out: a filter never opens into it.
+  // Every file's path: { paths, ignored }, the files git ignores in `ignored`
+  // and last in `paths`. A folder git ignores (build output, installed
+  // packages) is not read: a filter never opens into it.
   async function allFiles() {
     const paths = [];
+    const ignored = new Set();
     async function read(path) {
-      const entries = (await api.list(path).catch(() => [])).filter(({ ignored }) => !ignored);
-      await Promise.all(entries.map(({ name, folder }) => (folder ? read(join(path, name)) : paths.push(join(path, name)))));
+      const entries = await api.list(path).catch(() => []);
+      await Promise.all(entries.map(({ name, folder, ignored: skip }) => {
+        const at = join(path, name);
+        if (folder) return skip ? null : read(at);
+        paths.push(at);
+        if (skip) ignored.add(at);
+        return null;
+      }));
     }
     await read('');
-    return paths.sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
+    paths.sort((a, b) => ignored.has(a) - ignored.has(b) || a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
+    return { paths, ignored };
   }
 
   // The files whose path matches the filter, in their folders, all open, the
-  // match marked. Case is ignored until the pattern has a capital letter. A
-  // pattern that is not a regular expression is marked and shows what the
-  // last one did.
+  // match marked, what git ignores dimmed and after the rest. Case is ignored
+  // until the pattern has a capital letter. A pattern that is not a regular
+  // expression is marked and shows what the last one did.
   function matches() {
     let pattern;
     try {
@@ -154,7 +167,7 @@ export function createFileList({ place = null, onError = () => {}, onCarry = () 
       return [...tree.children];
     }
     filter.removeAttribute('aria-invalid');
-    const found = everything.filter((path) => {
+    const found = everything.paths.filter((path) => {
       pattern.lastIndex = 0;
       return pattern.test(path);
     });
@@ -187,6 +200,7 @@ export function createFileList({ place = null, onError = () => {}, onCarry = () 
             from = start + hit.length;
           }
           label.append(name.slice(from));
+          node.classList.toggle('pj-files-ignored', everything.ignored.has(at));
           if (at === shown()) node.setAttribute('aria-current', 'page');
         }
         return item;
@@ -215,10 +229,22 @@ export function createFileList({ place = null, onError = () => {}, onCarry = () 
       filter.value = '';
       filter.dispatchEvent(new Event('input'));
       focusRow(rows()[0]);
-    } else if (event.key === 'ArrowDown' || (event.key === 'Enter' && !event.isComposing)) {
+    } else if (event.key === 'ArrowDown') {
       event.preventDefault();
       focusRow(rows()[0]);
+    } else if (event.key === 'Enter' && !event.isComposing) {
+      event.preventDefault();
+      const first = rows().find((node) => node.dataset.kind === 'file');
+      if (first) activate(first);
     }
+  });
+  // Mod+P: find a file by its path.
+  document.addEventListener('keydown', (event) => {
+    if (!(isMac ? event.metaKey : event.ctrlKey) || event.shiftKey || event.altKey || event.code !== 'KeyP' || !view) return;
+    event.preventDefault();
+    reveal();
+    filter.focus();
+    filter.select();
   });
 
   function show(open) {
@@ -329,13 +355,14 @@ export function createFileList({ place = null, onError = () => {}, onCarry = () 
 
   // Open the file as a doc, or show it read only when it is not one.
   function openFile(node) {
-    const path = node.dataset.path;
-    if (path === view.current) return void closePreview();
     node.setAttribute('aria-busy', 'true');
+    openPath(node.dataset.path).finally(() => node.removeAttribute('aria-busy'));
+  }
+  async function openPath(path) {
+    if (path === view.current) return closePreview();
     // The page saves any edit still on its way before it is replaced.
-    desktop.openInFolder(path).then((opened) => opened || showFile(path))
-      .catch((error) => onError(`Could not open ${nameOf(path)}: ${error.message}`))
-      .finally(() => node.removeAttribute('aria-busy'));
+    return desktop.openInFolder(path).then((opened) => opened || showFile(path))
+      .catch((error) => onError(`Could not open ${nameOf(path)}: ${error.message}`));
   }
 
   // Show the file `path` read only, in place of the doc.
@@ -785,11 +812,25 @@ export function createFileList({ place = null, onError = () => {}, onCarry = () 
   });
 
   desktop.onFolderChanged(refresh);
+  const ready = refresh();
   return {
-    ready: refresh(),
+    ready,
     state: () => ({ sidebarScroll: tree.scrollTop, startTyping: Boolean(created) }),
     /** Name a new file or folder at the top. */
     create: (kind) => startCreate('', kind),
+    /**
+     * The project's files, as allFiles() says, read again as the folder
+     * changes, and the doc's own path in it; null outside a project.
+     */
+    async paths() {
+      await ready;
+      if (!view) return null;
+      pathsAsked = true;
+      everything ??= await allFiles();
+      return { ...everything, current: view.current };
+    },
+    /** Open the project's file `path` as its row does. */
+    open: (path) => openPath(path),
   };
 }
 

@@ -5,6 +5,7 @@
 
 import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { createServer } from 'node:http';
 import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
@@ -457,39 +458,51 @@ test('the relay limits pages, message sizes, hosts and pages an address opens, s
   }
 });
 
-test('the browser build, on a host with another version of the messages, says which side to update', { timeout: 120_000 }, async () => {
-  const shared = await project();
-  const host = await startHost(shared);
+// The browser build in Electron, as `host`'s link opens it, `script` run
+// first in each page it loads: { app, shown }, its page asking a name.
+async function browserPage(host, script = '') {
   const dir = await mkdtemp(join(tmpdir(), 'ponjo-relay-page-'));
   const electron = createRequire(import.meta.url)('electron');
   const env = { ...process.env, RELAY_PAGE: host.link };
   delete env.ELECTRON_RUN_AS_NODE;
   const app = await launchElectron(electron, [join(root, 'test', 'relay', 'main.js'), '--no-sandbox', `--user-data-dir=${join(dir, 'profile')}`], { env });
+  const shown = await app.page('Ponjo');
+  await shown.send('Page.enable');
+  if (script) await shown.send('Page.addScriptToEvaluateOnNewDocument', { source: script });
+  await shown.send('Page.navigate', { url: host.link });
+  await waitFor(() => shown.evaluate(`document.querySelector('.pj-join')?.hidden === false`).catch(() => false), 30_000, 'the name asked');
+  return { app, shown };
+}
+
+const MOD = process.platform === 'darwin' ? 4 : 2; // Meta : Ctrl
+const press = async (page, key, code, modifiers = 0) => {
+  for (const type of ['keyDown', 'keyUp']) await page.send('Input.dispatchKeyEvent', { type, key, code, modifiers, windowsVirtualKeyCode: { Enter: 13, ArrowDown: 40 }[key] ?? key.toUpperCase().charCodeAt(0) });
+};
+
+test('the browser build, on a host with another version of the messages, says which side to update', { timeout: 120_000 }, async () => {
+  const shared = await project();
+  const host = await startHost(shared);
+  // Every hello the page hears says the version window.protocol names (null: none; unset: the host's own).
+  const { app, shown } = await browserPage(host, `{
+    const Line = WebSocket;
+    window.sockets = [];
+    window.WebSocket = class extends Line {
+      constructor(url) {
+        super(url);
+        sockets.push(this);
+      }
+      addEventListener(type, fn, ...rest) {
+        super.addEventListener(type, type !== 'message' ? fn : (event) => {
+          const message = String(event.data).startsWith('{') ? JSON.parse(event.data) : null;
+          if (message?.event !== 'hello' || !('protocol' in window)) return fn(event);
+          if (window.protocol === null) delete message.data.protocol;
+          else message.data.protocol = window.protocol;
+          fn(new MessageEvent('message', { data: JSON.stringify(message) }));
+        }, ...rest);
+      }
+    };
+  }`);
   try {
-    const shown = await app.page('Ponjo');
-    // Every hello the page hears says the version window.protocol names (null: none; unset: the host's own).
-    await shown.send('Page.enable');
-    await shown.send('Page.addScriptToEvaluateOnNewDocument', { source: `{
-      const Line = WebSocket;
-      window.sockets = [];
-      window.WebSocket = class extends Line {
-        constructor(url) {
-          super(url);
-          sockets.push(this);
-        }
-        addEventListener(type, fn, ...rest) {
-          super.addEventListener(type, type !== 'message' ? fn : (event) => {
-            const message = String(event.data).startsWith('{') ? JSON.parse(event.data) : null;
-            if (message?.event !== 'hello' || !('protocol' in window)) return fn(event);
-            if (window.protocol === null) delete message.data.protocol;
-            else message.data.protocol = window.protocol;
-            fn(new MessageEvent('message', { data: JSON.stringify(message) }));
-          }, ...rest);
-        }
-      };
-    }` });
-    await shown.send('Page.navigate', { url: host.link });
-    await waitFor(() => shown.evaluate(`document.querySelector('.pj-join')?.hidden === false`).catch(() => false), 30_000, 'the name asked');
     await shown.evaluate(`document.querySelector('.pj-join input').value = 'Noor'; document.querySelector('.pj-join').requestSubmit()`);
     await waitFor(() => shown.evaluate(`Boolean(document.querySelector('.pj-stage [contenteditable]'))`), 30_000, 'the doc');
     const notice = () => shown.evaluate(`(n => n.hidden ? '' : n.querySelector('.pj-banner-text').textContent)(document.querySelector('.pj-notice'))`);
@@ -499,6 +512,72 @@ test('the browser build, on a host with another version of the messages, says wh
       await shown.evaluate(`window.protocol = ${protocol}; sockets.at(-1).dispatchEvent(new CloseEvent('close'))`);
       await waitFor(async () => (says ? (await notice()).includes(says) : (await notice()) === ''), 30_000, `the notice for ${protocol}`);
     }
+  } finally {
+    await app.quit();
+    host.kill();
+  }
+});
+
+test('the browser build finds the project\'s files: Mod+P filters the sidebar, what git ignores dimmed and last, and Enter opens the first; a path in a comment opens its file; the link popover links one by its path from the doc', { timeout: 180_000 }, async () => {
+  const shared = await project();
+  await mkdir(join(shared.folder, 'notes'));
+  await writeFile(join(shared.folder, 'notes', 'b.md'), 'Notes on the plan\n');
+  await mkdir(join(shared.folder, 'build'));
+  await writeFile(join(shared.folder, 'build', 'notes.md'), 'Built\n');
+  await writeFile(join(shared.folder, 'notes.log'), 'Logged\n');
+  await writeFile(join(shared.folder, '.gitignore'), '*.log\nbuild/\n');
+  execFileSync('git', ['init', '-q'], { cwd: shared.folder });
+  const host = await startHost(shared);
+  const { app, shown } = await browserPage(host);
+  try {
+    await shown.evaluate(`document.querySelector('.pj-join input').value = 'Noor'; document.querySelector('.pj-join').requestSubmit()`);
+    await waitFor(() => shown.evaluate(`document.querySelector('.pj-stage [contenteditable]')?.contentEditable === 'true'`), 30_000, 'the doc');
+
+    // #124: a path that is a file's is a link; one that is no file's is not.
+    await host.call('comment', { anchor: null, body: 'See notes/b.md, not docs/none.md.' });
+    const links = () => shown.evaluate(`[...document.querySelectorAll('.pj-margin .pj-file-link')].map((a) => a.textContent)`);
+    await waitFor(async () => JSON.stringify(await links()) === '["notes/b.md"]', 10_000, 'the link in the comment');
+
+    // The link popover: typing finds a file, the arrows pick it, Enter links it by its path from the doc.
+    await shown.evaluate(`{
+      const text = document.createTreeWalker([...document.querySelectorAll('.pj-stage [contenteditable] p')].find((p) => p.textContent.startsWith('Ship')), NodeFilter.SHOW_TEXT).nextNode();
+      document.querySelector('.pj-stage [contenteditable]').focus();
+      getSelection().setBaseAndExtent(text, 0, text, 4);
+    }`);
+    await new Promise((done) => setTimeout(done, 100)); // the editor takes in the selection
+    await press(shown, 'k', 'KeyK', MOD);
+    await waitFor(() => shown.evaluate(`document.activeElement?.matches('.pj-link-input')`), 5_000, 'the link popover');
+    await shown.send('Input.insertText', { text: 'B.MD' });
+    const offered = () => shown.evaluate(`[...document.querySelectorAll('.pj-link-files li')].map((li) => li.querySelector('.pj-mention-sub').textContent)`);
+    assert.deepEqual(await offered(), ['notes/b.md']);
+    await press(shown, 'ArrowDown', 'ArrowDown');
+    await press(shown, 'Enter', 'Enter');
+    await until(async () => (await host.call('state')).text.includes('[Ship](notes/b.md) the preview'), 'the link saved');
+
+    // Mod+P: the filter, the files git ignores dimmed and after the rest, none inside a folder it ignores.
+    await press(shown, 'p', 'KeyP', MOD);
+    assert.ok(await shown.evaluate(`document.activeElement?.matches('.pj-files-filter')`), 'the filter focused');
+    await shown.send('Input.insertText', { text: 'notes' });
+    const rows = () => shown.evaluate(`[...document.querySelectorAll('.pj-files-row')].map((r) => r.dataset.path + (r.classList.contains('pj-files-ignored') ? ' (ignored)' : ''))`);
+    await waitFor(async () => JSON.stringify(await rows()) === '["notes","notes/b.md","notes.log (ignored)"]', 10_000, `the matches: ${JSON.stringify(await rows())}`);
+    await waitFor(() => shown.evaluate(`document.querySelector('.pj-save').textContent === 'Saved'`), 10_000, 'the link landed'); // a page leaves only then
+    await press(shown, 'Enter', 'Enter');
+    await waitFor(async () => (await shown.evaluate(`document.querySelector('.pj-stage [contenteditable]')?.innerText ?? ''`).catch(() => '')).includes('Notes on the plan'), 30_000, 'the first match open');
+
+    // A path from a doc in a folder goes up first.
+    await waitFor(() => shown.evaluate(`document.querySelector('.pj-stage [contenteditable]')?.contentEditable === 'true'`), 30_000, 'editable');
+    await shown.evaluate(`{
+      const text = document.createTreeWalker(document.querySelector('.pj-stage [contenteditable] p'), NodeFilter.SHOW_TEXT).nextNode();
+      document.querySelector('.pj-stage [contenteditable]').focus();
+      getSelection().setBaseAndExtent(text, 0, text, 5);
+    }`);
+    await new Promise((done) => setTimeout(done, 100));
+    await press(shown, 'k', 'KeyK', MOD);
+    await waitFor(() => shown.evaluate(`document.activeElement?.matches('.pj-link-input')`), 5_000, 'the link popover');
+    await shown.send('Input.insertText', { text: 'plan' });
+    await waitFor(async () => (await offered()).includes('plan.md'), 10_000, 'plan.md offered');
+    await shown.evaluate(`[...document.querySelectorAll('.pj-link-files li')].find((li) => li.textContent.includes('plan.md')).dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))`);
+    await until(async () => (await readFile(join(shared.folder, 'notes', 'b.md'), 'utf8')).includes('[Notes](../plan.md)'), 'the link saved');
   } finally {
     await app.quit();
     host.kill();

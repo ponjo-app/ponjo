@@ -162,7 +162,7 @@
       <li><button class="pj-files-row pj-files-file pj-files-ignored" type="button">debug.log</button></li>
     </ul>
   </div>
-  <p>A file or folder git ignores (build output, installed packages) is dimmed to <code>--text-faint</code>, not hidden; a filter leaves it out.</p>
+  <p>A file or folder git ignores (build output, installed packages) is dimmed to <code>--text-faint</code>, not hidden. A filter (Mod+P) finds the files it ignores too, dimmed and after the rest in each folder, but does not look inside a folder it ignores; Enter opens the first match.</p>
   <p>A folder window with no doc shows only its sidebar and, in the page, <code>.pj-folder-empty</code>: "No docs here yet." in <code>.pj-empty</code>, then New doc (primary) and New folder (secondary).</p>
   <p>A sidebar is resized by dragging its edge: the cursor turns to <code>col-resize</code> and the edge shows a 2px <code>--text-faint</code> line; double-click the edge for the default width back.</p>
   <h3>Team panel</h3>
@@ -174,6 +174,11 @@
   <h3>Find bar</h3>
   <p>Mod+F opens <code>.pj-find</code> at the page's top right, staying there as the page scrolls: a floating card like the link popover (radius 10, <code>--shadow-raised</code>), its field the link popover's, then the count, then Previous, Next and Close as icon buttons; Replace adds a row with Replace and Replace all, both secondary. Every match is <code>--accent-soft</code>, the current one the stronger blue of selected commented text, as the sidebar's filter marks its matches.</p>
   <div class="ds-box ds-prose pj-editor">We ship the <span class="pj-found">beta</span> in March, then the <span class="pj-found pj-found-current">beta</span> waitlist.</div>
+  <h3>Links to the project's files</h3>
+  <p>In a comment, a file's path in the project, as Copy Path writes it, is a link (<code>.pj-file-link</code>) as links in the doc are: <code>--accent</code>, underlined. In the link popover, what is typed that is not a URL lists the matching files under the field in the @ menu's style (<code>.pj-mentions</code>): the file icon, its name, its path under it in <code>--text-soft</code>; the arrows pick one, Enter or a click links it by its path from the doc.</p>
+  <div class="ds-row">
+    <div class="pj-card ds-card"><div class="pj-body">The rules are in <a class="pj-file-link" href="#">docs/architecture.md</a>.</div></div>
+  </div>
   <h3>Text: comments, buddy edits, links, tasks</h3>
   <div class="ds-box ds-prose pj-editor">
     We ship the beta to <span class="pj-hl">fifty design partners</span> in March, then

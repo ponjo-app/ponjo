@@ -246,6 +246,7 @@ kbd { font: 500 11px/1 var(--ui-font); padding: 2px 6px; border-radius: 4px; bor
 .pj-mention-who { display: flex; flex: 1; flex-direction: column; min-width: 0; }
 .pj-mention-name { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; }
 .pj-mention-sub { overflow: hidden; color: var(--text-soft); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.pj-link-files .pj-icon { width: 16px; height: 16px; color: var(--text-soft); }
 
 /* who a buddy is, under its name on its card: grows with the text, up to a point */
 .pj-input.pj-profile-about { display: block; width: 100%; box-sizing: border-box; margin-top: 12px; min-height: 4lh; max-height: 45vh; field-sizing: content; resize: none; font: 13px/1.5 var(--ui-font); }
@@ -359,8 +360,8 @@ kbd { font: 500 11px/1 var(--ui-font); padding: 2px 6px; border-radius: 4px; bor
 .pj-editor li[data-item-type="task"]::before { content: ''; position: absolute; left: -1.3em; top: calc(0.5lh - 0.45em); box-sizing: border-box; width: 0.9em; height: 0.9em; border: 1px solid var(--border-strong); border-radius: 4px; background: var(--canvas); cursor: pointer; }
 .pj-editor li[data-checked="true"]::before { border-color: var(--text); background: var(--text); }
 .pj-editor li[data-checked="true"]::after { content: ''; position: absolute; left: -0.98em; top: calc(0.5lh - 0.33em); width: 0.2em; height: 0.45em; border: solid var(--canvas); border-width: 0 0.12em 0.12em 0; transform: rotate(45deg); pointer-events: none; }
-.pj-editor a { color: var(--accent); text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--accent) 40%, transparent); text-underline-offset: 0.18em; }
-.pj-editor a:hover { text-decoration-color: currentColor; }
+.pj-editor a, .pj-file-link { color: var(--accent); text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--accent) 40%, transparent); text-underline-offset: 0.18em; }
+:is(.pj-editor a, .pj-file-link):hover { text-decoration-color: currentColor; }
 .pj-editor strong { font-weight: 600; }
 .pj-editor code { font-family: var(--mono); font-size: 0.85em; background: var(--bg-soft); color: var(--text); padding: 0.15em 0.35em; border-radius: 4px; }
 .pj-editor pre { background: var(--bg-soft); padding: 12px 16px; border-radius: 6px; overflow-x: auto; margin: 0 0 1em; font-size: 0.88em; line-height: 1.55; }

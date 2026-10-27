@@ -75,6 +75,7 @@ let lineDown = false; // a player's line to the host dropped: read only until it
 let stranded = false; // and it held typing not sent then: shown as left, to copy, until the page reloads
 let files; // the folder sidebar (desktop folder windows)
 let startTyping = false; // the doc was just made in the sidebar: the cursor starts in it
+let projectFiles = null; // the project's files, from the sidebar (loadPaths), or null
 
 // The desktop app swaps one doc's page for another without a blank frame: it
 // shows this page once `ponjoReady` resolves (the doc and the sidebar are
@@ -220,6 +221,7 @@ async function start() {
       if (carry.commentsHidden) showComments(false);
       if (carry.startTyping) startTyping = true;
     },
+    onPaths: loadPaths,
   });
 
   margin = createCommentMargin(document.querySelector('.pj-margin'), {
@@ -246,7 +248,10 @@ async function start() {
     anchorTops,
     mentionChoices: (query) => people?.mentionChoices(query) ?? [],
     mentionable: () => people?.mentionable() ?? [],
+    files: () => projectFiles?.all,
+    openFile: (path) => files.open(path),
   });
+  loadPaths();
 
   people = createPeople({
     root: document.querySelector('.pj-agents'),
@@ -399,6 +404,14 @@ async function start() {
   if (startTyping) editor.focus();
 }
 
+// The project's files, read again as they change: a path in a comment is a
+// link to its file, and the link popover offers them.
+async function loadPaths() {
+  const found = await files.paths().catch(() => null);
+  projectFiles = found && { ...found, all: new Set(found.paths) };
+  margin.rerender();
+}
+
 // ---- the doc's view ----
 
 // The doc's text in the view `chosen` (from viewFor), in the page's stage.
@@ -428,6 +441,7 @@ function makeView(chosen, text) {
     },
     onLayout: () => margin.layout(),
     image: api.image,
+    files: () => projectFiles,
     editable: chosen.editable && !reading(),
     color: chosen.color,
     settings: chosen.settings,
