@@ -32,3 +32,23 @@ simple = { limit = 60, period = 60 }
 name = "PAGES"
 namespace_id = "1002"
 simple = { limit = 120, period = 60 }
+
+# The preview's buddies' model (worker.js), at https://infer.ponjo.app, for
+# the Nebius x NVIDIA hackathon's judges: deployed by hand from the
+# nebius-hackathon tag, never by CI, so it stays as judged
+# (README.md, Deploying the relay). The key is a secret:
+# `npx wrangler secret put TOKEN_FACTORY_KEY --env hackathon`.
+[env.hackathon]
+name = "ponjo-hackathon"
+routes = [{ pattern = "infer.ponjo.app", custom_domain = true }]
+
+[env.hackathon.vars]
+ORIGIN = "https://ponjo.app"
+ENDPOINT = "https://api.tokenfactory.nebius.com/v1"
+MODEL = "nvidia/nemotron-3-super-120b-a12b" # Nemotron 3 Super, which calls tools
+
+# Requests an address makes a minute: a turn is a few.
+[[env.hackathon.ratelimits]]
+name = "INFER"
+namespace_id = "1003"
+simple = { limit = 10, period = 60 }
