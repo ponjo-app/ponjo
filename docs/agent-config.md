@@ -10,8 +10,8 @@ An agent is a filter ([architecture](architecture.md#a-run)):
 
 | | |
 | --- | --- |
-| Working folder | new and private; holds only copies of the doc and its sidecar, under their names |
-| stdin | the prompt: who the buddy is, the thread, the rules |
+| Working folder | new and private; holds only copies of the doc and its sidecar, at the doc's path in the project (in doc mode, under their names) |
+| stdin | the prompt: who the buddy is, the thread, the rules. It names files only by their paths in the project, never where a run keeps them: the script tells its agent that, if it needs to (see [Paths](#paths)) |
 | `PONJO_DOC` | the doc copy's path |
 | `PONJO_COMMENTS` | the sidecar copy's path |
 | `PONJO_PROJECT` | the run's own copy of the project (see [Permissions](#permissions)); empty in doc mode |
@@ -22,6 +22,17 @@ An agent is a filter ([architecture](architecture.md#a-run)):
 | Exit 0 | success; the app merges the doc copy's edits into the doc and adds the appended comments. Otherwise the reply is marked `failed`, with the end of the output. |
 
 The program needs no Ponjo tool: it reads files, edits them and prints.
+
+### Paths
+
+The prompt speaks of the project, not of the run: `drafts/plan.md` is the
+doc, `drafts/plan.md.comments.jsonl` its comments, and a path in a comment
+is from the doc's folder (`rule.md` is `drafts/rule.md`). The working folder
+holds the copies at those paths, so from it the doc's paths are right
+as they are; any other path is in `PONJO_PROJECT`. The shipped scripts
+tell Claude Code (`--append-system-prompt`) and Codex (its first
+instructions, before the prompt) so; the Ponjo agent reads the copies or the
+project by the path alone.
 
 ## Comments
 
@@ -94,7 +105,8 @@ script needs nothing to read them:
 #!/bin/sh
 exec claude -p "@\"$PONJO_DOC\"" --permission-mode acceptEdits --no-session-persistence \
   ${PONJO_SETTING_MODEL:+--model "$PONJO_SETTING_MODEL"} \
-  ${PONJO_PROJECT:+--add-dir "$PONJO_PROJECT" --disallowedTools "Edit(/$PONJO_PROJECT/**)"}
+  ${PONJO_PROJECT:+--add-dir "$PONJO_PROJECT" --disallowedTools "Edit(/$PONJO_PROJECT/**)" \
+    --append-system-prompt "The paths in the prompt are the project's. …"}
 ```
 
 `@"…"` attaches the doc copy to the prompt as already read, so Claude Code

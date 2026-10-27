@@ -454,7 +454,8 @@ the ids of those who may ask. AI buddies run only on docs open in a window.
 
 ### How a turn works
 
-1. Runner copies the doc and its sidecar into a new private folder and runs
+1. Runner copies the doc and its sidecar into a new private folder, at the
+   doc's path in the project, which is how the prompt names them, and runs
    the [agent script](agent-config.md) there, with the prompt (who the
    buddy is, the thread, the rules) on stdin and the buddy's name in
    `PONJO_BUDDY` (the name is for the script; the app goes by id). In

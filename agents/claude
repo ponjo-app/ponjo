@@ -4,6 +4,8 @@
 # The project is read only: its files are the user's, not the copy.
 # The model is Settings > Agents' if set (agents/claude.json), else Claude Code's own.
 # @"…" attaches the copy as read, so Claude edits it without reading it first.
+# The prompt's paths are the project's: the system prompt says where each is.
 exec claude -p "@\"$PONJO_DOC\"" --permission-mode acceptEdits --no-session-persistence \
   ${PONJO_SETTING_MODEL:+--model "$PONJO_SETTING_MODEL"} \
-  ${PONJO_PROJECT:+--add-dir "$PONJO_PROJECT" --disallowedTools "Edit(/$PONJO_PROJECT/**)"}
+  ${PONJO_PROJECT:+--add-dir "$PONJO_PROJECT" --disallowedTools "Edit(/$PONJO_PROJECT/**)" \
+    --append-system-prompt "The paths in the prompt are the project's. Your copies of the doc and its comments are at those paths in your working folder; the project's other files are at those paths in $PONJO_PROJECT, read only."}

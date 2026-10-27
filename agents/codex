@@ -3,10 +3,14 @@
 # doc's copy in the working folder, the reply on stdout. Yours to change.
 # The model is Settings > Agents' if set (agents/codex.json), else Codex's own.
 # It reads the project without --add-dir, which would make it writable.
+# The prompt's paths are the project's: in a project, the first instructions
+# say where each is, and the prompt follows them as Codex's stdin block.
+task=-
+[ -n "$PONJO_PROJECT" ] && task="The task is in the stdin block. Its paths are the project's: your copies of the doc and its comments are at those paths in your working folder, and the project's other files at those paths in $PONJO_PROJECT, read only."
 reply="$(mktemp)"
 codex exec --sandbox workspace-write --skip-git-repo-check \
   ${PONJO_SETTING_MODEL:+-m "$PONJO_SETTING_MODEL"} \
-  --output-last-message "$reply" - >&2
+  --output-last-message "$reply" "$task" >&2
 status=$?
 cat "$reply"
 rm -f "$reply"
