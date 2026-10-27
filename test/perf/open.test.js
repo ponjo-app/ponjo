@@ -29,7 +29,7 @@ before(async () => {
   const env = { ...process.env, PONJO_CONFIG_DIR: join(work, 'config') };
   delete env.ELECTRON_RUN_AS_NODE;
   const electron = createRequire(import.meta.url)('electron');
-  app = await launchElectron(electron, [join(root, 'desktop', 'main.js'), `--user-data-dir=${join(work, 'profile')}`, folder], { env });
+  app = await launchElectron(electron, [join(root, 'desktop', 'main.js'), '--no-sandbox', `--user-data-dir=${join(work, 'profile')}`, folder], { env });
   pages = async () => (await (await fetch(`http://127.0.0.1:${app.devtoolsPort}/json`)).json()).filter((t) => t.type === 'page').map((t) => t.id);
 });
 
