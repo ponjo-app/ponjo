@@ -9,7 +9,7 @@
 // through Room (room.js), at the same door.
 
 import { createHash } from 'node:crypto';
-import { appendFile, mkdir, open, readFile, readdir, realpath, stat, writeFile } from 'node:fs/promises';
+import { appendFile, mkdir, open, readFile, readdir, realpath, stat } from 'node:fs/promises';
 import { basename, dirname, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createAnchor, locate } from '../core/anchor.js';
@@ -19,7 +19,7 @@ import { BuddyError, buddiesHere, checkBuddyPatch } from '../core/buddies.js';
 import { DEFAULT_SETTINGS, SettingsError } from '../core/settings.js';
 import { lineChanges, merge3 } from '../core/diff.js';
 import { apply, diffOps, mapOffset, transform } from '../core/ot.js';
-import { StoreError, formFor, hashText, moveDoc, readDoc, readSidecarText, sidecarPath, writeDoc, writeSidecar } from '../store/files.js';
+import { StoreError, formFor, hashText, moveDoc, readDoc, readSidecarText, sidecarPath, writeAtomic, writeDoc, writeSidecar } from '../store/files.js';
 import { VERSION_ID, moveHistory, noteTaken, noteWritten, readHistory, readTaken, readVersion, recordVersion, writtenEdits } from '../store/history.js';
 import { configDir, defaultName, ownerOf, readSettings, settingsWithId, updateSettings, watchSettings } from '../store/settings.js';
 import { firstBuddies, projectBuddiesDir, readBuddies, removeBuddy, userBuddiesDir, writeBuddy } from '../store/buddies.js';
@@ -979,7 +979,7 @@ async function logRun(dir, entry) {
       if (size <= LOG_LIMIT) continue;
       const file = await open(path);
       const { buffer } = await file.read({ buffer: Buffer.alloc(LOG_LIMIT / 2), position: size - LOG_LIMIT / 2 }).finally(() => file.close());
-      await writeFile(path, buffer.subarray(buffer.indexOf('\n') + 1));
+      await writeAtomic(path, buffer.subarray(buffer.indexOf('\n') + 1));
     }
   } catch (error) {
     console.error('Could not log a run:', error);
