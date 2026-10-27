@@ -31,10 +31,11 @@ designed, not built.
   standard keys do the same: Mod+B bold, Mod+I italic, Mod+E inline code,
   Mod+Shift+X strikethrough, Mod+K a link.
 - **Typed Markdown stays text**: `**x**`, `## ` or `- ` is what it says, and
-  is saved escaped. **Pasted plain text stays text** too, a line a
-  paragraph; pasted formatted text (from a web page or another editor)
-  keeps its formatting, but not images held in the page itself (`data:`),
-  which would put their bytes in the file.
+  is saved escaped. **Pasted plain text is read as Markdown**, as Notion
+  does; pasted with Mod+Shift+V it stays text, a line a paragraph. Pasted
+  formatted text (from a web page or another editor) keeps its formatting,
+  but not images held in the page itself (`data:`), which would put their
+  bytes in the file.
 - **Front matter** (YAML between `---` lines at the top) shows as its
   source, muted, typed into as text; nothing formats it.
 - **Blank lines.** An empty paragraph (Enter on an empty line) is saved as
