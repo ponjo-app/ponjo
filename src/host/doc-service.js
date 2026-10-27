@@ -9,7 +9,7 @@
 // through Room (room.js), at the same door.
 
 import { createHash } from 'node:crypto';
-import { appendFile, mkdir, open, readFile, readdir, realpath, stat } from 'node:fs/promises';
+import { appendFile, mkdir, open, readFile, readdir, realpath, rm, stat } from 'node:fs/promises';
 import { basename, dirname, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createAnchor, locate } from '../core/anchor.js';
@@ -89,7 +89,7 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
     human: async () => ({ name: (await me()).name, about: (await settingsWithId(settingsDir)).about.trim() }),
     finish: (result) => serial(() => finishRun(result)),
     onChange: broadcastAgents,
-    log: (entry) => logRun(settingsDir, { doc: docPath, ...entry }),
+    log: (entry, trace) => logRun(settingsDir, { doc: docPath, ...entry }, trace),
   });
   let lastSidecarHash = null;
   let lastSettings = null;
@@ -521,28 +521,32 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
   // it worked still asks; the reply resolves the thread when the run asked
   // to. The buddy acts with the level of whoever asked it, at most write,
   // asked now: a run whose asker was removed or set to Read meanwhile lands
-  // nothing. Run in `serial`.
+  // nothing. Run in `serial`. Resolves to its reply's id (null when none was
+  // posted) and what landed, in words, for its trace.
   async function finishRun({ threadId, id: buddyId, name, asker, base, seen, edited, comments, body, failed }) {
-    if (!can({ level: await levelOf(asker) }, 'write')) return;
+    if (!can({ level: await levelOf(asker) }, 'write')) return { reply: null, landed: 'Dropped: whoever asked can no longer edit' };
     const latest = (await readComments()).lines.map((l) => l.comment).filter(Boolean);
     const thread = threadsOf(latest).find((t) => t.id === threadId);
-    if (thread?.resolved) return;
+    if (thread?.resolved) return { reply: null, landed: 'Dropped: the thread was resolved meanwhile' };
     const again = redo.get(`${threadId} ${buddyId}`)?.seen === seen; // this run is its ask run once more
     redo.delete(`${threadId} ${buddyId}`);
     let anchor = null; // where its edit put the thread's text
+    let conflict = false;
     const id = newId('c');
     if (edited !== null && edited !== base && !missing) { // a doc gone has nothing to land on
       const merged = merge3(base, text, edited);
       if (merged.conflicts > 0 && !again) {
         redo.set(`${threadId} ${buddyId}`, { seen, mine: lineChanges(base, edited), theirs: lineChanges(base, text) });
-        return; // unanswered, its ask runs again (runner.js)
+        return { reply: null, landed: 'People changed the same lines meanwhile: it runs once more' }; // unanswered, its ask runs again (runner.js)
       }
+      conflict = merged.conflicts > 0;
       await flushTyping();
       land(diffOps(text, merged.text), { reply: id, by: buddyId });
       await committed(); // landed: windows hear if it is not saved, and the turn is answered
       anchor = movedAnchor(thread?.anchor, base, edited, text);
-      await noteVersion(text, { kind: 'edit', author: { id: buddyId, name, kind: 'agent' }, thread: threadId, reply: id, ...(merged.conflicts > 0 ? { conflict: true } : {}) });
+      await noteVersion(text, { kind: 'edit', author: { id: buddyId, name, kind: 'agent' }, thread: threadId, reply: id, ...(conflict ? { conflict: true } : {}) });
     }
+    let posted = false;
     const by = { id: buddyId, name, kind: 'ai' };
     const at = Date.parse(seen) + 1;
     // Its comments are anchored on its copy as it left it, the text it
@@ -555,11 +559,15 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
         id, thread: threadId, by, at: new Date(at + 1).toISOString(), body, // after its comments, so it ends its thread
         ...(anchor ? { anchor } : {}), ...(failed ? { failed: true } : {}), ...(added.resolves ? { resolved: true } : {}),
       };
+      posted = true;
       return [...lines, ...added.comments.map((comment) => ({ comment })), { comment: reply }];
     }).catch((error) => {
       console.error(`Could not post ${name}'s reply:`, error);
       unposted.set(`${threadId} ${buddyId}`, thread?.comments.at(-1).id);
+      posted = false;
     });
+    if (!posted) return { reply: null, landed: 'Its reply was not posted' };
+    return { reply: id, landed: conflict ? 'Posted; where it collided with people twice, their lines stayed' : 'Posted' };
   }
 
   // ---- undo ----
@@ -849,6 +857,12 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
         return { agents: await listAgents(settingsDir) };
       },
       testAgent: async () => testAgent(await pickAgent()),
+      runs: async () => ({ runs: await tracedRuns(settingsDir, docPath) }),
+      async trace(body) {
+        const trace = await readTrace(settingsDir, body?.run);
+        if (!trace) throw new DocError('not_found', 'no trace of that run');
+        return { trace };
+      },
       // The project's room (room.js), each call answered with the room as it is then.
       room: () => inRoom().list(),
       openRoom: () => changeRoom((r) => r.open()),
@@ -965,15 +979,18 @@ async function fileHash(path) {
 }
 
 // A line per run in the config folder's logs/runs.jsonl: what a slow or
-// missing reply was. Then each log there (an agent's too, as the Ponjo
-// agent's ponjo.jsonl) past LOG_LIMIT keeps its newest half, from a line's
-// start: old runs are worth less. Never fails a run.
+// missing reply was. With Trace runs on, its trace too (runner.js), in
+// logs/traces/<run>.json, the newest TRACES kept. Then each log there (an
+// agent's too) past LOG_LIMIT keeps its newest half, from a line's start:
+// old runs are worth less. Never fails a run.
 const LOG_LIMIT = 10 * 1024 * 1024;
-async function logRun(dir, entry) {
+const TRACES = 200;
+async function logRun(dir, entry, trace) {
   const logs = join(dir, 'logs');
   try {
     await mkdir(logs, { recursive: true });
     await appendFile(join(logs, 'runs.jsonl'), `${JSON.stringify(entry)}\n`);
+    if ((await readSettings(dir)).settings.trace) await keepTrace(join(logs, 'traces'), { ...entry, ...trace });
     for (const name of (await readdir(logs)).filter((n) => n.endsWith('.jsonl'))) {
       const path = join(logs, name);
       const { size } = await stat(path);
@@ -985,4 +1002,35 @@ async function logRun(dir, entry) {
   } catch (error) {
     console.error('Could not log a run:', error);
   }
+}
+
+async function keepTrace(folder, trace) {
+  await mkdir(folder, { recursive: true });
+  await writeAtomic(join(folder, `${trace.run}.json`), JSON.stringify(trace)); // whole, for a window reading it meanwhile
+  const names = (await readdir(folder)).filter((name) => name.endsWith('.json'));
+  if (names.length <= TRACES) return;
+  const kept = await Promise.all(names.map(async (name) => ({ name, at: (await stat(join(folder, name))).mtimeMs })));
+  kept.sort((a, b) => b.at - a.at);
+  await Promise.all(kept.slice(TRACES).map(({ name }) => rm(join(folder, name), { force: true })));
+}
+
+// The runs of the doc at `docPath` that have a trace, as runs.jsonl has them, newest first.
+async function tracedRuns(dir, docPath) {
+  const logs = join(dir, 'logs');
+  const traced = new Set(await readdir(join(logs, 'traces')).catch(() => []));
+  const lines = (await readFile(join(logs, 'runs.jsonl'), 'utf8').catch(() => '')).split('\n');
+  return lines.flatMap((line) => {
+    try {
+      const entry = JSON.parse(line);
+      return entry.doc === docPath && traced.has(`${entry.run}.json`) ? [entry] : [];
+    } catch {
+      return []; // a line cut when the log was trimmed, or none
+    }
+  }).reverse();
+}
+
+// Run `run`'s trace (logRun), or null.
+async function readTrace(dir, run) {
+  if (typeof run !== 'string' || !/^r_[a-z0-9]+$/.test(run)) return null;
+  return JSON.parse(await readFile(join(dir, 'logs', 'traces', `${run}.json`), 'utf8').catch(() => 'null'));
 }

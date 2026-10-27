@@ -6,15 +6,12 @@
 // Plain fetch, no SDK: it runs from the config folder, with no
 // node_modules. Yours to change.
 
-import { appendFile, mkdir, readFile, readdir, realpath, writeFile } from 'node:fs/promises';
+import { appendFile, readFile, readdir, realpath, writeFile } from 'node:fs/promises';
 import { realpathSync } from 'node:fs';
-import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
+import { isAbsolute, relative, resolve, sep } from 'node:path';
 import { text } from 'node:stream/consumers';
 import { fileURLToPath } from 'node:url';
 import { INFER, apply, turn } from './ponjo-core.mjs';
-
-// Each turn's messages, a line each, next to the app's own logs.
-const LOG = fileURLToPath(new URL('../logs/ponjo.jsonl', import.meta.url));
 
 /**
  * What the turn can see: the copies, and in project mode (`project` a
@@ -37,30 +34,37 @@ export function files({ doc, sidecar, project }) {
 
 // The contract: the prompt on stdin, the copies' paths and the settings in
 // the environment, the edits applied to the copies, the reply on stdout.
-// Then the log.
+// Each message of the turn but the prompt goes to the trace, a line each, as
+// it comes: the model's with how long it took and its usage.
 async function main() {
-  const { PONJO_DOC: doc, PONJO_COMMENTS: sidecar, PONJO_PROJECT: project, PONJO_BUDDY: buddy } = process.env;
+  const { PONJO_DOC: doc, PONJO_COMMENTS: sidecar, PONJO_PROJECT: project, PONJO_TRACE: trace } = process.env;
   const { PONJO_SETTING_PROVIDER: provider, PONJO_SETTING_ENDPOINT: endpoint, PONJO_SETTING_MODEL: model, PONJO_SETTING_KEY: key, PONJO_SETTING_EFFORT: effort } = process.env;
   const readable = files({ doc, sidecar, project });
-  const at = new Date().toISOString();
+  const note = (lines) => trace && appendFile(trace, lines.map((line) => `${JSON.stringify(line)}\n`).join(''));
   let messages = []; // the turn's, which it goes on adding to after each step
-  let error = null;
+  let noted = 1; // those in the trace, the prompt counted: the app has it
   try {
     if (!key) throw new Error('No API key: set one in Settings > Agents > Ponjo agent.');
     const infer = INFER[provider]({ endpoint, model, key, effort });
-    const step = (sent, tools) => infer((messages = sent), tools);
+    const step = async (sent, tools) => {
+      await note((messages = sent).slice(noted));
+      noted = messages.length;
+      const at = Date.now();
+      const answer = await infer(messages, tools);
+      await note([{ role: 'assistant', calls: answer.calls, sent: answer.sent, ms: Date.now() - at, usage: answer.usage }]);
+      noted += 1; // the answer, which turn adds next
+      return answer;
+    };
     const { edits, reply } = await turn({ prompt: await text(process.stdin), doc, sidecar }, { infer: step, readFile: readable, resolve });
     const texts = apply(edits, { doc, sidecar }, { doc: await readable(doc), sidecar: await readable(sidecar) }, resolve);
     await writeFile(doc, texts.doc);
     await writeFile(sidecar, texts.sidecar);
     process.stdout.write(reply);
   } catch (failure) {
-    error = failure.message;
-    process.stderr.write(`${error}\n`);
+    await note(messages.slice(noted)); // the last step's results
+    process.stderr.write(`${failure.message}\n`);
     process.exitCode = 1;
   }
-  await mkdir(dirname(LOG), { recursive: true });
-  await appendFile(LOG, `${JSON.stringify({ at, buddy, error, messages })}\n`);
 }
 
 if (realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)) await main(); // run, not imported by a test

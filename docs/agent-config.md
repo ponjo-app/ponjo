@@ -16,6 +16,7 @@ An agent is a filter ([architecture](architecture.md#a-run)):
 | `PONJO_COMMENTS` | the sidecar copy's path |
 | `PONJO_PROJECT` | the run's own copy of the project (see [Permissions](#permissions)); empty in doc mode |
 | `PONJO_BUDDY` | the buddy's name |
+| `PONJO_TRACE` | a file, out of the working folder, the agent may write its steps to (see [Traces](#traces)) |
 | `PONJO_SETTING_<KEY>` | each of the agent's [settings](#settings) |
 | stdout | the reply; may be empty |
 | Exit 0 | success; the app merges the doc copy's edits into the doc and adds the appended comments. Otherwise the reply is marked `failed`, with the end of the output. |
@@ -130,6 +131,19 @@ is skipped, and history keeps every version.
 
 What a prompt hidden in a doc can make an agent do is what your CLI's
 config allows.
+
+## Traces
+
+For whoever works on an agent: with Settings > Agents > Trace runs on (off
+by default), each run's trace is kept in the config folder's
+`logs/traces/`, the newest 200, and read in a doc's Runs (the owner's
+window only). The app records what it sees of any agent: the prompt, the
+script, stdout and stderr, how it ended, the copies before and after, and
+what landed. What happens inside the run is the agent's to add: each line
+it appends to `PONJO_TRACE` (a JSON value, or text) is kept, in order, as
+a step. It writes them as it goes, so a run that is stopped or times out
+keeps the steps it took. The Ponjo agent writes each message of its turn
+([Ponjo agent](ponjo-agent.md)); Claude Code and Codex write none yet.
 
 ## Errors
 

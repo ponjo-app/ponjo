@@ -21,6 +21,7 @@ import { createAnchor, locate } from '../src/core/anchor.js';
 import { diffEdits, findEdit } from '../src/core/diff.js';
 import { createClient } from './client.js';
 import { createHistory } from './history.js';
+import { createRuns } from './runs.js';
 import { revisionMarks } from './marks.js';
 import { createFileList } from './files.js';
 import { askName, named } from './join.js';
@@ -52,6 +53,7 @@ let chrome;
 let margin;
 let people;
 let history;
+let runs;
 let settings;
 let level; // what this page may do: 'read', 'write' or 'owner' (state())
 let defaultName;
@@ -250,6 +252,8 @@ async function start() {
     mentionable: () => people?.mentionable() ?? [],
     files: () => projectFiles?.all,
     openFile: (path) => files.open(path),
+    traceOf: (id) => runs?.runOf(id),
+    onTrace: (run) => runs.show(run),
   });
   loadPaths();
 
@@ -327,10 +331,21 @@ async function start() {
     onUndo: undoVersions,
     onClose: () => editor.focus(),
   });
+  runs = createRuns({
+    api,
+    enabled: () => level === 'owner' && settings.get().trace,
+    commentOf: (id) => comments?.threads.find((t) => t.id === id)?.comments[0]?.body ?? null,
+    onChange: repaintThreads,
+    onOpen: () => history.close(),
+    onClose: () => editor.focus(),
+  });
+  runs.refresh();
+  settings.subscribe((next, prev) => next.trace !== prev.trace && runs.refresh());
   settings.subscribe(followViews);
   document.addEventListener('keydown', (event) => {
     if ((event.ctrlKey || event.metaKey) && event.altKey && event.shiftKey && event.code === 'KeyH') {
       event.preventDefault();
+      runs.close();
       history.toggle();
     } else if ((event.ctrlKey || event.metaKey) && event.shiftKey && !event.altKey && event.code === 'KeyT') {
       event.preventDefault();
@@ -370,7 +385,10 @@ async function start() {
     history.changed();
     afterTyping('sidecar', refreshThreads); // a buddy's turn's receipt is read from its version
   });
-  events.on('agents', (data) => showAgents(data));
+  events.on('agents', (data) => {
+    showAgents(data);
+    runs.refresh(); // a run that ended has its trace
+  });
   events.on('room', (data) => {
     if (people.render({ room: data })) repaintThreads();
   });

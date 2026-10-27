@@ -44,11 +44,12 @@ const TOOLS = [
 /**
  * One buddy answering one thread: `prompt` is stdin as is, `doc` and
  * `sidecar` the copies' paths. `infer(messages, tools)` is one step of the
- * model (INFER) and resolves to { calls: [{ id, name, args }], sent }, `args`
- * the JSON the model wrote and `sent` its message as its API sent it;
- * `readFile(path)` to a file's text, a folder's entries or null; `resolve(path)`
- * a path the model wrote as the copies' paths are written (on disk,
- * node:path's resolve). Resolves to the checked { edits, reply }, and throws
+ * model (INFER) and resolves to { calls: [{ id, name, args }], sent, usage },
+ * `args` the JSON the model wrote, `sent` its message as its API sent it and
+ * `usage` the tokens it took, as the API counts them; `readFile(path)` to
+ * a file's text, a folder's entries or null; `resolve(path)` a path the
+ * model wrote as the copies' paths are written (on disk, node:path's
+ * resolve). Resolves to the checked { edits, reply }, and throws
  * when the turn fails.
  *
  * The messages are in one form for every provider: { role: 'user', content },
@@ -204,11 +205,11 @@ export const INFER = {
     if (reply.stop_reason === 'refusal') throw new Error(`The model refused: ${reply.stop_details?.explanation ?? 'no reason given.'}`);
     if (reply.stop_reason === 'max_tokens') throw new Error('The model\'s answer was cut off at 16,000 tokens.');
     const calls = reply.content.filter((block) => block.type === 'tool_use').map(({ id, name, input }) => ({ id, name, args: JSON.stringify(input) }));
-    return { calls, sent: reply.content };
+    return { calls, sent: reply.content, usage: reply.usage };
   },
   // The Chat Completions API, which OpenAI, OpenRouter and others speak.
   openai: ({ endpoint, model, key, effort }, url = endpoint.replace(/\/+$/, '')) => async (messages, tools) => {
-    const { choices: [{ message }] } = await post(`${url}/chat/completions`, { authorization: `Bearer ${key}` }, {
+    const { choices: [{ message }], usage } = await post(`${url}/chat/completions`, { authorization: `Bearer ${key}` }, {
       model,
       reasoning_effort: effort,
       tool_choice: 'auto',
@@ -216,7 +217,7 @@ export const INFER = {
       messages: messages.map((m) => (m.role === 'assistant' ? m.sent : m.role === 'tool' ? { role: 'tool', tool_call_id: m.id, content: m.content } : m)),
     });
     const calls = (message.tool_calls ?? []).map(({ id, function: { name, arguments: args } }) => ({ id, name, args }));
-    return { calls, sent: message };
+    return { calls, sent: message, usage };
   },
   // Nebius Token Factory, where NVIDIA's Nemotron models run: Chat
   // Completions, without the effort, which not every model there takes.

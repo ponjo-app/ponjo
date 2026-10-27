@@ -2,13 +2,14 @@
 // waiting on a buddy, and none for an ask that is gone. A run copies the doc and its sidecar
 // into a new private folder, runs the agent script there with the prompt on
 // stdin, and hands back the copies and the script's stdout when it exits. The agent knows
-// nothing of Ponjo. Which runs are working lives only here, in memory.
+// nothing of Ponjo. Which runs are working lives only here, in memory; what
+// each did goes to `log`, with its trace.
 
 import { spawn } from 'node:child_process';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { FORMAT_VERSION } from '../core/comments.js';
+import { FORMAT_VERSION, newId } from '../core/comments.js';
 import { buildPrompt } from '../core/prompt.js';
 import { SIDECAR_SUFFIX, decodeText } from '../store/files.js';
 
@@ -36,13 +37,18 @@ export class Runner {
    * that ended: { threadId, id, name, asker, base, seen, edited, comments, body, failed },
    * `seen` the `at` of the thread's last comment the run was given,
    * `edited` being the doc's copy at the end (null when the run failed) and
-   * `comments` { before, after } the sidecar's copy at the start and end. `onChange()` runs
-   * when a run starts or ends. `log(entry)` takes a line on each run that
-   * ended: { buddy, thread, at, ms, outcome: ok | failed | timedOut | stopped, code }.
+   * `comments` { before, after } the sidecar's copy at the start and end,
+   * and resolves, while the doc is open, to what became of it: { reply (its
+   * id, or null), landed (in words) }. `onChange()` runs when a run starts
+   * or ends. `log(entry, trace)` takes each run that ended: `entry` { run
+   * (its id), buddy, thread, reply, at, ms, outcome: ok | failed | timedOut
+   * | stopped, code }, and `trace` what it was given and did: { script,
+   * prompt, steps (the lines the agent wrote to PONJO_TRACE), stdout,
+   * stderr, base, edited, comments, landed }.
    */
   constructor({ asks, doc, agent, folder = async () => null, human = async () => null, finish, onChange = () => {}, log = async () => {}, timeoutMs = RUN_TIMEOUT_MS }) {
     Object.assign(this, { asks, doc, agent, folder, human, finish, onChange, log, timeoutMs });
-    this.runs = new Map(); // keyOf(threadId, id) → { threadId, id, name, asker, child, done, cancelled, ended }
+    this.runs = new Map(); // keyOf(threadId, id) → { runId, threadId, id, name, asker, child, done, cancelled, ended }
     this.stopped = false;
     this.checking = null;
     this.again = false;
@@ -109,7 +115,7 @@ export class Runner {
   }
 
   #start(key, { threadId, thread, buddy, buddies, asker, redo }) {
-    const run = { threadId, id: buddy.id, name: buddy.name, asker, child: null, done: null, cancelled: false, ended: false };
+    const run = { runId: newId('r'), threadId, id: buddy.id, name: buddy.name, asker, child: null, done: null, cancelled: false, ended: false };
     this.runs.set(key, run);
     run.done = this.#run(run, thread, buddy, buddies, redo)
       .catch((error) => console.error(`Run of ${buddy.name} failed to finish:`, error))
@@ -124,7 +130,7 @@ export class Runner {
   async #run(run, thread, buddy, buddies, redo) {
     const { name: docName, text: base, comments } = await this.doc();
     const dir = await mkdtemp(join(tmpdir(), 'ponjo-run-'));
-    let project = null; // the folder its copy of the project is in
+    let aside = null; // the folder its copy of the project and its trace are in, out of its sight
     try {
       const copy = join(dir, docName);
       await writeFile(copy, base);
@@ -132,31 +138,39 @@ export class Runner {
       const before = comments ?? `${JSON.stringify({ comments: FORMAT_VERSION })}\n`;
       await writeFile(sidecar, before);
       const { script, settings } = await this.agent();
-      project = await mkdtemp(join(tmpdir(), 'ponjo-project-'));
-      const folder = await this.folder(project);
+      aside = await mkdtemp(join(tmpdir(), 'ponjo-project-'));
+      const folder = await this.folder(aside);
+      const steps = join(aside, 'trace.jsonl');
       const prompt = buildPrompt({ buddy, buddies, docName: copy, sidecarName: sidecar, thread, folder, human: await this.human(), redo });
       const at = Date.now();
-      const result = await runScript(script, { cwd: dir, prompt, timeoutMs: this.timeoutMs, env: runEnv({ doc: copy, sidecar, folder, buddy: buddy.name, settings }), onChild: (child) => {
+      const result = await runScript(script, { cwd: dir, prompt, timeoutMs: this.timeoutMs, env: runEnv({ doc: copy, sidecar, folder, buddy: buddy.name, settings, trace: steps }), onChild: (child) => {
         run.child = child;
         if (run.cancelled) killTree(child);
       } });
       const stopped = this.stopped || run.cancelled;
       const outcome = stopped ? 'stopped' : result.timedOut ? 'timedOut' : result.code === 0 ? 'ok' : 'failed';
       run.ended = true; // its reply is on its way: its ask going away is that reply
-      await this.log({ buddy: buddy.name, thread: run.threadId, at: new Date(at).toISOString(), ms: Date.now() - at, outcome, code: result.code });
-      if (stopped) return; // ended by stop or cancel: no answer
-      const out = { threadId: run.threadId, id: buddy.id, name: buddy.name, asker: run.asker, base, seen: thread.comments.at(-1).at };
-      if (result.code === 0) {
-        const bytes = await readFile(copy).catch(() => null);
-        const edited = (bytes && decodeText(bytes)?.text) ?? base; // as text, like the doc
-        const after = await readFile(sidecar, 'utf8').catch(() => before);
-        await this.finish({ ...out, edited, comments: { before, after }, body: result.stdout.trim(), failed: false });
-      } else {
-        await this.finish({ ...out, edited: null, body: failure(script, result), failed: true });
+      const ms = Date.now() - at;
+      const trace = { script, prompt, steps: await traceLines(steps), stdout: result.stdout, stderr: result.stderr, base, edited: null, comments: null, landed: 'Ended without an answer' };
+      let answered = null; // what finish made of it
+      try {
+        if (stopped) return; // ended by stop or cancel: no answer
+        const out = { threadId: run.threadId, id: buddy.id, name: buddy.name, asker: run.asker, base, seen: thread.comments.at(-1).at };
+        if (result.code === 0) {
+          const bytes = await readFile(copy).catch(() => null);
+          trace.edited = (bytes && decodeText(bytes)?.text) ?? base; // as text, like the doc
+          trace.comments = { before, after: await readFile(sidecar, 'utf8').catch(() => before) };
+          answered = await this.finish({ ...out, edited: trace.edited, comments: trace.comments, body: result.stdout.trim(), failed: false });
+        } else {
+          answered = await this.finish({ ...out, edited: null, body: failure(script, result), failed: true });
+        }
+      } finally {
+        if (answered) trace.landed = answered.landed;
+        await this.log({ run: run.runId, buddy: buddy.name, thread: run.threadId, reply: answered?.reply ?? null, at: new Date(at).toISOString(), ms, outcome, code: result.code }, trace);
       }
     } finally {
       await rm(dir, { recursive: true, force: true });
-      if (project) await rm(project, { recursive: true, force: true });
+      if (aside) await rm(aside, { recursive: true, force: true });
     }
   }
 }
@@ -182,14 +196,28 @@ export async function testAgent({ script, settings }, timeoutMs = TEST_TIMEOUT_M
   }
 }
 
-// A run's environment (docs/agent-config.md): its copies, the project, the buddy and the agent's settings.
-const runEnv = ({ doc, sidecar, folder, buddy, settings }) => ({
+// A run's environment (docs/agent-config.md): its copies, the project, the
+// buddy, where it may write its trace and the agent's settings.
+const runEnv = ({ doc, sidecar, folder, buddy, settings, trace = '' }) => ({
   PONJO_DOC: doc,
   PONJO_COMMENTS: sidecar,
   PONJO_PROJECT: folder ?? '',
   PONJO_BUDDY: buddy,
+  PONJO_TRACE: trace,
   ...Object.fromEntries(Object.entries(settings).map(([key, value]) => [`PONJO_SETTING_${key.toUpperCase()}`, String(value ?? '')])),
 });
+
+// The lines an agent wrote to its trace, each parsed, or as text if it is not JSON.
+async function traceLines(path) {
+  const text = await readFile(path, 'utf8').catch(() => '');
+  return text.split('\n').filter((line) => line.trim()).map((line) => {
+    try {
+      return JSON.parse(line);
+    } catch {
+      return line;
+    }
+  });
+}
 
 // What a failed run says: the end of its output, then the script and why.
 function failure(script, result) {

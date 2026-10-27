@@ -153,6 +153,14 @@
       <li><label class="pj-choice"><input class="pj-radio" type="radio" name="ds-agent"><span class="pj-setting-text"><span class="pj-setting-label">Codex</span><span class="pj-setting-hint">OpenAI's coding agent.</span></span></label></li>
     </ul>
   </div>
+  <h3>Runs: a run's trace</h3>
+  <p>Under the agents, Trace runs is a switch, off by default. While it is on, the owner's toolbar has Runs (the code icon), and a buddy's reply whose run left a trace has a Trace link button in its head. Runs takes the doc's place as the history does: the same bar with Back, the same list on the right (a row per run: the buddy, Failed in red or Stopped in grey on a <code>.pj-version-tag</code>, when and how long, the comment it answered), and the selected run as a page: its title, a line of facts in <code>--text-soft</code>, then parts that open and close, each a <code>.pj-trace-part</code> whose chevron turns: the prompt, each step (its calls in a few words, how long and its tokens on the right), the output, its changes to the doc in red and green, its lines in the comments. Text the run was given or wrote is <code>.pj-trace-text</code>: 12px mono on <code>--bg-soft</code>, a model's thinking in <code>--text-soft</code>; labels inside a part are <code>.pj-setting-group</code>.</p>
+  <div class="ds-box pj-trace">
+    <details class="pj-trace-part" open><summary><svg class="pj-icon" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg><span class="pj-trace-title">1. read plan.md 1–40</span><span class="pj-trace-meta">2.1 s · 3,120 in, 64 out</span></summary>
+      <h3 class="pj-setting-group">Thinking</h3><pre class="pj-trace-text pj-trace-thinking">The comment asks for week two. Read the doc first.</pre>
+      <h3 class="pj-setting-group">Result</h3><pre class="pj-trace-text">3	We plan to ship in week one.</pre></details>
+    <details class="pj-trace-part"><summary><svg class="pj-icon" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg><span class="pj-trace-title">2. propose 1 edit</span><span class="pj-trace-meta">1.8 s · 3,300 in, 90 out</span></summary></details>
+  </div>
   <h3>Lists: current is ink on grey</h3>
   <div class="pj-files ds-files">
     <ul class="pj-files-tree">

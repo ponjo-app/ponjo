@@ -17,7 +17,7 @@ laptop runs (an 8B model tried) claim edits they did not make.
 2. **The tools are the permissions.** `read` and `propose` only: no shell,
    no network but the model's API. Text a teammate wrote can at worst make an undoable proposal.
 3. **Stateless.** A turn remembers nothing after. Within it, all state is
-   the messages, and their log replays it.
+   the messages, and its trace replays it.
 4. **The model asks for context.** The first message is small; the model
    reads what it needs.
 5. **Read by line number, write by quote.** Never count characters.
@@ -27,7 +27,7 @@ laptop runs (an 8B model tried) claim edits they did not make.
 | Interface | Called by |
 | --- | --- |
 | `turn({ prompt, doc, sidecar }, { infer, readFile, resolve }) → { edits, reply }` | the program's `main`; the preview's buddies (`preview/doc-stub.js`) |
-| `infer(messages, tools) → { calls: [{ id, name, args }], sent }` | `turn`, for each step |
+| `infer(messages, tools) → { calls: [{ id, name, args }], sent, usage }` | `turn`, for each step |
 | `read`, `propose` | the model, as tools |
 
 **`main`** is all the I/O, and all of the contract: it reads the prompt on
@@ -113,8 +113,11 @@ flowchart LR
 
 - **Tests** call `turn` with a fake `infer`, and each `infer` on a fake
   server of its API.
-- **Each turn's messages are logged** to `logs/ponjo.jsonl` in the config
-  folder, which the app keeps under 10 MB (docs/architecture.md, How a turn works).
+- **Each turn's messages go to its trace** (`PONJO_TRACE`, [agent
+  config](agent-config.md#traces)), a line each as they come, but the
+  prompt, which the app has: the model's with how long it took and its
+  `usage`, each call's result after it. The app keeps them only while
+  Trace runs is on.
 
 ## Open questions
 
