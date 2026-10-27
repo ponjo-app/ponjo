@@ -192,6 +192,16 @@ async function start() {
   settings.subscribe((next) => renameMe(next.name ?? defaultName)); // before the dialog's, which shows `me`
   showDocName(initial.doc);
   offerRename();
+  // The sidebar reads the folder while the editor is made; how the last page
+  // left things (`carry`) waits for the comment margin.
+  let carried;
+  const carry = new Promise((resolve) => { carried = resolve; });
+  files = createFileList({
+    place: initial.place,
+    onError: (message) => setStatus(message, 'error'),
+    onCarry: carried,
+    onPaths: loadPaths,
+  });
 
   openedText = initial.text;
   made = chooseView(openedText);
@@ -222,15 +232,6 @@ async function start() {
     getView: () => editor, settings, getName: () => me, setName,
   });
   window.ponjoDesktop?.onCommand((name) => chrome.command(name));
-  files = createFileList({
-    place: initial.place,
-    onError: (message) => setStatus(message, 'error'),
-    onCarry: (carry) => {
-      if (carry.commentsHidden) showComments(false);
-      if (carry.startTyping) startTyping = true;
-    },
-    onPaths: loadPaths,
-  });
 
   margin = createCommentMargin(document.querySelector('.pj-margin'), {
     onCreate: createThread,
@@ -300,6 +301,10 @@ async function start() {
   }
   if (hidden) showComments(false);
   paintCommentsToggle();
+  carry.then((left) => {
+    if (left.commentsHidden) showComments(false);
+    if (left.startTyping) startTyping = true;
+  });
   commentsToggle.addEventListener('click', () => {
     if (narrow.matches) openSheet(!sheetOpen());
     else showComments(!commentsShown());
