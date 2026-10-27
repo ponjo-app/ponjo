@@ -567,7 +567,10 @@ sharing.
   serves both the same way (`serve` in `desktop/doc-host.js`), adding a
   `who` to every call. `team.html` (built with the app's pages, in
   `dist/web`) is the doc window on the relay; in the preview (`preview/`)
-  `doc-stub.js` plays the host instead.
+  `doc-stub.js` plays the host instead, and runs its buddies' turns
+  (`agents/ponjo-core.mjs`) in the page, on Nemotron through the relay's
+  Worker deployed as the model's door (`infer.ponjo.app`, the `hackathon`
+  env in `relay/wrangler.toml`), which holds the key.
   A page names its doc by its path in the project, or none for the
   project's first; `state` tells it that path and the project's name
   (`place`), for its sidebar (`web/files.js`), which reads the tree through
