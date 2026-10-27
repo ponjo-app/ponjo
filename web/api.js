@@ -45,7 +45,8 @@ export const api = {
   /**
    * The agents: { agents: [{ id, name, about, settings }], shipped: the ids
    * Ponjo comes with, folder, secrets: those set, by their last 4
-   * characters, { <agent>: { <key>: tail } } }.
+   * characters, { <agent>: { <key>: tail } }, fixed?: why they can't be
+   * changed, in the preview only }.
    */
   scripts: () => call('scripts'),
   /** Write shipped agent `name` (its program and manifest) again as it came. */
