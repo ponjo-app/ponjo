@@ -12,6 +12,9 @@
 // A doc's page lives in a view filling its window, not in the window itself,
 // so a switch draws the next doc out of sight, under the one shown, and
 // swaps it in only once it is drawn: the window never shows a blank page.
+// A folder window keeps a page loaded with no doc yet under the one shown
+// (`spare`), waiting for the port to its doc: a switch hands it the next
+// doc rather than loading a page.
 
 import { BrowserWindow, Menu, MessageChannelMain, WebContentsView, dialog, screen, shell } from 'electron';
 import { existsSync } from 'node:fs';
@@ -41,8 +44,8 @@ const WINDOW_ICON = existsSync(ICON) ? { icon: ICON } : {};
  * open in its sidebar, `sidebar` whether
  * the sidebar shows, and `carry` how the last page left it (the sidebar's
  * scroll and what its folders held, hidden comments), for the next. `pending` is the next doc's page
- * while it loads during a switch.
- * @type {Map<string, { win: BrowserWindow, view: WebContentsView, hosted: import('./doc-host-client.js').HostedDoc, docPath: string, folder: string | null, expanded: Set<string>, sidebar: boolean, carry: object | null, pending: { view: WebContentsView, docPath: string } | null, stopWatching: (() => void) | null, switching: Promise<object> | null }>}
+ * while it loads during a switch, `spare` the page loaded for the next switch.
+ * @type {Map<string, { win: BrowserWindow, view: WebContentsView, hosted: import('./doc-host-client.js').HostedDoc, docPath: string, folder: string | null, expanded: Set<string>, sidebar: boolean, carry: object | null, pending: { view: WebContentsView, docPath: string } | null, spare: { view: WebContentsView, loaded: Promise<void> } | null, stopWatching: (() => void) | null, switching: Promise<object> | null }>}
  */
 const docs = new Map();
 const bare = new Set(); // folder windows with no doc: their `docPath` is null
@@ -128,7 +131,7 @@ async function createDocWindow(docPath, folder, expanded) {
     webPreferences: securePreferences(),
   });
   const entry = {
-    win, view: null, hosted, docPath, folder: null, expanded: new Set(expanded), sidebar: true, carry: null, pending: null, stopWatching: null, switching: null, left: false,
+    win, view: null, hosted, docPath, folder: null, expanded: new Set(expanded), sidebar: true, carry: null, pending: null, spare: null, stopWatching: null, switching: null, left: false,
   };
   entry.view = createView(entry, hosted);
   win.contentView.addChildView(entry.view);
@@ -137,7 +140,7 @@ async function createDocWindow(docPath, folder, expanded) {
   if (folder) watch(entry, folder);
   if (process.platform === 'darwin') win.setRepresentedFilename(docPath ?? folder);
   win.on('resize', () => {
-    for (const view of [entry.view, entry.pending?.view]) if (view) fit(win, view);
+    for (const view of [entry.view, entry.pending?.view, entry.spare?.view]) if (view) fit(win, view);
   });
   win.on('focus', () => entry.view.webContents.focus());
   closeAfterLeaving(entry);
@@ -145,7 +148,7 @@ async function createDocWindow(docPath, folder, expanded) {
     docs.delete(entry.docPath);
     bare.delete(entry);
     entry.stopWatching?.();
-    for (const view of [entry.view, entry.pending?.view]) if (view && !view.webContents.isDestroyed()) view.webContents.close();
+    for (const view of [entry.view, entry.pending?.view, entry.spare?.view]) if (view && !view.webContents.isDestroyed()) view.webContents.close();
     entry.hosted.close().catch((error) => console.error(error));
     hooks.onClosed();
   });
@@ -158,24 +161,49 @@ async function createDocWindow(docPath, folder, expanded) {
   await drawn(entry.view); // shown once drawn, in the user's theme
   win.show();
   closeStartWindow();
+  prepareSpare(entry);
   return entry;
 }
 
-// A view for the page of the doc `hosted`, the size of the window.
-// It takes the window's title while it is the one shown, and loads the page
-// again once a doc host that stopped has the doc open again.
-function createView(entry, hosted) {
+// A view for a doc page, the size of the window, of the doc `hosted` (or
+// of none yet: see `host`). It takes the window's title while it is the
+// one shown.
+function createView(entry, hosted = null) {
   const view = new WebContentsView({ webPreferences: securePreferences() });
   view.setBackgroundColor(hooks.background());
   restrictNavigation(view.webContents, PAGE);
   editMenu(view.webContents);
-  hostedDocs.set(view.webContents, hosted);
-  hosted.onRestart = () => connectPage(view.webContents).catch((error) => console.error(error));
+  if (hosted) host(view, hosted);
   view.webContents.on('page-title-updated', (_event, title) => {
     if (entry.view === view) entry.win.setTitle(title);
   });
   fit(entry.win, view);
   return view;
+}
+
+// The page in `view` is of the doc `hosted`: it gets a port to it when it
+// asks (connectPage), and a new one once a doc host that stopped has the
+// doc open again.
+function host(view, hosted) {
+  hostedDocs.set(view.webContents, hosted);
+  hosted.onRestart = () => connectPage(view.webContents).catch((error) => console.error(error));
+}
+
+// Load a page with no doc under the one shown in the folder window of
+// `entry`, for its next switch (`spare`). Until it has a doc it only waits
+// for its port: its ask goes unanswered.
+function prepareSpare(entry) {
+  if (!entry.folder || entry.spare || entry.win.isDestroyed()) return;
+  const view = createView(entry);
+  entry.win.contentView.addChildView(view, 0);
+  const loaded = view.webContents.loadFile(PAGE);
+  entry.spare = { view, loaded };
+  loaded.catch(() => {
+    if (entry.spare?.view !== view || entry.win.isDestroyed()) return; // taken by a switch, which says why, or closed
+    entry.spare = null;
+    entry.win.contentView.removeChildView(view);
+    view.webContents.close();
+  });
 }
 
 function fit(win, view) {
@@ -218,12 +246,20 @@ async function switchTo(entry, docPath) {
   try {
     hosted = await hooks.openHostedDoc(docPath, { folder: entry.folder });
     step('open');
-    view = createView(entry, hosted);
+    const { spare } = entry;
+    entry.spare = null;
+    view = spare?.view ?? createView(entry, hosted);
     entry.pending = { view, docPath };
     expandTo(entry, docPath);
-    win.contentView.addChildView(view, 0); // under the page shown, until it is drawn
+    if (!spare) win.contentView.addChildView(view, 0); // under the page shown, until it is drawn
     step('view');
-    await view.webContents.loadFile(PAGE);
+    if (spare) {
+      await spare.loaded; // its ask for a port, as it loaded, went unanswered
+      host(view, hosted);
+      await connectPage(view.webContents);
+    } else {
+      await view.webContents.loadFile(PAGE);
+    }
     step('loaded');
     await drawn(view);
     step('drawn');
@@ -234,6 +270,7 @@ async function switchTo(entry, docPath) {
     }
     await hosted?.close().catch(() => {});
     stay(entry.view);
+    prepareSpare(entry);
     throw error;
   } finally {
     entry.pending = null;
@@ -250,6 +287,7 @@ async function switchTo(entry, docPath) {
   if (process.platform === 'darwin') win.setRepresentedFilename(docPath);
   if (win.isFocused()) view.webContents.focus();
   previous.hosted.close().catch((error) => console.error(error));
+  prepareSpare(entry);
   if (steps) printSteps(steps, view).catch((error) => console.error(error));
   return entry;
 }
