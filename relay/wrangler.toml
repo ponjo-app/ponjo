@@ -34,7 +34,7 @@ namespace_id = "1002"
 simple = { limit = 120, period = 60 }
 
 # The preview's buddies' model (worker.js), at https://infer.ponjo.app,
-# deployed with the relay (README.md, Deploying the relay). Its key, the
+# deployed by CI (README.md, The preview's buddies). Its key, the
 # secret TOKEN_FACTORY_KEY, is the repo's secret of that name.
 [env.hackathon]
 name = "ponjo-hackathon"
@@ -45,8 +45,8 @@ ORIGIN = "https://ponjo.app"
 ENDPOINT = "https://api.tokenfactory.nebius.com/v1"
 MODEL = "nvidia/nemotron-3-super-120b-a12b" # Nemotron 3 Super, which calls tools
 
-# Requests an address makes a minute: a turn is a few.
+# Requests an address makes a minute: a turn is a few, up to six.
 [[env.hackathon.ratelimits]]
 name = "INFER"
 namespace_id = "1003"
-simple = { limit = 10, period = 60 }
+simple = { limit = 60, period = 60 }

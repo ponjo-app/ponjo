@@ -30,7 +30,9 @@
 // ORIGIN, a Chat Completions request as preview/doc-stub.js sends it, goes
 // on to ENDPOINT with the key, the model and a cap on tokens of its own, and
 // its answer comes back as is. Only the messages and tools are taken from
-// the page; an address asks at most 10 times a minute (INFER).
+// the page, and every step must call a tool: Nemotron answers a question in
+// plain text otherwise, which ends no turn. An address asks at most 60
+// times a minute (INFER).
 
 /* global WebSocketPair, WebSocketRequestResponsePair */
 
@@ -167,11 +169,11 @@ async function infer(request, env) {
     asked = JSON.parse(body);
   } catch {} // checked below
   if (!Array.isArray(asked?.messages)) return refuse(400, 'Chat Completions takes messages');
-  const { messages, tools, tool_choice } = asked;
+  const { messages, tools } = asked;
   const answer = await fetch(`${env.ENDPOINT}/chat/completions`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', authorization: `Bearer ${env.TOKEN_FACTORY_KEY}` },
-    body: JSON.stringify({ model: env.MODEL, max_tokens: MAX_TOKENS, messages, tools, tool_choice }),
+    body: JSON.stringify({ model: env.MODEL, max_tokens: MAX_TOKENS, messages, tools, tool_choice: 'required' }),
   });
   return new Response(answer.body, { status: answer.status, headers: { ...cors, 'content-type': answer.headers.get('content-type') ?? 'application/json' } });
 }

@@ -30,7 +30,7 @@ const KEY = `ponjo.preview.${inFolder ? 'folder' : 'doc'}`;
 
 const WELCOME = `# Welcome to Ponjo
 
-Ponjo is an editor where you and your AI buddies write the same doc. Try it here, with nothing to install: select some text, press the comment button, and @mention Clippy with what you want. Clippy runs on NVIDIA Nemotron. Its reply and any edit it makes show up in the doc, and one click undoes the edit.
+Ponjo is an editor where you and your AI buddies write the same doc, a plain text file on your own machine. Try it here, with nothing to install: select some text, press the comment button, and @mention Clippy with what you want. Clippy runs on NVIDIA Nemotron. Its reply and any edit it makes show up in the doc, and one click undoes the edit.
 
 ## Try it
 
@@ -185,7 +185,9 @@ const plain = (path) => path.replace(/^\.?\//, '');
 // they are now; then, as the app does (src/host/doc-service.js, finishRun),
 // its edit lands merged with what was typed meanwhile, and its comments
 // and reply come after, the reply naming the model. Dropped if the thread
-// was resolved or the doc renamed meanwhile.
+// was resolved or the doc renamed meanwhile. It never resolves the thread,
+// even when its turn asks to: people resolve (docs/product-vision.md), and
+// a resolved thread folds away its reply.
 async function run(id, thread) {
   const doc = current;
   const sidecar = `${doc}.comments.jsonl`;
@@ -220,7 +222,7 @@ async function run(id, thread) {
   const added = appendedComments(copies[sidecar], texts.sidecar, { text: texts.doc, by, at: new Date(at).toISOString(), threads, own: thread.id });
   comments().push(...added.comments, {
     id: replyId, thread: thread.id, by, at: new Date(at + 1).toISOString(), body,
-    ...(anchor ? { anchor } : {}), ...(failed ? { failed: true } : {}), ...(added.resolves ? { resolved: true } : {}),
+    ...(anchor ? { anchor } : {}), ...(failed ? { failed: true } : {}),
   });
   save();
   emit('sidecar', {});

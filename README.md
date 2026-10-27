@@ -58,7 +58,7 @@ Then check it on two machines: [the sharing checklist](docs/testing-ci.md#sharin
 
 ### The preview's buddies
 
-In the [online demo](https://ponjo.app/preview/), a buddy asked answers on NVIDIA Nemotron through the same Worker deployed as `ponjo-hackathon` at `infer.ponjo.app` (the `hackathon` env in [relay/wrangler.toml](relay/wrangler.toml)), which holds a [Nebius Token Factory](https://tokenfactory.nebius.com) key and picks the model. CI deploys it with the relay, the key from the repo's `TOKEN_FACTORY_KEY` secret; `npm test` runs it in front of a fake model (`test/infer.test.js`). [docs/nebius-hackathon.md](docs/nebius-hackathon.md) says how it uses them.
+In the [online demo](https://ponjo.app/preview/), a buddy asked answers on NVIDIA Nemotron through the same Worker deployed as `ponjo-hackathon` at `infer.ponjo.app` (the `hackathon` env in [relay/wrangler.toml](relay/wrangler.toml)), which holds a [Nebius Token Factory](https://tokenfactory.nebius.com) key and picks the model. CI deploys it from each push to `main` once the unit tests pass (`infer` in [desktop.yml](.github/workflows/desktop.yml)), the key from the repo's `TOKEN_FACTORY_KEY` secret; `npm test` runs it in front of a fake model (`test/infer.test.js`). [docs/nebius-hackathon.md](docs/nebius-hackathon.md) says how it uses them.
 
 ## Learn more
 

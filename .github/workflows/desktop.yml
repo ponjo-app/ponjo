@@ -4,8 +4,9 @@
 # (https://github.com/ponjo-app/ponjo/releases/tag/nightly), so a build
 # that cannot open a doc never replaces a working one, and deploy the relay
 # with the teammate's page (https://share.ponjo.app) from the same commit,
-# so a teammate sees the owner's UI, and the preview's buddies' model
-# (https://infer.ponjo.app). The unit tests (npm
+# so a teammate sees the owner's UI. The preview's buddies' model
+# (https://infer.ponjo.app) deploys from each push to main once the unit
+# tests pass. The unit tests (npm
 # test), the buddy concurrency stress test (npm run test:stress) and the
 # latency promise (npm run test:perf) run once, on Linux, and hold it back
 # too.
@@ -235,11 +236,27 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-      # The preview's buddies' model, the same Worker as the hackathon env
-      # (infer.ponjo.app), with the Token Factory key.
+
+  infer:
+    # The preview's buddies' model (infer.ponjo.app, the hackathon env in
+    # relay/wrangler.toml), with the Token Factory key. Nothing of the
+    # nightly's: it waits only for the unit tests (test/infer.test.js among
+    # them), so the preview's page (pages.yml) waits for it little.
+    needs: test
+    if: github.event_name != 'pull_request' && github.event_name != 'schedule' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci && npm ci --prefix relay
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: 1
       - run: |
           printf 'TOKEN_FACTORY_KEY=%s\n' "$TOKEN_FACTORY_KEY" > "$RUNNER_TEMP/secrets.env"
-          npx wrangler deploy --env hackathon --secrets-file "$RUNNER_TEMP/secrets.env"
+          npm run deploy -- --env hackathon --secrets-file "$RUNNER_TEMP/secrets.env"
         working-directory: relay
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
