@@ -47,8 +47,9 @@ flowchart LR
   agent, with the doc in memory. Only each model step leaves the browser.
 - **The Worker holds the key** (`relay/worker.js`, the `hackathon` env in
   `relay/wrangler.toml`): it takes only the messages and tools from
-  `https://ponjo.app`, adds the model, the key and a token cap, lets an
-  address ask 10 times a minute, and passes the answer back as is.
+  `https://ponjo.app`, adds the model, the key and a token cap, makes every
+  step call a tool (Nemotron answers a question in plain text otherwise),
+  lets an address ask 30 times a minute, and passes the answer back as is.
 - **Token Factory speaks Chat Completions**, so the agent's existing
   OpenAI-compatible path ran Nemotron unchanged, and one key serves the web
   demo and the desktop app.

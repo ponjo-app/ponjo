@@ -60,7 +60,7 @@ test('a step from the preview goes on with the key, the model and a cap of its o
   const [sent] = api.requests;
   assert.equal(sent.url, '/v1/chat/completions');
   assert.equal(sent.headers.authorization, 'Bearer tf-secret-test', 'the key is the Worker\'s, not the page\'s');
-  assert.deepEqual(sent.body, { model: 'nvidia/nemotron-3-super-120b-a12b', max_tokens: 4000, messages, tools, tool_choice: 'auto' }, 'only the messages and tools are the page\'s');
+  assert.deepEqual(sent.body, { model: 'nvidia/nemotron-3-super-120b-a12b', max_tokens: 4000, messages, tools, tool_choice: 'required' }, 'only the messages and tools are the page\'s, and every step calls a tool');
 });
 
 test('the preflight is answered for the preview\'s page only', async () => {
@@ -71,7 +71,7 @@ test('the preflight is answered for the preview\'s page only', async () => {
   assert.equal((await ask(null, { method: 'OPTIONS', origin: 'https://evil.example' })).status, 403);
 });
 
-test('it is no free model: another origin, a request too big or not one, and an address over 10 a minute are turned away', async () => {
+test('it is no free model: another origin, a request too big or not one, and an address over 30 a minute are turned away', async () => {
   const before = api.requests.length;
   const messages = [{ role: 'user', content: 'hi' }];
   assert.equal((await ask({ messages }, { origin: 'https://evil.example', ip: '203.0.113.2' })).status, 403);
@@ -81,6 +81,6 @@ test('it is no free model: another origin, a request too big or not one, and an 
   assert.equal((await ask({ prompt: 'hi' }, { ip: '203.0.113.4' })).status, 400);
   assert.equal(api.requests.length, before, 'none of them reached the model');
   const statuses = [];
-  for (let i = 0; i < 11; i++) statuses.push((await ask({ messages }, { ip: '203.0.113.5' })).status);
-  assert.deepEqual(statuses, [...Array(10).fill(200), 429]);
+  for (let i = 0; i < 31; i++) statuses.push((await ask({ messages }, { ip: '203.0.113.5' })).status);
+  assert.deepEqual(statuses, [...Array(30).fill(200), 429]);
 });
