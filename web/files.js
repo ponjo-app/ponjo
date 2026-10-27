@@ -7,8 +7,9 @@
 // it in this window as a doc (the page is replaced by that doc's); a file
 // that is not one (not text, or too large) shows here, read only, in place
 // of the doc.
-// The app keeps which subfolders are open, whether the sidebar shows and how
-// far it was scrolled, so the next page draws it just as this one left it.
+// The app keeps which subfolders are open, whether the sidebar shows, how
+// far it was scrolled and what its folders held, so the next page draws it
+// at once, just as this one left it, and then reads the folders again.
 // A teammate's page has the same tree, from the host, with no app: see
 // browserFolder.
 
@@ -75,7 +76,7 @@ export function createFileList({ place = null, onError = () => {}, onCarry = () 
     }
     try {
       view = await desktop.folder();
-      if (view) lists = await load(new Set(view.expanded));
+      if (view) lists = await load(new Set(view.expanded), first && view.carry?.lists ? new Map(view.carry.lists) : null);
       everything = null;
       if (view && (filter.value || pathsAsked)) everything = await allFiles();
       if (view && pathsAsked) onPaths();
@@ -113,23 +114,33 @@ export function createFileList({ place = null, onError = () => {}, onCarry = () 
     if (first && view.carry) {
       tree.scrollTop = view.carry.sidebarScroll ?? 0;
       onCarry(view.carry);
+      if (view.carry.lists) recheck();
     } else if (first) {
       tree.querySelector('[aria-current="page"]')?.scrollIntoView({ block: 'nearest' });
     }
     first = false;
   }
 
-  // What the top folder and each open subfolder in it hold.
-  async function load(expanded) {
+  // What the top folder and each open subfolder in it hold; those in `known`
+  // (the last page's lists) are not read again.
+  async function load(expanded, known = null) {
     const loaded = new Map();
     async function read(path) {
-      const entries = await api.list(path).catch(() => []);
+      const entries = known?.get(path) ?? await api.list(path).catch(() => []);
       loaded.set(path, entries);
       await Promise.all(entries.filter(({ name, folder }) => folder && expanded.has(join(path, name)))
         .map(({ name }) => read(join(path, name))));
     }
     await read('');
     return loaded;
+  }
+
+  // The folders drawn as the last page left them are read again: the tree is
+  // drawn anew if they changed meanwhile.
+  async function recheck() {
+    const now = await load(new Set(view.expanded));
+    const same = (entries, path) => JSON.stringify(entries) === JSON.stringify(lists.get(path));
+    if (now.size !== lists.size || [...now].some(([path, entries]) => !same(entries, path))) refresh();
   }
 
   // ---- filtering: grep the files' paths with a regular expression ----
@@ -829,7 +840,7 @@ export function createFileList({ place = null, onError = () => {}, onCarry = () 
   const ready = refresh();
   return {
     ready,
-    state: () => ({ sidebarScroll: tree.scrollTop, startTyping: Boolean(created) }),
+    state: () => ({ sidebarScroll: tree.scrollTop, startTyping: Boolean(created), lists: [...lists] }),
     /** Name a new file or folder at the top. */
     create: (kind) => startCreate('', kind),
     /**

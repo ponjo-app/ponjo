@@ -40,7 +40,7 @@ const WINDOW_ICON = existsSync(ICON) ? { icon: ICON } : {};
  * window was opened on (null for a single doc), `expanded` the subfolders
  * open in its sidebar, `sidebar` whether
  * the sidebar shows, and `carry` how the last page left it (the sidebar's
- * scroll, hidden comments), for the next. `pending` is the next doc's page
+ * scroll and what its folders held, hidden comments), for the next. `pending` is the next doc's page
  * while it loads during a switch.
  * @type {Map<string, { win: BrowserWindow, view: WebContentsView, hosted: import('./doc-host-client.js').HostedDoc, docPath: string, folder: string | null, expanded: Set<string>, sidebar: boolean, carry: object | null, pending: { view: WebContentsView, docPath: string } | null, stopWatching: (() => void) | null, switching: Promise<object> | null }>}
  */
