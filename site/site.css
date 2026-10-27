@@ -70,6 +70,8 @@ a { color: var(--accent); }
 .dl-page .hero { text-align: center; margin-bottom: 48px; }
 .dl-page .hero .pj-avatar { --size: 96px; }
 #clippy .pj-face-body { animation-duration: 8s; }
+#clippy .pj-face-eyes { display: inline; } /* the logo's eyes, not focused ones, while it rolls */
+#clippy .pj-face-focused { display: none; }
 .dl-page h1 { margin: 16px 0 8px; font-size: 24px; font-weight: 600; letter-spacing: -0.02em; }
 .dl-page .tagline { margin: 0 auto; max-width: 520px; color: var(--text-soft); font-size: 16px; }
 .dl-page .version { display: inline-block; margin-top: 16px; padding: 2px 8px; border-radius: 999px; background: var(--hover); color: var(--text-soft); font-size: 12px; }

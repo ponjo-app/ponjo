@@ -52,7 +52,8 @@
 <script type="module">
   import { agentFace } from '../dist/web/faces.js';
   if (/Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && /Mac/.test(navigator.platform))) document.getElementById('mobile-note').style.display = 'block';
-  document.getElementById('clippy').append(agentFace('Clippy'));
+  // The logo's face (build/icon.svg) on Clippy's body.
+  document.getElementById('clippy').append(agentFace('Clippy', { body: 'cloud', tilt: -3, eye: 'dot', mouth: 'smile', extra: 'blush' }));
 </script>
 <script type="module" src="site.js"></script>
 </body>

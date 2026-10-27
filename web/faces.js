@@ -75,8 +75,8 @@ function colorOf(name) {
 
 let ids = 0; // gradient ids, unique per page
 
-/** @param {string} id */
-export const agentFace = (id) => face(id, looks.get(id.toLowerCase()) ?? drawn(id));
+/** @param {string} id @param look its parts, when not the ones it draws (the site's mascot wears the logo's) */
+export const agentFace = (id, look = looks.get(id.toLowerCase()) ?? drawn(id)) => face(id, look);
 
 /** @param {string} name @param {string} id */
 export const personFace = (name, id = name) => face(name, drawn(name), 'circle', isOwner(id) ? 'crown' : 'tophat');
