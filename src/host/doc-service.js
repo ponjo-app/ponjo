@@ -27,7 +27,6 @@ import { firstBuddies, projectBuddiesDir, readBuddies, removeBuddy, userBuddiesD
 import { secretTails } from '../store/secrets.js';
 import { watchDoc, watchFolder } from '../store/watch.js';
 import { agentsDir, installAgents, listAgents, pickedAgent, SHIPPED_AGENTS } from '../store/agents.js';
-import { mirrorDir, snapshotMirror } from './mirror.js';
 import { linkURL, projectService } from './project-service.js';
 import { Runner, testAgent } from './runner.js';
 import { RoomError } from './room.js';
@@ -60,7 +59,7 @@ const byOf = ({ id, name, kind }) => ({ id, name, kind });
  * Settings (src/store/agents.js). `settingsDir` is the user's config folder
  * (default: the per-user one): settings, buddies and agent scripts.
  * `folder` is the project folder the doc was opened from (null in doc
- * mode), whose mirror (mirror.js) runs get as PONJO_PROJECT; `room`,
+ * mode), which runs get as PONJO_PROJECT; `room`,
  * its Room (room.js).
  * `secrets()` gives the agents' secrets, decrypted ({ <agent>: { <key>:
  * value } }, src/store/secrets.js), handed to runs with the other settings.
@@ -83,11 +82,7 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
     asks: () => asks(),
     doc: async () => ({ path: folder ? await placeInFolder() : basename(docPath), text, comments: await readSidecarText(docPath) }),
     agent: pickAgent,
-    // The project, as a run reads it: its own copy of the mirror, up to date, in `place` (none if that fails).
-    folder: (place) => folder && snapshotMirror(folder, mirrorDir(folder, settingsDir), join(place, basename(folder) || 'project')).catch((error) => {
-      console.error('Could not mirror the project:', error);
-      return null;
-    }),
+    folder: async () => folder,
     human: async () => ({ name: (await me()).name, about: (await settingsWithId(settingsDir)).about.trim() }),
     finish: (result) => serial(() => finishRun(result)),
     onChange: broadcastAgents,

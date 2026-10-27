@@ -45,7 +45,10 @@ browser runs them too; `main` and `readFile` are in `ponjo.mjs`.
 
 **`readFile(path)`** gives a file's text, a folder's entries, or null, and
 is all the turn can see: the copies, and in project mode the project's files
-(inside the folder, not starting with `.`, sidecars included).
+as the app shows them (inside the folder, not starting with `.`, sidecars
+included), and of files only text (no NUL byte) of 20 MB or less. It reads
+the project folder itself, so it is the boundary: what it refuses, no
+teammate's comment can get a buddy to read.
 
 **`infer`** is one step of the model, one implementation per provider,
 over plain HTTP (the program runs from the config folder, with no
