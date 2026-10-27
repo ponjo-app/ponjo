@@ -6,8 +6,8 @@
   <title>Ponjo Design System</title>
   <!-- A live specimen: the app's own stylesheet and classes, so this page is
        always what the app looks like. Run `npm run build` to view it locally. -->
-  <link rel="stylesheet" href="./dist/web/app.css?v=1b0cd2e">
-  <link rel="stylesheet" href="site.css?v=1b0cd2e">
+  <link rel="stylesheet" href="./dist/web/app.css?v=d93f0d6">
+  <link rel="stylesheet" href="site.css?v=d93f0d6">
   <link rel="icon" href="./build/icon.svg" type="image/svg+xml">
 </head>
 <body>
@@ -144,7 +144,7 @@
     </ul>
   </div>
   <h3>One of several, with its settings</h3>
-  <p>When exactly one of several is picked, such as the agent that runs every buddy, each is a row of <code>.pj-choices</code>: a <code>.pj-radio</code> (ink when picked), its name and what it is, the whole row its label. The picked one is a resting card (<code>--shadow</code>) holding its settings, in <code>.pj-choice-detail</code> under its name, so they read as its own and not as the next choice; the others stay closed rows. A secret, such as an API key, shows only its last 4 characters after dots; a click empties the field for a new one. Test runs the agent once on an empty doc and says under its buttons whether it works, or what it printed when it failed, in red.</p>
+  <p>When exactly one of several is picked, such as the agent that runs every buddy, each is a row of <code>.pj-choices</code>: a <code>.pj-radio</code> (ink when picked), its name and what it is, the whole row its label. The picked one is a resting card (<code>--shadow</code>) holding its settings, in <code>.pj-choice-detail</code> under its name, so they read as its own and not as the next choice; the others stay closed rows. A secret, such as an API key, shows only its last 4 characters after dots; a click empties the field for a new one. Test runs the agent once on an empty doc and says under its buttons whether it works, or what it printed when it failed, in red. Where the agents can't be changed, as in the browser preview, a sentence saying why takes the intro's place and the section is shown as it is, read only: its controls disabled, radios and switches at the 0.45 opacity of a disabled button, fields as a read-only <code>.pj-input</code>.</p>
   <div class="ds-box">
     <ul class="pj-choices" role="radiogroup" aria-label="Agents">
       <li><label class="pj-choice"><input class="pj-radio" type="radio" name="ds-agent" checked><span class="pj-setting-text"><span class="pj-setting-label">Claude Code</span><span class="pj-setting-hint">Anthropic's coding agent.</span></span></label>
@@ -211,6 +211,6 @@
   </div>
 
 </main>
-<script type="module" src="site.js?v=1b0cd2e"></script>
+<script type="module" src="site.js?v=d93f0d6"></script>
 </body>
 </html>

@@ -621,7 +621,7 @@ label.pj-setting { cursor: pointer; }
 .pj-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 .pj-input-error { font-size: 12px; color: var(--red); }
 .pj-input[aria-invalid="true"] { border-color: var(--red); }
-.pj-input[readonly] { background: var(--bg-soft); color: var(--text-soft); }
+.pj-input:is([readonly], :disabled) { background: var(--bg-soft); color: var(--text-soft); }
 .pj-setting-hint { margin-top: 2px; font-size: 12px; font-weight: 400; color: var(--text-soft); }
 .pj-setting-hint code { font-family: var(--mono); font-size: 0.92em; }
 .pj-setting-row { display: flex; align-items: center; gap: 8px; }
@@ -665,6 +665,10 @@ label.pj-setting { cursor: pointer; }
 /* the picked one: a resting card around it and its settings, its radio lined up with the others' */
 .pj-choices > li:has(> .pj-choice .pj-radio:checked) { margin: 8px -16px; padding: 0 16px; border-top: 0; border-radius: 10px; box-shadow: var(--shadow); }
 .pj-choices > li:has(> .pj-choice .pj-radio:checked) + li { border-top: 0; }
+/* Agents where they can't be changed (the preview): shown as they are, read only */
+.pj-agents-body { min-width: 0; margin: 0; padding: 0; border: 0; }
+.pj-agents-body:disabled :is(.pj-choice, .pj-radio, .pj-switch) { cursor: default; }
+.pj-agents-body:disabled :is(.pj-radio, .pj-switch) { opacity: 0.45; }
 .pj-shortcuts-body { padding-top: 4px; }
 
 /* ---- home window (desktop/start.html) ---- */
