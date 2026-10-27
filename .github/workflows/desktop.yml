@@ -4,7 +4,8 @@
 # (https://github.com/ponjo-app/ponjo/releases/tag/nightly), so a build
 # that cannot open a doc never replaces a working one, and deploy the relay
 # with the teammate's page (https://share.ponjo.app) from the same commit,
-# so a teammate sees the owner's UI. The unit tests (npm
+# so a teammate sees the owner's UI, and the preview's buddies' model
+# (https://infer.ponjo.app). The unit tests (npm
 # test), the buddy concurrency stress test (npm run test:stress) and the
 # latency promise (npm run test:perf) run once, on Linux, and hold it back
 # too.
@@ -233,3 +234,13 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      # The preview's buddies' model, the same Worker as the hackathon env
+      # (infer.ponjo.app), with the Token Factory key.
+      - run: |
+          printf 'TOKEN_FACTORY_KEY=%s\n' "$TOKEN_FACTORY_KEY" > "$RUNNER_TEMP/secrets.env"
+          npx wrangler deploy --env hackathon --secrets-file "$RUNNER_TEMP/secrets.env"
+        working-directory: relay
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          TOKEN_FACTORY_KEY: ${{ secrets.TOKEN_FACTORY_KEY }}

@@ -58,15 +58,7 @@ Then check it on two machines: [the sharing checklist](docs/testing-ci.md#sharin
 
 ### The preview's buddies
 
-In the [online demo](https://ponjo.app/preview/), a buddy asked answers on NVIDIA Nemotron through the same Worker deployed as `ponjo-hackathon` at `infer.ponjo.app` (the `hackathon` env in [relay/wrangler.toml](relay/wrangler.toml)), which holds a [Nebius Token Factory](https://tokenfactory.nebius.com) key and picks the model. CI never deploys it: its owner does, by hand, from the tag that was judged.
-
-```bash
-cd relay
-npx wrangler secret put TOKEN_FACTORY_KEY --env hackathon   # once
-npm run deploy -- --env hackathon
-```
-
-The preview built by `node preview/build.js` (in `dist/preview`) calls it at `https://infer.ponjo.app`; `npm test` runs the Worker in front of a fake model (`test/infer.test.js`). The judges' copy is that build, from the same tag, in the `hackathon/` folder of the `gh-pages` branch (https://ponjo.app/hackathon/), which the site's deploy ([pages.yml](.github/workflows/pages.yml)) leaves alone.
+In the [online demo](https://ponjo.app/preview/), a buddy asked answers on NVIDIA Nemotron through the same Worker deployed as `ponjo-hackathon` at `infer.ponjo.app` (the `hackathon` env in [relay/wrangler.toml](relay/wrangler.toml)), which holds a [Nebius Token Factory](https://tokenfactory.nebius.com) key and picks the model. CI deploys it with the relay, the key from the repo's `TOKEN_FACTORY_KEY` secret; `npm test` runs it in front of a fake model (`test/infer.test.js`). [docs/nebius-hackathon.md](docs/nebius-hackathon.md) says how it uses them.
 
 ## Learn more
 
