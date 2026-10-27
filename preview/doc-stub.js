@@ -20,8 +20,6 @@ import { INFER, apply as applyProposal, turn } from '../agents/ponjo-core.mjs';
 import { buddiesHere, checkBuddyPatch } from '../src/core/buddies.js';
 import { sameName } from '../src/core/mentions.js';
 import { DEFAULT_SETTINGS, agentOf, checkSettingsPatch, mergeSettings } from '../src/core/settings.js';
-import claude from '../agents/claude.json' with { type: 'json' };
-import codex from '../agents/codex.json' with { type: 'json' };
 import ponjo from '../agents/ponjo.json' with { type: 'json' };
 
 const params = new URLSearchParams(location.search);
@@ -83,12 +81,21 @@ const THREADS = inFolder
   ]
   : [{ doc: 'Welcome.md', quote: 'Each AI buddy has a name and a persona', ask: '@Clippy what does a persona do?', by: 'Clippy', answer: 'It says who the buddy is: one told to tighten prose edits differently from one told to check facts.' }];
 
-const AGENTS = Object.entries({ claude, codex, ponjo }).map(([id, manifest]) => agentOf(id, manifest));
+// What runs every buddy here, shown in Settings > Agents and not changed
+// there: the Ponjo agent, in this page, on the Worker's model.
+const PONJO = agentOf('ponjo', {
+  ...ponjo,
+  about: 'Our own: the model reads and proposes, and this page checks and applies.',
+  settings: [
+    { ...ponjo.settings.find((field) => field.key === 'provider'), default: 'nebius' },
+    { ...ponjo.settings.find((field) => field.key === 'model'), default: 'nvidia/nemotron-3-super-120b-a12b' },
+  ],
+});
 const ai = (name) => ({ id: name, name, kind: 'ai' });
 const ago = (minutes) => new Date(Date.now() - minutes * 60_000).toISOString();
 
 function seed() {
-  const settings = { ...DEFAULT_SETTINGS, id: 'u_preview', name: 'you' };
+  const settings = { ...DEFAULT_SETTINGS, id: 'u_preview', name: 'you', agent: 'ponjo' };
   const me = { id: settings.id, name: settings.name, kind: 'human' };
   const files = inFolder ? { ...PROJECT } : { 'Welcome.md': WELCOME };
   const comments = {};
@@ -285,9 +292,10 @@ const calls = {
     emit('settings', s.settings);
     return { settings: s.settings };
   },
-  scripts: () => ({ agents: AGENTS, shipped: ['claude', 'codex', 'ponjo'], folder: '(the desktop app\'s config folder)', secrets: {} }),
-  resetScript: () => ({ agents: AGENTS }),
-  testAgent: () => ({ ok: true, ms: 4200, out: 'OK' }),
+  scripts: () => ({
+    agents: [PONJO], shipped: [], secrets: {},
+    fixed: 'Here every buddy runs the Ponjo agent on NVIDIA Nemotron 3 Super, on Nebius Token Factory. To pick an agent or use your own key, get the desktop app.',
+  }),
   createBuddy({ buddy }) {
     const fields = { about: '', ...buddy };
     checkBuddy(fields);

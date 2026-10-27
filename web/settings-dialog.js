@@ -92,10 +92,11 @@ export function keyLabel(keys) {
  * Mod+/ (Shortcuts). `onApply(settings)` follows every change, for what only
  * one page shows. `views` (web/views/index.js) fill Views, which shows only
  * when there are some: a list of them, each opening its own page.
- * `scripts` ({ list() → { agents, shipped, folder, secrets }, reset(id),
+ * `scripts` ({ list() → { agents, shipped, folder, secrets, fixed? }, reset(id),
  * saveSecret(id, key, value), showFolder? }, see web/api.js) backs Agents:
  * the agents, read again each time it shows, one of them picked to run
- * every buddy, its settings open under it.
+ * every buddy, its settings open under it. With `fixed`, a sentence that
+ * says why (the preview's), Agents shows them and nothing there changes.
  * @param {{ store: ReturnType<typeof import('./settings.js').createSettings>, getName: () => string,
  *           setName: (name: string) => boolean, onApply?: (settings: object) => void, views?: object[],
  *           scripts: object }} options
@@ -132,8 +133,13 @@ export function setupSettings({ store, getName, setName, onApply = () => {}, vie
       return;
     }
     secretTails = found.secrets;
-    dialog.querySelector('.pj-agents-folder').textContent = found.folder;
-    const choices = found.agents.map((agent) => agentChoice(agent, found.shipped.includes(agent.id), {
+    if (found.fixed) {
+      dialog.querySelector('[data-section="agents"] .pj-settings-intro').textContent = found.fixed;
+      dialog.querySelector('[data-action="show-agents"]').hidden = true;
+    } else {
+      dialog.querySelector('.pj-agents-folder').textContent = found.folder;
+    }
+    const choices = found.agents.map((agent) => agentChoice(agent, found.shipped.includes(agent.id), Boolean(found.fixed), {
       pick: () => set({ agent: agent.id }),
       change: (key, value) => set({ agents: { [agent.id]: { [key]: value } } }),
       saveSecret: async (key, value) => {
@@ -304,11 +310,11 @@ function itemRowAndPage(kind, title, item, save) {
 // An agent in Agents: a radio that picks it to run every buddy, its name
 // and what it is; and under it while it is picked, the fields its manifest
 // declares (shown while their `when` holds), Test and, for one Ponjo ships,
-// Reset to Default. `change(key, value)` and
+// Reset to Default; when `fixed`, only the fields' values. `change(key, value)` and
 // `saveSecret(key, value)` save a field; `test()` runs the agent once, with
 // what is saved. `paint(using, own)` shows whether it is picked and its settings
 // `own`, a secret by its last 4 characters when set.
-function agentChoice(agent, shipped, { pick, change, saveSecret, test, reset }) {
+function agentChoice(agent, shipped, fixed, { pick, change, saveSecret, test, reset }) {
   const radio = el('input', 'pj-radio');
   Object.assign(radio, { type: 'radio', name: 'pj-agent' });
   radio.addEventListener('change', pick);
@@ -318,13 +324,24 @@ function agentChoice(agent, shipped, { pick, change, saveSecret, test, reset }) 
   label.append(radio, text);
   const secret = (key) => agent.settings.find((field) => field.key === key).type === 'secret';
   let saving = Promise.resolve(); // the saves Test waits for: a field left by clicking Test saves first
-  const fields = agent.settings.map((field) => fieldRow(field, agent.id, (key, value) => {
+  const fields = agent.settings.map((field) => (fixed ? valueRow(field) : fieldRow(field, agent.id, (key, value) => {
     const saved = (secret(key) ? saveSecret : change)(key, value);
     saving = Promise.allSettled([saving, saved]);
     return saved;
-  }));
+  })));
   const detail = el('div', 'pj-choice-detail');
   detail.append(...fields.map((field) => field.node));
+  const node = el('li');
+  node.append(label, detail);
+  const paint = (using, own) => {
+    radio.checked = using;
+    detail.hidden = !using;
+    fields.forEach((field, i) => {
+      field.node.hidden = !matches(agent.settings[i].when, own);
+      field.paint(own);
+    });
+  };
+  if (fixed) return { node, paint };
   const buttons = el('div', 'pj-setting-row');
   const testButton = el('button', 'pj-secondary', 'Test');
   testButton.type = 'button';
@@ -355,15 +372,20 @@ function agentChoice(agent, shipped, { pick, change, saveSecret, test, reset }) 
     buttons.append(button);
   }
   detail.append(buttons, found);
-  const node = el('li');
-  node.append(label, detail);
-  const paint = (using, own) => {
-    radio.checked = using;
-    detail.hidden = !using;
-    fields.forEach((field, i) => {
-      field.node.hidden = !matches(agent.settings[i].when, own);
-      field.paint(own);
-    });
+  return { node, paint };
+}
+
+// A setting that cannot be changed here: its label and its value.
+function valueRow(field) {
+  const text = el('span', 'pj-setting-text');
+  text.append(el('span', 'pj-setting-label', field.label));
+  const value = el('span', 'pj-setting-state');
+  const line = el('div', 'pj-setting');
+  line.append(text, value);
+  const node = el('div');
+  node.append(line);
+  const paint = (own) => {
+    value.textContent = field.options?.find(([option]) => option === own[field.key])?.[1] ?? own[field.key];
   };
   return { node, paint };
 }

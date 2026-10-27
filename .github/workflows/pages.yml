@@ -2,7 +2,7 @@
 # system, rendered with the app's own stylesheet and faces. Its pages point
 # at ../dist/web/ and ../build/ in the repo; here those live next to them.
 # preview/ is the app's pages in a plain browser, for trying the UX
-# (preview/build.js); nothing links to it.
+# (preview/build.js); the download page links to it.
 # site/CNAME, copied with the pages, serves it at https://ponjo.app.
 # When any of it changes on main, publish it. Run it by hand to catch up.
 
