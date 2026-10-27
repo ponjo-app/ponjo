@@ -233,8 +233,8 @@ works, or what went wrong.
   Mod+I, Mod+E, Mod+Shift+X, Mod+K); typed Markdown such as `## `, `**x**`
   or `- ` stays text (saved escaped). To write Markdown by hand, switch the
   view off (Ctrl+Shift+T, again to switch back); `.md` then opens in the plain
-  editor. Pasted plain text stays text too; pasted formatted text keeps
-  its formatting.
+  editor. Pasted plain text is read as Markdown (Mod+Shift+V pastes it
+  as text); pasted formatted text keeps its formatting.
   The plain editor's settings: line numbers, wrapping, font size, whitespace
   marks (in the selection, everywhere or off) and indent guides, and
   indentation: Tab types the file's indent (found from the file, or tabs or

@@ -181,36 +181,45 @@ const indentCode = (step) => (state, dispatch, view) => {
 };
 
 // Pasting a single URL over selected text links the text to it, as Docs and
-// Notion do. Plain text goes in as the text it is, a paragraph a line, as
-// typed text does (Markdown in it stays text); formatted text (HTML) is the
-// clipboard plugin's, but for images held in the page itself (`data:`,
-// `blob:`), whose bytes would land in the doc.
-const paste = $prose(() => new Plugin({
-  props: {
-    handlePaste(view, event, slice) {
-      const data = event.clipboardData;
-      const url = data?.getData('text/plain').trim();
-      const { selection: { empty, from, to, $from }, schema, tr } = view.state;
-      const type = schema.marks.link;
-      if (!empty && /^(https?:\/\/|mailto:)\S+$/i.test(url) && $from.parent.type.allowsMarkType(type)) {
-        view.dispatch(tr.removeMark(from, to, type).addMark(from, to, type.create({ href: url })));
+// Notion do. Plain text is read as Markdown, and formatted text (HTML) keeps
+// its formatting, by the clipboard plugin, but for images held in the page
+// itself (`data:`, `blob:`), whose bytes would land in the doc. Pasted with
+// Mod+Shift+V, plain text goes in as the text it is, a paragraph a line.
+const paste = $prose(() => {
+  let plain = false; // the last key pressed was Mod+Shift+V
+  return new Plugin({
+    props: {
+      handleKeyDown(_view, event) {
+        plain = event.shiftKey && event.code === 'KeyV';
+        return false;
+      },
+      handlePaste(view, event, slice) {
+        const asText = plain;
+        plain = false;
+        const data = event.clipboardData;
+        const url = data?.getData('text/plain').trim();
+        const { selection: { empty, from, to, $from }, schema, tr } = view.state;
+        const type = schema.marks.link;
+        if (!empty && /^(https?:\/\/|mailto:)\S+$/i.test(url) && $from.parent.type.allowsMarkType(type)) {
+          view.dispatch(tr.removeMark(from, to, type).addMark(from, to, type.create({ href: url })));
+          return true;
+        }
+        // ProseMirror's own slice of plain text: its lines as paragraphs, or as they are in code.
+        if (!asText || !data || data.types.includes('text/html') || data.types.includes('vscode-editor-data')) return false;
+        view.dispatch(tr.replaceSelection(slice).scrollIntoView().setMeta('paste', true).setMeta('uiEvent', 'paste'));
         return true;
-      }
-      // ProseMirror's own slice of plain text: its lines as paragraphs, or as they are in code.
-      if (!data || data.types.includes('text/html') || data.types.includes('vscode-editor-data')) return false;
-      view.dispatch(tr.replaceSelection(slice).scrollIntoView().setMeta('paste', true).setMeta('uiEvent', 'paste'));
-      return true;
+      },
+      transformPastedHTML(html) {
+        const template = document.createElement('template');
+        template.innerHTML = html;
+        for (const image of template.content.querySelectorAll('img')) {
+          if (/^\s*(data|blob):/i.test(image.getAttribute('src') ?? '')) image.remove();
+        }
+        return template.innerHTML;
+      },
     },
-    transformPastedHTML(html) {
-      const template = document.createElement('template');
-      template.innerHTML = html;
-      for (const image of template.content.querySelectorAll('img')) {
-        if (/^\s*(data|blob):/i.test(image.getAttribute('src') ?? '')) image.remove();
-      }
-      return template.innerHTML;
-    },
-  },
-}));
+  });
+});
 
 // Clicking a task list item's box (app.css draws it in the item's gutter,
 // left of the item) ticks or unticks it.
