@@ -17,8 +17,9 @@ await cp(web, out, { recursive: true });
 for (const file of ['team.html', '.assetsignore']) await rm(join(out, file)); // the relay's (scripts/build.js)
 const page = await readFile(join(web, 'index.html'), 'utf8');
 const doc = page
-  .replace('<script type="module" src="app.js" blocking="render"></script>', '<script type="module" src="doc-stub.js"></script>\n  <script type="module" src="app.js" blocking="render"></script>');
-if (!doc.includes('doc-stub.js')) throw new Error('web/index.html changed: update preview/build.js');
+  .replace('<script type="module" src="app.js" blocking="render"></script>', '<script type="module" src="doc-stub.js"></script>\n  <script type="module" src="app.js" blocking="render"></script>')
+  .replace("default-src 'none';", "default-src 'none'; connect-src https://infer.ponjo.app;"); // the buddies' model (doc-stub.js)
+if (!doc.includes('doc-stub.js') || !doc.includes('connect-src')) throw new Error('web/index.html changed: update preview/build.js');
 await writeFile(join(out, 'index.html'), doc);
 await build({
   entryPoints: [join(root, 'preview', 'doc-stub.js')],

@@ -4,13 +4,19 @@
 // (window.ponjoDesktop), read with the same src/core as the app. Kept in
 // sessionStorage, so switching docs (`?folder&doc=<path>`, a new page as
 // in the app) and reloading keep it; a new tab starts over.
-// Buddies don't run: one asked answers with a set reply after a moment.
-// No history, no undo, no menus. A project's room is a sample: once
-// opened, Noor and Sam are in it, and its link leads nowhere.
+// A buddy asked runs the Ponjo agent's turn (agents/ponjo-core.mjs) here,
+// on Nemotron through the preview's Worker (relay/worker.js, at INFER), and
+// its edit lands as the app lands one: merged with what was typed
+// meanwhile, its reply showing its edits, which undo. No version history,
+// no menus. A project's room is a sample: once opened, Noor and Sam are in
+// it, and its link leads nowhere.
 
 import { createAnchor, locate } from '../src/core/anchor.js';
-import { apply } from '../src/core/ot.js';
-import { askedOf, newComment, newId, peopleOf, threadsOf } from '../src/core/comments.js';
+import { apply, diffOps } from '../src/core/ot.js';
+import { appendedComments, askedOf, movedAnchor, newComment, newId, peopleOf, serializeSidecar, threadsOf } from '../src/core/comments.js';
+import { diffEdits, merge3 } from '../src/core/diff.js';
+import { buildPrompt } from '../src/core/prompt.js';
+import { INFER, apply as applyProposal, turn } from '../agents/ponjo-core.mjs';
 import { buddiesHere, checkBuddyPatch } from '../src/core/buddies.js';
 import { sameName } from '../src/core/mentions.js';
 import { DEFAULT_SETTINGS, agentOf, checkSettingsPatch, mergeSettings } from '../src/core/settings.js';
@@ -24,21 +30,31 @@ const KEY = `ponjo.preview.${inFolder ? 'folder' : 'doc'}`;
 
 const WELCOME = `# Welcome to Ponjo
 
-This is a preview of the editor in a browser. Edit anything: changes stay in this tab.
+Ponjo is an editor where you and your AI buddies write the same doc. Try it here, with nothing to install: select some text, press the comment button, and @mention Clippy with what you want. Clippy runs on NVIDIA Nemotron. Its reply and any edit it makes show up in the doc, and one click undoes the edit.
 
-## Comments
+## Try it
 
-Select some text and press the comment button to start a thread. Mention @Clippy to ask it; here it answers with a set reply, since buddies only run in the desktop app.
+1. Shorten the paragraph under "Why Ponjo": select it and write "@Clippy make this half as long".
+2. The paragraph under "How it works" gets one fact wrong. Select it and ask "@Clippy is anything wrong here?"
+3. Ask a question, such as "@Clippy who is Ponjo for?": Clippy answers and leaves the doc as it is.
+
+## Why Ponjo
+
+Writing with AI today mostly means going back and forth between a chat window and a document, which, as anyone who has done it for a while will tell you, gets old fast: you copy a paragraph out of the document, you paste it into the chat, you explain what you want, you wait, you read what comes back, you copy the new version, and then you paste it back into the document, where you find that the AI has also quietly changed two other sentences that you never asked it to touch. Ponjo takes the chat window out of this loop. The AI is a member of the doc, an AI buddy, and you ask it for what you want right where the text is, in a comment, as you would ask a teammate.
+
+## How it works
+
+Each AI buddy has a name and a persona. Behind it, an agent does the work: here the Ponjo agent, which reads the doc and proposes edits that the app checks before they land. Docs are plain Markdown files stored in the cloud, and the comments are kept in a file next to each doc. People stay in control: a buddy changes only what it was asked about, and every change it makes can be undone.
 
 ## What is not here
 
-Opening files and folders, version history and undoing a buddy's edit need the desktop app.
+Opening your own files and folders, version history and inviting teammates need the desktop app.
 `;
 
 const PROJECT = {
   'README.md': `# Sample Project
 
-A folder opened as a project: its files in the sidebar, and its own buddies, Editor and Researcher, next to yours, Clippy.
+A folder opened as a project: its files in the sidebar, and its own buddies, Editor and Researcher, next to yours, Clippy. @mention one in a comment and it answers here, on NVIDIA Nemotron: it can read every file in the project.
 
 Open a doc from the sidebar, rename one (F2), delete one (Delete) or drag it into another folder. New files come from the right-click menu, which is the desktop app's own, so not here.
 `,
@@ -65,7 +81,7 @@ const THREADS = inFolder
     { doc: 'README.md', quote: 'its own buddies', ask: '@Editor is this clear enough?', by: 'Editor', answer: 'Yes. Maybe say what a buddy is in one line.' },
     { doc: 'notes/plan.md', quote: 'Check the numbers', ask: '@Researcher which numbers?', by: 'Researcher', answer: 'The hosting cost in data/budget.csv looks low.' },
   ]
-  : [{ doc: 'Welcome.md', quote: 'a preview of the editor', ask: '@Clippy what can I try here?', by: 'Clippy', answer: 'Edit the text, start a thread on any selection, reply, resolve. Settings work too.' }];
+  : [{ doc: 'Welcome.md', quote: 'Each AI buddy has a name and a persona', ask: '@Clippy what does a persona do?', by: 'Clippy', answer: 'It says who the buddy is: one told to tighten prose edits differently from one told to check facts.' }];
 
 const AGENTS = Object.entries({ claude, codex, ponjo }).map(([id, manifest]) => agentOf(id, manifest));
 const ai = (name) => ({ id: name, name, kind: 'ai' });
@@ -91,6 +107,7 @@ function seed() {
     buddies: inFolder ? [{ id: 'Editor', name: 'Editor', about: 'Tightens prose and keeps the tone even' }, { id: 'Researcher', name: 'Researcher', about: 'Finds sources and checks the facts' }] : [],
     expanded: ['notes'], sidebar: true, carry: null,
     room: null,
+    versions: {}, // by doc: the buddies' edits, { id: its reply, by, before, text, changes, undone }
   };
 }
 
@@ -116,8 +133,9 @@ const name = (path) => path.split('/').pop();
 const me = () => ({ id: s.settings.id, name: s.settings.name, kind: 'human' });
 const comments = () => (s.comments[current] ??= []);
 const buddies = () => buddiesHere(s.buddies, s.mine);
+const versions = () => ((s.versions ??= {})[current] ??= []);
 
-// The page is the only writer: every edit is on the latest rev of this page load.
+// Every edit is on the latest rev of this page load: the page's own, and the buddies'.
 const epoch = newId('e');
 let rev = 0;
 
@@ -131,11 +149,17 @@ function view() {
     const found = locate(text, thread.anchor);
     return { ...thread, anchor: found ? createAnchor(text, found.start, found.end) : thread.anchor, detached: !found };
   });
-  return { threads, people: peopleOf(comments()), edits: {}, readOnly: null, notice: null };
+  const edits = Object.fromEntries(versions().map((v) => [v.id, { state: v.undone ? 'undone' : 'edited', by: v.by, changes: v.changes, version: v.id, conflict: false }]));
+  return { threads, people: peopleOf(comments()), edits, readOnly: null, notice: null };
 }
 
 let listener = null;
 const emit = (event, data) => listener?.(event, data);
+
+// The preview's buddies' model: Chat Completions at the Worker, which
+// picks the model (MODEL, as relay/wrangler.toml names it) and holds the key.
+const infer = INFER.openai({ endpoint: 'https://infer.ponjo.app/infer', model: 'nemotron', key: 'preview' });
+const MODEL = 'NVIDIA Nemotron 3 Super, on Nebius Token Factory';
 
 // The buddies this user's comments ask, as the runner would start them.
 function answer() {
@@ -144,19 +168,72 @@ function answer() {
       if (running.get(asked)?.includes(thread.id)) continue;
       running.set(asked, [...(running.get(asked) ?? []), thread.id]);
       emit('agents', agents());
-      setTimeout(() => {
+      run(asked, thread).finally(() => {
         const left = running.get(asked).filter((id) => id !== thread.id);
         if (left.length) running.set(asked, left);
         else running.delete(asked);
-        if (!threadsOf(comments()).find((t) => t.id === thread.id)?.resolved) {
-          comments().push({ id: newId('c'), thread: thread.id, by: { id: asked, name: buddies().find((b) => b.id === asked)?.name ?? asked, kind: 'ai' }, at: new Date().toISOString(), body: 'This is a preview, so I can\'t read or edit the doc here. In the desktop app I would answer you now.' });
-          save();
-          emit('sidecar', {});
-        }
         emit('agents', agents());
-      }, 1500);
+      });
     }
   }
+}
+
+// A path as the turn's copies and the project's files are named here.
+const plain = (path) => path.replace(/^\.?\//, '');
+
+// Buddy `id`'s turn on `thread`, on copies of the doc and its comments as
+// they are now; then, as the app does (src/host/doc-service.js, finishRun),
+// its edit lands merged with what was typed meanwhile, and its comments
+// and reply come after, the reply naming the model. Dropped if the thread
+// was resolved or the doc renamed meanwhile.
+async function run(id, thread) {
+  const doc = current;
+  const sidecar = `${doc}.comments.jsonl`;
+  const copies = { [doc]: s.files[doc], [sidecar]: serializeSidecar(comments().map((comment) => ({ comment }))) };
+  const buddy = buddies().find((b) => b.id === id);
+  const by = { id, name: buddy.name, kind: 'ai' };
+  let texts = { doc: copies[doc], sidecar: copies[sidecar] };
+  let body;
+  let failed = false;
+  try {
+    const prompt = buildPrompt({ buddy, buddies: buddies(), docName: doc, sidecarName: sidecar, thread, folder: inFolder ? '.' : null, human: { name: s.settings.name, about: s.settings.about.trim() } });
+    const { edits, reply } = await turn({ prompt, doc, sidecar }, { infer, readFile: (path) => read(plain(path), copies), resolve: plain });
+    texts = applyProposal(edits, { doc, sidecar }, { doc: copies[doc], sidecar: copies[sidecar] }, plain);
+    body = [reply.trim(), `— ${MODEL}`].filter(Boolean).join('\n\n');
+  } catch (error) {
+    body = error.message.split('\n')[0];
+    failed = true;
+  }
+  if (doc !== current || threadsOf(comments()).find((t) => t.id === thread.id)?.resolved) return;
+  const replyId = newId('c');
+  let anchor = null;
+  if (texts.doc !== copies[doc]) {
+    const text = s.files[doc];
+    const merged = merge3(copies[doc], text, texts.doc).text;
+    s.files[doc] = merged;
+    versions().push({ id: replyId, by: id, before: text, text: merged, changes: diffEdits(text, merged).length, undone: false });
+    emit('ops', { epoch, rev: ++rev, ops: diffOps(text, merged), id: null, reply: replyId, by: id });
+    anchor = movedAnchor(thread.anchor, copies[doc], texts.doc, merged);
+  }
+  const at = Date.now();
+  const threads = new Set(comments().filter((c) => c.thread === undefined).map((c) => c.id));
+  const added = appendedComments(copies[sidecar], texts.sidecar, { text: texts.doc, by, at: new Date(at).toISOString(), threads, own: thread.id });
+  comments().push(...added.comments, {
+    id: replyId, thread: thread.id, by, at: new Date(at + 1).toISOString(), body,
+    ...(anchor ? { anchor } : {}), ...(failed ? { failed: true } : {}), ...(added.resolves ? { resolved: true } : {}),
+  });
+  save();
+  emit('sidecar', {});
+}
+
+// What a turn can read at `path`: its copies, and in a project its files
+// and folders.
+function read(path, copies) {
+  if (copies[path] !== undefined) return copies[path];
+  if (!inFolder) return null;
+  if (s.files[path] !== undefined) return s.files[path];
+  const entries = calls.list({ path: path === '.' ? '' : path.replace(/\/$/, '') }).map((e) => e.name + (e.folder ? '/' : ''));
+  return entries.length > 0 ? entries : null;
 }
 
 function add(comment) {
@@ -238,9 +315,18 @@ const calls = {
   setLevel: ({ id, level }) => changeRoom((r) => ({ ...r, players: r.players.map((p) => (p.id === id ? { ...p, level } : p)) })),
   kick: ({ id }) => changeRoom((r) => ({ ...r, players: r.players.filter((p) => p.id !== id) })),
   history: () => ({ versions: [] }),
-  version: () => refuse('no history in the preview'),
+  version: ({ id }) => versions().find((v) => v.id === id) ?? refuse('no such version'),
   restoreVersion: () => refuse('no history in the preview'),
-  undo: () => refuse('no undo in the preview'),
+  // Undo a buddy's edit: taken back, merged with what landed since.
+  undo({ id }) {
+    const found = versions().find((v) => v.id === id && !v.undone) ?? refuse('no such edit');
+    const text = s.files[current];
+    s.files[current] = merge3(found.text, text, found.before).text;
+    found.undone = true;
+    save();
+    emit('ops', { epoch, rev: ++rev, ops: diffOps(text, s.files[current]), id: null });
+    return view();
+  },
 };
 
 window.ponjoHost = {
