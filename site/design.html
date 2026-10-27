@@ -116,6 +116,15 @@
     <span class="pj-spacer"></span>
     <button class="pj-pill pj-tool-comment" type="button" aria-pressed="false"><svg class="pj-icon" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Comments<span class="pj-comment-count">3</span></button>
   </div>
+  <h3>Save state</h3>
+  <p>The toolbar says the doc's one save state, <code>.pj-save</code>, after its spacer: the first that holds of Not saved, Offline, Read-only, Saving and Saved, never two. 12px; Saved and Saving in <code>--text-faint</code>, Saved with a check; Offline and Read-only in <code>--text-soft</code>; Not saved in <code>--red</code>, 500, with the alert icon and why, cut off at 40ch. Its tooltip says why in full.</p>
+  <div class="ds-row">
+    <div class="pj-toolbar ds-toolbar"><span class="pj-save" data-state="saved"><span class="pj-save-icon"><svg class="pj-icon" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span><span class="pj-save-text">Saved</span></span></div>
+    <div class="pj-toolbar ds-toolbar"><span class="pj-save" data-state="saving"><span class="pj-save-icon"></span><span class="pj-save-text">Saving…</span></span></div>
+    <div class="pj-toolbar ds-toolbar"><span class="pj-save" data-state="offline"><span class="pj-save-icon"></span><span class="pj-save-text">Offline</span></span></div>
+    <div class="pj-toolbar ds-toolbar"><span class="pj-save" data-state="read-only"><span class="pj-save-icon"></span><span class="pj-save-text">Read-only</span></span></div>
+    <div class="pj-toolbar ds-toolbar"><span class="pj-save" data-state="unsaved"><span class="pj-save-icon"><svg class="pj-icon" viewBox="0 0 24 24"><path d="M12 9v4M12 17h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg></span><span class="pj-save-text">Not saved: the file is read-only</span></span></div>
+  </div>
   <p>A doc that cannot be edited here (a teammate who can only read) shows no formatting tools and no Comment bubble, rather than tools that do nothing; what only reads stays: the outline, the word count, comments and history. For a teammate who can only read, the comments have no reply box, Resolve, Reopen or Undo, and history has no Restore.</p>
   <h3>Fields and choices</h3>
   <div class="ds-row">
@@ -153,7 +162,7 @@
       <li><button class="pj-files-row pj-files-file pj-files-ignored" type="button">debug.log</button></li>
     </ul>
   </div>
-  <p>A file or folder git ignores (build output, installed packages) is dimmed to <code>--text-faint</code>, not hidden; a filter leaves it out.</p>
+  <p>A file or folder git ignores (build output, installed packages) is dimmed to <code>--text-faint</code>, not hidden. A filter (Mod+P) finds the files it ignores too, dimmed and after the rest in each folder, but does not look inside a folder it ignores; Enter opens the first match.</p>
   <p>A folder window with no doc shows only its sidebar and, in the page, <code>.pj-folder-empty</code>: "No docs here yet." in <code>.pj-empty</code>, then New doc (primary) and New folder (secondary).</p>
   <p>A sidebar is resized by dragging its edge: the cursor turns to <code>col-resize</code> and the edge shows a 2px <code>--text-faint</code> line; double-click the edge for the default width back.</p>
   <h3>Team panel</h3>
@@ -165,6 +174,11 @@
   <h3>Find bar</h3>
   <p>Mod+F opens <code>.pj-find</code> at the page's top right, staying there as the page scrolls: a floating card like the link popover (radius 10, <code>--shadow-raised</code>), its field the link popover's, then the count, then Previous, Next and Close as icon buttons; Replace adds a row with Replace and Replace all, both secondary. Every match is <code>--accent-soft</code>, the current one the stronger blue of selected commented text, as the sidebar's filter marks its matches.</p>
   <div class="ds-box ds-prose pj-editor">We ship the <span class="pj-found">beta</span> in March, then the <span class="pj-found pj-found-current">beta</span> waitlist.</div>
+  <h3>Links to the project's files</h3>
+  <p>In a comment, a file's path in the project, as Copy Path writes it, is a link (<code>.pj-file-link</code>) as links in the doc are: <code>--accent</code>, underlined. In the link popover, what is typed that is not a URL lists the matching files under the field in the @ menu's style (<code>.pj-mentions</code>): the file icon, its name, its path under it in <code>--text-soft</code>; the arrows pick one, Enter or a click links it by its path from the doc.</p>
+  <div class="ds-row">
+    <div class="pj-card ds-card"><div class="pj-body">The rules are in <a class="pj-file-link" href="#">docs/architecture.md</a>.</div></div>
+  </div>
   <h3>Text: comments, buddy edits, links, tasks</h3>
   <div class="ds-box ds-prose pj-editor">
     We ship the beta to <span class="pj-hl">fifty design partners</span> in March, then
