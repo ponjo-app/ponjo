@@ -1,0 +1,54 @@
+# Temporary, for measuring only (not to merge): opening a file from the
+# sidebar (test/perf/open.test.js), with each step's timing, on Windows and
+# Linux, on pushes to this branch.
+
+name: Switch timing
+
+on:
+  push:
+    branches: [claude/gallant-cori-qm3to7]
+
+jobs:
+  open:
+    name: open (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: git and a file's open, alone
+        shell: bash
+        run: |
+          node --input-type=module -e "
+            import { spawnSync } from 'node:child_process';
+            import { mkdtemp } from 'node:fs/promises';
+            import { tmpdir } from 'node:os';
+            import { join } from 'node:path';
+            import { installAgents } from './src/store/agents.js';
+            import { openDoc } from './src/host/doc-service.js';
+            import { projectService } from './src/host/project-service.js';
+            const work = await mkdtemp(join(tmpdir(), 'ponjo-'));
+            const median = async (label, fn) => {
+              const ms = [];
+              for (let i = 0; i < 7; i++) { const s = performance.now(); await fn(i); ms.push(performance.now() - s); }
+              console.log(label, Math.round(ms.sort((a, b) => a - b)[3]), 'ms');
+            };
+            await median('spawn git --version', () => spawnSync('git', ['--version']));
+            await median('installAgents', () => installAgents(join(work, 'config')));
+            await median('list (one git check-ignore)', () => projectService(process.cwd()).list(''));
+            await median('openDoc + close', async (i) => (await openDoc(join(process.cwd(), i % 2 ? 'README.md' : 'CONTRIBUTING.md'), { folder: process.cwd(), settingsDir: join(work, 'config') })).close());
+            process.exit(0);
+          "
+      - run: xvfb-run -a node --test --test-force-exit test/perf/open.test.js
+        if: runner.os == 'Linux'
+      - run: node --test --test-force-exit test/perf/open.test.js
+        if: runner.os == 'Windows'
