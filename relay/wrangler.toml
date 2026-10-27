@@ -49,4 +49,4 @@ MODEL = "nvidia/nemotron-3-super-120b-a12b" # Nemotron 3 Super, which calls tool
 [[env.hackathon.ratelimits]]
 name = "INFER"
 namespace_id = "1003"
-simple = { limit = 30, period = 60 }
+simple = { limit = 60, period = 60 }

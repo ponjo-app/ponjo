@@ -71,7 +71,7 @@ test('the preflight is answered for the preview\'s page only', async () => {
   assert.equal((await ask(null, { method: 'OPTIONS', origin: 'https://evil.example' })).status, 403);
 });
 
-test('it is no free model: another origin, a request too big or not one, and an address over 30 a minute are turned away', async () => {
+test('it is no free model: another origin, a request too big or not one, and an address over 60 a minute are turned away', async () => {
   const before = api.requests.length;
   const messages = [{ role: 'user', content: 'hi' }];
   assert.equal((await ask({ messages }, { origin: 'https://evil.example', ip: '203.0.113.2' })).status, 403);
@@ -81,6 +81,6 @@ test('it is no free model: another origin, a request too big or not one, and an 
   assert.equal((await ask({ prompt: 'hi' }, { ip: '203.0.113.4' })).status, 400);
   assert.equal(api.requests.length, before, 'none of them reached the model');
   const statuses = [];
-  for (let i = 0; i < 31; i++) statuses.push((await ask({ messages }, { ip: '203.0.113.5' })).status);
-  assert.deepEqual(statuses, [...Array(30).fill(200), 429]);
+  for (let i = 0; i < 61; i++) statuses.push((await ask({ messages }, { ip: '203.0.113.5' })).status);
+  assert.deepEqual(statuses, [...Array(60).fill(200), 429]);
 });

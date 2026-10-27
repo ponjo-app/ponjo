@@ -31,7 +31,7 @@
 // on to ENDPOINT with the key, the model and a cap on tokens of its own, and
 // its answer comes back as is. Only the messages and tools are taken from
 // the page, and every step must call a tool: Nemotron answers a question in
-// plain text otherwise, which ends no turn. An address asks at most 30
+// plain text otherwise, which ends no turn. An address asks at most 60
 // times a minute (INFER).
 
 /* global WebSocketPair, WebSocketRequestResponsePair */
