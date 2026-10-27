@@ -14,6 +14,7 @@ import { text } from 'node:stream/consumers';
 import { INFER, turn } from '../agents/ponjo-core.mjs';
 import { files } from '../agents/ponjo.mjs';
 import { agentScript, installAgents } from '../src/store/agents.js';
+import { MAX_TEXT_BYTES } from '../src/store/files.js';
 import { SAMPLE } from './helpers.js';
 
 const HEADER = '{"comments":1}\n';
@@ -101,7 +102,7 @@ test('a long file reads as its outline, and in parts by line number', async () =
   assert.equal(missing, 'nowhere.md: no such file, or not one you can read.');
 });
 
-test('in project mode the turn reads the project as the app shows it, and nothing hidden or outside', async () => {
+test('in project mode the turn reads the project as the app shows it: nothing hidden or outside, and only text of 20 MB or less', async () => {
   const { doc, sidecar } = await copies();
   const project = await mkdtemp(join(tmpdir(), 'ponjo-project-'));
   const outside = await mkdtemp(join(tmpdir(), 'ponjo-outside-'));
@@ -113,13 +114,15 @@ test('in project mode the turn reads the project as the app shows it, and nothin
   await writeFile(join(project, '.env'), 'secret');
   await writeFile(join(outside, 'b.md'), 'secret');
   await symlink(outside, join(project, 'out'), 'junction');
+  await writeFile(join(project, 'pic.png'), Buffer.from([0x89, 0x50, 0x00, 0x47]));
+  await writeFile(join(project, 'big.log'), 'x'.repeat(MAX_TEXT_BYTES + 1));
   const readable = files({ doc, sidecar, project });
-  assert.deepEqual(await readable(''), ['notes/', 'out'], 'a folder, its entries');
+  assert.deepEqual(await readable(''), ['big.log', 'notes/', 'out', 'pic.png'], 'a folder, its entries');
   assert.deepEqual(await readable('notes'), ['a.md', 'a.md.comments.jsonl']);
   assert.equal(await readable(join(project, 'notes', 'a.md')), 'A\n');
   assert.equal(await readable('notes/a.md.comments.jsonl'), HEADER, 'sidecars included');
   assert.equal(await readable(doc), SAMPLE, 'and the copies');
-  for (const path of ['.env', '.git/config', 'notes/../.env', `../${basename(outside)}/b.md`, join(outside, 'b.md'), 'out/b.md', 'notes/none.md']) {
+  for (const path of ['.env', '.git/config', 'notes/../.env', `../${basename(outside)}/b.md`, join(outside, 'b.md'), 'out/b.md', 'notes/none.md', 'pic.png', 'big.log']) {
     assert.equal(await readable(path), null, path);
   }
   assert.equal(await files({ doc, sidecar })('notes/a.md'), null, 'in doc mode, only the copies');

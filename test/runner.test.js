@@ -10,7 +10,6 @@ import { mkdir, mkdtemp, readFile, readdir, stat, writeFile } from 'node:fs/prom
 import { tmpdir } from 'node:os';
 import { basename, delimiter, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { mirrorDir } from '../src/host/mirror.js';
 import { buildPrompt } from '../src/core/prompt.js';
 import { agentScript, agentsDir, installAgents, listAgents } from '../src/store/agents.js';
 import { readSecrets, secretTails, writeSecrets } from '../src/store/secrets.js';
@@ -249,16 +248,14 @@ test('a comment that mentions no one asks no one; a buddy\'s reply asks no one',
   });
 });
 
-test('in project mode a run gets its own copy of what the project shows, gone once it ends', { timeout: 30_000 }, async () => {
+test('in project mode a run gets the project folder, and its copies at the doc\'s path in it', { timeout: 30_000 }, async () => {
   const folder = await mkdtemp(join(tmpdir(), 'ponjo-project-'));
   await writeFile(join(folder, 'notes.md'), 'Notes.\n');
-  await writeFile(join(folder, '.env'), 'KEY=secret\n');
-  await withDoc(async ({ settingsDir, call, state, runs }) => {
+  await withDoc(async ({ call, state, runs }) => {
     const id = await comment(call, '@Clippy look around');
     await until(async () => (await repliesIn(state, id)).length, 'the reply');
     const [run] = await runs();
-    assert.equal(basename(run.project), basename(folder));
-    assert.ok(!run.project.startsWith(settingsDir), 'not the mirror itself');
+    assert.equal(run.project, folder, 'the project itself: what an agent reads there is up to its own config');
     assert.deepEqual(run.projectFiles, ['drafts', 'notes.md']);
     assert.deepEqual(run.files, ['drafts'], 'the copies at the doc\'s path in the project');
     assert.ok(run.doc.endsWith(join(basename(run.cwd), 'drafts', 'plan.md')), 'in its folder (macOS may name /var as /private/var)');
@@ -267,24 +264,7 @@ test('in project mode a run gets its own copy of what the project shows, gone on
     assert.match(run.prompt, /a member of the doc drafts\/plan\.md\./);
     assert.match(run.prompt, /A file path in a comment is relative to the doc's folder, drafts\/\./);
     assert.match(run.prompt, /^drafts\/plan\.md\.comments\.jsonl holds the doc's comments/m);
-    await until(() => !existsSync(run.project), 'its copy to be gone after', 5000);
-  }, { folder });
-});
-
-test('runs at once never see each other\'s writes to the project, nor does the mirror', { timeout: 30_000 }, async () => {
-  const folder = await mkdtemp(join(tmpdir(), 'ponjo-project-'));
-  await writeFile(join(folder, 'notes.md'), 'Notes.\n');
-  await withDoc(async ({ settingsDir, call, state, runs, release }) => {
-    const first = await comment(call, '@Clippy write stray.md ;; hold');
-    await until(async () => (await runs()).length === 1 && existsSync(join((await runs())[0].project, 'stray.md')), 'the first run to write');
-    const second = await comment(call, '@Clippy look around');
-    await until(async () => (await repliesIn(state, second)).length, 'the second reply');
-    const [, run] = await runs();
-    assert.deepEqual(run.projectFiles, ['drafts', 'notes.md']);
-    assert.ok(!existsSync(join(mirrorDir(folder, settingsDir), 'stray.md')));
-    await release('Clippy');
-    await until(async () => (await repliesIn(state, first)).length, 'the first reply');
-    assert.ok(!existsSync(join(folder, 'stray.md')));
+    await until(() => !existsSync(run.cwd), 'its copies to be gone after', 5000);
   }, { folder });
 });
 

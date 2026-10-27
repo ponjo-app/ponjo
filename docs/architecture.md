@@ -268,8 +268,8 @@ yet: Config, History and Store as the components below (today they are the
 modules of `src/store/`), and the rest of what [Sharing](#sharing) needs:
 teammates who edit, and `cursor`. The door is built for the owner, AI
 buddies and a player's page (#223, #226); ProjectService (#229) and Room
-(#286) are behind it, and an agent reads only the project's mirror, what
-ProjectService shows (#230).
+(#286) are behind it, and the Ponjo agent reads only what ProjectService
+shows (#230).
 
 **Every writer comes through one door.** A page's call comes as
 `call(type, arg, who)`, `who` being `{ id, name, kind, level }`. Each call
@@ -439,7 +439,6 @@ written only by the app.
 | `secrets.bin` | the agents' secret settings, such as API keys, encrypted with the system keychain |
 | `state.json` | recent docs and folders, window bounds |
 | `history/` | versions of each doc, saved each time typing pauses, before and after each buddy edit (tagged with its reply's id), before each outside change, undo and restore; and the windows' edits the doc's file was last written with; the comments this host took |
-| `mirrors/` | each project's mirror: a copy of what the project shows, cloned for each run (`src/host/mirror.js`) |
 | `logs/` | `runs.jsonl`, a line per turn; with Trace runs on, `traces/`, each turn's trace ([a buddy's turn](#a-buddys-turn)) |
 
 ## A buddy's turn
@@ -459,13 +458,8 @@ the ids of those who may ask. AI buddies run only on docs open in a window.
    the [agent script](agent-config.md) there, with the prompt (who the
    buddy is, the thread, the rules) on stdin and the buddy's name in
    `PONJO_BUDDY` (the name is for the script; the app goes by id). In
-   project mode the project is a copy of its own, cloned from the
-   project's mirror once that is brought up to date: the mirror is a copy
-   in the config folder of what ProjectService shows, but `node_modules`
-   and files that are not text or are over 20 MB, so an agent never learns
-   the real path or reads what a teammate may not. Nothing the run reads
-   changes while it works: another run's writes and later syncs reach
-   only their own copies. Its copy goes when it ends.
+   project mode it is given the project folder, to read only; what it may
+   read there is up to the agent ([permissions](agent-config.md#permissions)).
 2. The agent edits the doc copy, appends comments to the sidecar copy, and
    prints its reply on stdout.
 3. On exit 0, DocService merges the doc copy with the doc as it is, from

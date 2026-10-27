@@ -33,9 +33,8 @@ export class Runner {
    * sidecar's text or null.
    * `agent()` resolves to the agent that runs every buddy: { script (its
    * path), settings ({ <key>: value }, each handed to the run as
-   * PONJO_SETTING_<KEY>) }. `folder(place)` resolves to the project folder
-   * the agent is given, a copy of the project made in folder `place` for this
-   * run alone (mirror.js), or null, `human()` the user, { name, about }. `finish(result)` takes a run
+   * PONJO_SETTING_<KEY>) }. `folder()` resolves to the project folder
+   * the agent is given, or null, `human()` the user, { name, about }. `finish(result)` takes a run
    * that ended: { threadId, id, name, asker, base, seen, edited, comments, body, failed },
    * `seen` the `at` of the thread's last comment the run was given,
    * `edited` being the doc's copy at the end (null when the run failed) and
@@ -132,7 +131,7 @@ export class Runner {
   async #run(run, thread, buddy, buddies, redo) {
     const { path: docPath, text: base, comments } = await this.doc();
     const dir = await mkdtemp(join(tmpdir(), 'ponjo-run-'));
-    let aside = null; // the folder its copy of the project and its trace are in, out of its sight
+    let aside = null; // the folder its trace is in, out of its sight
     try {
       const copy = join(dir, ...docPath.split('/'));
       await mkdir(dirname(copy), { recursive: true });
@@ -141,8 +140,8 @@ export class Runner {
       const before = comments ?? `${JSON.stringify({ comments: FORMAT_VERSION })}\n`;
       await writeFile(sidecar, before);
       const { script, settings } = await this.agent();
-      aside = await mkdtemp(join(tmpdir(), 'ponjo-project-'));
-      const folder = await this.folder(aside);
+      const folder = await this.folder();
+      aside = await mkdtemp(join(tmpdir(), 'ponjo-trace-'));
       const steps = join(aside, 'trace.jsonl');
       const prompt = buildPrompt({ buddy, buddies, docName: docPath, sidecarName: docPath + SIDECAR_SUFFIX, thread, project: Boolean(folder), human: await this.human(), redo });
       const at = Date.now();

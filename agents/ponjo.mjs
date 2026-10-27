@@ -6,17 +6,20 @@
 // Plain fetch, no SDK: it runs from the config folder, with no
 // node_modules. Yours to change.
 
-import { appendFile, readFile, readdir, realpath, writeFile } from 'node:fs/promises';
+import { appendFile, readFile, readdir, realpath, stat, writeFile } from 'node:fs/promises';
 import { realpathSync } from 'node:fs';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
 import { text } from 'node:stream/consumers';
 import { fileURLToPath } from 'node:url';
 import { INFER, apply, turn } from './ponjo-core.mjs';
 
+const MAX_TEXT_BYTES = 20 * 1024 * 1024; // the largest text file the app opens (src/store/files.js)
+
 /**
- * What the turn can see: the copies, and in project mode (`project` a
- * folder) its files, as the app's own: resolved to their real path, inside
- * the folder, and no name starting with `.`. A relative path is in the
+ * What the turn can see: the copies, and in project mode (`project` the
+ * project folder itself) its files, as the app shows them: resolved to
+ * their real path, inside the folder, no name starting with `.`, and only
+ * text files (no NUL byte) of 20 MB or less. A relative path is in the
  * project, but for the copies' names.
  */
 export function files({ doc, sidecar, project }) {
@@ -27,8 +30,10 @@ export function files({ doc, sidecar, project }) {
     const inside = real && relative(await realpath(project), real);
     if (inside === null || isAbsolute(inside) || inside.split(sep).some((name) => name.startsWith('.'))) return null;
     const entries = await readdir(real, { withFileTypes: true }).catch(() => null);
-    if (!entries) return readFile(real, 'utf8').catch(() => null);
-    return entries.filter((e) => !e.name.startsWith('.')).map((e) => e.name + (e.isDirectory() ? '/' : '')).sort();
+    if (entries) return entries.filter((e) => !e.name.startsWith('.')).map((e) => e.name + (e.isDirectory() ? '/' : '')).sort();
+    if ((await stat(real)).size > MAX_TEXT_BYTES) return null;
+    const bytes = await readFile(real).catch(() => null);
+    return bytes && !bytes.includes(0) ? bytes.toString('utf8') : null;
   };
 }
 

@@ -14,7 +14,7 @@ An agent is a filter ([architecture](architecture.md#a-run)):
 | stdin | the prompt: who the buddy is, the thread, the rules. It names files only by their paths in the project, never where a run keeps them: the script tells its agent that, if it needs to (see [Paths](#paths)) |
 | `PONJO_DOC` | the doc copy's path |
 | `PONJO_COMMENTS` | the sidecar copy's path |
-| `PONJO_PROJECT` | the run's own copy of the project (see [Permissions](#permissions)); empty in doc mode |
+| `PONJO_PROJECT` | the project folder, to read only (see [Permissions](#permissions)); empty in doc mode |
 | `PONJO_BUDDY` | the buddy's name |
 | `PONJO_TRACE` | a file, out of the working folder, the agent may write its steps to (see [Traces](#traces)) |
 | `PONJO_SETTING_<KEY>` | each of the agent's [settings](#settings) |
@@ -116,22 +116,19 @@ does not do this yet.
 ## Permissions
 
 Ponjo sets only what the contract needs: the working folder, the copy,
-a copy of the project in project mode. The script makes the run unattended
-and lets it edit the copy. The shipped scripts keep the project read only:
-an edit there would skip the merge, the receipt and Undo.
+and the project folder itself in project mode. The script makes the run
+unattended and lets it edit the copy. The shipped scripts keep the project
+read only: an edit there would skip the merge, the receipt and Undo.
 
-The mirror is a copy of what the project shows to everyone on it
-(ProjectService: no name starting with `.`, no link out of the project),
-without `node_modules` and holding only text files of 20 MB or less. It is
-in the config folder, brought up to date before each run by size and
-mtime, and each run gets a clone of it of its own, gone when the run
-ends, with copy-on-write clones where the file system has them. So what a
-run reads never changes while it works, and what it writes there reaches
-no one. What an agent reads can land in a doc teammates read, so the
-agent is never told the real project folder. That fully limits Claude Code, which reads only
-its working folder and the `--add-dir` it is given. Codex is not
-sandboxed: its `workspace-write` sandbox reads the whole disk, and the
-copy only keeps the real path from it.
+What an agent reads can land in a doc teammates read. The Ponjo agent
+reads only what the project shows to everyone on it (ProjectService: no
+name starting with `.`, no link out of the project), and only text files
+of 20 MB or less: its tools are the boundary ([Ponjo
+agent](ponjo-agent.md)). Claude Code and Codex read with their own tools,
+which Ponjo does not limit: Claude Code reads its working folder and the
+`--add-dir` it is given, hidden files included, and Codex's
+`workspace-write` sandbox reads the whole disk. Running a buddy on them is
+at the user's own risk, under the CLI's own permissions.
 
 Everything else (web, shell, which files it may read or write) is the CLI's
 own config (`~/.claude/settings.json`, `~/.codex/config.toml`), as when you
