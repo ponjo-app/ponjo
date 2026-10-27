@@ -180,13 +180,14 @@ on machine B, on another network (a phone's hotspot will do), in a browser.
 | Stage | Trigger | Runs | On failure |
 | --- | --- | --- | --- |
 | PR | push to a PR | lint; unit and conformance (Node and browser); integration on Linux, macOS, Windows; web build | blocks merge |
-| main | merge | all of PR, e2e on three platforms, nightly installers | blocks the nightly build |
+| main | merge | all of PR, e2e on three platforms, nightly installers, relay deploy | blocks the nightly build and the deploy |
 | Nightly | schedule | the `stress` job, 30 minutes of random seeds | fails the run |
 | Release | version tag | all of main, draft release | blocks publishing |
 
 - A PR that changes `spec/` changes `spec/conformance/` too.
-- The nightly is built only when `npm test`, `npm run test:stress` and
-  `npm run test:perf` pass too (`release` in `.github/workflows/desktop.yml`).
+- The nightly is built, and the relay with the teammate's page deployed,
+  only when `npm test`, `npm run test:stress` and `npm run test:perf` pass
+  too (`release` and `relay` in `.github/workflows/desktop.yml`).
 - A test that fails now and then is a bug, in the code or the test: it is
   fixed, never retried or skipped. Each relay a test starts is its own,
   with nothing kept on disk (`test/relay/harness.js`), so a limit one test

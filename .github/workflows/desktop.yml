@@ -2,7 +2,9 @@
 # lint, the installers, and a smoke test that opens a doc in the packaged
 # app. Pushes to main that pass it replace the "nightly" pre-release
 # (https://github.com/ponjo-app/ponjo/releases/tag/nightly), so a build
-# that cannot open a doc never replaces a working one. The unit tests (npm
+# that cannot open a doc never replaces a working one, and deploy the relay
+# with the teammate's page (https://share.ponjo.app) from the same commit,
+# so a teammate sees the owner's UI. The unit tests (npm
 # test), the buddy concurrency stress test (npm run test:stress) and the
 # latency promise (npm run test:perf) run once, on Linux, and hold it back
 # too.
@@ -210,3 +212,24 @@ jobs:
             --target "$GITHUB_SHA" \
             --title "Nightly (main @ ${GITHUB_SHA::7})" \
             --notes "Built from main at $GITHUB_SHA."
+
+  relay:
+    # The relay and the teammate's page (relay/wrangler.toml), from the
+    # same commit as the nightly.
+    needs: [build, test, stress, perf]
+    if: github.event_name != 'pull_request' && github.event_name != 'schedule' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci && npm ci --prefix relay
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: 1
+      - run: npm run deploy
+        working-directory: relay
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
