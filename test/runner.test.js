@@ -11,7 +11,7 @@ import { tmpdir } from 'node:os';
 import { basename, delimiter, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { mirrorDir } from '../src/host/mirror.js';
-import { buildPrompt } from '../src/host/runner.js';
+import { buildPrompt } from '../src/core/prompt.js';
 import { agentScript, agentsDir, installAgents, listAgents } from '../src/store/agents.js';
 import { readSecrets, secretTails, writeSecrets } from '../src/store/secrets.js';
 import { SAMPLE, fakeConfig, fakeRuns, openTestDoc, readOnly, tempDoc, until } from './helpers.js';
@@ -414,7 +414,7 @@ test('the shipped agents are written when missing, then updated until edited; Re
   ], 'each with its manifest, all valid');
   const windows = await mkdtemp(join(tmpdir(), 'ponjo-agents-'));
   await installAgents(windows, { platform: 'win32' });
-  assert.deepEqual((await readdir(agentsDir(windows))).sort(), ['.shipped.json', 'claude.cmd', 'claude.json', 'codex.cmd', 'codex.json', 'ponjo.cmd', 'ponjo.json', 'ponjo.mjs'], 'with the program the Ponjo agent runs, and what was written');
+  assert.deepEqual((await readdir(agentsDir(windows))).sort(), ['.shipped.json', 'claude.cmd', 'claude.json', 'codex.cmd', 'codex.json', 'ponjo-core.mjs', 'ponjo.cmd', 'ponjo.json', 'ponjo.mjs'], 'with the program the Ponjo agent runs, and what was written');
   await writeFile(join(agentsDir(dir), 'mine'), '#!/bin/sh\n');
   await writeFile(join(agentsDir(dir), 'broken'), '#!/bin/sh\n');
   await writeFile(join(agentsDir(dir), 'broken.json'), '{ "name": ');
@@ -444,10 +444,10 @@ test('the shipped agents are written when missing, then updated until edited; Re
 test('the prompt tells a buddy who the other members are, as the app shows them', () => {
   const thread = { id: 'c_thread01', anchor: null, comments: [{ by: { name: 'fzhan', kind: 'human' }, body: 'hi' }] };
   const buddies = [{ id: 'b_ada', name: 'Ada', about: 'Edits for tone.' }, { id: 'b_bo', name: 'Bo', about: '' }, { id: 'b_cy', name: 'Cy', about: 'Checks facts.' }];
-  const prompt = buildPrompt({ buddy: buddies[0], buddies, docName: 'a.md', thread });
+  const prompt = buildPrompt({ buddy: buddies[0], buddies, docName: 'a.md', sidecarName: 'a.md.comments.jsonl', thread });
   assert.match(prompt, /The other members of the doc:\n\nBo\n\nCy: Checks facts\./);
   assert.doesNotMatch(prompt, /Ada: /, 'not itself');
-  const withUser = buildPrompt({ buddy: buddies[0], buddies, docName: 'a.md', thread, human: { name: 'fzhan', about: 'I write novels.' } });
+  const withUser = buildPrompt({ buddy: buddies[0], buddies, docName: 'a.md', sidecarName: 'a.md.comments.jsonl', thread, human: { name: 'fzhan', about: 'I write novels.' } });
   assert.match(withUser, /The other members of the doc:\n\nfzhan \(owner\): I write novels\.\n\nBo/);
   assert.match(withUser, /Resolve this thread only when the last comment asks you to: append \{"thread":"c_thread01","resolved":true\}/);
   assert.doesNotMatch(prompt, /I write novels/, 'nothing about an owner who wrote nothing');

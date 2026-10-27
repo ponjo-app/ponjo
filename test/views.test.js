@@ -436,6 +436,13 @@ test('markdown view: a block style changes only the lines the selection touches,
     await run(`contract.tool('${tool}')`);
     assert.equal(await getText(), saved, `${tool} over two lines`);
   }
+  // Lines that are paragraphs of their own (typed with Enter) go in one code block too, a block a line.
+  await make('markdown', 'Before\n\nfirst line\n\n## Second\n\nAfter\n', { toolbar: true });
+  await select('first line', 2, 2);
+  await selectTo('Second', 2);
+  await new Promise((done) => setTimeout(done, 50));
+  await run(`contract.tool('codeBlock')`);
+  assert.equal(await getText(), 'Before\n\n```\nfirst line\nSecond\n```\n\nAfter\n', 'codeBlock over a paragraph and a heading');
 });
 
 test('markdown view: a change applied with who made it glows, with their name', async () => {
@@ -475,20 +482,29 @@ test('markdown view: pasting a URL over selected text links the text; other past
   assert.equal(await getText(), 'See [the plan](https://example.com/plan) not a link.\n');
 });
 
-test('A5: markdown view: plain text pastes as the text it is; pasted HTML keeps its formatting but leaves out images held in the page', async () => {
-  const paste = (text, html = null) => run(`(() => {
+test('A5: markdown view: plain text pastes as Markdown, and as the text it is with Mod+Shift+V; pasted HTML keeps its formatting but leaves out images held in the page', async () => {
+  const paste = (text, html = null, asText = false) => run(`(() => {
+    const editor = document.querySelector('.ProseMirror');
+    if (${asText}) editor.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyV', key: 'V', shiftKey: true, ctrlKey: true, bubbles: true }));
     const clipboardData = new DataTransfer();
     clipboardData.setData('text/plain', ${JSON.stringify(text)});
     if (${JSON.stringify(html)}) clipboardData.setData('text/html', ${JSON.stringify(html)});
-    document.querySelector('.ProseMirror').dispatchEvent(new ClipboardEvent('paste', { clipboardData, bubbles: true, cancelable: true }));
+    editor.dispatchEvent(new ClipboardEvent('paste', { clipboardData, bubbles: true, cancelable: true }));
   })()`);
   await make('markdown', 'Start.\n');
   await select('Start.', 6, 6);
-  await paste(' open __init__.py');
-  assert.equal(await getText(), 'Start. open \\_\\_init\\_\\_\\.py\n', 'Markdown in plain text stays text');
+  await paste('open **this** and `__init__.py`');
+  assert.equal(await getText(), 'Start.open **this** and `__init__.py`\n', 'Markdown in plain text is read');
+  await make('markdown', '');
+  await paste('# A heading\n\n- one\n- two');
+  assert.equal(await getText(), '# A heading\n\n- one\n- two', 'its blocks');
   await make('markdown', 'Start.\n');
   await select('Start.', 6, 6);
-  await paste('# not a heading\n# nor this');
+  await paste(' open __init__.py', null, true);
+  assert.equal(await getText(), 'Start. open \\_\\_init\\_\\_\\.py\n', 'with Mod+Shift+V, Markdown in plain text stays text');
+  await make('markdown', 'Start.\n');
+  await select('Start.', 6, 6);
+  await paste('# not a heading\n# nor this', null, true);
   assert.equal(await getText(), 'Start.# not a heading\n\n\\# nor this\n', 'a line a paragraph');
   await make('markdown', 'Start.\n');
   await select('Start.', 6, 6);

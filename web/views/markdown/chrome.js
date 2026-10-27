@@ -63,9 +63,10 @@ const LINK = `
   </div>
   <div class="pj-link" role="dialog" aria-label="Link" hidden>
     <span class="pj-link-icon" data-icon="link"></span>
-    <input class="pj-link-input" type="text" inputmode="url" autocomplete="off" spellcheck="false" aria-label="Link URL" placeholder="Paste or type a link">
+    <input class="pj-link-input" type="text" inputmode="url" autocomplete="off" spellcheck="false" aria-label="Link URL" placeholder="Paste a link, or type to find a file" role="combobox" aria-autocomplete="list" aria-expanded="false">
     <button type="button" class="pj-primary" data-action="apply">Apply</button>
     <button type="button" class="pj-icon-btn" data-action="unlink" data-icon="unlink" data-tip="Remove link" aria-label="Remove link" hidden></button>
+    <ul class="pj-mentions pj-link-files" role="listbox" aria-label="Files" hidden></ul>
   </div>`;
 
 const BLOCK_LABELS = { paragraph: 'Normal text', h1: 'Heading 1', h2: 'Heading 2', h3: 'Heading 3', h4: 'Heading 4', h5: 'Heading 5', h6: 'Heading 6', code_block: 'Code block', front_matter: 'Front matter' };
@@ -90,10 +91,13 @@ function elements(markup) {
  * @param {object} editor
  * A read-only view (`editable` false) has no tools and no bubble.
  *
+ * The link popover offers the project's files (`files()`: { paths, current }, or null).
+ *
  * @param {{ toolbar: HTMLElement, stage: HTMLElement, host: HTMLElement, onComment: () => void,
+ *           files?: () => { paths: string[], current: string } | null,
  *           settings: object, saveSettings: (patch: object) => void, editable?: boolean }} options
  */
-export function createChrome(editor, { toolbar, stage, host, onComment, settings, saveSettings, editable = true }) {
+export function createChrome(editor, { toolbar, stage, host, onComment, files = () => null, settings, saveSettings, editable = true }) {
   const tools = elements(TOOLS);
   const [bubble] = elements(BUBBLE);
   const [outlineNav] = elements(OUTLINE);
@@ -110,7 +114,7 @@ export function createChrome(editor, { toolbar, stage, host, onComment, settings
   const page = host.closest('.pj-page');
   const done = new AbortController();
   const { signal } = done;
-  const link = setupLink(editor, { card, popover, host, canvas, signal });
+  const link = setupLink(editor, { card, popover, host, canvas, files, signal });
   const outline = setupOutline(editor, { nav: outlineNav, host, canvas, signal });
   const blockPicker = setupBlockPicker(editor, tools.find((el) => el.matches('.pj-block-picker')), signal);
   const buttons = tools.flatMap((el) => [...el.querySelectorAll('button[data-command]')]);
@@ -271,13 +275,18 @@ export function createChrome(editor, { toolbar, stage, host, onComment, settings
 // in view (scrolled out, it hides until it is back): click to open, or edit
 // or remove it. Mod+click on a link opens it too. The popover edits
 // the URL for the selection or the link at the caret: Enter applies, an
-// empty URL removes the link, Escape or clicking away cancels. It sits under
+// empty URL removes the link, Escape or clicking away cancels. What is
+// typed that is not a URL finds the project's files, to link by their path
+// from this doc: the arrows pick one, Enter or a click applies it. It sits under
 // the text it links, or under the button that opened it when that text is
 // out of view.
-function setupLink(editor, { card, popover, host, canvas, signal }) {
+function setupLink(editor, { card, popover, host, canvas, files, signal }) {
   const go = card.querySelector('.pj-link-go');
   const input = popover.querySelector('.pj-link-input');
   const unlink = popover.querySelector('[data-action="unlink"]');
+  const list = popover.querySelector('.pj-link-files');
+  let offered = []; // the files offered for what is typed: [{ path, href }]
+  let picked = -1; // the one the arrows are on
   let button = null; // the toolbar or bubble button it opened from
   let shown = null; // the link the card is for: { href, rect }
 
@@ -326,10 +335,47 @@ function setupLink(editor, { card, popover, host, canvas, signal }) {
     follow(a.getAttribute('href'));
   });
 
+  // At most 8 of the project's files whose path has what is typed, ignoring
+  // case, the doc's own left out, those git ignores last.
+  function offer() {
+    const typed = input.value.trim().toLowerCase();
+    const project = files();
+    offered = !project || !typed || /^([a-z][a-z\d+.-]*:|#|www\.)/.test(typed) ? []
+      : project.paths.filter((path) => path !== project.current && path.toLowerCase().includes(typed)).slice(0, 8)
+        .map((path) => ({ path, href: encodeURI(relativePath(project.current, path)) }));
+    picked = -1;
+    paintOffer();
+  }
+
+  function paintOffer() {
+    list.replaceChildren(...offered.map(({ path, href }, i) => {
+      const item = document.createElement('li');
+      item.className = `pj-mention${i === picked ? ' pj-selected' : ''}`;
+      item.setAttribute('role', 'option');
+      item.setAttribute('aria-selected', String(i === picked));
+      const name = Object.assign(document.createElement('span'), { className: 'pj-mention-name', textContent: path.split('/').at(-1) });
+      const where = Object.assign(document.createElement('span'), { className: 'pj-mention-sub', textContent: path });
+      const what = Object.assign(document.createElement('span'), { className: 'pj-mention-who' });
+      what.append(name, where);
+      item.append(icon('file'), what);
+      item.addEventListener('mousedown', (event) => {
+        event.preventDefault();
+        close(href);
+      });
+      return item;
+    }));
+    list.hidden = offered.length === 0;
+    input.setAttribute('aria-expanded', String(!list.hidden));
+    list.querySelector('.pj-selected')?.scrollIntoView({ block: 'nearest' });
+  }
+  input.addEventListener('input', offer, { signal });
+
   function open(from) {
     showCard(null);
     button = from ?? null;
     const href = editor.beginLink();
+    offered = [];
+    paintOffer();
     input.value = href ?? '';
     unlink.hidden = href === null;
     popover.hidden = false;
@@ -368,9 +414,14 @@ function setupLink(editor, { card, popover, host, canvas, signal }) {
       event.preventDefault();
       event.stopPropagation();
       close(null);
+    } else if ((event.key === 'ArrowDown' || event.key === 'ArrowUp') && offered.length > 0) {
+      event.preventDefault();
+      const step = event.key === 'ArrowDown' ? 1 : -1;
+      picked = picked < 0 && step < 0 ? offered.length - 1 : (picked + step + offered.length) % offered.length;
+      paintOffer();
     } else if (event.key === 'Enter' && event.target === input) {
       event.preventDefault();
-      close(input.value.trim());
+      close(picked >= 0 ? offered[picked].href : input.value.trim());
     } else if (event.key === 'Tab') {
       // Focus stays in the popover: the URL, Apply, Remove.
       const stops = [...popover.querySelectorAll('input, button:not([hidden])')];
@@ -494,6 +545,15 @@ function setupOutline(editor, { nav, host, canvas, signal }) {
   canvas.addEventListener('scroll', () => requestAnimationFrame(markActive), { passive: true, signal });
 
   return { refresh };
+}
+
+// The path from the project's file `from` to its file `to`, as a link in `from` says it.
+function relativePath(from, to) {
+  const here = from.split('/').slice(0, -1);
+  const there = to.split('/');
+  let same = 0;
+  while (same < here.length && same < there.length - 1 && here[same] === there[same]) same++;
+  return [...here.slice(same).map(() => '..'), ...there.slice(same)].join('/');
 }
 
 function decoded(text) {

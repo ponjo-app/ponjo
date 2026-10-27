@@ -11,7 +11,8 @@ import { mkdir, mkdtemp, readFile, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, delimiter, dirname, join } from 'node:path';
 import { text } from 'node:stream/consumers';
-import { INFER, files, turn } from '../agents/ponjo.mjs';
+import { INFER, turn } from '../agents/ponjo-core.mjs';
+import { files } from '../agents/ponjo.mjs';
 import { agentScript, installAgents } from '../src/store/agents.js';
 import { SAMPLE } from './helpers.js';
 

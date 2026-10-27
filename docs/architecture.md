@@ -199,6 +199,7 @@ numbers are `LATENCY` in `web/views/index.js`, which the tests read:
 | B5 | a key | its character shown at a teammate | 50 ms, 100 ms |
 | B6 | a person's cursor moving | it shown at the others | 100 ms p95 |
 | B7 | the doc opened | the end of any one task that keeps the page busy | 500 ms |
+| B8 | a file clicked in the sidebar | its doc drawn in place of the one before, for a doc of everyday size | 500 ms median |
 
 **C. Recovery:**
 
@@ -230,7 +231,7 @@ numbers are `LATENCY` in `web/views/index.js`, which the tests read:
 
 | Id | Rule |
 | --- | --- |
-| E1 | At any moment the page is in exactly one true state: Saved, Saving, Not saved (and why), Offline or Read-only. Alone too. No test yet: the page shows these apart, but not as one state. |
+| E1 | At any moment the page is in exactly one true state: Saved, Saving, Not saved (and why), Offline or Read-only. Alone too. The toolbar shows it (`paintSave` in `web/main.js`); other problems show apart, beside the doc's name. |
 
 A view keeps the B rules only up to a size, its `limits`: how long the doc is, and
 for the Markdown view how long a run of text without a blank line is (one
@@ -563,6 +564,12 @@ sharing.
   host; a page's first message is its key, name and doc. The app's
   relay is `wss://share.ponjo.app` unless `PONJO_RELAY` names another
   (empty: nothing is shared).
+- **Versions.** The page comes from the relay, deployed from main with the
+  nightly, and the host from the app its owner installed, so the two can be
+  apart. The messages between them have a version (`PROTOCOL`,
+  `src/core/protocol.js`), raised by a change the other side would
+  misread; the host says its own in `hello`, and a page told another one
+  says which side to update: the owner's app, or the page (reload it).
 - **Limits**, so the relay is no free pipe and stays within the Workers
   free plan: at most 20 pages in a room (one more is turned away, `full`),
   no message over 8 MiB characters (its sender is closed), and at most 60
@@ -575,7 +582,10 @@ sharing.
   serves both the same way (`serve` in `desktop/doc-host.js`), adding a
   `who` to every call. `team.html` (built with the app's pages, in
   `dist/web`) is the doc window on the relay; in the preview (`preview/`)
-  `doc-stub.js` plays the host instead.
+  `doc-stub.js` plays the host instead, and runs its buddies' turns
+  (`agents/ponjo-core.mjs`) in the page, on Nemotron through the relay's
+  Worker deployed as the model's door (`infer.ponjo.app`, the `hackathon`
+  env in `relay/wrangler.toml`), which holds the key.
   A page names its doc by its path in the project, or none for the
   project's first; `state` tells it that path and the project's name
   (`place`), for its sidebar (`web/files.js`), which reads the tree through

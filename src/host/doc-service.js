@@ -9,7 +9,7 @@
 // through Room (room.js), at the same door.
 
 import { createHash } from 'node:crypto';
-import { appendFile, mkdir, open, readFile, readdir, realpath, rm, stat, writeFile } from 'node:fs/promises';
+import { appendFile, mkdir, open, readFile, readdir, realpath, rm, stat } from 'node:fs/promises';
 import { basename, dirname, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createAnchor, locate } from '../core/anchor.js';
@@ -19,7 +19,8 @@ import { BuddyError, buddiesHere, checkBuddyPatch } from '../core/buddies.js';
 import { DEFAULT_SETTINGS, SettingsError } from '../core/settings.js';
 import { lineChanges, merge3 } from '../core/diff.js';
 import { apply, diffOps, mapOffset, transform } from '../core/ot.js';
-import { StoreError, formFor, hashText, moveDoc, readDoc, readSidecarText, sidecarPath, writeDoc, writeSidecar } from '../store/files.js';
+import { PROTOCOL } from '../core/protocol.js';
+import { StoreError, formFor, hashText, moveDoc, readDoc, readSidecarText, sidecarPath, writeAtomic, writeDoc, writeSidecar } from '../store/files.js';
 import { VERSION_ID, moveHistory, noteTaken, noteWritten, readHistory, readTaken, readVersion, recordVersion, writtenEdits } from '../store/history.js';
 import { configDir, defaultName, ownerOf, readSettings, settingsWithId, updateSettings, watchSettings } from '../store/settings.js';
 import { firstBuddies, projectBuddiesDir, readBuddies, removeBuddy, userBuddiesDir, writeBuddy } from '../store/buddies.js';
@@ -891,8 +892,8 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
     leave(id) {
       if (cursors.delete(id)) tellCursors();
     },
-    /** What a window hears first: whether the doc is missing, and who is at work. */
-    hello: () => ({ missing, agents: agentStatuses() }),
+    /** What a window hears first: the version of the messages, whether the doc is missing, and who is at work. */
+    hello: () => ({ protocol: PROTOCOL, missing, agents: agentStatuses() }),
     runner,
     docPath: () => docPath,
     moveTo,
@@ -996,7 +997,7 @@ async function logRun(dir, entry, trace) {
       if (size <= LOG_LIMIT) continue;
       const file = await open(path);
       const { buffer } = await file.read({ buffer: Buffer.alloc(LOG_LIMIT / 2), position: size - LOG_LIMIT / 2 }).finally(() => file.close());
-      await writeFile(path, buffer.subarray(buffer.indexOf('\n') + 1));
+      await writeAtomic(path, buffer.subarray(buffer.indexOf('\n') + 1));
     }
   } catch (error) {
     console.error('Could not log a run:', error);
@@ -1005,7 +1006,7 @@ async function logRun(dir, entry, trace) {
 
 async function keepTrace(folder, trace) {
   await mkdir(folder, { recursive: true });
-  await writeFile(join(folder, `${trace.run}.json`), JSON.stringify(trace));
+  await writeAtomic(join(folder, `${trace.run}.json`), JSON.stringify(trace)); // whole, for a window reading it meanwhile
   const names = (await readdir(folder)).filter((name) => name.endsWith('.json'));
   if (names.length <= TRACES) return;
   const kept = await Promise.all(names.map(async (name) => ({ name, at: (await stat(join(folder, name))).mtimeMs })));

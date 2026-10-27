@@ -122,7 +122,7 @@ that fails before the fix.
 | 1. Properties of `src/core/ot.js` | A1 A3 A4 A5 | `npm test` |
 | 2. Protocol fuzz | A1–A6, C1, C3–C5, C7 | `npm run test:stress` (`test/stress/concurrency.test.js`) |
 | 3. Named scenarios in real views and pages | D1–D8, A2 A3 A4 A5 A6, B6, C1–C8 | `npm test` (`test/client.test.js`, `test/doc-service.test.js`, `test/runner.test.js`, `test/store.test.js`, `test/views.test.js`, `test/relay.test.js`) |
-| 4. Timings | B1–B5, B7 | `npm run test:perf` |
+| 4. Timings | B1–B5, B7, B8 | `npm run test:perf` |
 | 5. By hand | C5, C6 on a real network | [two machines](#sharing--two-machines-by-hand) |
 
 - **Layer 2** runs a real DocService on temp files with 1 to 4 clients
@@ -145,7 +145,9 @@ that fails before the fix.
   character on a teammate's page (the browser build, its applyText and
   marks included) through the relay run locally, the teammate's line 40 ms
   slower each way, in a small Markdown doc and in the plain view's longest,
-  which the host writes whole on every key. A timing fails when it is
+  which the host writes whole on every key; `test/perf/open.test.js`
+  opens the desktop app on a folder and times a file clicked in the
+  sidebar until its doc is drawn in place. A timing fails when it is
   missed three times running.
 - Layers 1 to 3 are deterministic and never retried: a test that fails now
   and then is a bug.
@@ -185,7 +187,8 @@ on machine B, on another network (a phone's hotspot will do), in a browser.
 | Release | version tag | all of main, draft release | blocks publishing |
 
 - A PR that changes `spec/` changes `spec/conformance/` too.
-- The nightly is built, and the relay with the teammate's page deployed,
+- The nightly is built, and the relay with the teammate's page and the
+  preview's buddies' model deployed,
   only when `npm test`, `npm run test:stress` and `npm run test:perf` pass
   too (`release` and `relay` in `.github/workflows/desktop.yml`).
 - A test that fails now and then is a bug, in the code or the test: it is

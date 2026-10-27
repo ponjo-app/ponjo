@@ -145,7 +145,7 @@ export function createCommentMargin(margin, handlers) {
     if (action) head.append(action);
     const open = unfolded.has(comment.id);
     const body = el('div', `pj-body${open ? '' : ' pj-body-folded'}`);
-    body.append(...withMentions(comment.body, handlers.mentionable?.() ?? []));
+    body.append(...withMentions(comment.body, handlers.mentionable?.() ?? [], handlers.files?.(), handlers.openFile));
     if (comment.body.trim()) row.append(head, body, foldButton(comment.id, open));
     else row.append(head);
     // To retry, or to redo what was dropped, the human asks again.
@@ -508,20 +508,46 @@ function fillMentionMenu(menu, choices, selected, onPick) {
 
 /**
  * `text` as nodes, each @name of someone in `people` ([{ name, kind }]) a
- * chip that shows their name card on hover.
+ * chip that shows their name card on hover, and each path of a file in the
+ * project (`files`, a Set of paths in it, as Copy Path writes them) a link
+ * that opens it with `open(path)`.
  */
-function withMentions(text, people) {
+function withMentions(text, people, files, open) {
   const nodes = [];
   let at = 0;
   for (const { start, end, name } of mentionSpans(text, people.map((p) => p.name))) {
     const who = people.find((p) => p.name === name);
-    if (start > at) nodes.push(document.createTextNode(text.slice(at, start)));
+    if (start > at) nodes.push(...withPaths(text.slice(at, start), files, open));
     const chip = el('span', `pj-at pj-at-${who.kind}`, text.slice(start, end));
     chip.dataset.mention = who.name;
     chip.dataset.mentionKind = who.kind;
     if (who.kind === 'agent') chip.style.setProperty('--buddy', buddyColor(who.id));
     nodes.push(chip);
     at = end;
+  }
+  if (at < text.length) nodes.push(...withPaths(text.slice(at), files, open));
+  return nodes;
+}
+
+// A word is a path when a file in `files` has it, with no `./` or `/` before
+// it and no punctuation after: only what is there is a link.
+function withPaths(text, files, open) {
+  const nodes = [];
+  let at = 0;
+  for (const { 0: word, index } of files?.size ? text.matchAll(/[^\s`'"()<>[\]{}]+/g) : []) {
+    const written = word.replace(/[.,;:!?]+$/, '');
+    const path = written.replace(/^\.?\//, '');
+    if (!files.has(path)) continue;
+    if (index > at) nodes.push(document.createTextNode(text.slice(at, index)));
+    const link = el('a', 'pj-file-link', written);
+    link.href = '#';
+    link.dataset.tip = `Open ${path}`;
+    link.addEventListener('click', (event) => {
+      event.preventDefault();
+      open(path);
+    });
+    nodes.push(link);
+    at = index + written.length;
   }
   if (at < text.length) nodes.push(document.createTextNode(text.slice(at)));
   return nodes;

@@ -181,36 +181,45 @@ const indentCode = (step) => (state, dispatch, view) => {
 };
 
 // Pasting a single URL over selected text links the text to it, as Docs and
-// Notion do. Plain text goes in as the text it is, a paragraph a line, as
-// typed text does (Markdown in it stays text); formatted text (HTML) is the
-// clipboard plugin's, but for images held in the page itself (`data:`,
-// `blob:`), whose bytes would land in the doc.
-const paste = $prose(() => new Plugin({
-  props: {
-    handlePaste(view, event, slice) {
-      const data = event.clipboardData;
-      const url = data?.getData('text/plain').trim();
-      const { selection: { empty, from, to, $from }, schema, tr } = view.state;
-      const type = schema.marks.link;
-      if (!empty && /^(https?:\/\/|mailto:)\S+$/i.test(url) && $from.parent.type.allowsMarkType(type)) {
-        view.dispatch(tr.removeMark(from, to, type).addMark(from, to, type.create({ href: url })));
+// Notion do. Plain text is read as Markdown, and formatted text (HTML) keeps
+// its formatting, by the clipboard plugin, but for images held in the page
+// itself (`data:`, `blob:`), whose bytes would land in the doc. Pasted with
+// Mod+Shift+V, plain text goes in as the text it is, a paragraph a line.
+const paste = $prose(() => {
+  let plain = false; // the last key pressed was Mod+Shift+V
+  return new Plugin({
+    props: {
+      handleKeyDown(_view, event) {
+        plain = event.shiftKey && event.code === 'KeyV';
+        return false;
+      },
+      handlePaste(view, event, slice) {
+        const asText = plain;
+        plain = false;
+        const data = event.clipboardData;
+        const url = data?.getData('text/plain').trim();
+        const { selection: { empty, from, to, $from }, schema, tr } = view.state;
+        const type = schema.marks.link;
+        if (!empty && /^(https?:\/\/|mailto:)\S+$/i.test(url) && $from.parent.type.allowsMarkType(type)) {
+          view.dispatch(tr.removeMark(from, to, type).addMark(from, to, type.create({ href: url })));
+          return true;
+        }
+        // ProseMirror's own slice of plain text: its lines as paragraphs, or as they are in code.
+        if (!asText || !data || data.types.includes('text/html') || data.types.includes('vscode-editor-data')) return false;
+        view.dispatch(tr.replaceSelection(slice).scrollIntoView().setMeta('paste', true).setMeta('uiEvent', 'paste'));
         return true;
-      }
-      // ProseMirror's own slice of plain text: its lines as paragraphs, or as they are in code.
-      if (!data || data.types.includes('text/html') || data.types.includes('vscode-editor-data')) return false;
-      view.dispatch(tr.replaceSelection(slice).scrollIntoView().setMeta('paste', true).setMeta('uiEvent', 'paste'));
-      return true;
+      },
+      transformPastedHTML(html) {
+        const template = document.createElement('template');
+        template.innerHTML = html;
+        for (const image of template.content.querySelectorAll('img')) {
+          if (/^\s*(data|blob):/i.test(image.getAttribute('src') ?? '')) image.remove();
+        }
+        return template.innerHTML;
+      },
     },
-    transformPastedHTML(html) {
-      const template = document.createElement('template');
-      template.innerHTML = html;
-      for (const image of template.content.querySelectorAll('img')) {
-        if (/^\s*(data|blob):/i.test(image.getAttribute('src') ?? '')) image.remove();
-      }
-      return template.innerHTML;
-    },
-  },
-}));
+  });
+});
 
 // Clicking a task list item's box (app.css draws it in the item's gutter,
 // left of the item) ticks or unticks it.
@@ -295,6 +304,7 @@ const uiPlugin = (hooks) => $prose(() => new Plugin({
  * @param {{ stage: HTMLElement, text: string, editable?: boolean, onChange?: () => void, onEdit?: () => void,
  *           onMarkClick?: (id: string) => void, onLayout?: () => void,
  *           toolbar?: HTMLElement, onComment?: () => void, image?: (src: string) => Promise<string | null>,
+ *           files?: () => { paths: string[], current: string } | null,
  *           settings?: object, saveSettings?: (patch: object) => void }} options
  */
 // `onChange` fires once the person pauses after changing the doc, `onEdit`
@@ -307,10 +317,11 @@ const uiPlugin = (hooks) => $prose(() => new Plugin({
 // follows the view's `settings` (web/views/markdown/index.js) and changes
 // them through `saveSettings` (the focus mode shortcut).
 // An image at a path, not on the web, shows what `image` gives for its `src`
-// as written: a URL the page may show, or null for none.
+// as written: a URL the page may show, or null for none. `files` says the
+// project's files and the doc's path in it, for the link popover to offer.
 export async function createMarkdownView({
   stage, text, editable = true, onChange = () => {}, onEdit = () => {}, onMarkClick = () => {}, onLayout = () => {}, toolbar = null, onComment = () => {},
-  image = async () => null,
+  image = async () => null, files = () => null,
   settings = null, saveSettings = () => {},
 }) {
   // The human changed the doc since `updated` last fired: any change not
@@ -634,9 +645,18 @@ export async function createMarkdownView({
     quote: onLines((state, dispatch) => (ancestor(state, (node) => node.type.name === 'blockquote')
       ? lift(state, dispatch)
       : editor.action(callCommand(wrapInBlockquoteCommand.key)))),
-    // Its lines stay lines: each line break becomes a newline in the code.
+    // Its lines stay lines: each line break becomes a newline in the code,
+    // and the blocks the selection touches go in one code block, a block a line.
     codeBlock: onLines((state, dispatch) => {
-      const { $from } = state.selection;
+      const { $from, $to } = state.selection;
+      const range = !$from.sameParent($to) && $from.blockRange($to);
+      const blocks = range ? range.parent.content.content.slice(range.startIndex, range.endIndex) : [];
+      if (blocks.length > 1 && blocks.every((node) => node.isTextblock)) {
+        const code = blocks.map((node) => node.textBetween(0, node.content.size, null, (leaf) => (leaf.type.name === 'hardbreak' ? '\n' : ''))).join('\n');
+        const tr = state.tr.replaceWith(range.start, range.end, state.schema.nodes.code_block.create(null, code ? state.schema.text(code) : null));
+        dispatch(tr.setSelection(TextSelection.create(tr.doc, range.start + 1, range.start + 1 + code.length)).scrollIntoView());
+        return true;
+      }
       const tr = state.tr;
       $from.parent.forEach((child, offset) => {
         if (child.type.name === 'hardbreak') tr.replaceWith(tr.mapping.map($from.start() + offset), tr.mapping.map($from.start() + offset + 1), state.schema.text('\n'));
@@ -924,7 +944,7 @@ export async function createMarkdownView({
     chrome = createChrome({
       run, formatState, getText: currentText, selection, headings, scrollToHeading, scrollToAnchor,
       selectionRect, beginLink, endLink, linkRect, caretLink,
-    }, { toolbar, stage, host, onComment, settings, saveSettings, editable });
+    }, { toolbar, stage, host, onComment, files, settings, saveSettings, editable });
   }
 
   return {
