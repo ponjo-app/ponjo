@@ -20,7 +20,8 @@
 //   attach { docId }, with a message port: a window's page talks to the doc
 //     over it (`serve`)
 //   closeAll
-// The host says `{ type: 'ready' }` once it can take them.
+// The host says `{ type: 'ready' }` once it can take them, and with
+// PONJO_TIMING set `{ type: 'timing', timing }` after each request.
 //
 // A project's room (src/host/room.js) opens when the owner asks it at the
 // door (`openRoom`), and ends when they close it, or close the project's
@@ -53,14 +54,15 @@ const held = async () => {
 };
 
 // With PONJO_TIMING set, the ms each request took, from the app or a page
-// (`from`), on stderr.
+// (`from`), told the app (`timing`), which prints it: on Windows this
+// process's stderr reaches no one.
 const timed = process.env.PONJO_TIMING
   ? async (from, type, fn) => {
     const start = performance.now();
     try {
       return await fn();
     } finally {
-      console.error(`ponjo-timing ${JSON.stringify({ [from]: type, ms: Math.round(performance.now() - start) })}`);
+      channel.send({ type: 'timing', timing: { [from]: type, ms: Math.round(performance.now() - start) } });
     }
   }
   : (_from, _type, fn) => fn();

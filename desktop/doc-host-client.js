@@ -60,6 +60,10 @@ export function createDocHost({ fork, log = console.error }) {
       for (const queued of queue.splice(0)) child.postMessage(...queued);
       return;
     }
+    if (message?.type === 'timing') {
+      log(`ponjo-timing ${JSON.stringify(message.timing)}`);
+      return;
+    }
     const call = pending.get(message?.id);
     if (!call) return;
     pending.delete(message.id);
