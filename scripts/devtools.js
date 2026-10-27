@@ -7,12 +7,19 @@ import { spawn } from 'node:child_process';
 /**
  * Start Electron app `exe` with `args`, the DevTools protocol on a port it
  * picks. Its pages' console messages and errors go to its stderr too
- * (--enable-logging), so a window that did not show can say why.
+ * (--enable-logging), so a window that did not show can say why; each
+ * of its lines goes to `onLine` as well.
  */
-export async function launchElectron(exe, args, { env }) {
+export async function launchElectron(exe, args, { env, onLine = () => {} }) {
   const child = spawn(exe, [...args, '--remote-debugging-port=0', '--enable-logging'], { env, stdio: ['ignore', 'ignore', 'pipe'] });
   const exited = new Promise((done) => child.once('exit', done));
   let stderr = ''; // its last lines, to say why a window did not show
+  let partial = '';
+  child.stderr.on('data', (chunk) => {
+    const lines = (partial + chunk).split(/\r?\n/);
+    partial = lines.pop();
+    lines.forEach(onLine);
+  });
   const devtoolsPort = await new Promise((done, fail) => {
     const timer = setTimeout(() => fail(new Error('the app did not start')), 30_000);
     child.stderr.on('data', (chunk) => {
