@@ -45,7 +45,7 @@ npm run dist:desktop          # installer in release/
 
 ### Deploying the relay
 
-The relay and the teammate's page are one Cloudflare Worker at `share.ponjo.app` ([relay/wrangler.toml](relay/wrangler.toml)). Its owner deploys it from a clean checkout of `main`, signed in to Cloudflare with wrangler (`npx wrangler login` in relay/, once):
+The relay and the teammate's page are one Cloudflare Worker at `share.ponjo.app` ([relay/wrangler.toml](relay/wrangler.toml)). CI deploys it with the nightly, from each push to `main` that passes the checks (`relay` in [desktop.yml](.github/workflows/desktop.yml), with the repo's `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` secrets). To deploy it by hand, its owner works from a clean checkout of `main`, signed in to Cloudflare with wrangler (`npx wrangler login` in relay/, once):
 
 ```bash
 npm ci && npm ci --prefix relay
