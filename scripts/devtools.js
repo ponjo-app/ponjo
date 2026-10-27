@@ -4,18 +4,20 @@
 
 import { spawn } from 'node:child_process';
 
-/** Start Electron app `exe` with `args`, the DevTools protocol on a port it picks. */
+/**
+ * Start Electron app `exe` with `args`, the DevTools protocol on a port it
+ * picks. Its pages' console messages and errors go to its stderr too
+ * (--enable-logging), so a window that did not show can say why.
+ */
 export async function launchElectron(exe, args, { env }) {
-  const child = spawn(exe, [...args, '--remote-debugging-port=0'], { env, stdio: ['ignore', 'ignore', 'pipe'] });
+  const child = spawn(exe, [...args, '--remote-debugging-port=0', '--enable-logging'], { env, stdio: ['ignore', 'ignore', 'pipe'] });
   const exited = new Promise((done) => child.once('exit', done));
   let stderr = ''; // its last lines, to say why a window did not show
   const devtoolsPort = await new Promise((done, fail) => {
-    let text = '';
     const timer = setTimeout(() => fail(new Error('the app did not start')), 30_000);
     child.stderr.on('data', (chunk) => {
-      text += chunk;
-      stderr = (stderr + chunk).slice(-4000);
-      const found = text.match(/DevTools listening on ws:\/\/127\.0\.0\.1:(\d+)\//);
+      stderr = (stderr + chunk).slice(-8000);
+      const found = stderr.match(/DevTools listening on ws:\/\/127\.0\.0\.1:(\d+)\//);
       if (found) {
         clearTimeout(timer);
         done(Number(found[1]));
@@ -27,13 +29,13 @@ export async function launchElectron(exe, args, { env }) {
     pid: child.pid,
     devtoolsPort,
     // The page whose title starts with `name`, once there, within `ms`;
-    // if it is not, the error names the pages there and the app's stderr.
+    // if it is not, the error says what each page there shows and the app's stderr.
     async page(name, ms = 30_000) {
       const pages = async () => (await (await fetch(`${base}/json`)).json()).filter((t) => t.type === 'page');
       const target = await waitFor(async () => (await pages()).find((t) => t.title.startsWith(name)), ms, `the ${name} window`)
         .catch(async (error) => {
-          const titles = await pages().then((all) => all.map((t) => JSON.stringify(t.title)).join(', ') || 'none', () => 'DevTools did not answer');
-          throw new Error(`${error.message}\npages: ${titles}\nthe app's stderr, last lines:\n${stderr}`);
+          const shown = await pages().then((all) => Promise.all(all.map(describe)), () => ['DevTools did not answer']);
+          throw new Error(`${error.message}\npages:\n${shown.join('\n') || 'none'}\nthe app's stderr, last lines:\n${stderr}`);
         });
       const cdp = await connect(target.webSocketDebuggerUrl);
       return {
@@ -70,6 +72,17 @@ export async function waitFor(probe, ms, what) {
     if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}`);
     await new Promise((done) => setTimeout(done, 250));
   }
+}
+
+// What page `target` shows: its title, file, whether it has the app's
+// line to its doc (window.ponjoHost, from the preload) and its first text.
+async function describe(target) {
+  const look = `JSON.stringify({ file: location.pathname.split('/').at(-1), ready: document.readyState, host: Boolean(window.ponjoHost), text: (document.body?.innerText ?? '').slice(0, 200) })`;
+  const seen = await Promise.race([
+    connect(target.webSocketDebuggerUrl).then((cdp) => cdp.send('Runtime.evaluate', { expression: look, returnByValue: true })),
+    new Promise((done) => setTimeout(done, 2000)),
+  ]).catch(() => null);
+  return `  ${JSON.stringify(target.title)}: ${seen?.result?.result?.value ?? 'did not answer'}`;
 }
 
 async function connect(url) {
