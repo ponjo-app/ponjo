@@ -7,27 +7,35 @@ import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { createServer } from 'node:http';
 import { existsSync } from 'node:fs';
-import { mkdir, mkdtemp, readFile, symlink, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, realpath, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { basename, delimiter, dirname, join } from 'node:path';
+import { delimiter, dirname, join } from 'node:path';
 import { text } from 'node:stream/consumers';
 import { INFER, turn } from '../agents/ponjo-core.mjs';
-import { files } from '../agents/ponjo.mjs';
+import { files, inProject } from '../agents/ponjo.mjs';
+import { projectService } from '../src/host/project-service.js';
 import { agentScript, installAgents } from '../src/store/agents.js';
 import { MAX_TEXT_BYTES } from '../src/store/files.js';
 import { SAMPLE } from './helpers.js';
 
 const HEADER = '{"comments":1}\n';
 
-/** A working folder holding copies of a doc and its sidecar: { dir, doc, sidecar }. */
-async function copies(content = SAMPLE) {
+/**
+ * A run's working folder, made the current one, holding copies of a doc and
+ * its sidecar at `doc`, its path in the project: { dir, doc, sidecar }.
+ */
+async function copies(content = SAMPLE, doc = 'plan.md') {
   const dir = await mkdtemp(join(tmpdir(), 'ponjo-agent-'));
-  const doc = join(dir, 'plan.md');
   const sidecar = `${doc}.comments.jsonl`;
+  process.chdir(dir);
+  await mkdir(dirname(doc), { recursive: true });
   await writeFile(doc, content);
   await writeFile(sidecar, HEADER);
   return { dir, doc, sidecar };
 }
+
+/** What the turn sees of the copies `doc` and `sidecar`, and of `project` (left out: doc mode, the working folder). */
+const seen = ({ doc, sidecar }, project = '.') => files({ doc, sidecar, project });
 
 let calls = 0;
 /** What `infer` resolves to when the model calls the tools `[name, args]`. */
@@ -50,9 +58,9 @@ test('a turn reads the doc by line number and proposes an edit and a comment', a
   const { doc, sidecar } = await copies();
   const edits = [{ path: doc, old: 'extra load', new: 'extra peak load' }, { path: sidecar, old: '', new: '{"body":"Is week one too soon?"}' }];
   const infer = fake(calling(['read', { path: doc, lines: [8, 8] }]), calling(['propose', { edits, reply: 'Peak load is the risk.' }]));
-  assert.deepEqual(await turn({ prompt: 'the prompt', doc, sidecar }, { infer, readFile: files({ doc, sidecar }) }), { edits, reply: 'Peak load is the risk.' });
+  assert.deepEqual(await turn({ prompt: 'the prompt', doc, sidecar }, { infer, readFile: seen({ doc, sidecar }) }), { edits, reply: 'Peak load is the risk.' });
   assert.deepEqual(infer.messages[0], { role: 'user', content: 'the prompt' }, 'the first message is the prompt as is');
-  assert.deepEqual(infer.tools.map((t) => t.name), ['read', 'propose']);
+  assert.deepEqual(infer.tools.map((t) => t.name), ['read', 'find', 'grep', 'propose']);
   assert.deepEqual([infer.messages[1].role, infer.messages[1].sent], ['assistant', 'as the API sent it'], 'the model\'s message, kept as its API sent it');
   assert.deepEqual(infer.messages[2], { role: 'tool', id: infer.messages[1].calls[0].id, content: '8\tThe main risk is that the `sync` service cannot handle the extra load.' });
 });
@@ -63,7 +71,8 @@ test('a bad proposal goes back saying what to fix', async () => {
     [{ path: doc, old: 'the', new: 'a' }, /more than once/],
     [{ path: doc, old: 'all seven features', new: 'x' }, /not in the doc/],
     [{ path: doc, old: '', new: 'x' }, /is empty/],
-    [{ path: join(dirname(doc), 'other.md'), old: '', new: 'x' }, /other\.md cannot change/],
+    [{ path: 'other.md', old: '', new: 'x' }, /other\.md cannot change: only plan\.md and plan\.md\.comments\.jsonl can/],
+    [{ path: join(process.cwd(), doc), old: 'week one', new: 'x' }, /cannot change/],
     [{ path: sidecar, old: HEADER, new: '' }, /old must be empty/],
     [{ path: sidecar, old: '', new: '{"body":"ok"}\n{"anchor":"week one","body":"no"}' }, /not a comment line: {"anchor":"week one"/],
     [{ path: sidecar, old: '', new: '{"body":"ok","resolved":true}' }, /not a comment line/],
@@ -71,7 +80,7 @@ test('a bad proposal goes back saying what to fix', async () => {
   const overlapping = [{ path: doc, old: 'ship all six', new: 'x' }, { path: doc, old: 'all six features', new: 'y' }];
   const good = [{ path: doc, old: 'week one', new: 'week two' }, { path: sidecar, old: '', new: '{"thread":"c_1","body":"Moved."}\n' }];
   const infer = fake(...bad.map(([edit]) => calling(['propose', { edits: [good[0], edit], reply: '' }])), calling(['propose', { edits: overlapping, reply: '' }]), calling(['propose', { edits: good }]));
-  assert.deepEqual(await turn({ prompt: 'p', doc, sidecar }, { infer, readFile: files({ doc, sidecar }) }), { edits: good, reply: '' });
+  assert.deepEqual(await turn({ prompt: 'p', doc, sidecar }, { infer, readFile: seen({ doc, sidecar }), resolve: inProject }), { edits: good, reply: '' });
   const said = results(infer.messages);
   bad.forEach(([, why], i) => assert.match(said[i], new RegExp(`^Nothing was changed\\. Edit 2: .*${why.source}`)));
   assert.match(said.at(-1), /Edit 2 overlaps another edit/);
@@ -82,10 +91,10 @@ test('a reply without a tool call is sent back, every call is answered, and twen
   const infer = fake({ calls: [], sent: 'I will read it.' }, calling(['read', { path: doc, lines: [1, 1] }], ['read', { path: sidecar }]), {
     calls: [{ id: 'bad', name: 'read', args: '{"path":' }], sent: null,
   });
-  await assert.rejects(turn({ prompt: 'p', doc, sidecar }, { infer, readFile: files({ doc, sidecar }) }), /No proposal in 20 steps/);
+  await assert.rejects(turn({ prompt: 'p', doc, sidecar }, { infer, readFile: seen({ doc, sidecar }) }), /No proposal in 20 steps/);
   assert.equal(infer.steps, 20);
   const [, , nudge, , first, second, , notJson] = infer.messages;
-  assert.deepEqual(nudge, { role: 'user', content: 'Call read or propose.' });
+  assert.deepEqual(nudge, { role: 'user', content: 'Call read, find, grep or propose.' });
   assert.deepEqual([first.content, second.content], ['1\t# Q4 Launch Plan', 'Not run: one tool per step.']);
   assert.deepEqual([first.id, second.id], infer.messages[3].calls.map((c) => c.id), 'each call id gets a result');
   assert.equal(notJson.content, 'The arguments are not JSON: {"path":');
@@ -95,37 +104,112 @@ test('a long file reads as its outline, and in parts by line number', async () =
   const section = (title) => `## ${title}\n\n${'Some text that goes on. '.repeat(40)}\n\n`;
   const { doc, sidecar } = await copies(`# Plan\n\n${section('One')}\`\`\`sh\n# not a heading\n\`\`\`\n\n${Array.from({ length: 22 }, (_, i) => section(`S${i}`)).join('')}`);
   const infer = fake(calling(['read', { path: doc }]), calling(['read', { path: doc, lines: [3, 4] }]), calling(['read', { path: 'nowhere.md' }]), calling(['propose', { edits: [], reply: '' }]));
-  await turn({ prompt: 'p', doc, sidecar }, { infer, readFile: files({ doc, sidecar }) });
+  await turn({ prompt: 'p', doc, sidecar }, { infer, readFile: seen({ doc, sidecar }) });
   const [outline, part, missing] = results(infer.messages);
   assert.deepEqual(outline.split('\n').slice(0, 5), [`${doc} has 98 lines, too many to read at once: read it in parts.`, 'Its headings, with their lines:', '1-2\t# Plan', '3-10\t## One', '11-14\t## S0']);
   assert.equal(part, `3\t## One\n4\t`);
   assert.equal(missing, 'nowhere.md: no such file, or not one you can read.');
 });
 
-test('in project mode the turn reads the project as the app shows it: nothing hidden or outside, and only text of 20 MB or less', async () => {
-  const { doc, sidecar } = await copies();
-  const project = await mkdtemp(join(tmpdir(), 'ponjo-project-'));
-  const outside = await mkdtemp(join(tmpdir(), 'ponjo-outside-'));
-  await mkdir(join(project, 'notes'));
-  await mkdir(join(project, '.git'));
-  await writeFile(join(project, 'notes', 'a.md'), 'A\n');
-  await writeFile(join(project, 'notes', 'a.md.comments.jsonl'), HEADER);
-  await writeFile(join(project, '.git', 'config'), 'secret');
-  await writeFile(join(project, '.env'), 'secret');
+/**
+ * A project (its real path) as the app shows it, and a folder outside it:
+ * `notes/` with a doc and its sidecar, installed packages, hidden files, a
+ * binary, a file over 20 MB, and links in, out, and hidden.
+ */
+async function project() {
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'ponjo-project-')));
+  const outside = await realpath(await mkdtemp(join(tmpdir(), 'ponjo-outside-')));
   await writeFile(join(outside, 'b.md'), 'secret');
-  await symlink(outside, join(project, 'out'), 'junction');
-  await writeFile(join(project, 'pic.png'), Buffer.from([0x89, 0x50, 0x00, 0x47]));
-  await writeFile(join(project, 'big.log'), 'x'.repeat(MAX_TEXT_BYTES + 1));
-  const readable = files({ doc, sidecar, project });
-  assert.deepEqual(await readable(''), ['big.log', 'notes/', 'out', 'pic.png'], 'a folder, its entries');
-  assert.deepEqual(await readable('notes'), ['a.md', 'a.md.comments.jsonl']);
-  assert.equal(await readable(join(project, 'notes', 'a.md')), 'A\n');
-  assert.equal(await readable('notes/a.md.comments.jsonl'), HEADER, 'sidecars included');
-  assert.equal(await readable(doc), SAMPLE, 'and the copies');
-  for (const path of ['.env', '.git/config', 'notes/../.env', `../${basename(outside)}/b.md`, join(outside, 'b.md'), 'out/b.md', 'notes/none.md', 'pic.png', 'big.log']) {
-    assert.equal(await readable(path), null, path);
+  for (const [path, text] of Object.entries({
+    'notes/a.md': 'A\n', 'notes/a.md.comments.jsonl': HEADER, 'node_modules/pkg/index.js': 'x\n', '.env': 'secret', '.git/config': 'secret',
+    'pic.png': Buffer.from([0x89, 0x50, 0x00, 0x47]), 'big.log': 'x'.repeat(MAX_TEXT_BYTES + 1),
+  })) {
+    await mkdir(dirname(join(root, path)), { recursive: true });
+    await writeFile(join(root, path), text);
   }
-  assert.equal(await files({ doc, sidecar })('notes/a.md'), null, 'in doc mode, only the copies');
+  await symlink(join(root, 'notes'), join(root, 'linked'), 'junction');
+  await symlink(join(root, 'notes'), join(root, '.hidden'), 'junction');
+  await symlink(join(root, '.git'), join(root, 'git'), 'junction');
+  await symlink(outside, join(root, 'out'), 'junction');
+  return { root, outside };
+}
+
+// Which paths of project() a buddy reads, the same as the app's ProjectService does.
+const SHOWN = [
+  ['notes/a.md', true],
+  ['notes/a.md.comments.jsonl', true, 'sidecars included'],
+  ['node_modules/pkg/index.js', true, 'what git ignores'],
+  ['linked/a.md', true, 'a link that stays in the project'],
+  ['.env', false],
+  ['.git/config', false],
+  ['notes/../.env', false],
+  ['.hidden/a.md', false, 'a hidden link'],
+  ['git/config', false, 'a link to a hidden folder'],
+  ['out/b.md', false, 'a link out of the project'],
+  ['../b.md', false],
+  ['pic.png', false, 'a binary file'],
+  ['big.log', false, 'a file over 20 MB'],
+  ['notes/none.md', false],
+];
+
+test('a buddy reads the project as the app shows it: one table of cases, run on both', async () => {
+  const { root, outside } = await project();
+  const agent = files({ doc: 'plan.md', sidecar: 'plan.md.comments.jsonl', project: root });
+  const app = projectService(root);
+  for (const [path, shown, why = path] of [...SHOWN, [join(root, 'notes', 'a.md'), false, 'an absolute path'], [join(outside, 'b.md'), false]]) {
+    assert.equal(typeof (await agent(path)) === 'string', shown, `the agent: ${why}`);
+    assert.equal(typeof (await app.read(path).catch(() => ({}))).text === 'string', shown, `ProjectService: ${why}`);
+  }
+});
+
+test('the turn sees the copies and the project by their paths in the project, and in doc mode only the copies', async () => {
+  const { root } = await project();
+  const { doc, sidecar } = await copies(SAMPLE, 'notes/a.md');
+  const readable = seen({ doc, sidecar }, root);
+  assert.deepEqual(await readable(''), ['big.log', 'git', 'linked', 'node_modules/', 'notes/', 'out', 'pic.png'], 'a folder, its entries');
+  assert.deepEqual(await readable('./notes/'), ['a.md', 'a.md.comments.jsonl']);
+  assert.equal(await readable('notes/a.md'), SAMPLE, 'the copy, not the project\'s doc');
+  assert.equal(await readable('linked/a.md'), 'A\n');
+  assert.equal(await readable(join(process.cwd(), doc)), null, 'never by an absolute path');
+  assert.deepEqual(await seen({ doc, sidecar })(''), ['notes/']);
+  assert.deepEqual(await seen({ doc, sidecar })('notes'), ['a.md', 'a.md.comments.jsonl'], 'in doc mode, the working folder');
+});
+
+test('find and grep: paths or lines that match a regular expression, smart case, at most 100', async () => {
+  const { root } = await project();
+  const { doc, sidecar } = await copies(SAMPLE, 'notes/a.md');
+  for (let i = 0; i < 101; i++) await writeFile(join(root, 'notes', `n${String(i).padStart(3, '0')}.txt`), `one\nRule ${i}\n`);
+  await writeFile(join(root, 'rule.md'), `# Rules\n\n${'x'.repeat(600)} rule\n`);
+  const uses = [
+    ['find', { pattern: 'rule\\.md$' }],
+    ['find', { pattern: '^notes/a', path: './notes/' }],
+    ['find', { pattern: 'n\\d', path: 'notes' }],
+    ['find', { pattern: 'n1', path: 'out' }],
+    ['find', { pattern: 'Rule' }],
+    ['find', { pattern: '**/rule.md' }],
+    ['grep', { pattern: 'rule' }],
+    ['grep', { pattern: 'rules?$', path: 'rule.md' }],
+    ['grep', { pattern: 'week', path: 'notes/a.md' }],
+    ['grep', { pattern: 'Rule 1\\d$', path: 'notes' }],
+    ['grep', { pattern: 'secret' }],
+  ];
+  const infer = fake(...uses.map((use) => calling(use)), calling(['propose', { edits: [], reply: '' }]));
+  await turn({ prompt: 'p', doc, sidecar }, { infer, readFile: seen({ doc, sidecar }, root), resolve: inProject });
+  const [rule, notes, capped, out, cased, glob, grep, long, inDoc, inFolder, none] = results(infer.messages);
+  assert.equal(rule, 'rule.md');
+  assert.equal(notes, 'notes/a.md\nnotes/a.md.comments.jsonl', 'from the project\'s top, whatever the path\'s form');
+  assert.deepEqual(capped.split('\n').slice(-2), ['notes/n099.txt', '1 more: narrow the pattern or the path.']);
+  assert.equal(capped.split('\n').length, 101);
+  assert.equal(out, 'out: no such folder, or not one you can read.');
+  assert.equal(cased, 'No path matches Rule.', 'a capital letter: case counts');
+  assert.match(glob, /^Invalid regular expression: .*Nothing to repeat\. The pattern is a regular expression, not a glob/);
+  assert.equal(grep.split('\n').slice(0, 3).join('\n'), 'notes/n000.txt\n2\tRule 0\nnotes/n001.txt', 'case ignored, each file\'s path then its lines');
+  assert.deepEqual(grep.split('\n').slice(-3), ['notes/n099.txt', '2\tRule 99', '3 more: narrow the pattern or the path.']);
+  assert.equal(grep.split('\n').filter((line) => /^\d+\t/.test(line)).length, 100);
+  assert.equal(long, `rule.md\n1\t# Rules\n3\t${'x'.repeat(500)}…`, 'a long line cut');
+  assert.equal(inDoc, 'notes/a.md\n3\tWe plan to **ship all six features** in week one, then gather feedback from the', 'a file: the copy');
+  assert.equal(inFolder, Array.from({ length: 10 }, (_, i) => `notes/n0${10 + i}.txt\n2\tRule ${10 + i}`).join('\n'));
+  assert.equal(none, 'No line matches secret.');
 });
 
 /**
@@ -153,7 +237,7 @@ test('Anthropic: the Messages API, the tools and the prompt cached, the model\'s
   ]);
   try {
     const infer = INFER.anthropic({ model: 'claude-opus-5-5', key: 'sk-ant-test', effort: 'low' }, api.url);
-    assert.deepEqual(await turn({ prompt: 'the prompt', doc, sidecar }, { infer, readFile: files({ doc, sidecar }) }), { edits: [], reply: 'Fine as is.' });
+    assert.deepEqual(await turn({ prompt: 'the prompt', doc, sidecar }, { infer, readFile: seen({ doc, sidecar }) }), { edits: [], reply: 'Fine as is.' });
     const [first, second] = api.requests;
     assert.equal(first.url, '/v1/messages');
     assert.equal(first.body.messages.length, 1, 'the first step is the prompt alone');
@@ -161,7 +245,7 @@ test('Anthropic: the Messages API, the tools and the prompt cached, the model\'s
     assert.equal(first.headers['anthropic-version'], '2023-06-01');
     const { tools, messages, ...rest } = second.body;
     assert.deepEqual(rest, { model: 'claude-opus-5-5', max_tokens: 16_000, output_config: { effort: 'low' }, tool_choice: { type: 'auto' } }, 'no thinking setting: the model thinks as it needs');
-    assert.deepEqual(tools.map((t) => [t.name, Object.keys(t.input_schema.properties).join(), t.cache_control]), [['read', 'path,lines', undefined], ['propose', 'edits,reply', { type: 'ephemeral' }]]);
+    assert.deepEqual(tools.map((t) => [t.name, Object.keys(t.input_schema.properties).join(), t.cache_control]), [['read', 'path,lines', undefined], ['find', 'pattern,path', undefined], ['grep', 'pattern,path', undefined], ['propose', 'edits,reply', { type: 'ephemeral' }]]);
     assert.deepEqual(messages, [
       { role: 'user', content: [{ type: 'text', text: 'the prompt', cache_control: { type: 'ephemeral' } }] },
       { role: 'assistant', content: [thinking, { type: 'tool_use', id: 'toolu_1', name: 'read', input: { path: doc, lines: [1, 1] } }] },
@@ -180,12 +264,12 @@ test('OpenAI-compatible: Chat Completions at the endpoint, with the key and the 
   const api = await fakeApi([[200, { choices: [{ message: read }] }], [200, { choices: [{ message: propose }] }]]);
   try {
     const infer = INFER.openai({ endpoint: `${api.url}/`, model: 'gpt-5', key: 'sk-test', effort: 'medium' });
-    assert.deepEqual(await turn({ prompt: 'the prompt', doc, sidecar }, { infer, readFile: files({ doc, sidecar }) }), { edits: [], reply: 'ok' });
+    assert.deepEqual(await turn({ prompt: 'the prompt', doc, sidecar }, { infer, readFile: seen({ doc, sidecar }) }), { edits: [], reply: 'ok' });
     const [, { url, headers, body }] = api.requests;
     assert.equal(url, '/v1/chat/completions');
     assert.equal(headers.authorization, 'Bearer sk-test');
     assert.deepEqual([body.model, body.reasoning_effort, body.tool_choice], ['gpt-5', 'medium', 'auto']);
-    assert.deepEqual(body.tools.map((t) => [t.type, t.function.name]), [['function', 'read'], ['function', 'propose']]);
+    assert.deepEqual(body.tools.map((t) => [t.type, t.function.name]), [['function', 'read'], ['function', 'find'], ['function', 'grep'], ['function', 'propose']]);
     assert.deepEqual(body.messages, [{ role: 'user', content: 'the prompt' }, read, { role: 'tool', tool_call_id: 'call_a', content: '1\t# Q4 Launch Plan' }]);
   } finally {
     await api.close();
@@ -199,12 +283,14 @@ test('the shipped script runs a turn under the contract, with its settings from 
     const config = await mkdtemp(join(tmpdir(), 'ponjo-config-'));
     await installAgents(config, { platform: 'linux' });
     const { dir, doc, sidecar } = await copies();
+    const folder = join(config, 'run'); // the working folder by a link, as a Mac's temp folder is
+    await symlink(dir, folder, 'junction');
     const settings = { PROVIDER: 'openai', ENDPOINT: api.url, MODEL: 'gpt-5', KEY: 'sk-secret-test', EFFORT: 'low' };
     const trace = join(config, 'trace.jsonl');
     const run = (PATH = `${dirname(process.execPath)}${delimiter}${process.env.PATH}`, own = settings) => new Promise((resolve) => {
-      const env = { ...process.env, PATH, PONJO_DOC: doc, PONJO_COMMENTS: sidecar, PONJO_PROJECT: '', PONJO_BUDDY: 'Ada', PONJO_TRACE: trace };
+      const env = { ...process.env, PATH, PONJO_DOC: join(folder, doc), PONJO_COMMENTS: join(folder, sidecar), PONJO_PROJECT: '', PONJO_BUDDY: 'Ada', PONJO_TRACE: trace };
       for (const [key, value] of Object.entries(own)) env[`PONJO_SETTING_${key}`] = value;
-      const child = execFile(agentScript('ponjo', config, 'linux'), { cwd: dir, env }, (error, stdout, stderr) => resolve({ code: error?.code ?? 0, stdout, stderr }));
+      const child = execFile(agentScript('ponjo', config, 'linux'), { cwd: folder, env }, (error, stdout, stderr) => resolve({ code: error?.code ?? 0, stdout, stderr }));
       child.stdin.on('error', () => {}); // a run that fails early need not read its prompt
       child.stdin.end('the prompt');
     });
