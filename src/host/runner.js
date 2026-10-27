@@ -6,9 +6,9 @@
 // each did goes to `log`, with its trace.
 
 import { spawn } from 'node:child_process';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { FORMAT_VERSION, newId } from '../core/comments.js';
 import { buildPrompt } from '../core/prompt.js';
 import { SIDECAR_SUFFIX, decodeText } from '../store/files.js';
@@ -27,8 +27,10 @@ export class Runner {
    * { id, name, about }, buddies, asker, redo }], `buddies` all those the doc
    * reaches, `asker` the id of whoever asked, `redo` null or, when its turn
    * collided with people's edits and runs once more, what the turn changed
-   * and what people did ({ mine, theirs }, each [{ before, after }]). `doc()` to { name, text,
-   * comments }, `comments` the sidecar's text or null.
+   * and what people did ({ mine, theirs }, each [{ before, after }]). `doc()` to { path, text,
+   * comments }, `path` the doc's in the project (`/`-separated; its name in
+   * doc mode), where the run's folder holds its copy, and `comments` the
+   * sidecar's text or null.
    * `agent()` resolves to the agent that runs every buddy: { script (its
    * path), settings ({ <key>: value }, each handed to the run as
    * PONJO_SETTING_<KEY>) }. `folder(place)` resolves to the project folder
@@ -128,20 +130,21 @@ export class Runner {
   }
 
   async #run(run, thread, buddy, buddies, redo) {
-    const { name: docName, text: base, comments } = await this.doc();
+    const { path: docPath, text: base, comments } = await this.doc();
     const dir = await mkdtemp(join(tmpdir(), 'ponjo-run-'));
     let aside = null; // the folder its copy of the project and its trace are in, out of its sight
     try {
-      const copy = join(dir, docName);
+      const copy = join(dir, ...docPath.split('/'));
+      await mkdir(dirname(copy), { recursive: true });
       await writeFile(copy, base);
-      const sidecar = join(dir, docName + SIDECAR_SUFFIX);
+      const sidecar = copy + SIDECAR_SUFFIX;
       const before = comments ?? `${JSON.stringify({ comments: FORMAT_VERSION })}\n`;
       await writeFile(sidecar, before);
       const { script, settings } = await this.agent();
       aside = await mkdtemp(join(tmpdir(), 'ponjo-project-'));
       const folder = await this.folder(aside);
       const steps = join(aside, 'trace.jsonl');
-      const prompt = buildPrompt({ buddy, buddies, docName: copy, sidecarName: sidecar, thread, folder, human: await this.human(), redo });
+      const prompt = buildPrompt({ buddy, buddies, docName: docPath, sidecarName: docPath + SIDECAR_SUFFIX, thread, project: Boolean(folder), human: await this.human(), redo });
       const at = Date.now();
       const result = await runScript(script, { cwd: dir, prompt, timeoutMs: this.timeoutMs, env: runEnv({ doc: copy, sidecar, folder, buddy: buddy.name, settings, trace: steps }), onChild: (child) => {
         run.child = child;

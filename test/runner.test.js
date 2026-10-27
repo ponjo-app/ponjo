@@ -18,8 +18,10 @@ import { SAMPLE, fakeConfig, fakeRuns, openTestDoc, readOnly, tempDoc, until } f
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// In project mode the doc is drafts/plan.md in the project.
 async function withDoc(fn, { buddies = null, folder = null, content = SAMPLE, settings = {} } = {}) {
-  const docPath = await tempDoc(content);
+  const docPath = folder ? join(folder, 'drafts', 'plan.md') : await tempDoc(content);
+  if (folder) await mkdir(dirname(docPath)).then(() => writeFile(docPath, content));
   const settingsDir = await fakeConfig(settings);
   let opened = await openTestDoc(docPath, { settingsDir, folder, buddies });
   const release = (buddy) => writeFile(join(settingsDir, `release-${buddy}`), '');
@@ -257,9 +259,14 @@ test('in project mode a run gets its own copy of what the project shows, gone on
     const [run] = await runs();
     assert.equal(basename(run.project), basename(folder));
     assert.ok(!run.project.startsWith(settingsDir), 'not the mirror itself');
-    assert.deepEqual(run.projectFiles, ['notes.md']);
-    assert.ok(run.prompt.includes(run.project) && !run.prompt.includes(`${folder}/`));
-    assert.match(run.prompt, /path in a comment is relative to the project folder/);
+    assert.deepEqual(run.projectFiles, ['drafts', 'notes.md']);
+    assert.deepEqual(run.files, ['drafts'], 'the copies at the doc\'s path in the project');
+    assert.ok(run.doc.endsWith(join(basename(run.cwd), 'drafts', 'plan.md')), 'in its folder (macOS may name /var as /private/var)');
+    assert.equal(run.comments, `${run.doc}.comments.jsonl`);
+    assert.ok(!run.prompt.includes(run.project) && !run.prompt.includes(folder) && !run.prompt.includes(run.cwd), 'no path but the project\'s');
+    assert.match(run.prompt, /a member of the doc drafts\/plan\.md\./);
+    assert.match(run.prompt, /A file path in a comment is relative to the doc's folder, drafts\/\./);
+    assert.match(run.prompt, /^drafts\/plan\.md\.comments\.jsonl holds the doc's comments/m);
     await until(() => !existsSync(run.project), 'its copy to be gone after', 5000);
   }, { folder });
 });
@@ -273,7 +280,7 @@ test('runs at once never see each other\'s writes to the project, nor does the m
     const second = await comment(call, '@Clippy look around');
     await until(async () => (await repliesIn(state, second)).length, 'the second reply');
     const [, run] = await runs();
-    assert.deepEqual(run.projectFiles, ['notes.md']);
+    assert.deepEqual(run.projectFiles, ['drafts', 'notes.md']);
     assert.ok(!existsSync(join(mirrorDir(folder, settingsDir), 'stray.md')));
     await release('Clippy');
     await until(async () => (await repliesIn(state, first)).length, 'the first reply');
@@ -393,14 +400,18 @@ test('the shipped scripts pass the project folder only when there is one', () =>
   assert.doesNotMatch(readFileSync(join(ROOT, 'agents', 'codex.cmd'), 'utf8'), /codex exec[^\r]*--add-dir/, 'Codex reads the project without it');
   if (process.platform === 'win32') return;
   // A fake `claude` and `codex` on PATH read the prompt (else writing it can
-  // fail with EPIPE) and print the arguments they get.
+  // fail with EPIPE) and print the arguments they get, one a line; Codex's
+  // last message is its instructions.
   const bin = execFileSync('mktemp', ['-d']).toString().trim();
-  execFileSync('sh', ['-c', `printf '#!/bin/sh\\ncat >/dev/null; echo "$@"\\n' > "${bin}/claude"; printf '#!/bin/sh\\ncat >/dev/null; while [ "$1" != "--output-last-message" ]; do shift; done; echo reply > "$2"\\n' > "${bin}/codex"; chmod +x "${bin}/claude" "${bin}/codex"`]);
-  const run = (name, project, model = '') => execFileSync(join(ROOT, 'agents', name), { input: 'prompt', env: { ...process.env, PATH: `${bin}${delimiter}${process.env.PATH}`, PONJO_PROJECT: project, PONJO_DOC: '/run/my doc.md', PONJO_SETTING_MODEL: model }, stdio: ['pipe', 'pipe', 'pipe'] }).toString().trim();
-  assert.equal(run('claude', ''), '-p @"/run/my doc.md" --permission-mode acceptEdits --no-session-persistence', 'Claude gets the doc copy as already read');
-  assert.equal(run('claude', '/work/my project'), '-p @"/run/my doc.md" --permission-mode acceptEdits --no-session-persistence --add-dir /work/my project --disallowedTools Edit(//work/my project/**)', 'the project is read only');
-  assert.equal(run('claude', '', 'opus'), '-p @"/run/my doc.md" --permission-mode acceptEdits --no-session-persistence --model opus', 'the model, when set');
-  assert.equal(run('codex', ''), 'reply', 'codex prints only its last message');
+  execFileSync('sh', ['-c', `printf '#!/bin/sh\\ncat >/dev/null; printf "%%s\\\\n" "$@"\\n' > "${bin}/claude"; printf '#!/bin/sh\\ncat >/dev/null; while [ "$1" != "--output-last-message" ]; do shift; done; echo "reply to: $3" > "$2"\\n' > "${bin}/codex"; chmod +x "${bin}/claude" "${bin}/codex"`]);
+  const run = (name, project, model = '') => execFileSync(join(ROOT, 'agents', name), { input: 'prompt', env: { ...process.env, PATH: `${bin}${delimiter}${process.env.PATH}`, PONJO_PROJECT: project, PONJO_DOC: '/run/my doc.md', PONJO_SETTING_MODEL: model }, stdio: ['pipe', 'pipe', 'pipe'] }).toString().trim().split('\n');
+  const claude = ['-p', '@"/run/my doc.md"', '--permission-mode', 'acceptEdits', '--no-session-persistence'];
+  const where = 'The paths in the prompt are the project\'s. Your copies of the doc and its comments are at those paths in your working folder; the project\'s other files are at those paths in /work/my project, read only.';
+  assert.deepEqual(run('claude', ''), claude, 'Claude gets the doc copy as already read');
+  assert.deepEqual(run('claude', '/work/my project'), [...claude, '--add-dir', '/work/my project', '--disallowedTools', 'Edit(//work/my project/**)', '--append-system-prompt', where], 'the project is read only, and where the prompt\'s paths are');
+  assert.deepEqual(run('claude', '', 'opus'), [...claude, '--model', 'opus'], 'the model, when set');
+  assert.deepEqual(run('codex', ''), ['reply to: -'], 'codex prints only its last message; the prompt is its stdin');
+  assert.match(run('codex', '/work/my project')[0], /^reply to: The task is in the stdin block\. Its paths are the project's: .* in \/work\/my project, read only\.$/, 'in a project, where the prompt\'s paths are first');
 });
 
 test('the shipped agents are written when missing, then updated until edited; Reset writes one again', async () => {
@@ -451,4 +462,12 @@ test('the prompt tells a buddy who the other members are, as the app shows them'
   assert.match(withUser, /The other members of the doc:\n\nfzhan \(owner\): I write novels\.\n\nBo/);
   assert.match(withUser, /Resolve this thread only when the last comment asks you to: append \{"thread":"c_thread01","resolved":true\}/);
   assert.doesNotMatch(prompt, /I write novels/, 'nothing about an owner who wrote nothing');
+});
+
+test('the prompt names files by their paths in the project, a comment\'s from the doc\'s folder', () => {
+  const thread = { id: 'c_thread01', anchor: null, comments: [{ by: { name: 'fzhan', kind: 'human' }, body: 'Summarize rule.md' }] };
+  const prompt = (docName, project) => buildPrompt({ buddy: { id: 'b_ada', name: 'Ada', about: '' }, docName, sidecarName: `${docName}.comments.jsonl`, thread, project });
+  assert.match(prompt('a.md', true), /every path here is from the project's top folder: .* relative to the doc's folder, the top one\./);
+  assert.match(prompt('plans/2026/a.md', true), /relative to the doc's folder, plans\/2026\/\./);
+  assert.doesNotMatch(prompt('a.md', false), /project/, 'in doc mode, no project');
 });

@@ -196,7 +196,7 @@ async function run(id, thread) {
   let body;
   let failed = false;
   try {
-    const prompt = buildPrompt({ buddy, buddies: buddies(), docName: doc, sidecarName: sidecar, thread, folder: inFolder ? '.' : null, human: { name: s.settings.name, about: s.settings.about.trim() } });
+    const prompt = buildPrompt({ buddy, buddies: buddies(), docName: doc, sidecarName: sidecar, thread, project: inFolder, human: { name: s.settings.name, about: s.settings.about.trim() } });
     const { edits, reply } = await turn({ prompt, doc, sidecar }, { infer, readFile: (path) => read(plain(path), copies), resolve: plain });
     texts = applyProposal(edits, { doc, sidecar }, { doc: copies[doc], sidecar: copies[sidecar] }, plain);
     body = [reply.trim(), `— ${MODEL}`].filter(Boolean).join('\n\n');

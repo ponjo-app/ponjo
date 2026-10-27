@@ -77,9 +77,11 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
     const { settings } = await readSettings(settingsDir);
     return pickedAgent(settings, secrets()[settings.agent], settingsDir);
   };
+  // The doc's path in the project, `/`-separated.
+  const placeInFolder = async () => relative(await realpath(folder).catch(() => folder), await realpath(docPath).catch(() => docPath)).split(sep).join('/');
   const runner = new Runner({
     asks: () => asks(),
-    doc: async () => ({ name: basename(docPath), text, comments: await readSidecarText(docPath) }),
+    doc: async () => ({ path: folder ? await placeInFolder() : basename(docPath), text, comments: await readSidecarText(docPath) }),
     agent: pickAgent,
     // The project, as a run reads it: its own copy of the mirror, up to date, in `place` (none if that fails).
     folder: (place) => folder && snapshotMirror(folder, mirrorDir(folder, settingsDir), join(place, basename(folder) || 'project')).catch((error) => {
@@ -383,7 +385,7 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
       cursors: cursorsNow(),
       project: folder !== null, // whether the doc was opened from a project
       // The project's name and the doc's path in it, for a teammate's sidebar.
-      place: folder && { name: basename(folder), path: relative(folder, await realpath(docPath).catch(() => docPath)).split(sep).join('/') },
+      place: folder && { name: basename(folder), path: await placeInFolder() },
     };
   }
 

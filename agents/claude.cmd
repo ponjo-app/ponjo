@@ -10,7 +10,8 @@ if not defined PONJO_PROJECT goto run
 rem Claude Code matches C:\Users\me as /c/Users/me; //c/... is absolute.
 set "P=%PONJO_PROJECT:\=/%"
 for %%d in (a b c d e f g h i j k l m n o p q r s t u v w x y z) do call set "P=%%P:%%d:=/%%d%%"
-set ADD=--add-dir "%PONJO_PROJECT%" --disallowedTools "Edit(/%P%/**)"
+rem The prompt's paths are the project's: the system prompt says where each is.
+set ADD=--add-dir "%PONJO_PROJECT%" --disallowedTools "Edit(/%P%/**)" --append-system-prompt "The paths in the prompt are the project's. Your copies of the doc and its comments are at those paths in your working folder; the project's other files are at those paths in %PONJO_PROJECT%, read only."
 :run
 call claude -p --permission-mode acceptEdits --no-session-persistence %MODEL% %ADD%
 exit /b %errorlevel%
