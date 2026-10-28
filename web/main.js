@@ -84,9 +84,12 @@ let projectFiles = null; // the project's files, from the sidebar (loadPaths), o
 // drawn), and before replacing it, or closing its window, asks it to let go
 // of its doc (`ponjoLeave`): save the last edit, stop taking input, and say
 // how it was left, for the next page. `ponjoStay` undoes that when the
-// switch fails.
+// switch fails. The page's steps to ready are `ponjo:` performance marks,
+// which the app prints with PONJO_TIMING set (desktop/windows.js).
 let markReady;
-window.ponjoReady = new Promise((resolve) => { markReady = resolve; });
+window.ponjoReady = new Promise((resolve) => { markReady = resolve; }).then(() => {
+  performance.mark('ponjo:ready');
+});
 window.ponjoLeave = async () => {
   if (editor) await client.landed();
   document.body.inert = true;
@@ -152,6 +155,7 @@ async function startFolder() {
 }
 
 async function start() {
+  performance.mark('ponjo:start');
   const gone = new URLSearchParams(location.search).get('gone');
   if (gone !== null) {
     const card = document.createElement('div');
@@ -166,6 +170,7 @@ async function start() {
   let initial;
   try {
     initial = await api.state();
+    performance.mark('ponjo:state');
   } catch (error) {
     if (error.code === 'folder_only') return startFolder();
     document.body.textContent = `Could not load the doc: ${error.message}`;
@@ -187,11 +192,22 @@ async function start() {
   settings.subscribe((next) => renameMe(next.name ?? defaultName)); // before the dialog's, which shows `me`
   showDocName(initial.doc);
   offerRename();
+  // The sidebar reads the folder while the editor is made; how the last page
+  // left things (`carry`) waits for the comment margin.
+  let carried;
+  const carry = new Promise((resolve) => { carried = resolve; });
+  files = createFileList({
+    place: initial.place,
+    onError: (message) => setStatus(message, 'error'),
+    onCarry: carried,
+    onPaths: loadPaths,
+  });
 
   openedText = initial.text;
   made = chooseView(openedText);
   showSize(made, openedText);
   editor = await makeView(made, initial.text);
+  performance.mark('ponjo:editor');
   client = createClient({
     view: { getText: () => editor.getText(), selection: () => editor.selection(), composing: () => editor.composing() },
     call: (type, arg) => api[type](arg),
@@ -216,15 +232,6 @@ async function start() {
     getView: () => editor, settings, getName: () => me, setName,
   });
   window.ponjoDesktop?.onCommand((name) => chrome.command(name));
-  files = createFileList({
-    place: initial.place,
-    onError: (message) => setStatus(message, 'error'),
-    onCarry: (carry) => {
-      if (carry.commentsHidden) showComments(false);
-      if (carry.startTyping) startTyping = true;
-    },
-    onPaths: loadPaths,
-  });
 
   margin = createCommentMargin(document.querySelector('.pj-margin'), {
     onCreate: createThread,
@@ -294,6 +301,10 @@ async function start() {
   }
   if (hidden) showComments(false);
   paintCommentsToggle();
+  carry.then((left) => {
+    if (left.commentsHidden) showComments(false);
+    if (left.startTyping) startTyping = true;
+  });
   commentsToggle.addEventListener('click', () => {
     if (narrow.matches) openSheet(!sheetOpen());
     else showComments(!commentsShown());
@@ -419,6 +430,7 @@ async function start() {
     await followReading();
   });
   await files.ready;
+  performance.mark('ponjo:files');
   if (startTyping) editor.focus();
 }
 

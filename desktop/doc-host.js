@@ -20,7 +20,8 @@
 //   attach { docId }, with a message port: a window's page talks to the doc
 //     over it (`serve`)
 //   closeAll
-// The host says `{ type: 'ready' }` once it can take them.
+// The host says `{ type: 'ready' }` once it can take them, and with
+// PONJO_TIMING set `{ type: 'timing', timing }` after each request.
 //
 // A project's room (src/host/room.js) opens when the owner asks it at the
 // door (`openRoom`), and ends when they close it, or close the project's
@@ -51,6 +52,20 @@ const holdSaves = process.env.PONJO_HOLD_SAVES;
 const held = async () => {
   while (holdSaves && existsSync(holdSaves)) await new Promise((done) => setTimeout(done, 50));
 };
+
+// With PONJO_TIMING set, the ms each request took, from the app or a page
+// (`from`), told the app (`timing`), which prints it: on Windows this
+// process's stderr reaches no one.
+const timed = process.env.PONJO_TIMING
+  ? async (from, type, fn) => {
+    const start = performance.now();
+    try {
+      return await fn();
+    } finally {
+      channel.send({ type: 'timing', timing: { [from]: type, ms: Math.round(performance.now() - start) } });
+    }
+  }
+  : (_from, _type, fn) => fn();
 
 // docId → { service, folder, ports: Map(port → its who), opens: how many
 // times the app has it open }. A doc is open once however many reach it:
@@ -179,7 +194,7 @@ async function serve(entry, port, who) {
   tellHere(entry.folder);
   port.on('message', async ({ data: { id, type, arg } }) => {
     try {
-      const result = (await entry.service.call(type, arg, await who())) ?? null;
+      const result = (await timed('page', type, async () => entry.service.call(type, arg, await who()))) ?? null;
       if (type === 'submit') await held();
       port.postMessage({ id, result });
     } catch (error) {
@@ -403,7 +418,7 @@ const MAX_RECONNECT_MS = 30_000;
 channel.listen(async ({ id, type, ...arg }, ports) => {
   try {
     if (!Object.hasOwn(handlers, type)) throw new Error(`unknown request: ${type}`);
-    channel.send({ id, result: (await handlers[type](arg, ports)) ?? null });
+    channel.send({ id, result: (await timed('app', type, () => handlers[type](arg, ports))) ?? null });
   } catch (error) {
     // The fields the app shows; `code` and `path` name a doc that already exists.
     channel.send({ id, error: { message: String(error?.message ?? error), code: error?.code, path: error?.path } });

@@ -50,10 +50,11 @@ function act(action, arg) {
 // (src/host/doc-service.js), over a message port the app hands the page
 // (windows.connectPage). `call(type, arg)` resolves to { result } or
 // { error: { message, code } }; `onEvent(fn)` hears the doc's events, and
-// those that came before it. When the doc host starts again the page gets
-// a new port: the calls on the old one fail as `offline`, and the doc's
-// `hello` on the new one catches the page up. The start window has no doc:
-// its ask goes unanswered.
+// those that came before it. Calls before the first port wait for it. When
+// the doc host starts again the page gets a new port: the calls on the old
+// one fail as `offline`, and the doc's `hello` on the new one catches the
+// page up. The start window has no doc: its ask goes unanswered, as does a
+// folder window's spare page's until it is given a doc.
 let port = null;
 let unsent = [];
 let nextCall = 0;
@@ -62,8 +63,10 @@ let listener = null;
 let early = [];
 ipcRenderer.on('ponjo:port', (event) => {
   // A new port: the doc host started again, and the calls on the old one are lost.
-  for (const resolve of calls.values()) resolve({ error: { message: 'The doc host stopped', code: 'offline' } });
-  calls.clear();
+  if (port) {
+    for (const resolve of calls.values()) resolve({ error: { message: 'The doc host stopped', code: 'offline' } });
+    calls.clear();
+  }
   port = event.ports[0];
   port.onmessage = ({ data }) => {
     if (data.event) {

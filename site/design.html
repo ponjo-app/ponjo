@@ -170,6 +170,7 @@
       <li><button class="pj-files-row pj-files-file pj-files-ignored" type="button">debug.log</button></li>
     </ul>
   </div>
+  <p>A file clicked is current at once; until its doc is shown, the page it leaves fades to 0.6 opacity (after 0.1s, so a quick switch does not flicker) and the cursor shows progress.</p>
   <p>A file or folder git ignores (build output, installed packages) is dimmed to <code>--text-faint</code>, not hidden. A filter (Mod+P) finds the files it ignores too, dimmed and after the rest in each folder, but does not look inside a folder it ignores; Enter opens the first match.</p>
   <p>A folder window with no doc shows only its sidebar and, in the page, <code>.pj-folder-empty</code>: "No docs here yet." in <code>.pj-empty</code>, then New doc (primary) and New folder (secondary).</p>
   <p>A sidebar is resized by dragging its edge: the cursor turns to <code>col-resize</code> and the edge shows a 2px <code>--text-faint</code> line; double-click the edge for the default width back.</p>
