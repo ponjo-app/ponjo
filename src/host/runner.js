@@ -145,7 +145,7 @@ export class Runner {
       const steps = join(aside, 'trace.jsonl');
       const prompt = buildPrompt({ buddy, buddies, docName: docPath, sidecarName: docPath + SIDECAR_SUFFIX, thread, project: Boolean(folder), human: await this.human(), redo });
       const at = Date.now();
-      const result = await runScript(script, { cwd: dir, prompt, timeoutMs: this.timeoutMs, env: runEnv({ doc: copy, sidecar, folder, buddy: buddy.name, settings, trace: steps }), onChild: (child) => {
+      const result = await runScript(script, { cwd: dir, prompt, timeoutMs: this.timeoutMs, env: runEnv({ doc: copy, sidecar, folder, thread: thread.id, buddy: buddy.name, settings, trace: steps }), onChild: (child) => {
         run.child = child;
         if (run.cancelled) killTree(child);
       } });
@@ -199,11 +199,12 @@ export async function testAgent({ script, settings }, timeoutMs = TEST_TIMEOUT_M
 }
 
 // A run's environment (docs/agent-config.md): its copies, the project, the
-// buddy, where it may write its trace and the agent's settings.
-const runEnv = ({ doc, sidecar, folder, buddy, settings, trace = '' }) => ({
+// thread it answers, the buddy, where it may write its trace and the agent's settings.
+const runEnv = ({ doc, sidecar, folder, thread = '', buddy, settings, trace = '' }) => ({
   PONJO_DOC: doc,
   PONJO_COMMENTS: sidecar,
   PONJO_PROJECT: folder ?? '',
+  PONJO_THREAD: thread,
   PONJO_BUDDY: buddy,
   PONJO_TRACE: trace,
   ...Object.fromEntries(Object.entries(settings).map(([key, value]) => [`PONJO_SETTING_${key.toUpperCase()}`, String(value ?? '')])),

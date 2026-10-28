@@ -61,6 +61,7 @@ test('a run edits its copy and prints its reply: the doc has the edit, the threa
     assert.notEqual(run.cwd, dirname(docPath));
     assert.equal(join(basename(dirname(run.doc)), basename(run.doc)), join(basename(run.cwd), 'plan.md'), 'the copy, in its folder (macOS may name /var as /private/var)');
     assert.equal(run.buddy, 'Clippy');
+    assert.equal(run.threadId, id, 'the thread it answers');
     assert.equal(run.project, '');
     assert.equal(run.ponjo, false, 'no ponjo to call');
     assert.deepEqual(run.settings, {}, 'an agent with no manifest has no settings');
@@ -262,8 +263,8 @@ test('in project mode a run gets the project folder, and its copies at the doc\'
     assert.equal(run.comments, `${run.doc}.comments.jsonl`);
     assert.ok(!run.prompt.includes(run.project) && !run.prompt.includes(folder) && !run.prompt.includes(run.cwd), 'no path but the project\'s');
     assert.match(run.prompt, /a member of the doc drafts\/plan\.md\./);
-    assert.match(run.prompt, /A file path in a comment is relative to the doc's folder, drafts\/\./);
-    assert.match(run.prompt, /^drafts\/plan\.md\.comments\.jsonl holds the doc's comments/m);
+    assert.match(run.prompt, /A file path in a comment is relative to the doc's folder, drafts\/: a comment's notes\.md is drafts\/notes\.md, not notes\.md at the top\./);
+    assert.match(run.prompt, /append lines to drafts\/plan\.md\.comments\.jsonl, which holds the doc's comments/);
     await until(() => !existsSync(run.cwd), 'its copies to be gone after', 5000);
   }, { folder });
 });
@@ -440,7 +441,7 @@ test('the prompt tells a buddy who the other members are, as the app shows them'
   assert.doesNotMatch(prompt, /Ada: /, 'not itself');
   const withUser = buildPrompt({ buddy: buddies[0], buddies, docName: 'a.md', sidecarName: 'a.md.comments.jsonl', thread, human: { name: 'fzhan', about: 'I write novels.' } });
   assert.match(withUser, /The other members of the doc:\n\nfzhan \(owner\): I write novels\.\n\nBo/);
-  assert.match(withUser, /Resolve this thread only when the last comment asks you to: append \{"thread":"c_thread01","resolved":true\}/);
+  assert.match(withUser, /Resolve this thread only when its last comment asks you to close or resolve it: doing what it asked is no reason.* \{"thread":"c_thread01","resolved":true\} to resolve this one/);
   assert.doesNotMatch(prompt, /I write novels/, 'nothing about an owner who wrote nothing');
 });
 
@@ -448,6 +449,6 @@ test('the prompt names files by their paths in the project, a comment\'s from th
   const thread = { id: 'c_thread01', anchor: null, comments: [{ by: { name: 'fzhan', kind: 'human' }, body: 'Summarize rule.md' }] };
   const prompt = (docName, project) => buildPrompt({ buddy: { id: 'b_ada', name: 'Ada', about: '' }, docName, sidecarName: `${docName}.comments.jsonl`, thread, project });
   assert.match(prompt('a.md', true), /every path here is from the project's top folder: .* relative to the doc's folder, the top one\./);
-  assert.match(prompt('plans/2026/a.md', true), /relative to the doc's folder, plans\/2026\/\./);
+  assert.match(prompt('plans/2026/a.md', true), /relative to the doc's folder, plans\/2026\/: a comment's notes\.md is plans\/2026\/notes\.md/);
   assert.doesNotMatch(prompt('a.md', false), /project/, 'in doc mode, no project');
 });

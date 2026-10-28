@@ -25,7 +25,8 @@
     "test:perf": "node --test --test-concurrency=1 --test-timeout=1800000 --test-force-exit \"test/perf/*.test.js\"",
     "pack:desktop": "npm run build && electron-builder --dir",
     "dist:desktop": "npm run build && electron-builder",
-    "smoke:desktop": "node scripts/smoke-desktop.js"
+    "smoke:desktop": "node scripts/smoke-desktop.js",
+    "bench:agent": "node scripts/bench-agent.js"
   },
   "engines": {
     "node": ">=20"
