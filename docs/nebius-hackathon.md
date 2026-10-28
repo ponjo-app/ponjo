@@ -63,9 +63,9 @@ npm run desktop
 ```
 
 In Settings > Agents, choose the Ponjo agent, with the provider Nebius Token
-Factory, the model `nvidia/nemotron-3-super-120b-a12b` and your
-[Token Factory](https://tokenfactory.nebius.com) API key; then @mention a
-buddy in any doc.
+Factory (its model, `nvidia/nemotron-3-super-120b-a12b`, is the default) and
+your [Token Factory](https://tokenfactory.nebius.com) API key; then @mention
+a buddy in any doc.
 
 `npm test` runs the Worker in front of a fake model (`test/infer.test.js`);
 `npx wrangler deploy --env hackathon` in `relay/` deploys your own, with

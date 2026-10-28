@@ -401,7 +401,7 @@ test('the shipped agents are written when missing, then updated until edited; Re
   const ids = async (platform) => (await listAgents(dir, platform)).map((a) => a.id);
   assert.deepEqual([await ids('linux'), await ids('win32')], [['claude', 'codex', 'ponjo'], ['claude', 'codex', 'ponjo']]);
   assert.deepEqual((await listAgents(dir, 'linux')).map((a) => [a.name, a.settings.map((f) => `${f.key}:${f.type}`).join()]), [
-    ['Claude Code', 'model:text'], ['Codex', 'model:text'], ['Ponjo agent', 'provider:choice,endpoint:text,model:text,key:secret,effort:choice'],
+    ['Claude Code', 'model:text'], ['Codex', 'model:text'], ['Ponjo agent', 'provider:choice,endpoint:text,anthropic_model:text,anthropic_key:secret,openai_model:text,openai_key:secret,nebius_model:text,nebius_key:secret,effort:choice'],
   ], 'each with its manifest, all valid');
   const windows = await mkdtemp(join(tmpdir(), 'ponjo-agents-'));
   await installAgents(windows, { platform: 'win32' });

@@ -66,7 +66,9 @@ export function files({ doc, sidecar, project }) {
 // it comes: the model's with how long it took and its usage.
 async function main() {
   const { PONJO_DOC: docCopy, PONJO_COMMENTS: sidecarCopy, PONJO_PROJECT: project, PONJO_TRACE: trace } = process.env;
-  const { PONJO_SETTING_PROVIDER: provider, PONJO_SETTING_ENDPOINT: endpoint, PONJO_SETTING_MODEL: model, PONJO_SETTING_KEY: key, PONJO_SETTING_EFFORT: effort } = process.env;
+  const { PONJO_SETTING_PROVIDER: provider, PONJO_SETTING_ENDPOINT: endpoint, PONJO_SETTING_EFFORT: effort } = process.env;
+  // Each provider has its own model and key, kept when another is picked.
+  const { [`PONJO_SETTING_${provider.toUpperCase()}_MODEL`]: model, [`PONJO_SETTING_${provider.toUpperCase()}_KEY`]: key } = process.env;
   const note = (lines) => trace && appendFile(trace, lines.map((line) => `${JSON.stringify(line)}\n`).join(''));
   let messages = []; // the turn's, which it goes on adding to after each step
   let noted = 1; // those in the trace, the prompt counted: the app has it
