@@ -3,8 +3,8 @@
 // toolbar, comment bubble, link popover and outline, see
 // chrome.js), and collaborator-style application of changes made
 // on disk: only the blocks that differ are replaced (the caret stays put).
-// A buddy's change is flagged with its name; any other change glows with
-// who made it.
+// A change made by someone else glows with who made it (a buddy's name in
+// its colour).
 //
 // The page talks to a view in offsets on the doc's text, the file's
 // markdown (the view interface is what createMarkdownView returns first;
@@ -796,8 +796,8 @@ export async function createMarkdownView({
 
   /**
    * Show `next`, outside the human's undo history: only the top-level blocks
-   * that differ are replaced, flagged `by` for a while, if given; anything
-   * but a buddy's change (`buddy`) also glows.
+   * that differ are replaced, glowing and flagged `by` for a while, if
+   * given (in the buddy's colour for a buddy's change, `buddy`).
    */
   function applyText(next, { by = null, buddy = false } = {}) {
     const v = view();
@@ -839,7 +839,7 @@ export async function createMarkdownView({
   function flash(tr, ranges, by, buddy) {
     if (ranges.length === 0) return;
     const flashId = Symbol('flash');
-    const decorations = buddy ? [] : ranges.map((r) => (r.node
+    const decorations = ranges.map((r) => (r.node
       ? Decoration.node(r.from, r.to, { class: 'pj-flash-block' }, { flashId })
       : Decoration.inline(r.from, r.to, { class: 'pj-flash' }, { flashId })));
     // The flag at the start of the word the change begins in.

@@ -501,9 +501,9 @@ how many places the turn edited, with Undo; a turn whose version says
 `conflict` says that part of it was not applied; its comments are in the
 margin. The reply says only what the
 app cannot (why, what to decide), and may be empty. The turn's edits land at
-once, shown as a revision (new text in the buddy's color, removed text
-struck through) until the user next types or another turn's edits land;
-clicking the count shows the turn's alone again. The count, the revision and Undo are
+once and glow with the buddy's name, as anyone's do; clicking the count
+shows them as a revision (new text in the buddy's color, removed text
+struck through) until the user next types. The count, the revision and Undo are
 read from the version saved after the turn and the one before it, in every
 window of the team, since the versions are on the host.
 
