@@ -1,10 +1,11 @@
 // The app's pages as a static site for a plain browser, in dist/preview:
 // the doc window (web/index.html, the doc host played by
 // preview/doc-stub.js), the start window (desktop/start.html,
-// the app played by preview/start-stub.js). Run after `npm run build`:
+// the app played by preview/start-stub.js). The doc window opens the repo's
+// own docs (REPO). Run after `npm run build`:
 // node preview/build.js
 import { build } from 'esbuild';
-import { cp, readFile, rm, writeFile } from 'node:fs/promises';
+import { cp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -21,6 +22,13 @@ const doc = page
   .replace("default-src 'none';", "default-src 'none'; connect-src https://infer.ponjo.app;"); // the buddies' model (doc-stub.js)
 if (!doc.includes('doc-stub.js') || !doc.includes('connect-src')) throw new Error('web/index.html changed: update preview/build.js');
 await writeFile(join(out, 'index.html'), doc);
+// README.md, docs/ and spec/, by their paths in the repo: the preview's docs (doc-stub.js).
+const REPO = {};
+for (const dir of ['docs', 'spec']) {
+  for (const file of (await readdir(join(root, dir))).filter((f) => f.endsWith('.md'))) REPO[`${dir}/${file}`] = await readFile(join(root, dir, file), 'utf8');
+}
+REPO['README.md'] = await readFile(join(root, 'README.md'), 'utf8');
+
 const stub = (name, format) => build({
   entryPoints: [join(root, 'preview', name)],
   outfile: join(out, name),
@@ -29,6 +37,7 @@ const stub = (name, format) => build({
   target: 'es2022',
   minify: true,
   logLevel: 'warning',
+  define: { REPO: JSON.stringify(REPO) },
 });
 await stub('doc-stub.js', 'esm');
 

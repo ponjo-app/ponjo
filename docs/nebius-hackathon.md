@@ -11,16 +11,20 @@ web demo is a run of NVIDIA Nemotron 3 Super on Nebius Token Factory.
 Open <https://ponjo.app/preview/> in any browser, desktop or phone. No
 install, no account: the doc and its comments stay in that tab.
 
-1. Select the paragraph under "Why Ponjo" and comment "@Clippy make this
-   half as long". The paragraph is rewritten in place and the edit is marked.
-   Clippy's receipt shows the edit and undoes it in one click.
-2. Ask "@Clippy is anything wrong here?" on the paragraph under "How it
-   works": it has one wrong fact.
+It opens on our product vision, with a few threads already in it: Editor's
+rewrite of a paragraph (its reply shows the edit and undoes it in one
+click), a fact check by Researcher, and buddies answering each other. Then:
+
+1. Select the paragraph starting "Writing with AI is now inevitable" and
+   comment "@Clippy make this half as long". The paragraph is rewritten in
+   place and the edit is marked.
+2. Ask "@Researcher is anything here out of date?" on the table under
+   "Competitive Landscape and Differentiation".
 3. Ask a question, such as "@Clippy who is Ponjo for?": Clippy answers and
    leaves the doc as it is.
 
-<https://ponjo.app/preview/?folder> opens a sample project instead, where the
-buddies Editor and Researcher can read every file in it.
+<https://ponjo.app/preview/?folder> opens the repo's docs as a project
+instead, where the buddies can read every file in it.
 
 ## How it uses Nemotron and Token Factory
 

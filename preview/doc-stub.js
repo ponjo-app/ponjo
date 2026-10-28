@@ -1,7 +1,9 @@
 // A stand-in for the doc host (src/host/doc-service.js) so the doc window
-// opens in a plain browser (preview/build.js): a sample doc, or with
-// `?folder` a sample project and the app's side of its sidebar
-// (window.ponjoDesktop), read with the same src/core as the app. Kept in
+// opens in a plain browser (preview/build.js): the repo's product vision,
+// or with `?folder` the repo's docs as a project and the app's side of its
+// sidebar (window.ponjoDesktop), read with the same src/core as the app.
+// Either opens on the product vision, with sample threads by you, a
+// teammate and buddies, one of them a buddy's edit that undoes. Kept in
 // sessionStorage, so switching docs (`?folder&doc=<path>`, a new page as
 // in the app) and reloading keep it; a new tab starts over.
 // A buddy asked runs the Ponjo agent's turn (agents/ponjo-core.mjs) here,
@@ -27,85 +29,88 @@ const params = new URLSearchParams(location.search);
 const inFolder = params.has('folder');
 const KEY = `ponjo.preview.${inFolder ? 'folder' : 'doc'}`;
 
-const WELCOME = `# Welcome to Ponjo
+// The repo's README.md, docs/ and spec/ by path (preview/build.js).
+/* global REPO */
 
-Ponjo is an editor where you and your AI buddies write the same doc, a plain text file on your own machine. Try it here, with nothing to install: select some text, press the comment button, and @mention Clippy with what you want. Clippy runs on NVIDIA Nemotron. Its reply and any edit it makes show up in the doc, and one click undoes the edit.
+// The doc each opens on: the product vision, alone or among the repo's docs.
+const HOME = inFolder ? 'docs/product-vision.md' : 'product-vision.md';
 
-## Try it
+// Threads as people and buddies leave them on HOME: a comment by you on
+// `quote`, then the replies. A reply's `was` is what its buddy's edit
+// rewrote into `quote`: undoing the edit brings it back. A thread whose
+// quote the doc no longer has is left out.
+const THREADS = [
+  {
+    quote: 'People and AI buddies work on the same doc at the same time, discussing in comments and each making their own edits, just like a team reviewing a proposal together.',
+    comments: [
+      { by: 'you', body: '@Editor this paragraph rambles. One sentence, and keep the team-review image.' },
+      {
+        by: 'Editor', body: 'Down to one sentence: same doc, same time, comments and edits, with the proposal review kept as the picture.',
+        was: 'People and AI buddies can all work on the same doc, and they can do so at the same time as one another. They talk things over with each other in the comments, and each of them makes their own edits to the text, which, if you think about it, is really quite a lot like what happens when a team of people sits down together to review a proposal.',
+      },
+      { by: 'Noor', body: 'Much better. I was about to ask for the same.' },
+    ],
+  },
+  {
+    quote: 'Google Docs + Gemini, Notion AI, Word + Copilot',
+    comments: [
+      { by: 'you', body: '@Researcher are these still the main three? Anything missing?' },
+      { by: 'Researcher', body: "Still the main three. Coda AI fits the same row, but it doesn't change the point: the AI is the vendor's and the doc lives in their cloud. I'd leave the row as it is." },
+    ],
+  },
+  {
+    quote: 'Many AI buddies, not just one',
+    comments: [
+      { by: 'you', body: '@Clippy can you give an example for this one?' },
+      { by: 'Clippy', body: 'Say Editor tightens a paragraph while Researcher checks a number in it. Both see the same thread, so either can pick up where the other left off. Want me to add that as a sentence?' },
+      { by: 'Editor', body: 'If it goes in, keep it short: every other principle is a sentence or two.' },
+      { by: 'you', body: '@Clippy not now, the bullet reads fine without it.' },
+      { by: 'Clippy', body: 'OK, leaving it as it is.' },
+    ],
+  },
+  {
+    quote: 'All communication happens in comments; no chat window',
+    comments: [
+      { by: 'you', body: "@Clippy why no chat window at all? Wouldn't one help with questions like this?" },
+      { by: 'Clippy', body: "This thread is the answer: you asked next to the text it's about, and the reply landed here too. A chat window would pull the question away from the text, and you'd carry the answer back by hand." },
+      { by: 'you', body: 'Fair enough.', resolved: true },
+    ],
+  },
+];
 
-1. Shorten the paragraph under "Why Ponjo": select it and write "@Clippy make this half as long".
-2. The paragraph under "How it works" gets one fact wrong. Select it and ask "@Clippy is anything wrong here?"
-3. Ask a question, such as "@Clippy who is Ponjo for?": Clippy answers and leaves the doc as it is.
+const CLIPPY = { id: 'Clippy', name: 'Clippy', about: 'A general writing assistant that helps draft and edit docs' };
+const TEAM = [{ id: 'Editor', name: 'Editor', about: 'Tightens prose and keeps the tone even' }, { id: 'Researcher', name: 'Researcher', about: 'Finds sources and checks the facts' }];
 
-## Why Ponjo
-
-Writing with AI today mostly means going back and forth between a chat window and a document, which, as anyone who has done it for a while will tell you, gets old fast: you copy a paragraph out of the document, you paste it into the chat, you explain what you want, you wait, you read what comes back, you copy the new version, and then you paste it back into the document, where you find that the AI has also quietly changed two other sentences that you never asked it to touch. Ponjo takes the chat window out of this loop. The AI is a member of the doc, an AI buddy, and you ask it for what you want right where the text is, in a comment, as you would ask a teammate.
-
-## How it works
-
-Each AI buddy has a name and a persona. Behind it, an agent does the work: here the Ponjo agent, which reads the doc and proposes edits that the app checks before they land. Docs are plain Markdown files stored in the cloud, and the comments are kept in a file next to each doc. People stay in control: a buddy changes only what it was asked about, and every change it makes can be undone.
-
-## What is not here
-
-Opening your own files and folders, version history and inviting teammates need the desktop app.
-`;
-
-const PROJECT = {
-  'README.md': `# Sample Project
-
-A folder opened as a project: its files in the sidebar, and its own buddies, Editor and Researcher, next to yours, Clippy. @mention one in a comment and it answers here, on NVIDIA Nemotron: it can read every file in the project.
-
-Open a doc from the sidebar, rename one (F2), delete one (Delete) or drag it into another folder. New files come from the right-click menu, which is the desktop app's own, so not here.
-`,
-  'notes/plan.md': `# Plan
-
-1. Draft the launch post.
-2. Check the numbers in the budget.
-3. Share the draft for comments.
-`,
-  'notes/meeting.md': `# Meeting notes
-
-We agreed to ship the preview first and ask for feedback before the next step.
-`,
-  'drafts/launch-post.md': `# Introducing Ponjo
-
-Write plain Markdown with people and AI buddies, in comments next to the text.
-`,
-  'data/budget.csv': 'item,cost\ndesign,1200\nhosting,40\n',
-};
-
-// The sample threads: a comment by you on `quote`, and a buddy's answer.
-const THREADS = inFolder
-  ? [
-    { doc: 'README.md', quote: 'its own buddies', ask: '@Editor is this clear enough?', by: 'Editor', answer: 'Yes. Maybe say what a buddy is in one line.' },
-    { doc: 'notes/plan.md', quote: 'Check the numbers', ask: '@Researcher which numbers?', by: 'Researcher', answer: 'The hosting cost in data/budget.csv looks low.' },
-  ]
-  : [{ doc: 'Welcome.md', quote: 'Each AI buddy has a name and a persona', ask: '@Clippy what does a persona do?', by: 'Clippy', answer: 'It says who the buddy is: one told to tighten prose edits differently from one told to check facts.' }];
-
-const ai = (name) => ({ id: name, name, kind: 'ai' });
 const ago = (minutes) => new Date(Date.now() - minutes * 60_000).toISOString();
 
 function seed() {
   const settings = { ...DEFAULT_SETTINGS, ...PICKED, id: 'u_preview', name: 'you' };
   const me = { id: settings.id, name: settings.name, kind: 'human' };
-  const files = inFolder ? { ...PROJECT } : { 'Welcome.md': WELCOME };
-  const comments = {};
-  for (const t of THREADS) {
-    const text = files[t.doc];
+  const who = (by) => (by === 'you' ? me : by === 'Noor' ? { id: 'p_noor', name: 'Noor', kind: 'human' } : { id: by, name: by, kind: 'ai' });
+  const files = inFolder ? { ...REPO } : { [HOME]: REPO['docs/product-vision.md'] };
+  const text = files[HOME];
+  const comments = { [HOME]: [] };
+  const versions = { [HOME]: [] };
+  THREADS.filter((t) => text.includes(t.quote)).forEach((t, i) => {
     const start = text.indexOf(t.quote);
-    const id = newId('c');
-    (comments[t.doc] ??= []).push(
-      { id, anchor: createAnchor(text, start, start + t.quote.length), by: me, at: ago(30), body: t.ask },
-      { id: newId('c'), thread: id, by: ai(t.by), at: ago(29), body: t.answer },
-    );
-  }
+    const thread = newId('c');
+    t.comments.forEach(({ by, body, was, resolved }, j) => {
+      const id = j === 0 ? thread : newId('c');
+      const on = j === 0 ? { anchor: createAnchor(text, start, start + t.quote.length) } : { thread };
+      comments[HOME].push({ id, ...on, by: who(by), at: ago(60 - 12 * i - j), body, ...(resolved ? { resolved } : {}) });
+      if (was) {
+        const before = text.replace(t.quote, was);
+        versions[HOME].push({ id, by, before, text, changes: diffEdits(before, text).length, undone: false });
+      }
+    });
+  });
   return {
     settings, files, comments,
-    mine: [{ id: 'Clippy', name: 'Clippy', about: 'A general writing assistant that helps draft and edit docs' }],
-    buddies: inFolder ? [{ id: 'Editor', name: 'Editor', about: 'Tightens prose and keeps the tone even' }, { id: 'Researcher', name: 'Researcher', about: 'Finds sources and checks the facts' }] : [],
-    expanded: ['notes'], sidebar: true, carry: null,
+    mine: inFolder ? [CLIPPY] : [CLIPPY, ...TEAM],
+    buddies: inFolder ? TEAM : [],
+    expanded: [], sidebar: true, carry: null,
     room: null,
-    versions: {}, // by doc: the buddies' edits, { id: its reply, by, before, text, changes, undone }
+    versions, // by doc: the buddies' edits, { id: its reply, by, before, text, changes, undone }
   };
 }
 
@@ -126,7 +131,7 @@ save();
 
 const DOC = /\.(md|markdown)$/i;
 const docs = () => Object.keys(s.files).filter((path) => DOC.test(path)).sort();
-let current = s.files[params.get('doc')] !== undefined && DOC.test(params.get('doc')) ? params.get('doc') : docs()[0];
+let current = s.files[params.get('doc')] !== undefined && DOC.test(params.get('doc')) ? params.get('doc') : s.files[HOME] !== undefined ? HOME : docs()[0];
 const name = (path) => path.split('/').pop();
 const me = () => ({ id: s.settings.id, name: s.settings.name, kind: 'human' });
 const comments = () => (s.comments[current] ??= []);
@@ -379,7 +384,7 @@ if (inFolder) {
       const carry = s.carry;
       s.carry = null;
       save();
-      return Promise.resolve({ name: 'Sample Project', current, expanded: s.expanded, sidebar: s.sidebar, carry });
+      return Promise.resolve({ name: 'ponjo', current, expanded: s.expanded, sidebar: s.sidebar, carry });
     },
     openInFolder: (path) => open(path),
     folderRename(from, kind, to) {
