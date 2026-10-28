@@ -145,16 +145,15 @@ works, or what went wrong.
 
 - A person's typing lands in the doc as they type. An AI buddy edits a copy
   of the doc; when it is done, its changes are merged into the doc as it is
-  then, at once, and shown as a revision: new text in its color, removed text
-  grey and struck through where it was, until you type, press Escape or
-  another run's edits land.
+  then, at once, and glow for a moment with its name, as anyone's do.
 - An AI buddy comments as people do: on any passage, or in any thread. It
   resolves the thread it answers when asked to ("…and resolve"). Its
   comments ask no one.
 - Under its reply the app shows how many places the run edited; clicking
-  it shows them in the text again (and scrolls to them), clicking again
-  hides them. Edits changed since are left out. The reply only says why,
-  or what you need to decide, and may be empty.
+  it shows them in the text as a revision (and scrolls to them): new text in
+  its color, removed text grey and struck through where it was, until you
+  type, press Escape or click it again. Edits changed since are left out.
+  The reply only says why, or what you need to decide, and may be empty.
 - **Nothing a person types is lost.** When two people change the same place
   at once, both edits stay, in the order they reached the host. Text one
   deletes while the other types inside it keeps what was typed. If both

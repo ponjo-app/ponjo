@@ -63,7 +63,7 @@ let myId; // your id, which your comments carry
 let comments; // the doc's threads, who wrote in them, and a notice about its sidecar (state())
 let client; // the doc in the doc host's order (web/client.js)
 let asking = null; // what the page asked the doc host to change (Undo, Restore), while it does
-let runLanded = null; // the reply whose buddy's edit just landed: shown once its comments arrive
+let runLanded = null; // the reply whose buddy's edit just landed: its cursor moves once its comments arrive
 let docName; // the doc's file name
 let pendingSelection = null; // an anchor on the doc's text while a comment is written on it
 let activeId = null; // the selected thread
@@ -543,8 +543,8 @@ window.addEventListener('beforeunload', (event) => {
 });
 
 // Others' edits landed and the view's text is now `text` (web/client.js).
-// A buddy's show as its revision once its reply is in; a person's typing (an
-// edit with an `id`) by their cursor alone; anything else glows.
+// A person's typing (an edit with an `id`) shows by their cursor alone;
+// anything else glows, a buddy's in its colour.
 function showLanded(text, ops, event) {
   const reply = event?.reply;
   editor.applyText(text, { by: reply ? event.by : event?.id ? null : asking ?? ON_DISK, buddy: Boolean(reply), ops });
@@ -709,7 +709,7 @@ function applyComments({ threads, people: writers, edits, notice, readOnly }) {
   commentsToggle.querySelector('.pj-comment-count').textContent = open > 0 ? String(open) : '';
   paintEmpty();
   if (edits?.[runLanded]) {
-    showRun(runLanded, { scroll: false, stand: true });
+    standAfterRun(runLanded);
     runLanded = null;
   }
 }
@@ -878,23 +878,30 @@ function standAtWork(statuses) {
   working = now;
 }
 
-function standAtLastEdit(by, before, after) {
-  const last = diffEdits(before, after).at(-1);
+// The buddy of the run that wrote reply `id` stands after its last edit.
+async function standAfterRun(id) {
+  const run = comments?.edits?.[id];
+  if (run?.state !== 'edited') return;
+  const found = await api.version(run.version).catch(() => null);
+  if (!found?.before) return;
+  const last = diffEdits(found.before, found.text).at(-1);
   const text = editor.getText();
   const range = last && findEdit(text, last.edit);
-  if (range && text) cursors.set(by, createAnchor(text, Math.max(range.end, 1) - 1, Math.max(range.end, 1)));
+  if (!range || !text) return;
+  cursors.set(run.by, createAnchor(text, Math.max(range.end, 1) - 1, Math.max(range.end, 1)));
+  paintMarks();
 }
 
 // ---- a buddy's run as a revision in the text ----
 
-// The edits of the run that wrote reply `id`, marked in the text until the
-// human types, presses Escape or toggles them off on the reply; `scroll`
-// brings the first into view, `stand` puts the buddy's cursor after the
-// last. An edit changed since is left out.
+// The edits of the run that wrote reply `id`, marked in the text once the
+// human toggles them on on the reply, until they type, press Escape or
+// toggle them off; the first is scrolled into view. An edit changed since
+// is left out.
 let shownRun = null;
 let preview = null; // { edits, by, replay } of the run shown
 let replays = 0;
-async function showRun(id, { scroll = true, stand = false } = {}) {
+async function showRun(id) {
   const run = comments?.edits?.[id];
   if (run?.state !== 'edited') return;
   shownRun = id;
@@ -902,11 +909,10 @@ async function showRun(id, { scroll = true, stand = false } = {}) {
   const found = await api.version(run.version).catch(() => null);
   if (shownRun !== id) return;
   if (!found?.before) return hideRun();
-  if (stand) standAtLastEdit(run.by, found.before, found.text);
   const edits = diffEdits(found.before, found.text).map((change) => change.edit);
   preview = { edits, by: run.by, replay: ++replays };
   const marks = paintMarks().filter((m) => m.kind === 'edit');
-  if (scroll && marks.length > 0) editor.scrollTo(marks[0].from);
+  if (marks.length > 0) editor.scrollTo(marks[0].from);
 }
 
 function hideRun() {
