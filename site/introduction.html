@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Introducing Ponjo</title>
+<meta name="description" content="Ponjo is an open-source editor where you and your AI buddies write the same file at the same time.">
+<link rel="icon" href="../build/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../dist/web/app.css">
+<link rel="stylesheet" href="site.css">
+</head>
+<body>
+<header class="site-header">
+  <a class="site-brand" href="index.html"><img src="../build/icon.svg" alt="" width="24" height="24"><span>Ponjo</span></a>
+  <nav class="site-nav" aria-label="Pages">
+    <a href="introduction.html" aria-current="page">Introduction</a>
+    <a href="index.html">Download</a>
+    <div class="site-dev">
+      <button type="button" aria-expanded="false" aria-controls="site-dev-menu">Development<svg class="pj-icon" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button>
+      <div class="pj-block-menu site-menu" id="site-dev-menu" hidden>
+        <a href="design.html">Design system</a>
+        <a href="avatars.html">Avatar design</a>
+        <a href="../dist/preview/">Doc mode preview</a>
+        <a href="../dist/preview/?folder">Folder mode preview</a>
+      </div>
+    </div>
+  </nav>
+  <span class="pj-spacer"></span>
+  <a class="pj-icon-btn" href="https://github.com/ponjo-app/ponjo" aria-label="GitHub" title="GitHub"><svg class="pj-icon" viewBox="0 0 24 24"><path fill="currentColor" stroke="none" d="M12 2C6.48 2 2 6.58 2 12.23c0 4.52 2.87 8.35 6.84 9.7.5.1.68-.22.68-.49l-.01-1.7c-2.78.62-3.37-1.38-3.37-1.38-.46-1.18-1.11-1.5-1.11-1.5-.91-.64.07-.62.07-.62 1 .07 1.53 1.06 1.53 1.06.9 1.57 2.35 1.12 2.92.86.09-.67.35-1.12.64-1.38-2.22-.26-4.56-1.14-4.56-5.07 0-1.12.39-2.04 1.03-2.76-.1-.26-.45-1.3.1-2.71 0 0 .84-.28 2.75 1.05A9.36 9.36 0 0 1 12 6.98c.85 0 1.71.12 2.51.34 1.91-1.33 2.75-1.05 2.75-1.05.55 1.41.2 2.45.1 2.71.64.72 1.03 1.64 1.03 2.76 0 3.94-2.34 4.81-4.57 5.06.36.32.68.94.68 1.9l-.01 2.81c0 .27.18.6.69.49A10.1 10.1 0 0 0 22 12.23C22 6.58 17.52 2 12 2z"/></svg></a>
+  <button class="pj-icon-btn site-theme" type="button" aria-label="Switch theme" title="Switch theme"><svg class="pj-icon site-moon" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"/></svg><svg class="pj-icon site-sun" viewBox="0 0 24 24"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg></button>
+</header>
+<main class="intro-page">
+  <h1>Co-write with AI like you do with teammates</h1>
+  <img src="before-and-after.jpg" width="1536" height="1024" alt="The old way, take turns: a person prompts while the AI sleeps, then the AI edits while the person sleeps. Ponjo, write together: people and AI buddies work on the same doc at once, commenting and editing side by side.">
+
+  <p>Today, writing with AI means <strong>taking turns:</strong> you prompt in a chat, wait, then switch to the doc to review what changed. Only one side works at a time, and your focus keeps jumping between the chat and the doc.</p>
+
+  <p><strong>Ponjo</strong> is an open-source editor where you and your AI buddies write the same file <strong>at the same time</strong>. Comment on a passage and @mention a buddy. The AI buddy (agent) edits and replies right there while you keep writing.</p>
+
+  <ul>
+    <li><strong>You stay in control.</strong> Buddies change only what you asked about, and every change can be undone in one click.</li>
+    <li><strong>An agent built for co-writing.</strong> Ponjo's own agent does just what writing together needs: read, comment and edit. It works in the doc as a teammate does, seeing the same text and threads you see.</li>
+    <li><strong>Many buddies, one team.</strong> Several personalized buddies work in the same doc at once, like teammates in a review.</li>
+    <li><strong>Teammates join from a link.</strong> Friends write with you from their browser, with no install or account.</li>
+  </ul>
+
+  <p>AI buddies aren't a delegate you wait on. They write beside you, and you stay focused on the writing.</p>
+
+  <p class="intro-cta"><a class="pj-primary" href="index.html">Download Ponjo</a></p>
+</main>
+<script type="module" src="site.js"></script>
+</body>
+</html>
