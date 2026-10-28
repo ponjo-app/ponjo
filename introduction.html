@@ -6,22 +6,27 @@
 <title>Introducing Ponjo</title>
 <meta name="description" content="Ponjo is an open-source editor where you and your AI buddies write the same file at the same time.">
 <link rel="icon" href="./build/icon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="./dist/web/app.css?v=83ed742">
-<link rel="stylesheet" href="site.css?v=83ed742">
+<link rel="stylesheet" href="./dist/web/app.css?v=eb918b0">
+<link rel="stylesheet" href="site.css?v=eb918b0">
 </head>
 <body>
 <header class="site-header">
   <a class="site-brand" href="index.html"><img src="./build/icon.svg" alt="" width="24" height="24"><span>Ponjo</span></a>
   <nav class="site-nav" aria-label="Pages">
-    <a href="introduction.html" aria-current="page">Introduction</a>
     <a href="index.html">Download</a>
-    <div class="site-dev">
+    <a href="introduction.html" aria-current="page">Introduction</a>
+    <div class="site-drop">
       <button type="button" aria-expanded="false" aria-controls="site-dev-menu">Development<svg class="pj-icon" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button>
       <div class="pj-block-menu site-menu" id="site-dev-menu" hidden>
         <a href="design.html">Design system</a>
         <a href="avatars.html">Avatar design</a>
-        <a href="preview/">Doc mode preview</a>
-        <a href="preview/?folder">Folder mode preview</a>
+      </div>
+    </div>
+    <div class="site-drop">
+      <button type="button" aria-expanded="false" aria-controls="site-preview-menu">Preview<svg class="pj-icon" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button>
+      <div class="pj-block-menu site-menu" id="site-preview-menu" hidden>
+        <a href="preview/">Doc mode</a>
+        <a href="preview/?folder">Folder mode</a>
       </div>
     </div>
   </nav>
@@ -48,6 +53,6 @@
 
   <p class="intro-cta"><a class="pj-primary" href="index.html">Download Ponjo</a></p>
 </main>
-<script type="module" src="site.js?v=83ed742"></script>
+<script type="module" src="site.js?v=eb918b0"></script>
 </body>
 </html>
