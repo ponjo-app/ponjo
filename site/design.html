@@ -15,13 +15,19 @@
   <a class="site-brand" href="index.html"><img src="../build/icon.svg" alt="" width="24" height="24"><span>Ponjo</span></a>
   <nav class="site-nav" aria-label="Pages">
     <a href="index.html">Download</a>
-    <div class="site-dev">
+    <a href="introduction.html">Introduction</a>
+    <div class="site-drop">
       <button type="button" aria-expanded="false" aria-controls="site-dev-menu" aria-current="true">Development<svg class="pj-icon" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button>
       <div class="pj-block-menu site-menu" id="site-dev-menu" hidden>
         <a href="design.html" aria-current="page">Design system</a>
         <a href="avatars.html">Avatar design</a>
-        <a href="../dist/preview/">Doc mode preview</a>
-        <a href="../dist/preview/?folder">Folder mode preview</a>
+      </div>
+    </div>
+    <div class="site-drop">
+      <button type="button" aria-expanded="false" aria-controls="site-preview-menu">Preview<svg class="pj-icon" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button>
+      <div class="pj-block-menu site-menu" id="site-preview-menu" hidden>
+        <a href="../dist/preview/">Doc mode</a>
+        <a href="../dist/preview/?folder">Folder mode</a>
       </div>
     </div>
   </nav>
@@ -70,7 +76,7 @@
     <div class="ds-swatch"><i style="background: var(--green)"></i><b>--green</b><span>Insertions, online</span></div>
   </div>
   <h3>Buddies</h3>
-  <p>Each buddy has its own colour, the one in its face (see <a href="avatars.html">Avatars</a>). It is set as <code>--buddy</code> on whatever belongs to that buddy: its @chip, edits, flag and the card it is working on. A run's edits show in the text as a revision: new text in its colour, removed text grey and struck through where it was.</p>
+  <p>Each buddy has its own colour, the one in its face (see <a href="avatars.html">Avatars</a>). It is set as <code>--buddy</code> on whatever belongs to that buddy: its @chip, edits, flag and the card it is working on. A run's edits, shown from the count under its reply, are a revision in the text: new text in its colour, removed text grey and struck through where it was.</p>
 
   <h2>Type</h2>
   <p>Inter for the UI, with each platform's own Chinese font behind it (PingFang SC, Microsoft YaHei UI, Noto Sans CJK SC; Songti SC, Noto Serif CJK SC for serif). The Markdown editor's page font (sans, serif or mono, set in that view) and its sizes in <code>em</code> are the writer's, not the UI's. A text file that is not Markdown shows as it is, in <code>--mono</code> at 14px by default (a size from 12 to 20 in its plugin).</p>

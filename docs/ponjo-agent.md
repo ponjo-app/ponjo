@@ -139,14 +139,15 @@ flowchart LR
 - **Shipped, then the user's,** like the other scripts: theirs to read,
   change, or rewrite in any language that keeps the contract.
 - **Its settings** are in its [manifest](agent-config.md#agents), not in
-  the program:
+  the program. Each provider keeps its own model and key, shown while it is
+  picked, so switching back and forth sets nothing again:
 
 | Key | Type | Default |
 | --- | --- | --- |
 | `provider` | choice: Anthropic, OpenAI-compatible, Nebius Token Factory | `anthropic` |
 | `endpoint` | text, for OpenAI-compatible only | `https://api.openai.com/v1` |
-| `model` | text | `claude-opus-5-5` |
-| `key` | secret | none: a run without one fails, saying where to set it |
+| `<provider>_model` | text, one for each provider | Anthropic `claude-opus-5-5`, OpenAI-compatible none, Nebius `nvidia/nemotron-3-super-120b-a12b` |
+| `<provider>_key` | secret, one for each provider | none: a run without the picked provider's fails, saying where to set it |
 | `effort` | choice: low, medium, high | `low`: scoped edits; higher thinks longer before it answers |
 
 - **Tests** call `turn` with a fake `infer`, and each `infer` on a fake

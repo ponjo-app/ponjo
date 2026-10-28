@@ -5,9 +5,10 @@
 //
 //   npm run bench:agent -- --env .env.nemotron --runs 3 --only question
 //
-// The settings are the agent's (PONJO_SETTING_*: PROVIDER, ENDPOINT, MODEL,
-// KEY, EFFORT), from the environment or the file `--env` names, a line
-// each (PONJO_SETTING_MODEL=...): .env files are gitignored, keys and all.
+// The settings are the agent's (PONJO_SETTING_*: PROVIDER, ENDPOINT, EFFORT,
+// and the provider's own <PROVIDER>_MODEL and <PROVIDER>_KEY), from the
+// environment or the file `--env` names, a line each
+// (PONJO_SETTING_NEBIUS_MODEL=...): .env files are gitignored, keys and all.
 // A run that fails on the API (unreachable, 429, 5xx) is an
 // error, neither a pass nor a fail. Each failed run's folder is kept, with
 // its trace, for a person to read: a model's mistake, or a check's.
@@ -32,7 +33,9 @@ const API_ERROR = /^Cannot reach |: (429|5\d\d) /;
 
 const { values: { runs, only, jobs, env } } = parseArgs({ options: { runs: { type: 'string', default: '3' }, only: { type: 'string', default: '' }, jobs: { type: 'string', default: '4' }, env: { type: 'string' } } });
 if (env) process.loadEnvFile(env);
-if (!process.env.PONJO_SETTING_KEY) throw new Error('Set the agent\'s settings: PONJO_SETTING_PROVIDER, PONJO_SETTING_MODEL, PONJO_SETTING_KEY (and ENDPOINT, EFFORT as it needs).');
+const PROVIDER = process.env.PONJO_SETTING_PROVIDER?.toUpperCase();
+const { [`PONJO_SETTING_${PROVIDER}_MODEL`]: model, [`PONJO_SETTING_${PROVIDER}_KEY`]: key } = process.env;
+if (!key) throw new Error('Set the agent\'s settings: PONJO_SETTING_PROVIDER, PONJO_SETTING_<PROVIDER>_MODEL, PONJO_SETTING_<PROVIDER>_KEY (and ENDPOINT, EFFORT as it needs).');
 
 /** The sidecar holding `c`'s thread, by its members. */
 function sidecar(c) {
@@ -91,7 +94,7 @@ await Promise.all(Array.from({ length: Number(jobs) }, async () => {
   }
 }));
 
-const { PONJO_SETTING_PROVIDER: provider, PONJO_SETTING_MODEL: model, PONJO_SETTING_EFFORT: effort } = process.env;
+const { PONJO_SETTING_PROVIDER: provider, PONJO_SETTING_EFFORT: effort } = process.env;
 console.log(`\n\n${provider} ${model}${effort ? ` (${effort})` : ''}, ${runs} runs a case\n`);
 const mean = (list, key) => Math.round(list.reduce((sum, r) => sum + r[key], 0) / list.length);
 // "passed/counted" of `list`, API errors not counted.

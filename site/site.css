@@ -1,20 +1,25 @@
-/* The site's pages (download, design, avatars): the app's tokens and
+/* The site's pages (introduction, download, design, avatars): the app's tokens and
    classes (dist/web/app.css), plus the header and page layout here. */
 
 html, body { height: auto; }
 body { display: block; background: var(--canvas); }
 a { color: var(--accent); }
 
+/* Moving between pages fades instead of flashing blank. */
+@media (prefers-reduced-motion: no-preference) {
+  @view-transition { navigation: auto; }
+}
+
 /* ---- header: the same on every page ---- */
 
 .site-header { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; gap: 16px; height: 52px; padding: 0 16px; background: var(--canvas); border-bottom: 1px solid var(--border); }
 .site-brand { display: flex; align-items: center; gap: 8px; color: var(--text); font-size: 14px; font-weight: 600; text-decoration: none; }
 .site-nav { display: flex; gap: 2px; }
-.site-nav > a, .site-dev > button { display: flex; align-items: center; gap: 4px; height: 28px; padding: 0 8px; border: 0; border-radius: 6px; background: none; color: var(--text-soft); font: inherit; font-size: 13px; font-weight: 500; text-decoration: none; }
-.site-nav > a:hover, .site-dev > button:hover, .site-dev > button[aria-expanded="true"] { background: var(--hover); color: var(--text); }
-.site-nav > a[aria-current], .site-dev > button[aria-current] { background: var(--active); color: var(--text); }
-.site-dev > button .pj-icon { width: 16px; height: 16px; }
-.site-dev { position: relative; }
+.site-nav > a, .site-drop > button { display: flex; align-items: center; gap: 4px; height: 28px; padding: 0 8px; border: 0; border-radius: 6px; background: none; color: var(--text-soft); font: inherit; font-size: 13px; font-weight: 500; text-decoration: none; }
+.site-nav > a:hover, .site-drop > button:hover, .site-drop > button[aria-expanded="true"] { background: var(--hover); color: var(--text); }
+.site-nav > a[aria-current], .site-drop > button[aria-current] { background: var(--active); color: var(--text); }
+.site-drop > button .pj-icon { width: 16px; height: 16px; }
+.site-drop { position: relative; }
 .site-menu { position: absolute; top: 100%; left: 0; }
 .site-menu a { display: flex; align-items: center; color: var(--text); text-decoration: none; }
 .site-menu a:hover { background: var(--hover); }
@@ -22,7 +27,8 @@ a { color: var(--accent); }
 .site-header .pj-icon-btn { width: 32px; height: 32px; }
 :root[data-theme="dark"] .site-moon, :root:not([data-theme="dark"]) .site-sun { display: none; }
 @media (max-width: 560px) {
-  .site-brand span { display: none; }
+  .site-header { gap: 8px; }
+  .site-brand span, .site-drop { display: none; }
 }
 
 /* ---- design pages ---- */
@@ -40,7 +46,7 @@ a { color: var(--accent); }
 .ds-lead { font-size: 16px; }
 .ds-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
 .ds-swatch { display: flex; flex-direction: column; gap: 6px; font-size: 12px; }
-.ds-swatch i { height: 48px; border-radius: 10px; box-shadow: inset 0 0 0 1px var(--border); }
+.ds-swatch i { height: 48px; border-radius: 10px; }
 .ds-swatch span { color: var(--text-soft); }
 .ds-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 8px 0; }
 .ds-box { padding: 24px; border-radius: 10px; background: var(--canvas); box-shadow: var(--shadow); }
@@ -81,3 +87,16 @@ a { color: var(--accent); }
 .dl-page .platforms svg { width: 18px; height: 18px; }
 
 .dl-page .mobile-note { display: none; margin: 0 0 16px; padding: 12px 16px; border-radius: 10px; background: var(--bg-soft); color: var(--text-soft); text-align: center; }
+
+/* ---- introduction page ---- */
+
+.intro-page { max-width: 720px; margin: 0 auto; padding: 56px 16px 80px; font-size: 16px; line-height: 1.6; }
+.intro-page h1 { margin: 0 0 24px; font-size: 24px; font-weight: 600; letter-spacing: -0.02em; }
+.intro-page img { display: block; width: 100%; height: auto; margin: 0 0 32px; border-radius: 10px; }
+.intro-page p, .intro-page li { color: var(--text-soft); }
+.intro-page p { margin: 0 0 16px; }
+.intro-page ul { margin: 0 0 16px; padding-left: 24px; }
+.intro-page li { margin: 8px 0; }
+.intro-page strong { color: var(--text); font-weight: 600; }
+.intro-page .intro-cta { margin-top: 32px; }
+.intro-page .intro-cta a { height: 40px; padding: 0 16px; font-size: 14px; text-decoration: none; }

@@ -101,8 +101,12 @@ check(lines === CODE, 'the plain view shows app.js as it is');
 check(await commentShows(plain, CODE, 'greet'), 'a comment on its text is drawn over that text');
 check(await bubbleComments(plain, 'world'), 'selecting text shows Comment, which opens a draft on it');
 check(await answers(plain, 'Hello', 'Howdy', code), 'a buddy answers in app.js and its edit lands');
-const revision = await waitFor(() => plain.evaluate(`document.querySelector('.pj-stage .pj-buddy-edit')?.textContent`), 15_000, 'the revision').catch(() => null);
-check(revision === 'Howdy', `the buddy's revision shows (${revision})`);
+const revision = await waitFor(() => plain.evaluate(`(() => {
+  const show = [...document.querySelectorAll('.pj-receipt-show')].at(-1);
+  if (show?.getAttribute('aria-pressed') === 'false') show.click();
+  return [...document.querySelectorAll('.pj-stage .pj-buddy-edit')].map((el) => el.textContent).join('') || null;
+})()`), 15_000, 'the revision').catch(() => null);
+check(revision === 'Howdy', `the buddy's revision shows from its reply (${revision})`);
 check(await undoesOwnOnly(plain, code, 'Howdy', 'Hiya'), 'Cmd+Z after a buddy\'s edit undoes your typing, not the buddy\'s edit');
 check(await undoesReply(plain, code, 'Howdy'), 'Undo on the reply takes the buddy\'s edit back');
 const first = await app.page('plan.md');

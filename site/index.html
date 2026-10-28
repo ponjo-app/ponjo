@@ -14,13 +14,19 @@
   <a class="site-brand" href="index.html"><img src="../build/icon.svg" alt="" width="24" height="24"><span>Ponjo</span></a>
   <nav class="site-nav" aria-label="Pages">
     <a href="index.html" aria-current="page">Download</a>
-    <div class="site-dev">
+    <a href="introduction.html">Introduction</a>
+    <div class="site-drop">
       <button type="button" aria-expanded="false" aria-controls="site-dev-menu">Development<svg class="pj-icon" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button>
       <div class="pj-block-menu site-menu" id="site-dev-menu" hidden>
         <a href="design.html">Design system</a>
         <a href="avatars.html">Avatar design</a>
-        <a href="../dist/preview/">Doc mode preview</a>
-        <a href="../dist/preview/?folder">Folder mode preview</a>
+      </div>
+    </div>
+    <div class="site-drop">
+      <button type="button" aria-expanded="false" aria-controls="site-preview-menu">Preview<svg class="pj-icon" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button>
+      <div class="pj-block-menu site-menu" id="site-preview-menu" hidden>
+        <a href="../dist/preview/">Doc mode</a>
+        <a href="../dist/preview/?folder">Folder mode</a>
       </div>
     </div>
   </nav>
