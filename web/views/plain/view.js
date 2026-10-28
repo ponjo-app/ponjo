@@ -2,8 +2,8 @@
 // for any text file no other view claims (index.js). The doc's text is the editor's,
 // so offsets on it are positions in the editor and marks are decorations
 // as given. Others' edits go in as the operations that made them, outside
-// the human's undo history; a buddy's is flagged with its name, any other
-// also glows (as in the Markdown view).
+// the human's undo history, glowing with who made them (a buddy's name in
+// its colour, as in the Markdown view).
 
 import { Annotation, Compartment, EditorState, StateEffect, StateField, Transaction } from '@codemirror/state';
 import { Decoration, EditorView, ViewPlugin, WidgetType, keymap, lineNumbers } from '@codemirror/view';
@@ -247,8 +247,8 @@ export async function createPlainView({ stage, text, name, settings, saveSetting
   /**
    * Show `next`, outside the human's undo history, as `ops` change the text
    * shown (when given; else as diffOps finds), so the caret stays at its
-   * character; flagged `by` for a while, if given; anything but a buddy's
-   * change (`buddy`) also glows.
+   * character; glowing and flagged `by` for a while, if given (in the
+   * buddy's colour for a buddy's change, `buddy`).
    */
   function applyText(next, { by = null, buddy = false, ops = null } = {}) {
     const before = currentText();
@@ -267,7 +267,7 @@ export async function createPlainView({ stage, text, name, settings, saveSetting
     if (by) {
       const added = [];
       changes.iterChanges((_fromA, _toA, from, to) => added.push([from, to]));
-      if (!buddy) flashes.push(...added.filter(([from, to]) => from < to).map(([from, to]) => Decoration.mark({ class: 'pj-flash', flashId }).range(from, to)));
+      flashes.push(...added.filter(([from, to]) => from < to).map(([from, to]) => Decoration.mark({ class: 'pj-flash', flashId }).range(from, to)));
       // The flag at the start of the word the change begins in.
       const at = added[0][0];
       const word = view.state.update({ changes }).state.wordAt(at);
