@@ -5,6 +5,11 @@ html, body { height: auto; }
 body { display: block; background: var(--canvas); }
 a { color: var(--accent); }
 
+/* Moving between pages fades instead of flashing blank. */
+@media (prefers-reduced-motion: no-preference) {
+  @view-transition { navigation: auto; }
+}
+
 /* ---- header: the same on every page ---- */
 
 .site-header { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; gap: 16px; height: 52px; padding: 0 16px; background: var(--canvas); border-bottom: 1px solid var(--border); }
