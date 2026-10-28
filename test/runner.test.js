@@ -449,5 +449,6 @@ test('the prompt names files by their paths in the project, a comment\'s from th
   const prompt = (docName, project) => buildPrompt({ buddy: { id: 'b_ada', name: 'Ada', about: '' }, docName, sidecarName: `${docName}.comments.jsonl`, thread, project });
   assert.match(prompt('a.md', true), /every path here is from the project's top folder: .* relative to the doc's folder, the top one\./);
   assert.match(prompt('plans/2026/a.md', true), /relative to the doc's folder, plans\/2026\/\./);
+  assert.match(prompt('plans/2026/a.md', true), /First, work out which file the last comment is about\. "The doc" and "this doc" are plans\/2026\/a\.md\. Another file or doc it names .* find it by name/, 'not taken for the doc');
   assert.doesNotMatch(prompt('a.md', false), /project/, 'in doc mode, no project');
 });

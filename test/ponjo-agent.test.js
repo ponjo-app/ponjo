@@ -288,6 +288,21 @@ test('OpenAI-compatible: Chat Completions at the endpoint, with the key and the 
   }
 });
 
+test('Nebius: Chat Completions at Token Factory, every step a tool call, with no effort', async () => {
+  const propose = { role: 'assistant', content: null, tool_calls: [{ id: 'call_a', type: 'function', function: { name: 'propose', arguments: '{"edits":[],"reply":"ok"}' } }] };
+  const api = await fakeApi([[200, { choices: [{ message: propose }] }]]);
+  try {
+    const infer = INFER.nebius({ model: 'nvidia/nemotron-3-super-120b-a12b', key: 'tf-test', effort: 'high' }, api.url);
+    assert.deepEqual((await infer([{ role: 'user', content: 'the prompt' }], [])).calls, [{ id: 'call_a', name: 'propose', args: '{"edits":[],"reply":"ok"}' }]);
+    const [{ url, headers, body }] = api.requests;
+    assert.equal(url, '/v1/chat/completions');
+    assert.equal(headers.authorization, 'Bearer tf-test');
+    assert.deepEqual([body.model, body.reasoning_effort, body.tool_choice], ['nvidia/nemotron-3-super-120b-a12b', undefined, 'required'], 'Nemotron answers before it reads otherwise');
+  } finally {
+    await api.close();
+  }
+});
+
 test('the shipped script runs a turn under the contract, with its settings from the environment', { skip: process.platform === 'win32' }, async () => {
   const answers = [];
   const api = await fakeApi(answers);

@@ -38,6 +38,7 @@ npm test                      # unit and integration tests
 npm run test:stress           # stress tests
 npm run test:perf             # each view keeps its latency promise at its limits
 npm run smoke:desktop         # launch the built app and check it
+PONJO_SETTING_KEY=... npm run bench:agent   # does the Ponjo agent read the file a comment means, on a real model (Nemotron by default)
 
 npm run pack:desktop          # unpacked app in release/
 npm run dist:desktop          # installer in release/

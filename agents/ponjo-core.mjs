@@ -256,9 +256,9 @@ const CACHED = { type: 'ephemeral' };
 /**
  * One step of the model, by provider: `INFER[provider](settings, url)` is
  * `infer` for `turn`, over that provider's API at `url`. `settings` are the
- * agent's: { endpoint, model, key, effort }. Each sends `tool_choice: auto`:
- * current Claude models refuse a forced tool call, and an answer without one
- * is the reply.
+ * agent's: { endpoint, model, key, effort }. Each sends `tool_choice: auto`,
+ * but Nebius: current Claude models refuse a forced tool call, and an answer
+ * without one is the reply.
  */
 export const INFER = {
   // Anthropic's Messages API. The model thinks as it needs, at `effort`; its
@@ -284,11 +284,11 @@ export const INFER = {
     return { calls, text, sent: reply.content, usage: reply.usage };
   },
   // The Chat Completions API, which OpenAI, OpenRouter and others speak.
-  openai: ({ endpoint, model, key, effort }, url = endpoint.replace(/\/+$/, '')) => async (messages, tools) => {
+  openai: ({ endpoint, model, key, effort }, url = endpoint.replace(/\/+$/, ''), choice = 'auto') => async (messages, tools) => {
     const { choices: [{ message }], usage } = await post(`${url}/chat/completions`, { authorization: `Bearer ${key}` }, {
       model,
       reasoning_effort: effort,
-      tool_choice: 'auto',
+      tool_choice: choice,
       tools: tools.map((tool) => ({ type: 'function', function: tool })),
       messages: messages.map((m) => (m.role === 'assistant' ? m.sent : m.role === 'tool' ? { role: 'tool', tool_call_id: m.id, content: m.content } : m)),
     });
@@ -297,7 +297,9 @@ export const INFER = {
   },
   // Nebius Token Factory, where NVIDIA's Nemotron models run: Chat
   // Completions, without the effort, which not every model there takes.
-  nebius: ({ model, key }) => INFER.openai({ endpoint: 'https://api.tokenfactory.nebius.com/v1', model, key }),
+  // Every step must call a tool: Nemotron otherwise answers in plain text
+  // before it has read what the comment needs. The turn ends with propose.
+  nebius: ({ model, key }, url = 'https://api.tokenfactory.nebius.com/v1') => INFER.openai({ model, key }, url, 'required'),
 };
 
 // POST `body` to `url` as JSON: the reply, or an error that says what failed and where to change it.
