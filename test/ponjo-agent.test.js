@@ -86,17 +86,23 @@ test('a bad proposal goes back saying what to fix', async () => {
   assert.match(said.at(-1), /Edit 2 overlaps another edit/);
 });
 
-test('a reply without a tool call is sent back, every call is answered, and twenty steps fail', async () => {
+test('an answer without a tool call is the reply, with no edits', async () => {
   const { doc, sidecar } = await copies();
-  const infer = fake({ calls: [], sent: 'I will read it.' }, calling(['read', { path: doc, lines: [1, 1] }], ['read', { path: sidecar }]), {
+  const infer = fake(calling(['read', { path: doc, lines: [1, 1] }]), { calls: [], text: '\nTry "co-authoring".', sent: 'as the API sent it' });
+  assert.deepEqual(await turn({ prompt: 'p', doc, sidecar }, { infer, readFile: seen({ doc, sidecar }) }), { edits: [], reply: 'Try "co-authoring".' });
+  assert.equal(infer.steps, 2);
+});
+
+test('every call is answered, and twenty steps fail', async () => {
+  const { doc, sidecar } = await copies();
+  const infer = fake(calling(['read', { path: doc, lines: [1, 1] }], ['read', { path: sidecar }]), {
     calls: [{ id: 'bad', name: 'read', args: '{"path":' }], sent: null,
   });
   await assert.rejects(turn({ prompt: 'p', doc, sidecar }, { infer, readFile: seen({ doc, sidecar }) }), /No proposal in 20 steps/);
   assert.equal(infer.steps, 20);
-  const [, , nudge, , first, second, , notJson] = infer.messages;
-  assert.deepEqual(nudge, { role: 'user', content: 'Call read, find, grep or propose.' });
+  const [, step, first, second, , notJson] = infer.messages;
   assert.deepEqual([first.content, second.content], ['1\t# Q4 Launch Plan', 'Not run: one tool per step.']);
-  assert.deepEqual([first.id, second.id], infer.messages[3].calls.map((c) => c.id), 'each call id gets a result');
+  assert.deepEqual([first.id, second.id], step.calls.map((c) => c.id), 'each call id gets a result');
   assert.equal(notJson.content, 'The arguments are not JSON: {"path":');
 });
 
@@ -236,6 +242,7 @@ test('Anthropic: the Messages API, the tools and the prompt cached, the model\'s
     [200, { stop_reason: 'tool_use', content: [thinking, { type: 'tool_use', id: 'toolu_1', name: 'read', input: { path: doc, lines: [1, 1] } }] }],
     [200, { stop_reason: 'tool_use', content: [{ type: 'text', text: 'Done.' }, { type: 'tool_use', id: 'toolu_2', name: 'propose', input: { edits: [], reply: 'Fine as is.' } }] }],
     [200, { stop_reason: 'refusal', stop_details: { type: 'refusal', category: 'cyber', explanation: 'Not this.' }, content: [] }],
+    [200, { stop_reason: 'end_turn', content: [thinking, { type: 'text', text: 'Fine ' }, { type: 'text', text: 'as is.' }] }],
   ]);
   try {
     const infer = INFER.anthropic({ model: 'claude-opus-5-5', key: 'sk-ant-test', effort: 'low' }, api.url);
@@ -254,6 +261,7 @@ test('Anthropic: the Messages API, the tools and the prompt cached, the model\'s
       { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_1', content: '1\t# Q4 Launch Plan' }] },
     ]);
     await assert.rejects(infer(messages, []), /^Error: The model refused: Not this\.$/);
+    assert.equal((await infer(messages, [])).text, 'Fine as is.', 'an answer without a call: its text blocks');
   } finally {
     await api.close();
   }
@@ -263,7 +271,8 @@ test('OpenAI-compatible: Chat Completions at the endpoint, with the key and the 
   const { doc, sidecar } = await copies();
   const read = { role: 'assistant', content: null, tool_calls: [{ id: 'call_a', type: 'function', function: { name: 'read', arguments: JSON.stringify({ path: doc, lines: [1, 1] }) } }] };
   const propose = { role: 'assistant', content: null, tool_calls: [{ id: 'call_b', type: 'function', function: { name: 'propose', arguments: '{"edits":[],"reply":"ok"}' } }] };
-  const api = await fakeApi([[200, { choices: [{ message: read }] }], [200, { choices: [{ message: propose }] }]]);
+  const answer = { role: 'assistant', content: 'Fine as is.', tool_calls: null };
+  const api = await fakeApi([[200, { choices: [{ message: read }] }], [200, { choices: [{ message: propose }] }], [200, { choices: [{ message: answer }] }]]);
   try {
     const infer = INFER.openai({ endpoint: `${api.url}/`, model: 'gpt-5', key: 'sk-test', effort: 'medium' });
     assert.deepEqual(await turn({ prompt: 'the prompt', doc, sidecar }, { infer, readFile: seen({ doc, sidecar }) }), { edits: [], reply: 'ok' });
@@ -273,6 +282,7 @@ test('OpenAI-compatible: Chat Completions at the endpoint, with the key and the 
     assert.deepEqual([body.model, body.reasoning_effort, body.tool_choice], ['gpt-5', 'medium', 'auto']);
     assert.deepEqual(body.tools.map((t) => [t.type, t.function.name]), [['function', 'read'], ['function', 'find'], ['function', 'grep'], ['function', 'propose']]);
     assert.deepEqual(body.messages, [{ role: 'user', content: 'the prompt' }, read, { role: 'tool', tool_call_id: 'call_a', content: '1\t# Q4 Launch Plan' }]);
+    assert.equal((await infer(body.messages, [])).text, 'Fine as is.', 'an answer without a call: its content');
   } finally {
     await api.close();
   }

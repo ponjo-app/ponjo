@@ -27,7 +27,7 @@ laptop runs (an 8B model tried) claim edits they did not make.
 | Interface | Called by |
 | --- | --- |
 | `turn({ prompt, doc, sidecar }, { infer, readFile, resolve }) → { edits, reply }` | the program's `main`; the preview's buddies (`preview/doc-stub.js`) |
-| `infer(messages, tools) → { calls: [{ id, name, args }], sent, usage }` | `turn`, for each step |
+| `infer(messages, tools) → { calls: [{ id, name, args }], text, sent, usage }` | `turn`, for each step |
 | `read`, `find`, `grep`, `propose` | the model, as tools |
 
 **`main`** is all the I/O, and all of the contract: it reads the prompt on
@@ -71,7 +71,8 @@ call's result), and each `infer` translates them:
 | `nebius` | Chat Completions at Nebius Token Factory, for NVIDIA's Nemotron models | no effort |
 
 Both send `tool_choice: "auto"`: current Claude models refuse a forced tool
-call, and a reply without one is sent back anyway.
+call. A step without one is the model's answer, as for any agent: its `text`
+is the reply, with no edits.
 
 **`read({ path, lines? })`** returns the text with line numbers, from line
 `lines[0]` to `lines[1]`. A file over 20,000 characters without `lines`
@@ -102,6 +103,7 @@ what to fix. `reply` is printed, and may be empty.
 ```
 step(messages, budget):
   call = infer(messages, tools)
+  if there is no call: return no edits, and its text as the reply
   if call is a valid propose: return its args
   if budget is 0: fail
   return step(messages + call + result(call), budget - 1)
