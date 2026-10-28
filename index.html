@@ -6,13 +6,14 @@
 <title>Download Ponjo</title>
 <meta name="description" content="Co-author your own text files with your human and AI buddies. Download Ponjo for macOS or Windows.">
 <link rel="icon" href="./build/icon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="./dist/web/app.css?v=07c1049">
-<link rel="stylesheet" href="site.css?v=07c1049">
+<link rel="stylesheet" href="./dist/web/app.css?v=83ed742">
+<link rel="stylesheet" href="site.css?v=83ed742">
 </head>
 <body>
 <header class="site-header">
   <a class="site-brand" href="index.html"><img src="./build/icon.svg" alt="" width="24" height="24"><span>Ponjo</span></a>
   <nav class="site-nav" aria-label="Pages">
+    <a href="introduction.html">Introduction</a>
     <a href="index.html" aria-current="page">Download</a>
     <div class="site-dev">
       <button type="button" aria-expanded="false" aria-controls="site-dev-menu">Development<svg class="pj-icon" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button>
@@ -50,11 +51,11 @@
   </section>
 </main>
 <script type="module">
-  import { agentFace } from './dist/web/faces.js?v=07c1049';
+  import { agentFace } from './dist/web/faces.js?v=83ed742';
   if (/Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && /Mac/.test(navigator.platform))) document.getElementById('mobile-note').style.display = 'block';
   // The logo's face (build/icon.svg) on Clippy's body.
   document.getElementById('clippy').append(agentFace('Clippy', { body: 'cloud', tilt: -3, eye: 'dot', mouth: 'smile', extra: 'blush' }));
 </script>
-<script type="module" src="site.js?v=07c1049"></script>
+<script type="module" src="site.js?v=83ed742"></script>
 </body>
 </html>
