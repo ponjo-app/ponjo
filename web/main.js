@@ -458,6 +458,7 @@ function makeView(chosen, text) {
     },
     onChange: () => {
       hideRun();
+      leaveIdle();
       paintMarks();
     },
     // Clicking commented text selects its thread but keeps the caret in the doc.
@@ -860,7 +861,8 @@ async function undoReply(id) {
 // A buddy asked to work in this window stays in the doc with its cursor, at
 // the end of its last edit, or at the passage it was asked about until it
 // edits. The place is an anchor, so it follows the text; the cursor goes with
-// the page, and with the buddy once it is no longer here.
+// the page, with the buddy once it is no longer here, and, once it is done,
+// when the human types.
 const cursors = new Map(); // buddy id -> anchor of the character before its cursor
 let working = new Set();
 // People's cursors are the host's (client.cursorsShown); each is named for
@@ -876,6 +878,12 @@ function standAtWork(statuses) {
     if (thread) cursors.set(a.id, thread.anchor);
   }
   working = now;
+}
+
+// The human typed: a buddy not at work leaves the text, so its cursor does
+// not stay behind in what they write next.
+function leaveIdle() {
+  for (const id of cursors.keys()) if (!working.has(id)) cursors.delete(id);
 }
 
 // The buddy of the run that wrote reply `id` stands after its last edit.
