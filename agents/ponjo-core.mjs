@@ -7,6 +7,8 @@ const STEPS = 20;
 const MAX_READ = 20_000; // characters a read without `lines` returns
 const MAX_FOUND = 100; // paths find, or lines grep, gives before it asks to narrow
 const MAX_LINE = 500; // characters of a line grep shows
+const MAX_LISTED = 200; // the project's files the first message lists; over that, its top folder's
+const SIDECAR = '.comments.jsonl';
 const ANY_TOOL = 'read, find, grep or propose';
 const PATTERN = 'A JavaScript regular expression, not a glob. Case is ignored unless it has a capital letter.';
 
@@ -86,7 +88,8 @@ const TOOLS = [
  * call's result.
  */
 export async function turn({ prompt, doc, sidecar }, { infer, readFile, resolve = (path) => path }) {
-  const messages = [{ role: 'user', content: prompt }];
+  const files = await listing(readFile, [doc, sidecar]);
+  const messages = [{ role: 'user', content: files ? `${prompt}\n\n${files}` : prompt }];
   for (let step = 0; step < STEPS; step++) {
     const { calls, text, sent } = await infer(messages, TOOLS);
     messages.push({ role: 'assistant', calls, sent });
@@ -167,16 +170,29 @@ async function search(tool, { pattern, path = '' }, readFile, resolve) {
 
 // The files at `path` by readFile, which gives a folder's entries (a
 // subfolder's with a trailing /): the file itself, or every file in the
-// folder and its subfolders; null when there is none.
-async function under(path, readFile) {
+// folder and its subfolders, or more than `limit` of them; null when there is none.
+async function under(path, readFile, limit = Infinity) {
   const found = await readFile(path);
   if (!Array.isArray(found)) return found === null ? null : [path];
   const paths = [];
   for (const entry of found) {
+    if (paths.length > limit) break;
     const at = path === '' || path === '.' ? entry : `${path.replace(/\/$/, '')}/${entry}`;
-    paths.push(...(entry.endsWith('/') ? (await under(at.slice(0, -1), readFile)) ?? [] : [at]));
+    paths.push(...(entry.endsWith('/') ? (await under(at.slice(0, -1), readFile, limit - paths.length)) ?? [] : [at]));
   }
   return paths;
+}
+
+// The project's files as its sidebar shows them, for the first message, as
+// a person sees them before they ask: every one, or over MAX_LISTED its top
+// folder's entries. A file's sidecar is left out, as in the sidebar. Null
+// when it holds only `copies`, as in doc mode.
+async function listing(readFile, copies) {
+  const all = (await under('', readFile, MAX_LISTED)) ?? [];
+  const shown = (paths) => paths.filter((path) => !(path.endsWith(SIDECAR) && paths.includes(path.slice(0, -SIDECAR.length))));
+  if (all.every((path) => copies.includes(path))) return null;
+  if (all.length <= MAX_LISTED) return `The project's files:\n\n${shown(all).join('\n')}`;
+  return `The project has more than ${MAX_LISTED} files: find them with find. Its top folder:\n\n${shown(await readFile('')).join('\n')}`;
 }
 
 // A long file's line count, and a Markdown file's headings with their lines.

@@ -18,8 +18,9 @@ laptop runs (an 8B model tried) claim edits they did not make.
    no network but the model's API. Text a teammate wrote can at worst make an undoable proposal.
 3. **Stateless.** A turn remembers nothing after. Within it, all state is
    the messages, and its trace replays it.
-4. **The model asks for context.** The first message is small; the model
-   reads what it needs.
+4. **The model asks for context.** The first message is small: the prompt
+   and the project's file names, as a person sees them in the sidebar; the
+   model reads what it needs.
 5. **Read by line number, write by quote.** Never count characters.
 
 ## Interfaces
@@ -111,7 +112,10 @@ step(messages, budget):
   return step(messages + call + result(call), budget - 1)
 ```
 
-The first message is the prompt, as is: its rules are every agent's. The
+The first message is the prompt, as is: its rules are every agent's. Then,
+in a project, its files as the sidebar shows them (no sidecar of a file
+there), so the model knows which docs a comment can mean: every path up to
+200, else the top folder's entries, saying to find the rest. The
 tools match the contract it describes: `propose` edits the doc and appends
 to the sidecar, and its `reply` is what the prompt says to print. Twenty
 steps, and the turn fails.
