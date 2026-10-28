@@ -121,7 +121,7 @@ async function use({ name, args: json }, { doc, sidecar, thread, lines, added, r
   } catch {
     return `The arguments are not JSON: ${json}`;
   }
-  if (name === 'read') return read(args, readFile);
+  if (name === 'read') return read(args, readFile, doc);
   if (name === 'find' || name === 'grep') return search(name, args, readFile, resolve);
   if (name === 'comment') {
     const { on, body } = args;
@@ -151,14 +151,19 @@ async function use({ name, args: json }, { doc, sidecar, thread, lines, added, r
   return { edits: all, reply };
 }
 
-async function read({ path, lines }, readFile) {
+// A file read as it is, with a note when the doc's folder has one by the
+// same path: models read a file a comment names from the project's top.
+async function read({ path, lines }, readFile, doc) {
   const found = typeof path === 'string' ? await readFile(path) : null;
-  if (found === null) return `${path}: no such file, or not one you can read.`;
+  const folder = doc.slice(0, doc.lastIndexOf('/') + 1);
+  const near = folder && typeof path === 'string' && path && !path.startsWith(folder) && typeof (await readFile(folder + path)) === 'string' && folder + path;
+  const note = near ? `${near} is there too: a file a comment names is from the doc's folder, ${folder}.` : '';
+  if (found === null) return [`${path}: no such file, or not one you can read.`, note].filter(Boolean).join(' ');
   if (Array.isArray(found)) return found.join('\n') || '(an empty folder)';
   const all = linesOf(found);
-  if (!lines && found.length > MAX_READ) return outline(path, all);
+  if (!lines && found.length > MAX_READ) return [outline(path, all), note].filter(Boolean).join('\n');
   const from = Math.max(1, lines?.[0] ?? 1);
-  return all.slice(from - 1, lines?.[1] ?? all.length).map((line, i) => `${from + i}\t${line}`).join('\n');
+  return [all.slice(from - 1, lines?.[1] ?? all.length).map((line, i) => `${from + i}\t${line}`).join('\n'), note && `(${note})`].filter(Boolean).join('\n');
 }
 
 const linesOf = (text) => text.replace(/\r?\n$/, '').split(/\r?\n/);

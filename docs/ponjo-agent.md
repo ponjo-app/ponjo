@@ -77,7 +77,9 @@ is the reply, with no edits.
 **`read({ path, lines? })`** returns the text with line numbers, from line
 `lines[0]` to `lines[1]`. A file over 20,000 characters without `lines`
 returns its outline instead (Markdown headings with their line ranges); a
-folder, its files.
+folder, its files. When the doc's folder has a file by the same path, it says
+so: models read a file a comment names from the project's top, though the
+prompt says it is from the doc's folder.
 
 **`find({ pattern, path? })`** returns the paths of the files under the
 folder `path` (the project's top if left out) that `pattern` matches, sorted.

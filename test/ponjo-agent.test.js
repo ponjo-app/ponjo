@@ -123,6 +123,22 @@ test('a long file reads as its outline, and in parts by line number', async () =
   assert.equal(missing, 'nowhere.md: no such file, or not one you can read.');
 });
 
+test('a read of a path the doc\'s folder also has says so: a file a comment names is from there', async () => {
+  const { doc, sidecar } = await copies(SAMPLE, 'notes/plan.md');
+  await writeFile('rule.md', 'House rule.\n');
+  await writeFile('notes/rule.md', 'Notes rule.\n');
+  await writeFile('notes/glossary.md', 'Words.\n');
+  const uses = [['read', { path: 'rule.md' }], ['read', { path: 'glossary.md' }], ['read', { path: 'notes/rule.md' }], ['read', { path: 'README.md' }]];
+  const infer = fake(...uses.map((use) => calling(use)), calling(['propose', { edits: [], reply: '' }]));
+  await turn({ prompt: 'p', doc, sidecar }, { infer, readFile: seen({ doc, sidecar }), resolve: inProject });
+  assert.deepEqual(results(infer.messages), [
+    '1\tHouse rule.\n(notes/rule.md is there too: a file a comment names is from the doc\'s folder, notes/.)',
+    'glossary.md: no such file, or not one you can read. notes/glossary.md is there too: a file a comment names is from the doc\'s folder, notes/.',
+    '1\tNotes rule.',
+    'README.md: no such file, or not one you can read.',
+  ]);
+});
+
 /**
  * A project (its real path) as the app shows it, and a folder outside it:
  * `notes/` with a doc and its sidecar, installed packages, hidden files, a
