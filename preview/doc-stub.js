@@ -227,10 +227,10 @@ async function run(id, thread) {
 }
 
 // What a turn can read at `path`: its copies, and in a project its files
-// and folders.
+// and folders; else, as a run's working folder, only the copies.
 function read(path, copies) {
   if (copies[path] !== undefined) return copies[path];
-  if (!inFolder) return null;
+  if (!inFolder) return ['', '.'].includes(path) ? Object.keys(copies) : null;
   if (s.files[path] !== undefined) return s.files[path];
   const entries = calls.list({ path: path === '.' ? '' : path.replace(/\/$/, '') }).map((e) => e.name + (e.folder ? '/' : ''));
   return entries.length > 0 ? entries : null;
