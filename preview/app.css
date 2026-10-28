@@ -798,7 +798,10 @@ label.pj-setting { cursor: pointer; }
 .pj-files-input { flex: 1; min-width: 0; height: 24px; margin: -2px 0; padding: 0 6px; border: 1px solid var(--accent); border-radius: 4px; background: var(--bg); color: var(--text); font: inherit; font-size: 13px; outline: none; }
 .pj-files-input[aria-invalid="true"] { border-color: var(--red); }
 .pj-files-editing, .pj-files-editing:hover { background: none; }
-.pj-files-row[aria-busy="true"] { opacity: 0.6; }
+.pj-files-row[aria-busy="true"]:not([aria-current]) { opacity: 0.6; }
+/* a file clicked: until its doc is shown, the page left fades a little */
+[data-switching] .pj-canvas { opacity: 0.6; transition: opacity 0.15s 0.1s; }
+[data-switching], [data-switching] * { cursor: progress !important; }
 .pj-files-error { margin: 2px 8px 4px 32px; color: var(--red); font-size: 12px; line-height: 1.4; }
 .pj-files-dragging, .pj-files-dragging * { cursor: grabbing !important; }
 .pj-files-nodrop, .pj-files-nodrop * { cursor: not-allowed !important; }
