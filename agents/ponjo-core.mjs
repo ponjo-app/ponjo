@@ -72,10 +72,11 @@ const TOOLS = [
 /**
  * One buddy answering one thread: `prompt` is stdin as is, `doc` and
  * `sidecar` the copies' paths in the project. `infer(messages, tools)` is one step of the
- * model (INFER) and resolves to { calls: [{ id, name, args }], sent, usage },
- * `args` the JSON the model wrote, `sent` its message as its API sent it and
- * `usage` the tokens it took, as the API counts them; `readFile(path)` to
- * a file's text, a folder's entries (a subfolder's ending in /) or null;
+ * model (INFER) and resolves to { calls: [{ id, name, args }], text, sent, usage },
+ * `args` the JSON the model wrote, `text` what it wrote besides, `sent` its
+ * message as its API sent it and `usage` the tokens it took, as the API
+ * counts them; `readFile(path)` to a file's text, a folder's entries (a
+ * subfolder's ending in /) or null;
  * `resolve(path)` a path the model wrote as the copies' paths are written
  * (ponjo.mjs's inProject). Resolves to the checked { edits, reply }, and throws
  * when the turn fails.
@@ -87,13 +88,10 @@ const TOOLS = [
 export async function turn({ prompt, doc, sidecar }, { infer, readFile, resolve = (path) => path }) {
   const messages = [{ role: 'user', content: prompt }];
   for (let step = 0; step < STEPS; step++) {
-    const { calls, sent } = await infer(messages, TOOLS);
+    const { calls, text, sent } = await infer(messages, TOOLS);
     messages.push({ role: 'assistant', calls, sent });
     const [call, ...more] = calls;
-    if (!call) {
-      messages.push({ role: 'user', content: `Call ${ANY_TOOL}.` });
-      continue;
-    }
+    if (!call) return { edits: [], reply: text.trim() }; // an answer without a call, as any agent's
     const result = await use(call, { doc, sidecar, readFile, resolve });
     if (typeof result !== 'string') return result;
     messages.push({ role: 'tool', id: call.id, content: result });
@@ -259,8 +257,8 @@ const CACHED = { type: 'ephemeral' };
  * One step of the model, by provider: `INFER[provider](settings, url)` is
  * `infer` for `turn`, over that provider's API at `url`. `settings` are the
  * agent's: { endpoint, model, key, effort }. Each sends `tool_choice: auto`:
- * current Claude models refuse a forced tool call, and a reply without one is
- * sent back anyway.
+ * current Claude models refuse a forced tool call, and an answer without one
+ * is the reply.
  */
 export const INFER = {
   // Anthropic's Messages API. The model thinks as it needs, at `effort`; its
@@ -282,7 +280,8 @@ export const INFER = {
     if (reply.stop_reason === 'refusal') throw new Error(`The model refused: ${reply.stop_details?.explanation ?? 'no reason given.'}`);
     if (reply.stop_reason === 'max_tokens') throw new Error('The model\'s answer was cut off at 16,000 tokens.');
     const calls = reply.content.filter((block) => block.type === 'tool_use').map(({ id, name, input }) => ({ id, name, args: JSON.stringify(input) }));
-    return { calls, sent: reply.content, usage: reply.usage };
+    const text = reply.content.filter((block) => block.type === 'text').map((block) => block.text).join('');
+    return { calls, text, sent: reply.content, usage: reply.usage };
   },
   // The Chat Completions API, which OpenAI, OpenRouter and others speak.
   openai: ({ endpoint, model, key, effort }, url = endpoint.replace(/\/+$/, '')) => async (messages, tools) => {
@@ -294,7 +293,7 @@ export const INFER = {
       messages: messages.map((m) => (m.role === 'assistant' ? m.sent : m.role === 'tool' ? { role: 'tool', tool_call_id: m.id, content: m.content } : m)),
     });
     const calls = (message.tool_calls ?? []).map(({ id, function: { name, arguments: args } }) => ({ id, name, args }));
-    return { calls, sent: message, usage };
+    return { calls, text: message.content ?? '', sent: message, usage };
   },
   // Nebius Token Factory, where NVIDIA's Nemotron models run: Chat
   // Completions, without the effort, which not every model there takes.
