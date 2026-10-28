@@ -12,7 +12,7 @@ import ponjo from '../agents/ponjo.json' with { type: 'json' };
 export const AGENTS = Object.entries({ claude, codex, ponjo }).map(([id, manifest]) => agentOf(id, manifest));
 
 /** The settings that say so: the Ponjo agent, on Nemotron at Nebius Token Factory. */
-export const PICKED = { agent: 'ponjo', agents: { ponjo: { provider: 'nebius', model: 'nvidia/nemotron-3-super-120b-a12b' } } };
+export const PICKED = { agent: 'ponjo', agents: { ponjo: { provider: 'nebius' } } };
 
 /** What the agents' list is (web/api.js `scripts`), `fixed`: Agents can't be changed here. */
 export const SCRIPTS = {

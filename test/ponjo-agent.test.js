@@ -297,7 +297,7 @@ test('the shipped script runs a turn under the contract, with its settings from 
     const { dir, doc, sidecar } = await copies();
     const folder = join(config, 'run'); // the working folder by a link, as a Mac's temp folder is
     await symlink(dir, folder, 'junction');
-    const settings = { PROVIDER: 'openai', ENDPOINT: api.url, MODEL: 'gpt-5', KEY: 'sk-secret-test', EFFORT: 'low' };
+    const settings = { PROVIDER: 'openai', ENDPOINT: api.url, OPENAI_MODEL: 'gpt-5', OPENAI_KEY: 'sk-secret-test', ANTHROPIC_MODEL: 'claude-opus-5-5', ANTHROPIC_KEY: 'sk-ant-other', EFFORT: 'low' };
     const trace = join(config, 'trace.jsonl');
     const run = (PATH = `${dirname(process.execPath)}${delimiter}${process.env.PATH}`, own = settings) => new Promise((resolve) => {
       const env = { ...process.env, PATH, PONJO_DOC: join(folder, doc), PONJO_COMMENTS: join(folder, sidecar), PONJO_PROJECT: '', PONJO_BUDDY: 'Ada', PONJO_TRACE: trace };
@@ -313,14 +313,14 @@ test('the shipped script runs a turn under the contract, with its settings from 
     assert.deepEqual(await run(), { code: 0, stdout: 'Moved it.', stderr: '' });
     assert.equal(await readFile(doc, 'utf8'), SAMPLE.replace('week one', 'week two'));
     assert.equal(await readFile(sidecar, 'utf8'), `${HEADER}{"body":"Two weeks?"}\n`);
-    assert.deepEqual([api.requests[0].body.model, api.requests[0].headers.authorization], ['gpt-5', 'Bearer sk-secret-test']);
+    assert.deepEqual([api.requests[0].body.model, api.requests[0].headers.authorization], ['gpt-5', 'Bearer sk-secret-test'], 'the picked provider\'s own model and key');
 
     // A failed run's reply says what failed, then what to change and where.
     answers.push([404, { error: 'model "gpt-5" not found' }]);
     const failed = await run();
     assert.equal(failed.code, 1);
     assert.equal(failed.stderr, `${api.url}/chat/completions: 404 {"error":"model \\"gpt-5\\" not found"}\nCheck the endpoint and the model.\nThe provider, endpoint, model and key are in Settings > Agents > Ponjo agent.\n`);
-    assert.deepEqual(await run(undefined, { ...settings, KEY: '' }), { code: 1, stdout: '', stderr: 'No API key: set one in Settings > Agents > Ponjo agent.\n' });
+    assert.deepEqual(await run(undefined, { ...settings, OPENAI_KEY: '' }), { code: 1, stdout: '', stderr: 'No API key: set one in Settings > Agents > Ponjo agent.\n' }, 'never another provider\'s key');
 
     const traced = await readFile(trace, 'utf8');
     const [answer] = traced.trim().split('\n').map((l) => JSON.parse(l));
