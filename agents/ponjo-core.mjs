@@ -5,6 +5,10 @@
 
 const STEPS = 20;
 const MAX_READ = 20_000; // characters a read without `lines` returns
+const MAX_FOUND = 100; // paths find, or lines grep, gives before it asks to narrow
+const MAX_LINE = 500; // characters of a line grep shows
+const ANY_TOOL = 'read, find, grep or propose';
+const PATTERN = 'A JavaScript regular expression, not a glob. Case is ignored unless it has a capital letter.';
 
 // The tools, as each provider's infer gets them: { name, description, parameters (a JSON schema) }.
 const TOOLS = [
@@ -18,6 +22,30 @@ const TOOLS = [
         lines: { type: 'array', items: { type: 'integer' }, description: 'The first and last line to read, from 1.' },
       },
       required: ['path'],
+    },
+  },
+  {
+    name: 'find',
+    description: `Find files by their path from the project's top, \`/\` between folders (like notes/rule.md): the paths the pattern matches, sorted, at most ${MAX_FOUND}.`,
+    parameters: {
+      type: 'object',
+      properties: {
+        pattern: { type: 'string', description: `${PATTERN} For rule.md anywhere: rule\\.md$.` },
+        path: { type: 'string', description: 'The folder to search; the whole project if left out.' },
+      },
+      required: ['pattern'],
+    },
+  },
+  {
+    name: 'grep',
+    description: `Search files for lines: each file's path, then the lines it matches, each after its number and a tab, as read gives them. At most ${MAX_FOUND} lines.`,
+    parameters: {
+      type: 'object',
+      properties: {
+        pattern: { type: 'string', description: PATTERN },
+        path: { type: 'string', description: 'The folder or file to search; the whole project if left out.' },
+      },
+      required: ['pattern'],
     },
   },
   {
@@ -43,13 +71,13 @@ const TOOLS = [
 
 /**
  * One buddy answering one thread: `prompt` is stdin as is, `doc` and
- * `sidecar` the copies' paths. `infer(messages, tools)` is one step of the
+ * `sidecar` the copies' paths in the project. `infer(messages, tools)` is one step of the
  * model (INFER) and resolves to { calls: [{ id, name, args }], sent, usage },
  * `args` the JSON the model wrote, `sent` its message as its API sent it and
  * `usage` the tokens it took, as the API counts them; `readFile(path)` to
- * a file's text, a folder's entries or null; `resolve(path)` a path the
- * model wrote as the copies' paths are written (on disk, node:path's
- * resolve). Resolves to the checked { edits, reply }, and throws
+ * a file's text, a folder's entries (a subfolder's ending in /) or null;
+ * `resolve(path)` a path the model wrote as the copies' paths are written
+ * (ponjo.mjs's inProject). Resolves to the checked { edits, reply }, and throws
  * when the turn fails.
  *
  * The messages are in one form for every provider: { role: 'user', content },
@@ -63,7 +91,7 @@ export async function turn({ prompt, doc, sidecar }, { infer, readFile, resolve 
     messages.push({ role: 'assistant', calls, sent });
     const [call, ...more] = calls;
     if (!call) {
-      messages.push({ role: 'user', content: 'Call read or propose.' });
+      messages.push({ role: 'user', content: `Call ${ANY_TOOL}.` });
       continue;
     }
     const result = await use(call, { doc, sidecar, readFile, resolve });
@@ -83,7 +111,8 @@ async function use({ name, args: json }, { doc, sidecar, readFile, resolve }) {
     return `The arguments are not JSON: ${json}`;
   }
   if (name === 'read') return read(args, readFile);
-  if (name !== 'propose') return `No tool ${name}: call read or propose.`;
+  if (name === 'find' || name === 'grep') return search(name, args, readFile, resolve);
+  if (name !== 'propose') return `No tool ${name}: call ${ANY_TOOL}.`;
   const { edits, reply = '' } = args;
   if (!Array.isArray(edits) || typeof reply !== 'string') return 'propose takes { edits: [{ path, old, new }], reply }.';
   try {
@@ -98,10 +127,58 @@ async function read({ path, lines }, readFile) {
   const found = typeof path === 'string' ? await readFile(path) : null;
   if (found === null) return `${path}: no such file, or not one you can read.`;
   if (Array.isArray(found)) return found.join('\n') || '(an empty folder)';
-  const all = found.replace(/\r?\n$/, '').split(/\r?\n/);
+  const all = linesOf(found);
   if (!lines && found.length > MAX_READ) return outline(path, all);
   const from = Math.max(1, lines?.[0] ?? 1);
   return all.slice(from - 1, lines?.[1] ?? all.length).map((line, i) => `${from + i}\t${line}`).join('\n');
+}
+
+const linesOf = (text) => text.replace(/\r?\n$/, '').split(/\r?\n/);
+
+// find's or grep's answer: the files under `path` whose path (find) or lines
+// (grep) match `pattern`, smart case as the sidebar's filter (web/files.js).
+async function search(tool, { pattern, path = '' }, readFile, resolve) {
+  if (typeof pattern !== 'string' || typeof path !== 'string') return `${tool} takes { pattern, path }, both strings.`;
+  let match;
+  try {
+    match = new RegExp(pattern, /[A-Z]/.test(pattern) ? '' : 'i');
+  } catch (error) {
+    return `${error.message}. The pattern is a regular expression, not a glob: rule\\.md$, not **/rule.md.`;
+  }
+  const top = resolve(path);
+  const files = typeof top === 'string' ? await under(top, readFile) : null;
+  if (!files) return `${path}: no such ${tool === 'find' ? 'folder' : 'folder or file'}, or not one you can read.`;
+  const shown = [];
+  let found = 0;
+  for (const file of files.sort((a, b) => a.localeCompare(b))) {
+    if (tool === 'find') {
+      if (match.test(file) && ++found <= MAX_FOUND) shown.push(file);
+      continue;
+    }
+    const text = await readFile(file);
+    if (typeof text !== 'string') continue;
+    const lines = [];
+    linesOf(text).forEach((line, i) => {
+      if (match.test(line) && ++found <= MAX_FOUND) lines.push(`${i + 1}\t${line.length > MAX_LINE ? `${line.slice(0, MAX_LINE)}…` : line}`);
+    });
+    if (lines.length) shown.push(file, ...lines);
+  }
+  if (!found) return `No ${tool === 'find' ? 'path' : 'line'} matches ${pattern}${path ? ` in ${path}` : ''}.`;
+  return [...shown, ...(found > MAX_FOUND ? [`${found - MAX_FOUND} more: narrow the pattern or the path.`] : [])].join('\n');
+}
+
+// The files at `path` by readFile, which gives a folder's entries (a
+// subfolder's with a trailing /): the file itself, or every file in the
+// folder and its subfolders; null when there is none.
+async function under(path, readFile) {
+  const found = await readFile(path);
+  if (!Array.isArray(found)) return found === null ? null : [path];
+  const paths = [];
+  for (const entry of found) {
+    const at = path === '' || path === '.' ? entry : `${path.replace(/\/$/, '')}/${entry}`;
+    paths.push(...(entry.endsWith('/') ? (await under(at.slice(0, -1), readFile)) ?? [] : [at]));
+  }
+  return paths;
 }
 
 // A long file's line count, and a Markdown file's headings with their lines.

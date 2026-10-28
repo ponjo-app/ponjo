@@ -14,7 +14,7 @@ laptop runs (an 8B model tried) claim edits they did not make.
 
 1. **Read and propose, never write.** The model's only effect is a
    proposal; the program checks it and applies it to the copies.
-2. **The tools are the permissions.** `read` and `propose` only: no shell,
+2. **The tools are the permissions.** `read`, `find`, `grep` and `propose` only: no shell,
    no network but the model's API. Text a teammate wrote can at worst make an undoable proposal.
 3. **Stateless.** A turn remembers nothing after. Within it, all state is
    the messages, and its trace replays it.
@@ -28,7 +28,7 @@ laptop runs (an 8B model tried) claim edits they did not make.
 | --- | --- |
 | `turn({ prompt, doc, sidecar }, { infer, readFile, resolve }) → { edits, reply }` | the program's `main`; the preview's buddies (`preview/doc-stub.js`) |
 | `infer(messages, tools) → { calls: [{ id, name, args }], sent, usage }` | `turn`, for each step |
-| `read`, `propose` | the model, as tools |
+| `read`, `find`, `grep`, `propose` | the model, as tools |
 
 **`main`** is all the I/O, and all of the contract: it reads the prompt on
 stdin, the paths in `PONJO_DOC`, `PONJO_COMMENTS` and `PONJO_PROJECT`
@@ -38,17 +38,25 @@ saying where to set it.
 
 **`turn`** is one buddy answering one thread, with no I/O of its own: it
 thinks, and checks what it proposes. `prompt` is stdin as is; `doc` and
-`sidecar` are the copies' paths, and `resolve` puts a path the model wrote
-in their form (`node:path`'s on disk). It throws when the turn fails. It
+`sidecar` are the copies' paths in the project, and `resolve` puts a path
+the model wrote in that form. It throws when the turn fails. It
 and each `infer` are in `ponjo-core.mjs`, which imports nothing, so a
 browser runs them too; `main` and `readFile` are in `ponjo.mjs`.
 
-**`readFile(path)`** gives a file's text, a folder's entries, or null, and
-is all the turn can see: the copies, and in project mode the project's files
-as the app shows them (inside the folder, not starting with `.`, sidecars
-included), and of files only text (no NUL byte) of 20 MB or less. It reads
+**Paths are the project's only**, as a person in it would write them:
+relative to its top, `/` between folders. An absolute path, or one out of
+the project, is no file, so a turn's trace never shows where a run keeps
+its copies or where the project is. `main` finds the copies' paths in the
+project from where they sit in the working folder.
+
+**`readFile(path)`** gives a file's text, a folder's entries (a subfolder's
+ending in `/`), or null, and is all the turn can see: the copies, and the
+project's files as the app shows them (inside the folder, not starting with
+`.`, sidecars included), and of files only text (no NUL byte) of 20 MB or
+less; in doc mode, the working folder, which holds only the copies. It reads
 the project folder itself, so it is the boundary: what it refuses, no
-teammate's comment can get a buddy to read.
+teammate's comment can get a buddy to read. Tests run one table of cases on
+it and on the app's ProjectService, so the two cannot drift.
 
 **`infer`** is one step of the model, one implementation per provider,
 over plain HTTP (the program runs from the config folder, with no
@@ -69,6 +77,19 @@ call, and a reply without one is sent back anyway.
 `lines[0]` to `lines[1]`. A file over 20,000 characters without `lines`
 returns its outline instead (Markdown headings with their line ranges); a
 folder, its files.
+
+**`find({ pattern, path? })`** returns the paths of the files under the
+folder `path` (the project's top if left out) that `pattern` matches, sorted.
+`pattern` is a JavaScript regular expression, not a glob, matched against
+each path in the project; as in the sidebar's filter, case is ignored unless
+it has a capital letter. An invalid one says what is wrong and that it is not
+a glob.
+
+**`grep({ pattern, path? })`** searches the lines of the files under `path`,
+a folder or a file, with the same pattern: each file's path, then each line
+it matches as `read` gives it, cut at 500 characters. Both walk the folders
+with `readFile`, and give at most 100 paths or lines, then how many more,
+saying to narrow the pattern or the path.
 
 **`propose({ edits: [{ path, old, new }], reply })`** ends the turn. On the
 doc, `old` must be found exactly once. On its sidecar, `old` is empty and
@@ -129,5 +150,4 @@ flowchart LR
   minutes to start, which a high effort could reach.
 - No fallback model when Anthropic's safeguards refuse: the turn fails,
   saying so.
-- Later: `search`, if models spend steps finding things; web access, off by
-  default, the one tool that could send a doc out.
+- Later: web access, off by default, the one tool that could send a doc out.

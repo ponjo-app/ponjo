@@ -8,7 +8,7 @@
 
 import { appendFile, readFile, readdir, realpath, stat, writeFile } from 'node:fs/promises';
 import { realpathSync } from 'node:fs';
-import { isAbsolute, relative, resolve, sep } from 'node:path';
+import { isAbsolute, join, relative, sep } from 'node:path';
 import { text } from 'node:stream/consumers';
 import { fileURLToPath } from 'node:url';
 import { INFER, apply, turn } from './ponjo-core.mjs';
@@ -16,21 +16,44 @@ import { INFER, apply, turn } from './ponjo-core.mjs';
 const MAX_TEXT_BYTES = 20 * 1024 * 1024; // the largest text file the app opens (src/store/files.js)
 
 /**
- * What the turn can see: the copies, and in project mode (`project` the
- * project folder itself) its files, as the app shows them: resolved to
- * their real path, inside the folder, no name starting with `.`, and only
- * text files (no NUL byte) of 20 MB or less. A relative path is in the
- * project, but for the copies' names.
+ * A path the model wrote as the project names it: relative, `/` between
+ * folders, '' for its top; null when absolute or out of the project.
+ */
+export function inProject(path) {
+  const rel = typeof path === 'string' && !isAbsolute(path) ? relative('', path) : null;
+  return rel === null || isAbsolute(rel) || rel.split(sep)[0] === '..' ? null : rel.split(sep).join('/');
+}
+
+/**
+ * What the turn can see, by paths in the project: the copies (`doc` and
+ * `sidecar`, their paths in the project, where they are in the working
+ * folder), and the files of `project`, the project folder itself, or in
+ * doc mode the working folder, which holds only the copies. Of those, as
+ * the app shows them: resolved to their real path, inside the folder, no
+ * name starting with `.`, and only text files (no NUL byte) of 20 MB or less.
  */
 export function files({ doc, sidecar, project }) {
-  return async (path) => {
-    if ([doc, sidecar].includes(resolve(path))) return readFile(path, 'utf8');
-    if (!project) return null;
-    const real = await realpath(resolve(project, path)).catch(() => null);
+  // The real path of `rel` if the project shows it, else null.
+  const shown = async (rel) => {
+    const real = await realpath(join(project, rel)).catch(() => null);
     const inside = real && relative(await realpath(project), real);
-    if (inside === null || isAbsolute(inside) || inside.split(sep).some((name) => name.startsWith('.'))) return null;
+    return inside === null || isAbsolute(inside) || [...rel.split('/'), ...inside.split(sep)].some((name) => name.startsWith('.')) ? null : real;
+  };
+  return async (path) => {
+    const rel = inProject(path);
+    if (rel === null) return null;
+    if ([doc, sidecar].includes(rel)) return readFile(rel, 'utf8');
+    const real = await shown(rel);
+    if (!real) return null;
     const entries = await readdir(real, { withFileTypes: true }).catch(() => null);
-    if (entries) return entries.filter((e) => !e.name.startsWith('.')).map((e) => e.name + (e.isDirectory() ? '/' : '')).sort();
+    if (entries) {
+      // A link shows if where it goes does, as in the app: never one out of the project.
+      const names = [];
+      for (const e of entries) {
+        if (e.isSymbolicLink() ? await shown(rel ? `${rel}/${e.name}` : e.name) : !e.name.startsWith('.')) names.push(e.name + (e.isDirectory() ? '/' : ''));
+      }
+      return names.sort();
+    }
     if ((await stat(real)).size > MAX_TEXT_BYTES) return null;
     const bytes = await readFile(real).catch(() => null);
     return bytes && !bytes.includes(0) ? bytes.toString('utf8') : null;
@@ -42,14 +65,18 @@ export function files({ doc, sidecar, project }) {
 // Each message of the turn but the prompt goes to the trace, a line each, as
 // it comes: the model's with how long it took and its usage.
 async function main() {
-  const { PONJO_DOC: doc, PONJO_COMMENTS: sidecar, PONJO_PROJECT: project, PONJO_TRACE: trace } = process.env;
+  const { PONJO_DOC: docCopy, PONJO_COMMENTS: sidecarCopy, PONJO_PROJECT: project, PONJO_TRACE: trace } = process.env;
   const { PONJO_SETTING_PROVIDER: provider, PONJO_SETTING_ENDPOINT: endpoint, PONJO_SETTING_MODEL: model, PONJO_SETTING_KEY: key, PONJO_SETTING_EFFORT: effort } = process.env;
-  const readable = files({ doc, sidecar, project });
   const note = (lines) => trace && appendFile(trace, lines.map((line) => `${JSON.stringify(line)}\n`).join(''));
   let messages = []; // the turn's, which it goes on adding to after each step
   let noted = 1; // those in the trace, the prompt counted: the app has it
   try {
     if (!key) throw new Error('No API key: set one in Settings > Agents > Ponjo agent.');
+    // The copies by their paths in the project: where they are in the working
+    // folder, both real paths, as a Mac's temp folder is not.
+    const here = await realpath('.');
+    const [doc, sidecar] = await Promise.all([docCopy, sidecarCopy].map(async (copy) => relative(here, await realpath(copy)).split(sep).join('/')));
+    const readable = files({ doc, sidecar, project: project || '.' });
     const infer = INFER[provider]({ endpoint, model, key, effort });
     const step = async (sent, tools) => {
       await note((messages = sent).slice(noted));
@@ -60,10 +87,10 @@ async function main() {
       noted += 1; // the answer, which turn adds next
       return answer;
     };
-    const { edits, reply } = await turn({ prompt: await text(process.stdin), doc, sidecar }, { infer: step, readFile: readable, resolve });
-    const texts = apply(edits, { doc, sidecar }, { doc: await readable(doc), sidecar: await readable(sidecar) }, resolve);
-    await writeFile(doc, texts.doc);
-    await writeFile(sidecar, texts.sidecar);
+    const { edits, reply } = await turn({ prompt: await text(process.stdin), doc, sidecar }, { infer: step, readFile: readable, resolve: inProject });
+    const texts = apply(edits, { doc, sidecar }, { doc: await readable(doc), sidecar: await readable(sidecar) }, inProject);
+    await writeFile(docCopy, texts.doc);
+    await writeFile(sidecarCopy, texts.sidecar);
     process.stdout.write(reply);
   } catch (failure) {
     await note(messages.slice(noted)); // the last step's results
