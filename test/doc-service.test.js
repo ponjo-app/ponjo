@@ -195,7 +195,7 @@ test('comments: written as the user, one line each; the anchor is never rewritte
 test('an outside change found when an edit is written lands where the edit did not change the line; where it did, the edit stays', async () => {
   await withDoc(async ({ edit, state, docPath, settingsDir }) => {
     const before = await state();
-    const typed = edit(SAMPLE.replace('## Risks', '## Main risks').replace('beta cohort', 'beta testers'));
+    const typed = edit(SAMPLE.replace('## Risks', '## Main risks').replace('beta cohort', 'beta testers'), before);
     writeFileSync(docPath, SAMPLE.replace('Q4', 'Q1').replace('beta cohort', 'early users')); // before the edit lands
     await typed;
     const text = (await state()).text;
