@@ -157,7 +157,6 @@ const emit = (event, data) => listener?.(event, data);
 // The preview's buddies' model: Chat Completions at the Worker, which
 // picks the model (MODEL, as relay/wrangler.toml names it) and holds the key.
 const infer = INFER.openai({ endpoint: 'https://infer.ponjo.app/infer', model: 'nemotron', key: 'preview' });
-const MODEL = 'NVIDIA Nemotron 3 Super, on Nebius Token Factory';
 
 // The buddies this user's comments ask, as the runner would start them.
 function answer() {
@@ -182,10 +181,10 @@ const plain = (path) => path.replace(/^\.?\//, '');
 // Buddy `id`'s turn on `thread`, on copies of the doc and its comments as
 // they are now; then, as the app does (src/host/doc-service.js, finishRun),
 // its edit lands merged with what was typed meanwhile, and its comments
-// and reply come after, the reply naming the model. Dropped if the thread
-// was resolved or the doc renamed meanwhile. It never resolves the thread,
-// even when its turn asks to: people resolve (docs/product-vision.md), and
-// a resolved thread folds away its reply.
+// and reply come after. Dropped if the thread was resolved or the doc
+// renamed meanwhile. It never resolves the thread, even when its turn asks
+// to: people resolve (docs/product-vision.md), and a resolved thread folds
+// away its reply.
 async function run(id, thread) {
   const doc = current;
   const sidecar = `${doc}.comments.jsonl`;
@@ -199,7 +198,7 @@ async function run(id, thread) {
     const prompt = buildPrompt({ buddy, buddies: buddies(), docName: doc, sidecarName: sidecar, thread, project: inFolder, human: { name: s.settings.name, about: s.settings.about.trim() } });
     const { edits, reply } = await turn({ prompt, doc, sidecar }, { infer, readFile: (path) => read(plain(path), copies), resolve: plain });
     texts = applyProposal(edits, { doc, sidecar }, { doc: copies[doc], sidecar: copies[sidecar] }, plain);
-    body = [reply.trim(), `— ${MODEL}`].filter(Boolean).join('\n\n');
+    body = reply.trim();
   } catch (error) {
     body = error.message.split('\n')[0];
     failed = true;
