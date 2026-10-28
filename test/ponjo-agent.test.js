@@ -166,7 +166,7 @@ test('the turn sees the copies and the project by their paths in the project, an
   const { root } = await project();
   const { doc, sidecar } = await copies(SAMPLE, 'notes/a.md');
   const readable = seen({ doc, sidecar }, root);
-  assert.deepEqual(await readable(''), ['big.log', 'git', 'linked', 'node_modules/', 'notes/', 'out', 'pic.png'], 'a folder, its entries');
+  assert.deepEqual(await readable(''), ['big.log', 'linked', 'node_modules/', 'notes/', 'pic.png'], 'a folder, its entries: no link out of the project or to a hidden folder');
   assert.deepEqual(await readable('./notes/'), ['a.md', 'a.md.comments.jsonl']);
   assert.equal(await readable('notes/a.md'), SAMPLE, 'the copy, not the project\'s doc');
   assert.equal(await readable('linked/a.md'), 'A\n');
@@ -182,6 +182,7 @@ test('find and grep: paths or lines that match a regular expression, smart case,
   await writeFile(join(root, 'rule.md'), `# Rules\n\n${'x'.repeat(600)} rule\n`);
   const uses = [
     ['find', { pattern: 'rule\\.md$' }],
+    ['find', { pattern: '' }],
     ['find', { pattern: '^notes/a', path: './notes/' }],
     ['find', { pattern: 'n\\d', path: 'notes' }],
     ['find', { pattern: 'n1', path: 'out' }],
@@ -195,8 +196,9 @@ test('find and grep: paths or lines that match a regular expression, smart case,
   ];
   const infer = fake(...uses.map((use) => calling(use)), calling(['propose', { edits: [], reply: '' }]));
   await turn({ prompt: 'p', doc, sidecar }, { infer, readFile: seen({ doc, sidecar }, root), resolve: inProject });
-  const [rule, notes, capped, out, cased, glob, grep, long, inDoc, inFolder, none] = results(infer.messages);
+  const [rule, all, notes, capped, out, cased, glob, grep, long, inDoc, inFolder, none] = results(infer.messages);
   assert.equal(rule, 'rule.md');
+  assert.doesNotMatch(all, /^(out|git)$/m, 'no link out of the project or to a hidden folder');
   assert.equal(notes, 'notes/a.md\nnotes/a.md.comments.jsonl', 'from the project\'s top, whatever the path\'s form');
   assert.deepEqual(capped.split('\n').slice(-2), ['notes/n099.txt', '1 more: narrow the pattern or the path.']);
   assert.equal(capped.split('\n').length, 101);

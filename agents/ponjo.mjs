@@ -33,15 +33,27 @@ export function inProject(path) {
  * name starting with `.`, and only text files (no NUL byte) of 20 MB or less.
  */
 export function files({ doc, sidecar, project }) {
+  // The real path of `rel` if the project shows it, else null.
+  const shown = async (rel) => {
+    const real = await realpath(join(project, rel)).catch(() => null);
+    const inside = real && relative(await realpath(project), real);
+    return inside === null || isAbsolute(inside) || [...rel.split('/'), ...inside.split(sep)].some((name) => name.startsWith('.')) ? null : real;
+  };
   return async (path) => {
     const rel = inProject(path);
     if (rel === null) return null;
     if ([doc, sidecar].includes(rel)) return readFile(rel, 'utf8');
-    const real = await realpath(join(project, rel)).catch(() => null);
-    const inside = real && relative(await realpath(project), real);
-    if (inside === null || isAbsolute(inside) || [...rel.split('/'), ...inside.split(sep)].some((name) => name.startsWith('.'))) return null;
+    const real = await shown(rel);
+    if (!real) return null;
     const entries = await readdir(real, { withFileTypes: true }).catch(() => null);
-    if (entries) return entries.filter((e) => !e.name.startsWith('.')).map((e) => e.name + (e.isDirectory() ? '/' : '')).sort();
+    if (entries) {
+      // A link shows if where it goes does, as in the app: never one out of the project.
+      const names = [];
+      for (const e of entries) {
+        if (e.isSymbolicLink() ? await shown(rel ? `${rel}/${e.name}` : e.name) : !e.name.startsWith('.')) names.push(e.name + (e.isDirectory() ? '/' : ''));
+      }
+      return names.sort();
+    }
     if ((await stat(real)).size > MAX_TEXT_BYTES) return null;
     const bytes = await readFile(real).catch(() => null);
     return bytes && !bytes.includes(0) ? bytes.toString('utf8') : null;
