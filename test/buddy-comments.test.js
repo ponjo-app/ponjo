@@ -62,7 +62,7 @@ test('a run appends a thread on a quote, one on the whole doc and a reply, and p
     const { id, threads } = await ask(call, state, '@Clippy quiet append {"anchor":{"exact":"beta cohort"},"body":"Who is in it?"};; append {"body":"Reads well."};; reply-first Yes, make it week two.');
     const [run] = await fakeRuns(settingsDir);
     assert.deepEqual(run.files.sort(), ['plan.md', 'plan.md.comments.jsonl'], 'its folder holds the copies');
-    assert.match(run.prompt, /plan\.md\.comments\.jsonl holds the doc's comments/);
+    assert.match(run.prompt, /append lines to plan\.md\.comments\.jsonl, which holds the doc's comments/);
 
     const asked = threads.find((t) => t.id === id);
     assert.deepEqual(asked.comments.map((c) => [c.by.name, c.body]), [['fzhan', asked.comments[0].body], ['Clippy', '']], 'the reply is empty');

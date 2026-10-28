@@ -65,7 +65,7 @@ export function files({ doc, sidecar, project }) {
 // Each message of the turn but the prompt goes to the trace, a line each, as
 // it comes: the model's with how long it took and its usage.
 async function main() {
-  const { PONJO_DOC: docCopy, PONJO_COMMENTS: sidecarCopy, PONJO_PROJECT: project, PONJO_TRACE: trace } = process.env;
+  const { PONJO_DOC: docCopy, PONJO_COMMENTS: sidecarCopy, PONJO_PROJECT: project, PONJO_THREAD: thread, PONJO_TRACE: trace } = process.env;
   const { PONJO_SETTING_PROVIDER: provider, PONJO_SETTING_ENDPOINT: endpoint, PONJO_SETTING_MODEL: model, PONJO_SETTING_KEY: key, PONJO_SETTING_EFFORT: effort } = process.env;
   const note = (lines) => trace && appendFile(trace, lines.map((line) => `${JSON.stringify(line)}\n`).join(''));
   let messages = []; // the turn's, which it goes on adding to after each step
@@ -87,7 +87,7 @@ async function main() {
       noted += 1; // the answer, which turn adds next
       return answer;
     };
-    const { edits, reply } = await turn({ prompt: await text(process.stdin), doc, sidecar }, { infer: step, readFile: readable, resolve: inProject });
+    const { edits, reply } = await turn({ prompt: await text(process.stdin), doc, sidecar, thread }, { infer: step, readFile: readable, resolve: inProject });
     const texts = apply(edits, { doc, sidecar }, { doc: await readable(doc), sidecar: await readable(sidecar) }, inProject);
     await writeFile(docCopy, texts.doc);
     await writeFile(sidecarCopy, texts.sidecar);

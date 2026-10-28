@@ -15,6 +15,7 @@ An agent is a filter ([architecture](architecture.md#a-run)):
 | `PONJO_DOC` | the doc copy's path |
 | `PONJO_COMMENTS` | the sidecar copy's path |
 | `PONJO_PROJECT` | the project folder, to read only (see [Permissions](#permissions)); empty in doc mode |
+| `PONJO_THREAD` | the id of the thread the run answers, as the prompt names it |
 | `PONJO_BUDDY` | the buddy's name |
 | `PONJO_TRACE` | a file, out of the working folder, the agent may write its steps to (see [Traces](#traces)) |
 | `PONJO_SETTING_<KEY>` | each of the agent's [settings](#settings) |

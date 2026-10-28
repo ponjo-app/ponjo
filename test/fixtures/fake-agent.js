@@ -22,10 +22,10 @@ let prompt = '';
 for await (const chunk of process.stdin) prompt += chunk;
 const thread = prompt.match(/<thread>\n([\s\S]*?)\n<\/thread>/)?.[1] ?? '';
 const ask = thread.split('\n\n').at(-1) ?? '';
-const { PONJO_DOC: doc, PONJO_COMMENTS: comments, PONJO_PROJECT: project, PONJO_BUDDY: buddy, FAKE_DIR: dir } = process.env;
+const { PONJO_DOC: doc, PONJO_COMMENTS: comments, PONJO_PROJECT: project, PONJO_THREAD: threadId, PONJO_BUDDY: buddy, FAKE_DIR: dir } = process.env;
 const settings = Object.fromEntries(Object.entries(process.env).filter(([key]) => key.startsWith('PONJO_SETTING_')));
 const onPath = (process.env.PATH ?? '').split(delimiter).some((d) => d && ['ponjo', 'ponjo.cmd'].some((f) => existsSync(join(d, f))));
-appendFileSync(join(dir, 'runs.log'), JSON.stringify({ buddy, ask, cwd: process.cwd(), files: readdirSync(process.cwd()), doc, comments, project, projectFiles: project ? readdirSync(project).sort() : null, prompt, settings, ponjo: onPath }) + '\n');
+appendFileSync(join(dir, 'runs.log'), JSON.stringify({ buddy, ask, threadId, cwd: process.cwd(), files: readdirSync(process.cwd()), doc, comments, project, projectFiles: project ? readdirSync(project).sort() : null, prompt, settings, ponjo: onPath }) + '\n');
 if (process.env.PONJO_TRACE) appendFileSync(process.env.PONJO_TRACE, `${JSON.stringify({ started: ask })}\nnot JSON\n`);
 
 if (/\b(hold|wait)\b/.test(ask)) {

@@ -54,36 +54,42 @@ function fake(...replies) {
 
 const results = (messages) => messages.filter((m) => m.role === 'tool').map((m) => m.content);
 
-test('a turn reads the doc by line number and proposes an edit and a comment', async () => {
+test('a turn reads the doc by line number, comments, resolves and proposes an edit, the calls of a step in order', async () => {
   const { doc, sidecar } = await copies();
-  const edits = [{ path: doc, old: 'extra load', new: 'extra peak load' }, { path: sidecar, old: '', new: '{"body":"Is week one too soon?"}' }];
-  const infer = fake(calling(['read', { path: doc, lines: [8, 8] }]), calling(['propose', { edits, reply: 'Peak load is the risk.' }]));
-  assert.deepEqual(await turn({ prompt: 'the prompt', doc, sidecar }, { infer, readFile: seen({ doc, sidecar }) }), { edits, reply: 'Peak load is the risk.' });
+  const infer = fake(
+    calling(['read', { path: doc, lines: [8, 8] }]),
+    calling(['comment', { on: '', body: 'Is week one too soon?' }], ['comment', { on: 'extra load', body: 'Measured?' }], ['resolve', {}], ['resolve', {}], ['propose', { edits: [{ old: 'extra load', new: 'extra peak load' }], reply: 'Peak load is the risk.' }]),
+  );
+  assert.deepEqual(await turn({ prompt: 'the prompt', doc, sidecar, thread: 'c_asked' }, { infer, readFile: seen({ doc, sidecar }) }), {
+    edits: [{ old: 'extra load', new: 'extra peak load', path: doc }, { path: sidecar, old: '', new: '{"body":"Is week one too soon?"}\n{"anchor":{"exact":"extra load"},"body":"Measured?"}\n{"thread":"c_asked","resolved":true}' }],
+    reply: 'Peak load is the risk.',
+  }, 'the program writes the sidecar\'s lines, the thread resolved once');
   assert.deepEqual(infer.messages[0], { role: 'user', content: 'the prompt' }, 'the first message is the prompt as is');
-  assert.deepEqual(infer.tools.map((t) => t.name), ['read', 'find', 'grep', 'propose']);
+  assert.deepEqual(infer.tools.map((t) => t.name), ['read', 'find', 'grep', 'comment', 'resolve', 'propose']);
   assert.deepEqual([infer.messages[1].role, infer.messages[1].sent], ['assistant', 'as the API sent it'], 'the model\'s message, kept as its API sent it');
   assert.deepEqual(infer.messages[2], { role: 'tool', id: infer.messages[1].calls[0].id, content: '8\tThe main risk is that the `sync` service cannot handle the extra load.' });
+  assert.deepEqual(results(infer.messages).slice(1), ['Added when your turn ends, on the whole doc.', 'Added when your turn ends, on line 8.', 'This thread is resolved when your turn ends.', 'This thread is resolved when your turn ends.']);
 });
 
-test('a bad proposal goes back saying what to fix', async () => {
+test('a bad comment or proposal goes back saying what to fix', async () => {
   const { doc, sidecar } = await copies();
   const bad = [
-    [{ path: doc, old: 'the', new: 'a' }, /more than once/],
-    [{ path: doc, old: 'all seven features', new: 'x' }, /not in the doc/],
-    [{ path: doc, old: '', new: 'x' }, /is empty/],
-    [{ path: 'other.md', old: '', new: 'x' }, /other\.md cannot change: only plan\.md and plan\.md\.comments\.jsonl can/],
-    [{ path: join(process.cwd(), doc), old: 'week one', new: 'x' }, /cannot change/],
-    [{ path: sidecar, old: HEADER, new: '' }, /old must be empty/],
-    [{ path: sidecar, old: '', new: '{"body":"ok"}\n{"anchor":"week one","body":"no"}' }, /not a comment line: {"anchor":"week one"/],
-    [{ path: sidecar, old: '', new: '{"body":"ok","resolved":true}' }, /not a comment line/],
+    ['propose', { edits: [{ old: 'the', new: 'a' }], reply: '' }, /^Nothing was changed\. Edit 1: old is in the doc more than once/],
+    ['propose', { edits: [{ old: 'all seven features', new: 'x' }], reply: '' }, /^Nothing was changed\. Edit 1: old is not in the doc/],
+    ['propose', { edits: [{ old: '', new: 'x' }], reply: '' }, /^Nothing was changed\. Edit 1: old is empty/],
+    ['propose', { edits: [{ old: 'ship all six', new: 'x' }, { old: 'all six features', new: 'y' }], reply: '' }, /^Nothing was changed\. Edit 2 overlaps another edit/],
+    ['propose', { edits: [{ path: sidecar, old: '', new: '{"body":"no"}' }], reply: '' }, /^Nothing was changed\. plan\.md\.comments\.jsonl cannot change: edits change only plan\.md, and comments are the comment tool's/],
+    ['propose', { edits: [{ path: 'other.md', old: 'week one', new: 'x' }], reply: '' }, /other\.md cannot change/],
+    ['comment', { on: 'the', body: 'Which?' }, /^Not added: on is in the doc more than once/],
+    ['comment', { on: 'week nine', body: 'Which?' }, /^Not added: on is not in the doc: quote it exactly, or give "" for the whole doc/],
+    ['comment', { on: '', body: ' ' }, /^Not added: comment takes \{ on, body \}, body not empty/],
+    ['comment', { body: 'No on.' }, /^Not added: comment takes/],
   ];
-  const overlapping = [{ path: doc, old: 'ship all six', new: 'x' }, { path: doc, old: 'all six features', new: 'y' }];
-  const good = [{ path: doc, old: 'week one', new: 'week two' }, { path: sidecar, old: '', new: '{"thread":"c_1","body":"Moved."}\n' }];
-  const infer = fake(...bad.map(([edit]) => calling(['propose', { edits: [good[0], edit], reply: '' }])), calling(['propose', { edits: overlapping, reply: '' }]), calling(['propose', { edits: good }]));
-  assert.deepEqual(await turn({ prompt: 'p', doc, sidecar }, { infer, readFile: seen({ doc, sidecar }), resolve: inProject }), { edits: good, reply: '' });
+  const good = { edits: [{ path: doc, old: 'week one', new: 'week two' }], reply: '' };
+  const infer = fake(...bad.map(([name, args]) => calling([name, args])), calling(['propose', good]));
+  assert.deepEqual(await turn({ prompt: 'p', doc, sidecar, thread: 'c_asked' }, { infer, readFile: seen({ doc, sidecar }), resolve: inProject }), good, 'an edit may name the doc; no comment was added');
   const said = results(infer.messages);
-  bad.forEach(([, why], i) => assert.match(said[i], new RegExp(`^Nothing was changed\\. Edit 2: .*${why.source}`)));
-  assert.match(said.at(-1), /Edit 2 overlaps another edit/);
+  bad.forEach(([, , why], i) => assert.match(said[i], why));
 });
 
 test('an answer without a tool call is the reply, with no edits', async () => {
@@ -101,7 +107,7 @@ test('every call is answered, and twenty steps fail', async () => {
   await assert.rejects(turn({ prompt: 'p', doc, sidecar }, { infer, readFile: seen({ doc, sidecar }) }), /No proposal in 20 steps/);
   assert.equal(infer.steps, 20);
   const [, step, first, second, , notJson] = infer.messages;
-  assert.deepEqual([first.content, second.content], ['1\t# Q4 Launch Plan', 'Not run: one tool per step.']);
+  assert.deepEqual([first.content, second.content], ['1\t# Q4 Launch Plan', '1\t{"comments":1}'], 'both calls of the step run');
   assert.deepEqual([first.id, second.id], step.calls.map((c) => c.id), 'each call id gets a result');
   assert.equal(notJson.content, 'The arguments are not JSON: {"path":');
 });
@@ -254,7 +260,7 @@ test('Anthropic: the Messages API, the tools and the prompt cached, the model\'s
     assert.equal(first.headers['anthropic-version'], '2023-06-01');
     const { tools, messages, ...rest } = second.body;
     assert.deepEqual(rest, { model: 'claude-opus-5-5', max_tokens: 16_000, output_config: { effort: 'low' }, tool_choice: { type: 'auto' } }, 'no thinking setting: the model thinks as it needs');
-    assert.deepEqual(tools.map((t) => [t.name, Object.keys(t.input_schema.properties).join(), t.cache_control]), [['read', 'path,lines', undefined], ['find', 'pattern,path', undefined], ['grep', 'pattern,path', undefined], ['propose', 'edits,reply', { type: 'ephemeral' }]]);
+    assert.deepEqual(tools.map((t) => [t.name, Object.keys(t.input_schema.properties).join(), t.cache_control]), [['read', 'path,lines', undefined], ['find', 'pattern,path', undefined], ['grep', 'pattern,path', undefined], ['comment', 'on,body', undefined], ['resolve', '', undefined], ['propose', 'edits,reply', { type: 'ephemeral' }]]);
     assert.deepEqual(messages, [
       { role: 'user', content: [{ type: 'text', text: 'the prompt', cache_control: { type: 'ephemeral' } }] },
       { role: 'assistant', content: [thinking, { type: 'tool_use', id: 'toolu_1', name: 'read', input: { path: doc, lines: [1, 1] } }] },
@@ -280,7 +286,7 @@ test('OpenAI-compatible: Chat Completions at the endpoint, with the key and the 
     assert.equal(url, '/v1/chat/completions');
     assert.equal(headers.authorization, 'Bearer sk-test');
     assert.deepEqual([body.model, body.reasoning_effort, body.tool_choice], ['gpt-5', 'medium', 'auto']);
-    assert.deepEqual(body.tools.map((t) => [t.type, t.function.name]), [['function', 'read'], ['function', 'find'], ['function', 'grep'], ['function', 'propose']]);
+    assert.deepEqual(body.tools.map((t) => [t.type, t.function.name]), [['function', 'read'], ['function', 'find'], ['function', 'grep'], ['function', 'comment'], ['function', 'resolve'], ['function', 'propose']]);
     assert.deepEqual(body.messages, [{ role: 'user', content: 'the prompt' }, read, { role: 'tool', tool_call_id: 'call_a', content: '1\t# Q4 Launch Plan' }]);
     assert.equal((await infer(body.messages, [])).text, 'Fine as is.', 'an answer without a call: its content');
   } finally {
@@ -300,19 +306,19 @@ test('the shipped script runs a turn under the contract, with its settings from 
     const settings = { PROVIDER: 'openai', ENDPOINT: api.url, MODEL: 'gpt-5', KEY: 'sk-secret-test', EFFORT: 'low' };
     const trace = join(config, 'trace.jsonl');
     const run = (PATH = `${dirname(process.execPath)}${delimiter}${process.env.PATH}`, own = settings) => new Promise((resolve) => {
-      const env = { ...process.env, PATH, PONJO_DOC: join(folder, doc), PONJO_COMMENTS: join(folder, sidecar), PONJO_PROJECT: '', PONJO_BUDDY: 'Ada', PONJO_TRACE: trace };
+      const env = { ...process.env, PATH, PONJO_DOC: join(folder, doc), PONJO_COMMENTS: join(folder, sidecar), PONJO_PROJECT: '', PONJO_THREAD: 'c_asked', PONJO_BUDDY: 'Ada', PONJO_TRACE: trace };
       for (const [key, value] of Object.entries(own)) env[`PONJO_SETTING_${key}`] = value;
       const child = execFile(agentScript('ponjo', config, 'linux'), { cwd: folder, env }, (error, stdout, stderr) => resolve({ code: error?.code ?? 0, stdout, stderr }));
       child.stdin.on('error', () => {}); // a run that fails early need not read its prompt
       child.stdin.end('the prompt');
     });
 
-    const edits = [{ path: doc, old: 'week one', new: 'week two' }, { path: sidecar, old: '', new: '{"body":"Two weeks?"}' }];
     const usage = { prompt_tokens: 1200, completion_tokens: 40 };
-    answers.push([200, { choices: [{ message: { role: 'assistant', content: null, tool_calls: [{ id: 'c1', type: 'function', function: { name: 'propose', arguments: JSON.stringify({ edits, reply: 'Moved it.' }) } }] } }], usage }]);
+    const uses = [['comment', { on: '', body: 'Two weeks?' }], ['resolve', {}], ['propose', { edits: [{ old: 'week one', new: 'week two' }], reply: 'Moved it.' }]];
+    answers.push([200, { choices: [{ message: { role: 'assistant', content: null, tool_calls: uses.map(([name, args], i) => ({ id: `c1${i}`, type: 'function', function: { name, arguments: JSON.stringify(args) } })) } }], usage }]);
     assert.deepEqual(await run(), { code: 0, stdout: 'Moved it.', stderr: '' });
     assert.equal(await readFile(doc, 'utf8'), SAMPLE.replace('week one', 'week two'));
-    assert.equal(await readFile(sidecar, 'utf8'), `${HEADER}{"body":"Two weeks?"}\n`);
+    assert.equal(await readFile(sidecar, 'utf8'), `${HEADER}{"body":"Two weeks?"}\n{"thread":"c_asked","resolved":true}\n`, 'the thread it answers, from PONJO_THREAD');
     assert.deepEqual([api.requests[0].body.model, api.requests[0].headers.authorization], ['gpt-5', 'Bearer sk-secret-test']);
 
     // A failed run's reply says what failed, then what to change and where.
@@ -325,7 +331,7 @@ test('the shipped script runs a turn under the contract, with its settings from 
     const traced = await readFile(trace, 'utf8');
     const [answer] = traced.trim().split('\n').map((l) => JSON.parse(l));
     assert.equal(traced.trim().split('\n').length, 1, 'the model\'s step: not the prompt, which the app has, and none for a step that failed');
-    assert.deepEqual([answer.role, answer.calls.map((c) => c.name), answer.usage], ['assistant', ['propose'], usage]);
+    assert.deepEqual([answer.role, answer.calls.map((c) => c.name), answer.usage], ['assistant', ['comment', 'resolve', 'propose'], usage]);
     assert.ok(Number.isInteger(answer.ms));
     assert.doesNotMatch(traced, /sk-secret-test/, 'never the key');
     assert.ok(!existsSync(join(config, 'logs')), 'no log of its own');
@@ -334,7 +340,7 @@ test('the shipped script runs a turn under the contract, with its settings from 
     await writeFile(doc, SAMPLE.replace(/\n/g, '\r\n'));
     const quote = 'We plan to **ship all six features** in week one, then gather feedback from the\nbeta cohort';
     const step = (id, name, args) => [200, { choices: [{ message: { role: 'assistant', content: null, tool_calls: [{ id, type: 'function', function: { name, arguments: JSON.stringify(args) } }] } }] }];
-    answers.push(step('c2', 'read', { path: doc, lines: [3, 4] }), step('c3', 'propose', { edits: [{ path: doc, old: quote, new: 'We ship\nin week two' }], reply: '' }));
+    answers.push(step('c2', 'read', { path: doc, lines: [3, 4] }), step('c3', 'propose', { edits: [{ old: quote, new: 'We ship\nin week two' }], reply: '' }));
     assert.equal((await run()).code, 0);
     assert.equal(api.requests.at(-1).body.messages.at(-1).content, '3\tWe plan to **ship all six features** in week one, then gather feedback from the\n4\tbeta cohort before the public release.');
     assert.equal(await readFile(doc, 'utf8'), SAMPLE.replace(quote, 'We ship\nin week two').replace(/\n/g, '\r\n'));
