@@ -32,12 +32,13 @@ flowchart LR
 ```
 
 - **Nemotron drives an agent loop, not a chat.** A turn
-  ([docs/ponjo-agent.md](ponjo-agent.md)) gives the model two tools: `read`
-  a file by line numbers, and `propose` edits quoted exactly from the doc,
-  comments, and a reply. It reads what it needs, then proposes; the app
-  checks every proposal (each quote found once, only the doc and its
-  comments touched) and sends a bad one back saying what to fix. The model
-  never writes a file itself.
+  ([docs/ponjo-agent.md](ponjo-agent.md)) gives the model tools to `read`
+  a file by line numbers, `find` and `grep` the project, `comment` on a
+  passage, `resolve` its thread, and `propose` edits quoted exactly from the
+  doc and a reply. It reads what it needs, then proposes; the app checks
+  every proposal (each quote found once, only the doc and its comments
+  touched) and sends a bad one back saying what to fix. The model never
+  writes a file itself.
 - **Nemotron 3 Super** fits this: scoped edits need accurate tool calls and
   instruction following, answered while the person waits, not long
   reasoning. The prompt also asks it to tell a question (answer, edit
@@ -63,9 +64,9 @@ npm run desktop
 ```
 
 In Settings > Agents, choose the Ponjo agent, with the provider Nebius Token
-Factory, the model `nvidia/nemotron-3-super-120b-a12b` and your
-[Token Factory](https://tokenfactory.nebius.com) API key; then @mention a
-buddy in any doc.
+Factory (its model, `nvidia/nemotron-3-super-120b-a12b`, is the default) and
+your [Token Factory](https://tokenfactory.nebius.com) API key; then @mention
+a buddy in any doc.
 
 `npm test` runs the Worker in front of a fake model (`test/infer.test.js`);
 `npx wrangler deploy --env hackathon` in `relay/` deploys your own, with

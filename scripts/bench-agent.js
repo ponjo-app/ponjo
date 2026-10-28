@@ -1,131 +1,133 @@
-// Benchmark: does a buddy read the file a comment means? The Ponjo agent's
-// turn (agents/ponjo-core.mjs), on a real model, answers comments in a
-// sample project that name files in different ways: by title, after a
-// wrong answer, by a path, by what the file says, or the doc itself. A run
-// passes when the turn read every file it should, none it should not, and
-// its reply says what it should. Nothing is written: the turn only proposes.
+// The Ponjo agent's benchmark: each case of scripts/bench-cases.js run a few
+// times on a real model, under the contract the app runs it on
+// (docs/agent-config.md), and what each run left checked. On your own key,
+// not in CI: it costs tokens, and a model answers differently each time.
 //
-//   PONJO_SETTING_KEY=... node scripts/bench-agent.js [runs a case, 3] [part of a case's name]
+//   npm run bench:agent -- --env .env.nemotron --runs 3 --only question
 //
-// The model is set as the agent's (PONJO_SETTING_PROVIDER, _MODEL, _EFFORT),
-// Nemotron 3 Super on Nebius Token Factory if left out; PONJO_SETTING_ENDPOINT,
-// if set, is the API's address for any provider.
+// The settings are the agent's (PONJO_SETTING_*: PROVIDER, ENDPOINT, EFFORT,
+// and the provider's own <PROVIDER>_MODEL and <PROVIDER>_KEY), from the
+// environment or the file `--env` names, a line each
+// (PONJO_SETTING_NEBIUS_MODEL=...): .env files are gitignored, keys and all.
+// A run that fails on the API (unreachable, 429, 5xx) is an
+// error, neither a pass nor a fail. Each failed run's folder is kept, with
+// its trace, for a person to read: a model's mistake, or a check's.
 
-import { cpSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { execFile } from 'node:child_process';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { INFER, turn } from '../agents/ponjo-core.mjs';
-import { files, inProject } from '../agents/ponjo.mjs';
+import { parseArgs } from 'node:util';
+import { createAnchor } from '../src/core/anchor.js';
+import { serializeSidecar } from '../src/core/comments.js';
 import { buildPrompt } from '../src/core/prompt.js';
+import { CASES } from './bench-cases.js';
 
-const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-const DOC = 'nvidia-hackthon/nvidia-hackthon.md';
-const VISION = 'ponjo-docs/product-vision.md';
-const UX = 'ponjo-docs/user-experience.md';
-const ARCHITECTURE = 'ponjo-docs/architecture.md';
-const NOTES = 'notes/2026-10-01-sync.md';
+const AGENT = join(dirname(fileURLToPath(import.meta.url)), '..', 'agents', 'ponjo.mjs');
+const BUDDY = { id: 'Clippy', name: 'Clippy', about: 'A general writing assistant that helps draft and edit docs' };
+const HUMAN = { id: 'fanzhangg', name: 'fanzhangg', about: '' };
+const AT = '2026-10-27T12:00:00.000Z';
+const TIMEOUT_MS = 5 * 60_000;
+const API_ERROR = /^Cannot reach |: (429|5\d\d) /;
 
-const HACKATHON = `# Ponjo
+const { values: { runs, only, jobs, env } } = parseArgs({ options: { runs: { type: 'string', default: '3' }, only: { type: 'string', default: '' }, jobs: { type: 'string', default: '4' }, env: { type: 'string' } } });
+if (env) process.loadEnvFile(env);
+const PROVIDER = process.env.PONJO_SETTING_PROVIDER?.toUpperCase();
+const { [`PONJO_SETTING_${PROVIDER}_MODEL`]: model, [`PONJO_SETTING_${PROVIDER}_KEY`]: key } = process.env;
+if (!key) throw new Error('Set the agent\'s settings: PONJO_SETTING_PROVIDER, PONJO_SETTING_<PROVIDER>_MODEL, PONJO_SETTING_<PROVIDER>_KEY (and ENDPOINT, EFFORT as it needs).');
 
-Co-write with AI agents powered by NVIDIA Nemotron just like you do with your teammates
-
-## About the project
-
-Today, most AI agents write documents in a delegate mode: you prompt the agent, it returns a draft, and you review it and send feedback as more prompts. This loop is slow and opaque. In my open-source text editor, Ponjo, I redesigned the co-writing agent's UX and runtime around a "peer" mode. In the UX, you and multiple personalized agents work in the same doc in real time, using a familiar writing and editing interface. In the runtime, each agent sees the same context as the human and edits through the same read and write APIs, so it sees and acts just like a remote collaborator.
-
-## Built during the hackathon
-
-I built an agent runtime that runs on Nemotron. It rests on two principles:
-
-1. **Same context, same tools.** The agent sees what a human user sees and acts only through the same tools: read, find, grep, and propose.
-2. **Stateless runs.** An agent run is a pure function of the document and its comment thread.
-`;
-
-const MEETING = `# Sync, 1 October
-
-- Demo: we show the online preview, not the desktop app, so judges need nothing to install.
-- Nebius Token Factory is the default provider for the demo buddies.
-- Open: whether buddies may read files outside the project. Not for now.
-`;
-
-// The sample project: the doc, the repo's own design docs, and notes.
-function project() {
-  const dir = mkdtempSync(join(tmpdir(), 'ponjo-bench-'));
-  const write = (path, text) => {
-    mkdirSync(dirname(join(dir, path)), { recursive: true });
-    writeFileSync(join(dir, path), text);
-  };
-  write(DOC, HACKATHON);
-  write(`${DOC}.comments.jsonl`, '{"comments":1}\n');
-  write(NOTES, MEETING);
-  for (const path of [VISION, UX, ARCHITECTURE]) cpSync(join(root, 'docs', path.split('/')[1]), join(dir, path));
-  return dir;
+/** The sidecar holding `c`'s thread, by its members. */
+function sidecar(c) {
+  const by = (name) => (name === BUDDY.name ? { id: BUDDY.id, name, kind: 'ai' } : { id: name, name, kind: 'human' });
+  const start = c.doc.indexOf(c.quote);
+  const anchor = c.quote ? createAnchor(c.doc, start, start + c.quote.length) : null;
+  return serializeSidecar(c.thread.map(([name, body], i) => ({
+    comment: { id: i ? `${c.id}${i}` : c.id, ...(i ? { thread: c.id } : { anchor }), by: by(name), at: AT, body },
+  })));
 }
 
-const me = 'fanzhangg';
-const WRONG = [
-  [me, 'What are the main themes of the product vision doc? @Iris'],
-  ['Iris', 'The main theme is enabling real-time peer-mode collaboration with AI agents: agents share the same document context and tools as humans.'],
-  [me, 'which doc are you reading?'],
-  ['Iris', `I'm referring to the product vision document we're discussing: ${DOC}.`],
-];
+/** One run of `c`: { c, outcome: 'pass' | 'fail' | 'error', failed (checks' names), out, why, steps, tokens, ms, dir }. */
+// The run's folder is the project, the copies in it where the doc is: in
+// doc mode, it holds only them. The trace's name starts with a dot, which
+// keeps it out of the run's sight.
+async function run(c) {
+  const dir = await mkdtemp(join(tmpdir(), 'ponjo-bench-'));
+  const doc = c.path ?? 'plan.md';
+  const comments = `${doc}.comments.jsonl`;
+  const before = sidecar(c);
+  for (const [path, text] of Object.entries({ ...c.files, [doc]: c.doc, [comments]: before })) {
+    await mkdir(dirname(join(dir, path)), { recursive: true });
+    await writeFile(join(dir, path), text);
+  }
+  const thread = { id: c.id, anchor: c.quote && { exact: c.quote }, comments: c.thread.map(([name, body]) => ({ by: { name }, body })) };
+  const prompt = buildPrompt({ buddy: BUDDY, docName: doc, sidecarName: comments, thread, project: Boolean(c.files), human: HUMAN });
+  const env = { ...process.env, PONJO_DOC: join(dir, doc), PONJO_COMMENTS: join(dir, comments), PONJO_PROJECT: c.files ? dir : '', PONJO_THREAD: c.id, PONJO_BUDDY: BUDDY.name, PONJO_TRACE: join(dir, '.trace.jsonl') };
+  const at = Date.now();
+  const { code, stdout, stderr } = await new Promise((resolve) => {
+    const child = execFile(process.execPath, [AGENT], { cwd: dir, env, timeout: TIMEOUT_MS }, (error, stdout, stderr) => resolve({ code: error ? (error.code ?? 1) : 0, stdout, stderr }));
+    child.stdin.end(prompt);
+  });
+  const trace = (await readFile(env.PONJO_TRACE, 'utf8').catch(() => '')).split('\n').filter(Boolean).map((line) => JSON.parse(line));
+  const answers = trace.filter((m) => m.role === 'assistant');
+  // Chat Completions' prompt_tokens count the cached ones; Anthropic's input_tokens do not.
+  const counted = ['prompt_tokens', 'completion_tokens', 'input_tokens', 'cache_creation_input_tokens', 'cache_read_input_tokens', 'output_tokens'];
+  const tokens = answers.reduce((sum, { usage = {} }) => sum + counted.reduce((n, key) => n + (usage[key] ?? 0), 0), 0);
+  const result = { c, steps: answers.length, tokens, ms: Date.now() - at, dir };
+  if (code !== 0) return { ...result, outcome: API_ERROR.test(stderr) ? 'error' : 'fail', failed: ['the run fails'], why: stderr.trim() };
+  const after = await readFile(join(dir, comments), 'utf8');
+  const out = { reply: stdout, doc: await readFile(join(dir, doc), 'utf8'), comments: after.slice(before.length).split('\n').filter(Boolean).map((line) => JSON.parse(line)) };
+  const failed = Object.entries(c.checks).filter(([, check]) => !check(out, c)).map(([name]) => name);
+  return { ...result, outcome: failed.length ? 'fail' : 'pass', failed, out };
+}
 
-// Each case: the thread (who said what, oldest first) and what a run must do.
-const CASES = [
-  { name: 'named by its title', thread: [WRONG[0]], reads: [VISION] },
-  { name: 'after a wrong answer', thread: [...WRONG, [me, 'no not this one']], reads: [VISION] },
-  { name: 'asked again by name', thread: [...WRONG, [me, 'i am asking about the product vision doc']], reads: [VISION] },
-  { name: 'this doc', thread: [[me, '@Iris summarize this doc in one sentence']], reads: [DOC], avoid: [VISION, UX, ARCHITECTURE] },
-  { name: 'a passage and another doc', anchor: 'About the project', thread: [[me, '@Iris does this section say the same as our user experience doc?']], reads: [DOC, UX] },
-  { name: 'a path from the doc\'s folder', thread: [[me, '@Iris is the runtime here the one ../ponjo-docs/architecture.md describes?']], reads: [ARCHITECTURE] },
-  { name: 'a file name elsewhere', thread: [[me, '@Iris what does architecture.md call a buddy\'s turn?']], reads: [ARCHITECTURE] },
-  { name: 'by what it says', thread: [[me, '@Iris what did we decide about the demo at our October meeting?']], reads: [NOTES], says: /preview/i },
-  { name: 'which file says it', thread: [[me, '@Iris which of our docs compares sequential and real-time collaboration?']], says: /product-vision/ },
-];
+// The runs, `jobs` at a time.
+const named = (c) => `${c.kind}: ${c.name}`;
+const queue = CASES.filter((c) => named(c).includes(only)).flatMap((c) => Array(Number(runs)).fill(c));
+const results = [];
+await Promise.all(Array.from({ length: Number(jobs) }, async () => {
+  for (let c = queue.shift(); c; c = queue.shift()) {
+    const r = await run(c);
+    results.push(r);
+    process.stderr.write(r.outcome === 'pass' ? '.' : r.outcome === 'fail' ? 'F' : 'E');
+    if (r.outcome === 'pass') await rm(r.dir, { recursive: true, force: true });
+  }
+}));
 
-// One run of a case: the files the turn read, its reply, its steps, and
-// whether it passed; or the error it failed with.
-async function run({ anchor, thread, reads = [], avoid = [], says }, infer) {
-  const comments = thread.map(([name, body]) => ({ by: { name }, body }));
-  const sidecar = `${DOC}.comments.jsonl`;
-  const prompt = buildPrompt({ buddy: { id: 'b_iris', name: 'Iris', about: '' }, docName: DOC, sidecarName: sidecar, thread: { id: 'c_bench', anchor: anchor ? { exact: anchor } : null, comments }, project: true, human: { name: me, about: '' } });
-  const read = new Set();
-  let steps = 0;
-  const step = async (messages, tools) => {
-    const answer = await infer(messages, tools);
-    steps += 1;
-    const [call] = answer.calls; // turn runs the first only
-    if (call?.name === 'read') read.add(inProject(JSON.parse(call.args || '{}').path ?? ''));
-    return answer;
-  };
-  try {
-    const { reply } = await turn({ prompt, doc: DOC, sidecar }, { infer: step, readFile: files({ doc: DOC, sidecar, project: '.' }), resolve: inProject });
-    const pass = reads.every((path) => read.has(path)) && !avoid.some((path) => read.has(path)) && (!says || says.test(reply));
-    return { pass, read: [...read], reply, steps };
-  } catch (error) {
-    return { pass: false, read: [...read], error: error.message, steps };
+const { PONJO_SETTING_PROVIDER: provider, PONJO_SETTING_EFFORT: effort } = process.env;
+console.log(`\n\n${provider} ${model}${effort ? ` (${effort})` : ''}, ${runs} runs a case\n`);
+const mean = (list, key) => Math.round(list.reduce((sum, r) => sum + r[key], 0) / list.length);
+// "passed/counted" of `list`, API errors not counted.
+const score = (list) => {
+  const errors = list.filter((r) => r.outcome === 'error').length;
+  return `${list.filter((r) => r.outcome === 'pass').length}/${list.length - errors}${errors ? ` (${errors} errors)` : ''}`;
+};
+for (const kind of new Set(CASES.map((c) => c.kind))) {
+  const theirs = results.filter((r) => r.c.kind === kind);
+  if (!theirs.length) continue;
+  console.log(`${kind}: ${score(theirs)}`);
+  for (const c of CASES.filter((c) => c.kind === kind)) {
+    const mine = theirs.filter((r) => r.c === c);
+    if (mine.length) console.log(`  ${score(mine)}  ${c.name}  (${mean(mine, 'steps')} steps, ${mean(mine, 'tokens')} tokens, ${(mean(mine, 'ms') / 1000).toFixed(0)} s)`);
   }
 }
+console.log(`\nall: ${score(results)}`);
 
-const env = (key, fallback) => process.env[`PONJO_SETTING_${key}`] || fallback;
-const settings = { model: env('MODEL', 'nvidia/nemotron-3-super-120b-a12b'), key: env('KEY'), effort: env('EFFORT', 'low'), endpoint: env('ENDPOINT') };
-const provider = env('PROVIDER', 'nebius');
-if (!settings.key) throw new Error('No API key: set PONJO_SETTING_KEY.');
-const infer = INFER[provider](settings, settings.endpoint);
-const runs = Number(process.argv[2] ?? 3);
-const cases = CASES.filter((c) => c.name.includes(process.argv[3] ?? ''));
-
-process.chdir(project());
-console.log(`${provider} ${settings.model}, ${runs} runs a case\n`);
-let passed = 0;
-for (const c of cases) {
-  const results = [];
-  for (let i = 0; i < runs; i++) results.push(await run(c, infer));
-  const ok = results.filter((r) => r.pass).length;
-  passed += ok;
-  const steps = results.reduce((sum, r) => sum + r.steps, 0) / runs;
-  console.log(`${`${ok}/${runs}`.padEnd(6)}${c.name.padEnd(30)}${steps.toFixed(1)} steps`);
-  for (const r of results.filter((r) => !r.pass)) console.log(`        read ${r.read.join(', ') || 'nothing'}: ${(r.error ?? r.reply).replace(/\s+/g, ' ').slice(0, 160)}`);
+// The doc's change: the text taken out and put in, without what they share.
+function change(was, is) {
+  let start = 0;
+  while (start < was.length && was[start] === is[start]) start++;
+  let end = 0;
+  while (end < was.length - start && end < is.length - start && was.at(-1 - end) === is.at(-1 - end)) end++;
+  return `${JSON.stringify(was.slice(start, was.length - end))} → ${JSON.stringify(is.slice(start, is.length - end))}`;
 }
-console.log(`\n${passed}/${cases.length * runs} passed`);
+
+for (const r of results.filter((r) => r.outcome !== 'pass')) {
+  console.log(`\n${r.outcome === 'fail' ? 'FAIL' : 'ERROR'}  ${named(r.c)}: ${r.failed.join(', ')}\n  folder: ${r.dir}`);
+  if (r.why) console.log(`  ${r.why.split('\n')[0]}`);
+  if (r.out) {
+    console.log(`  reply: ${JSON.stringify(r.out.reply)}`);
+    if (r.out.doc !== r.c.doc) console.log(`  doc: ${change(r.c.doc, r.out.doc)}`);
+    for (const m of r.out.comments) console.log(`  comment: ${JSON.stringify(m)}`);
+  }
+}

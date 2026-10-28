@@ -9,7 +9,7 @@ const MAX_FOUND = 100; // paths find, or lines grep, gives before it asks to nar
 const MAX_LINE = 500; // characters of a line grep shows
 const MAX_LISTED = 200; // the project's files the first message lists; over that, its top folder's
 const SIDECAR = '.comments.jsonl';
-const ANY_TOOL = 'read, find, grep or propose';
+const ANY_TOOL = 'read, find, grep, comment, resolve or propose';
 const PATTERN = 'A JavaScript regular expression, not a glob. Case is ignored unless it has a capital letter.';
 
 // The tools, as each provider's infer gets them: { name, description, parameters (a JSON schema) }.
@@ -51,19 +51,29 @@ const TOOLS = [
     },
   },
   {
-    name: 'propose',
-    description: 'End your turn: your edits and your reply. To edit the doc, replace `old`, quoted exactly from it and found there once, with `new`. To comment, append to the comments file: `old` empty, `new` the lines to append. No other file can change. `reply` is what you print, and may be empty. One bad edit sends the whole proposal back, saying what to fix.',
+    name: 'comment',
+    description: 'Start a new thread in the doc, as a member does, for a member to decide something: never a mark in the doc itself. It is added when your turn ends, with your edits.',
     parameters: {
       type: 'object',
       properties: {
-        edits: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: { path: { type: 'string' }, old: { type: 'string' }, new: { type: 'string' } },
-            required: ['path', 'old', 'new'],
-          },
-        },
+        on: { type: 'string', description: 'The text it is about, quoted exactly from the doc and found there once; "" for the whole doc.' },
+        body: { type: 'string', description: 'What the member must decide.' },
+      },
+      required: ['on', 'body'],
+    },
+  },
+  {
+    name: 'resolve',
+    description: 'Resolve the thread you are answering, when your turn ends: only when its last comment asks you to close or resolve it. Doing what it asked is no reason to.',
+    parameters: { type: 'object', properties: {} },
+  },
+  {
+    name: 'propose',
+    description: 'End your turn: your edits of the doc and your reply. Each edit replaces `old`, quoted exactly from the doc and found there once, with `new`; no other file can change, and comments are the comment tool\'s. `reply` is what you print, your answer in this thread, and may be empty. One bad edit sends the whole proposal back, saying what to fix.',
+    parameters: {
+      type: 'object',
+      properties: {
+        edits: { type: 'array', items: { type: 'object', properties: { old: { type: 'string' }, new: { type: 'string' } }, required: ['old', 'new'] } },
         reply: { type: 'string' },
       },
       required: ['edits', 'reply'],
@@ -72,66 +82,91 @@ const TOOLS = [
 ];
 
 /**
- * One buddy answering one thread: `prompt` is stdin as is, `doc` and
- * `sidecar` the copies' paths in the project. `infer(messages, tools)` is one step of the
+ * One buddy answering one thread, `thread` (its id): `prompt` is stdin as
+ * is, `doc` and `sidecar` the copies' paths in the project. `infer(messages, tools)` is one step of the
  * model (INFER) and resolves to { calls: [{ id, name, args }], text, sent, usage },
  * `args` the JSON the model wrote, `text` what it wrote besides, `sent` its
  * message as its API sent it and `usage` the tokens it took, as the API
  * counts them; `readFile(path)` to a file's text, a folder's entries (a
  * subfolder's ending in /) or null;
  * `resolve(path)` a path the model wrote as the copies' paths are written
- * (ponjo.mjs's inProject). Resolves to the checked { edits, reply }, and throws
- * when the turn fails.
+ * (ponjo.mjs's inProject). Resolves to the checked { edits, reply }, `edits`
+ * the doc's and the sidecar's lines from comment and resolve, as `apply`
+ * takes them, and throws when the turn fails.
  *
  * The messages are in one form for every provider: { role: 'user', content },
  * { role: 'assistant', calls, sent }, and { role: 'tool', id, content }, a
- * call's result.
+ * call's result. Each call of a step runs, in order.
  */
-export async function turn({ prompt, doc, sidecar }, { infer, readFile, resolve = (path) => path }) {
+export async function turn({ prompt, doc, sidecar, thread }, { infer, readFile, resolve = (path) => path }) {
   const files = await listing(readFile, [doc, sidecar]);
   const messages = [{ role: 'user', content: files ? `${prompt}\n\n${files}` : prompt }];
+  const lines = []; // the sidecar's, from comment and resolve, added with the proposal
+  const added = () => (lines.length ? [{ path: sidecar, old: '', new: lines.join('\n') }] : []);
   for (let step = 0; step < STEPS; step++) {
     const { calls, text, sent } = await infer(messages, TOOLS);
     messages.push({ role: 'assistant', calls, sent });
-    const [call, ...more] = calls;
-    if (!call) return { edits: [], reply: text.trim() }; // an answer without a call, as any agent's
-    const result = await use(call, { doc, sidecar, readFile, resolve });
-    if (typeof result !== 'string') return result;
-    messages.push({ role: 'tool', id: call.id, content: result });
-    for (const extra of more) messages.push({ role: 'tool', id: extra.id, content: 'Not run: one tool per step.' });
+    if (!calls.length) return { edits: added(), reply: text.trim() }; // an answer without a call, as any agent's
+    for (const call of calls) {
+      const result = await use(call, { doc, sidecar, thread, lines, added, readFile, resolve });
+      if (typeof result !== 'string') return result;
+      messages.push({ role: 'tool', id: call.id, content: result });
+    }
   }
   throw new Error(`No proposal in ${STEPS} steps.`);
 }
 
 // What a tool call gives back to the model, or a valid proposal's { edits, reply }.
-async function use({ name, args: json }, { doc, sidecar, readFile, resolve }) {
+async function use({ name, args: json }, { doc, sidecar, thread, lines, added, readFile, resolve }) {
   let args;
   try {
     args = JSON.parse(json);
   } catch {
     return `The arguments are not JSON: ${json}`;
   }
-  if (name === 'read') return read(args, readFile);
+  if (name === 'read') return read(args, readFile, doc);
   if (name === 'find' || name === 'grep') return search(name, args, readFile, resolve);
+  if (name === 'comment') {
+    const { on, body } = args;
+    if (typeof on !== 'string' || typeof body !== 'string' || !body.trim()) return 'Not added: comment takes { on, body }, body not empty.';
+    const text = (await readFile(doc)).replace(/\r\n/g, '\n');
+    const found = on && text.split(on.replace(/\r\n/g, '\n'));
+    if (found && found.length !== 2) return `Not added: on is ${found.length < 2 ? 'not in the doc: quote it exactly' : 'in the doc more than once: quote more of it'}, or give "" for the whole doc.`;
+    lines.push(JSON.stringify(on ? { anchor: { exact: on }, body } : { body }));
+    return on ? `Added when your turn ends, on line ${found[0].split('\n').length}.` : 'Added when your turn ends, on the whole doc.';
+  }
+  if (name === 'resolve') {
+    const line = JSON.stringify({ thread, resolved: true });
+    if (!lines.includes(line)) lines.push(line);
+    return 'This thread is resolved when your turn ends.';
+  }
   if (name !== 'propose') return `No tool ${name}: call ${ANY_TOOL}.`;
   const { edits, reply = '' } = args;
-  if (!Array.isArray(edits) || typeof reply !== 'string') return 'propose takes { edits: [{ path, old, new }], reply }.';
+  if (!Array.isArray(edits) || typeof reply !== 'string') return 'propose takes { edits: [{ old, new }], reply }.';
+  const off = edits.find((edit) => edit?.path !== undefined && resolve(edit.path) !== doc);
+  if (off) return `Nothing was changed. ${off.path} cannot change: edits change only ${doc}, and comments are the comment tool's.`;
+  const all = [...edits.map((edit) => ({ ...edit, path: doc })), ...added()];
   try {
-    apply(edits, { doc, sidecar }, { doc: await readFile(doc), sidecar: await readFile(sidecar) }, resolve);
+    apply(all, { doc, sidecar }, { doc: await readFile(doc), sidecar: await readFile(sidecar) }, resolve);
   } catch (error) {
     return `Nothing was changed. ${error.message}`;
   }
-  return { edits, reply };
+  return { edits: all, reply };
 }
 
-async function read({ path, lines }, readFile) {
+// A file read as it is, with a note when the doc's folder has one by the
+// same path: models read a file a comment names from the project's top.
+async function read({ path, lines }, readFile, doc) {
   const found = typeof path === 'string' ? await readFile(path) : null;
-  if (found === null) return `${path}: no such file, or not one you can read.`;
+  const folder = doc.slice(0, doc.lastIndexOf('/') + 1);
+  const near = folder && typeof path === 'string' && path && !path.startsWith(folder) && typeof (await readFile(folder + path)) === 'string' && folder + path;
+  const note = near ? `${near} is there too: a file a comment names is from the doc's folder, ${folder}.` : '';
+  if (found === null) return [`${path}: no such file, or not one you can read.`, note].filter(Boolean).join(' ');
   if (Array.isArray(found)) return found.join('\n') || '(an empty folder)';
   const all = linesOf(found);
-  if (!lines && found.length > MAX_READ) return outline(path, all);
+  if (!lines && found.length > MAX_READ) return [outline(path, all), note].filter(Boolean).join('\n');
   const from = Math.max(1, lines?.[0] ?? 1);
-  return all.slice(from - 1, lines?.[1] ?? all.length).map((line, i) => `${from + i}\t${line}`).join('\n');
+  return [all.slice(from - 1, lines?.[1] ?? all.length).map((line, i) => `${from + i}\t${line}`).join('\n'), note && `(${note})`].filter(Boolean).join('\n');
 }
 
 const linesOf = (text) => text.replace(/\r?\n$/, '').split(/\r?\n/);

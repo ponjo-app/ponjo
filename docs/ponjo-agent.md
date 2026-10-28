@@ -14,7 +14,7 @@ laptop runs (an 8B model tried) claim edits they did not make.
 
 1. **Read and propose, never write.** The model's only effect is a
    proposal; the program checks it and applies it to the copies.
-2. **The tools are the permissions.** `read`, `find`, `grep` and `propose` only: no shell,
+2. **The tools are the permissions.** `read`, `find`, `grep`, `comment`, `resolve` and `propose` only: no shell,
    no network but the model's API. Text a teammate wrote can at worst make an undoable proposal.
 3. **Stateless.** A turn remembers nothing after. Within it, all state is
    the messages, and its trace replays it.
@@ -27,13 +27,13 @@ laptop runs (an 8B model tried) claim edits they did not make.
 
 | Interface | Called by |
 | --- | --- |
-| `turn({ prompt, doc, sidecar }, { infer, readFile, resolve }) → { edits, reply }` | the program's `main`; the preview's buddies (`preview/doc-stub.js`) |
+| `turn({ prompt, doc, sidecar, thread }, { infer, readFile, resolve }) → { edits, reply }` | the program's `main`; the preview's buddies (`preview/doc-stub.js`) |
 | `infer(messages, tools) → { calls: [{ id, name, args }], text, sent, usage }` | `turn`, for each step |
-| `read`, `find`, `grep`, `propose` | the model, as tools |
+| `read`, `find`, `grep`, `comment`, `resolve`, `propose` | the model, as tools |
 
 **`main`** is all the I/O, and all of the contract: it reads the prompt on
-stdin, the paths in `PONJO_DOC`, `PONJO_COMMENTS` and `PONJO_PROJECT`
-and its settings in `PONJO_SETTING_*`, calls `turn`, applies the edits to
+stdin, the paths in `PONJO_DOC`, `PONJO_COMMENTS` and `PONJO_PROJECT`,
+the thread in `PONJO_THREAD` and its settings in `PONJO_SETTING_*`, calls `turn`, applies the edits to
 the copies, prints the reply and exits 0. A run without a key fails at once,
 saying where to set it.
 
@@ -80,7 +80,9 @@ in plain text before it has read what the comment needs.
 **`read({ path, lines? })`** returns the text with line numbers, from line
 `lines[0]` to `lines[1]`. A file over 20,000 characters without `lines`
 returns its outline instead (Markdown headings with their line ranges); a
-folder, its files.
+folder, its files. When the doc's folder has a file by the same path, it says
+so: models read a file a comment names from the project's top, though the
+prompt says it is from the doc's folder.
 
 **`find({ pattern, path? })`** returns the paths of the files under the
 folder `path` (the project's top if left out) that `pattern` matches, sorted.
@@ -95,30 +97,40 @@ it matches as `read` gives it, cut at 500 characters. Both walk the folders
 with `readFile`, and give at most 100 paths or lines, then how many more,
 saying to narrow the pattern or the path.
 
-**`propose({ edits: [{ path, old, new }], reply })`** ends the turn. On the
-doc, `old` must be found exactly once. On its sidecar, `old` is empty and
-`new` appends comment lines ([agent config](agent-config.md#comments)). Any
-other path is refused. One bad edit sends the whole proposal back, saying
-what to fix. `reply` is printed, and may be empty.
+**`comment({ on, body })`** starts a thread on `on`, quoted from the doc
+and found there once, or `""` for the whole doc; **`resolve()`** resolves
+the thread the turn answers. Each says at once whether it took, and its
+line of the sidecar ([agent config](agent-config.md#comments)) is written
+by the program and added with the proposal. Their own tools, as a member's
+own actions, and not fields of `propose`: a model writing those lines
+itself got the path, the JSON or the thread's id wrong, and one filling a
+`resolve` field of its last call resolved each thread it had done what was
+asked in. A comment's text that the edits then change puts it on the whole
+doc, as the app does with any quote it cannot find.
+
+**`propose({ edits: [{ old, new }], reply })`** ends the turn. The edits
+change the doc only: `old` must be found in it exactly once. One bad edit
+sends the whole proposal back, saying what to fix. `reply` is printed, and
+may be empty.
 
 ## The loop
 
 ```
 step(messages, budget):
-  call = infer(messages, tools)
-  if there is no call: return no edits, and its text as the reply
-  if call is a valid propose: return its args
+  calls = infer(messages, tools)
+  if there are none: return the comments, and its text as the reply
+  run each call in order; at a valid propose: return it, with the comments
   if budget is 0: fail
-  return step(messages + call + result(call), budget - 1)
+  return step(messages + calls + their results, budget - 1)
 ```
 
 The first message is the prompt, as is: its rules are every agent's. Then,
 in a project, its files as the sidebar shows them (no sidecar of a file
 there), so the model knows which docs a comment can mean: every path up to
 200, else the top folder's entries, saying to find the rest. The
-tools match the contract it describes: `propose` edits the doc and appends
-to the sidecar, and its `reply` is what the prompt says to print. Twenty
-steps, and the turn fails.
+tools match the contract it describes: `propose` edits the doc, `comment`
+and `resolve` are its tools to comment and resolve, and the reply is what
+the prompt says to print. Twenty steps, and the turn fails.
 
 ## Architecture
 
@@ -133,20 +145,29 @@ flowchart LR
 - **Shipped, then the user's,** like the other scripts: theirs to read,
   change, or rewrite in any language that keeps the contract.
 - **Its settings** are in its [manifest](agent-config.md#agents), not in
-  the program:
+  the program. Each provider keeps its own model and key, shown while it is
+  picked, so switching back and forth sets nothing again:
 
 | Key | Type | Default |
 | --- | --- | --- |
 | `provider` | choice: Anthropic, OpenAI-compatible, Nebius Token Factory | `anthropic` |
 | `endpoint` | text, for OpenAI-compatible only | `https://api.openai.com/v1` |
-| `model` | text | `claude-opus-5-5` |
-| `key` | secret | none: a run without one fails, saying where to set it |
+| `<provider>_model` | text, one for each provider | Anthropic `claude-opus-5-5`, OpenAI-compatible none, Nebius `nvidia/nemotron-3-super-120b-a12b` |
+| `<provider>_key` | secret, one for each provider | none: a run without the picked provider's fails, saying where to set it |
 | `effort` | choice: low, medium, high | `low`: scoped edits; higher thinks longer before it answers |
 
 - **Tests** call `turn` with a fake `infer`, and each `infer` on a fake
-  server of its API. `npm run bench:agent` runs `turn` on a real model
-  in a sample project, for comments that name a file in different ways,
-  and scores whether it read the file each one means.
+  server of its API.
+- **The benchmark** (`npm run bench:agent`, on your own key, not in CI)
+  runs each case of `scripts/bench-cases.js` a few times on a real model,
+  under the contract, and checks what it left: a doc and a thread asking
+  Clippy (a question, an instruction, an unclear ask, comments to add, a
+  thread to resolve, a doc that tries to give orders, a comment that means
+  another file in the project). Each check passes
+  right answers and fails wrong ones in `npm test`, without a model; a run
+  that fails on the API counts as neither. A failed run's folder and trace
+  are kept to read: a model's mistake, or a check's, which then gets that
+  answer as a test.
 - **Each turn's messages go to its trace** (`PONJO_TRACE`, [agent
   config](agent-config.md#traces)), a line each as they come, but the
   prompt, which the app has: the model's with how long it took and its
