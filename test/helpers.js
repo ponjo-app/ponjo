@@ -71,9 +71,12 @@ export async function openTestDoc(docPath, { buddies = null, ...options } = {}) 
     for (const [name, text] of Object.entries(buddies)) await writeFile(join(options.folder, '.ponjo', 'buddies', `${name}.md`), text);
   }
   const doc = await openDoc(docPath, { ...options, emit: (name, data) => events.push([name, data]) });
+  // Given `from`, the edit is in the doc's queue before the caller's next
+  // line, so a file changed outside just after it is found after it.
+  const owner = await doc.owner();
   const edit = async (next, from) => {
     const at = from ?? await call('state');
-    return call('submit', { ops: diffOps(at.text, next), rev: at.rev, epoch: at.epoch, id: `test.${++edits}` });
+    return doc.call('submit', { ops: diffOps(at.text, next), rev: at.rev, epoch: at.epoch, id: `test.${++edits}` }, owner);
   };
   const call = async (type, arg) => doc.call(type, arg, await doc.owner());
   return { doc, events, edit, call, state: () => call('state') };
