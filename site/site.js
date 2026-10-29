@@ -1,6 +1,5 @@
-// The header: the Development and Preview menus, the theme switch (light or
-// dark, starting from the system's), and pages ready before they're clicked:
-// hovering a link to another page renders it in the background (Chrome, Edge).
+// The header: the Development and Preview menus, and the theme switch
+// (light or dark, starting from the system's).
 const root = document.documentElement;
 root.dataset.theme = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
 document.querySelector('.site-theme').addEventListener('click', () => {
@@ -28,8 +27,3 @@ document.addEventListener('keydown', (event) => {
     button.focus();
   }
 });
-
-const rules = document.createElement('script');
-rules.type = 'speculationrules';
-rules.textContent = JSON.stringify({ prerender: [{ where: { href_matches: '*.html' }, eagerness: 'moderate' }] });
-document.head.append(rules);
