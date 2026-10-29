@@ -1,29 +1,20 @@
-// The header: the Development and Preview menus, and the theme switch
-// (light or dark, starting from the system's).
+// The header: the theme switch (light or dark, starting from the system's),
+// and closing the open menu on a click elsewhere or Escape. The menus
+// themselves are <details>, so they open before this script loads.
 const root = document.documentElement;
 root.dataset.theme = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
 document.querySelector('.site-theme').addEventListener('click', () => {
   root.dataset.theme = root.dataset.theme === 'dark' ? 'light' : 'dark';
 });
 
-const menus = [...document.querySelectorAll('.site-drop > button')];
-const open = (button, on) => {
-  button.setAttribute('aria-expanded', String(on));
-  document.getElementById(button.getAttribute('aria-controls')).hidden = !on;
-};
-for (const button of menus) {
-  button.addEventListener('click', () => {
-    const on = button.getAttribute('aria-expanded') !== 'true';
-    for (const other of menus) open(other, other === button && on);
-  });
-}
+const openMenu = () => document.querySelector('.site-drop[open]');
 document.addEventListener('click', (event) => {
-  if (!event.target.closest('.site-drop')) for (const button of menus) open(button, false);
+  if (!event.target.closest('.site-drop')) openMenu()?.removeAttribute('open');
 });
 document.addEventListener('keydown', (event) => {
-  const button = menus.find((b) => b.getAttribute('aria-expanded') === 'true');
-  if (event.key === 'Escape' && button) {
-    open(button, false);
-    button.focus();
+  const menu = openMenu();
+  if (event.key === 'Escape' && menu) {
+    menu.removeAttribute('open');
+    menu.querySelector('summary').focus();
   }
 });
