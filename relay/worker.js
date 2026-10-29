@@ -30,9 +30,9 @@
 // ORIGIN, a Chat Completions request as preview/doc-stub.js sends it, goes
 // on to ENDPOINT with the key, the model and a cap on tokens of its own, and
 // its answer comes back as is. Only the messages and tools are taken from
-// the page, and every step must call a tool: Nemotron answers a question in
-// plain text otherwise, which ends no turn. An address asks at most 60
-// times a minute (INFER).
+// the page, with `tool_choice: auto` as every provider of the Ponjo agent
+// sends it (docs/ponjo-agent.md). An address asks at most 60 times a
+// minute (INFER).
 
 /* global WebSocketPair, WebSocketRequestResponsePair */
 
@@ -173,7 +173,7 @@ async function infer(request, env) {
   const answer = await fetch(`${env.ENDPOINT}/chat/completions`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', authorization: `Bearer ${env.TOKEN_FACTORY_KEY}` },
-    body: JSON.stringify({ model: env.MODEL, max_tokens: MAX_TOKENS, messages, tools, tool_choice: 'required' }),
+    body: JSON.stringify({ model: env.MODEL, max_tokens: MAX_TOKENS, messages, tools, tool_choice: 'auto' }),
   });
   return new Response(answer.body, { status: answer.status, headers: { ...cors, 'content-type': answer.headers.get('content-type') ?? 'application/json' } });
 }

@@ -18,8 +18,9 @@ laptop runs (an 8B model tried) claim edits they did not make.
    no network but the model's API. Text a teammate wrote can at worst make an undoable proposal.
 3. **Stateless.** A turn remembers nothing after. Within it, all state is
    the messages, and its trace replays it.
-4. **The model asks for context.** The first message is small; the model
-   reads what it needs.
+4. **The model asks for context.** The first message is small: the prompt
+   and the project's file names, as a person sees them in the sidebar; the
+   model reads what it needs.
 5. **Read by line number, write by quote.** Never count characters.
 
 ## Interfaces
@@ -70,9 +71,10 @@ call's result), and each `infer` translates them:
 | `openai` | Chat Completions at `endpoint` (OpenAI, OpenRouter and others) | `reasoning_effort` |
 | `nebius` | Chat Completions at Nebius Token Factory, for NVIDIA's Nemotron models | no effort |
 
-Both send `tool_choice: "auto"`: current Claude models refuse a forced tool
-call. A step without one is the model's answer, as for any agent: its `text`
-is the reply, with no edits.
+All send `tool_choice: "auto"`, the same for every model: current Claude
+models refuse a forced tool call, and Nemotron, forced, answered a question
+with `comment`. A step without one is the model's answer, as for any agent:
+its `text` is the reply.
 
 **`read({ path, lines? })`** returns the text with line numbers, from line
 `lines[0]` to `lines[1]`. A file over 20,000 characters without `lines`
@@ -121,7 +123,10 @@ step(messages, budget):
   return step(messages + calls + their results, budget - 1)
 ```
 
-The first message is the prompt, as is: its rules are every agent's. The
+The first message is the prompt, as is: its rules are every agent's. Then,
+in a project, its files as the sidebar shows them (no sidecar of a file
+there), so the model knows which docs a comment can mean: every path up to
+200, else the top folder's entries, saying to find the rest. The
 tools match the contract it describes: `propose` edits the doc, `comment`
 and `resolve` are its tools to comment and resolve, and the reply is what
 the prompt says to print. Twenty steps, and the turn fails.
@@ -156,7 +161,8 @@ flowchart LR
   runs each case of `scripts/bench-cases.js` a few times on a real model,
   under the contract, and checks what it left: a doc and a thread asking
   Clippy (a question, an instruction, an unclear ask, comments to add, a
-  thread to resolve, a doc that tries to give orders). Each check passes
+  thread to resolve, a doc that tries to give orders, a comment that means
+  another file in the project). Each check passes
   right answers and fails wrong ones in `npm test`, without a model; a run
   that fails on the API counts as neither. A failed run's folder and trace
   are kept to read: a model's mistake, or a check's, which then gets that

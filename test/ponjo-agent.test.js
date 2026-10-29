@@ -242,6 +242,20 @@ test('find and grep: paths or lines that match a regular expression, smart case,
   assert.equal(none, 'No line matches secret.');
 });
 
+test('the first message lists the project\'s files as the sidebar does, its top folder over 200 of them, and none in doc mode', async () => {
+  const { root } = await project();
+  const { doc, sidecar } = await copies(SAMPLE, 'notes/a.md');
+  const first = async (readFile) => {
+    const infer = fake(calling(['propose', { edits: [], reply: '' }]));
+    await turn({ prompt: 'p', doc, sidecar }, { infer, readFile, resolve: inProject });
+    return infer.messages[0].content;
+  };
+  assert.equal(await first(seen({ doc, sidecar }, root)), 'p\n\nThe project\'s files:\n\nbig.log\nlinked\nnode_modules/pkg/index.js\nnotes/a.md\npic.png', 'no sidecar of a file there, nothing hidden');
+  assert.equal(await first(seen({ doc, sidecar })), 'p', 'only the copies: no list');
+  for (let i = 0; i < 200; i++) await writeFile(join(root, 'notes', `n${i}.txt`), '');
+  assert.equal(await first(seen({ doc, sidecar }, root)), 'p\n\nThe project has more than 200 files: find them with find. Its top folder:\n\nbig.log\nlinked\nnode_modules/\nnotes/\npic.png');
+});
+
 /**
  * A fake API on 127.0.0.1: `answers` are [status, body] in turn; `requests`
  * what it was sent, { url, headers, body }. `url` is its address.
