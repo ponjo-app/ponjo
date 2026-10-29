@@ -60,7 +60,7 @@ test('a step from the preview goes on with the key, the model and a cap of its o
   const [sent] = api.requests;
   assert.equal(sent.url, '/v1/chat/completions');
   assert.equal(sent.headers.authorization, 'Bearer tf-secret-test', 'the key is the Worker\'s, not the page\'s');
-  assert.deepEqual(sent.body, { model: 'nvidia/nemotron-3-super-120b-a12b', max_tokens: 4000, messages, tools, tool_choice: 'required' }, 'only the messages and tools are the page\'s, and every step calls a tool');
+  assert.deepEqual(sent.body, { model: 'nvidia/nemotron-3-super-120b-a12b', max_tokens: 4000, messages, tools, tool_choice: 'auto' }, 'only the messages and tools are the page\'s');
 });
 
 test('the preflight is answered for the preview\'s page only', async () => {

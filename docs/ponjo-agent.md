@@ -69,13 +69,12 @@ call's result), and each `infer` translates them:
 | --- | --- | --- |
 | `anthropic` | Messages (`/v1/messages`) | `output_config.effort`, the model thinking as it needs; its messages sent back as they came, thinking included; prompt caching of the tools and the prompt; a refusal or a cut-off answer fails the turn |
 | `openai` | Chat Completions at `endpoint` (OpenAI, OpenRouter and others) | `reasoning_effort` |
-| `nebius` | Chat Completions at Nebius Token Factory, for NVIDIA's Nemotron models | no effort; `tool_choice: "required"` |
+| `nebius` | Chat Completions at Nebius Token Factory, for NVIDIA's Nemotron models | no effort |
 
-`anthropic` and `openai` send `tool_choice: "auto"`: current Claude models
-refuse a forced tool call. A step without one is the model's answer, as for
-any agent: its `text` is the reply, with no edits. `nebius` forces a call at
-every step, so the turn ends only with `propose`: Nemotron otherwise answers
-in plain text before it has read what the comment needs.
+All send `tool_choice: "auto"`, the same for every model: current Claude
+models refuse a forced tool call, and Nemotron, forced, answered a question
+with `comment`. A step without one is the model's answer, as for any agent:
+its `text` is the reply.
 
 **`read({ path, lines? })`** returns the text with line numbers, from line
 `lines[0]` to `lines[1]`. A file over 20,000 characters without `lines`
