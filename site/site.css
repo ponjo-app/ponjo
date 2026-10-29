@@ -4,6 +4,9 @@
 html, body { height: auto; }
 body { display: block; background: var(--canvas); }
 a { color: var(--accent); }
+/* app.css holds the last page's picture for up to 3 s until the app's page
+   ends it; nothing here ends it, so a click showed the old page, untouchable. */
+@view-transition { navigation: none; }
 
 /* ---- header: the same on every page ---- */
 
