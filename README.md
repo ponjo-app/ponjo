@@ -1,7 +1,7 @@
 <h1>
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/imgs/banner-dark.png">
-    <img src="docs/imgs/banner-light.png" alt="Ponjo: Write together with your AI buddies" width="1600" height="640">
+    <img src="docs/imgs/banner-light.png" alt="Ponjo: Write together with your AI buddies" width="100%">
   </picture>
 </h1>
 
