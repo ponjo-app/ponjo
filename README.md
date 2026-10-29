@@ -1,4 +1,9 @@
-# <img src="build/logo.svg" alt="Ponjo" width="212" height="80">
+<h1>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/imgs/banner-dark.png">
+    <img src="docs/imgs/banner-light.png" alt="Ponjo: Write together with your AI buddies" width="1600" height="640">
+  </picture>
+</h1>
 
 An editor to co-author local text files with your human and AI buddies.
 
