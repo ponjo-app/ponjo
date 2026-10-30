@@ -10,6 +10,9 @@ release/
 # Ponjo's own comments and buddies: local only
 *.comments.jsonl
 .ponjo/
+# but the online demo's project has them (preview/build.js)
+!preview/demo/**/*.comments.jsonl
+!preview/demo/.ponjo/
 
 # API keys for npm run bench:agent
 .env*
