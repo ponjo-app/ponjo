@@ -1,6 +1,7 @@
 // A stand-in for the doc host (src/host/doc-service.js) so the doc window
 // opens in a plain browser (preview/build.js): a sample doc, or with
-// `?folder` a sample project and the app's side of its sidebar
+// `?folder` the project in preview/demo (DEMO, which preview/build.js
+// bundles), opening its demo.md, and the app's side of its sidebar
 // (window.ponjoDesktop), read with the same src/core as the app. Kept in
 // sessionStorage, so switching docs (`?folder&doc=<path>`, a new page as
 // in the app) and reloading keep it; a new tab starts over.
@@ -12,13 +13,15 @@
 // room is a sample: once opened, Noor and Sam are in it, and its link
 // leads nowhere.
 
+/* global DEMO */
+
 import { createAnchor, locate } from '../src/core/anchor.js';
 import { apply, diffOps } from '../src/core/ot.js';
-import { appendedComments, askedOf, movedAnchor, newComment, newId, peopleOf, serializeSidecar, threadsOf } from '../src/core/comments.js';
+import { appendedComments, askedOf, movedAnchor, newComment, newId, parseSidecar, peopleOf, serializeSidecar, threadsOf } from '../src/core/comments.js';
 import { diffEdits, merge3 } from '../src/core/diff.js';
 import { buildPrompt } from '../src/core/prompt.js';
 import { INFER, apply as applyProposal, turn } from '../agents/ponjo-core.mjs';
-import { buddiesHere, checkBuddyPatch } from '../src/core/buddies.js';
+import { buddiesHere, checkBuddyPatch, parseBuddy } from '../src/core/buddies.js';
 import { sameName } from '../src/core/mentions.js';
 import { DEFAULT_SETTINGS, checkSettingsPatch, mergeSettings } from '../src/core/settings.js';
 import { PICKED, SCRIPTS } from './agents.js';
@@ -50,37 +53,9 @@ Each AI buddy has a name and a persona. Behind it, an agent does the work: here 
 Opening your own files and folders, version history and inviting teammates need the desktop app.
 `;
 
-const PROJECT = {
-  'README.md': `# Sample Project
-
-A folder opened as a project: its files in the sidebar, and its own buddies, Editor and Researcher, next to yours, Clippy. @mention one in a comment and it answers here, on NVIDIA Nemotron: it can read every file in the project.
-
-Open a doc from the sidebar, rename one (F2), delete one (Delete) or drag it into another folder. New files come from the right-click menu, which is the desktop app's own, so not here.
-`,
-  'notes/plan.md': `# Plan
-
-1. Draft the launch post.
-2. Check the numbers in the budget.
-3. Share the draft for comments.
-`,
-  'notes/meeting.md': `# Meeting notes
-
-We agreed to ship the preview first and ask for feedback before the next step.
-`,
-  'drafts/launch-post.md': `# Introducing Ponjo
-
-Write plain Markdown with people and AI buddies, in comments next to the text.
-`,
-  'data/budget.csv': 'item,cost\ndesign,1200\nhosting,40\n',
-};
-
-// The sample threads: a comment by you on `quote`, and a buddy's answer.
-const THREADS = inFolder
-  ? [
-    { doc: 'README.md', quote: 'its own buddies', ask: '@Editor is this clear enough?', by: 'Editor', answer: 'Yes. Maybe say what a buddy is in one line.' },
-    { doc: 'notes/plan.md', quote: 'Check the numbers', ask: '@Researcher which numbers?', by: 'Researcher', answer: 'The hosting cost in data/budget.csv looks low.' },
-  ]
-  : [{ doc: 'Welcome.md', quote: 'Each AI buddy has a name and a persona', ask: '@Clippy what does a persona do?', by: 'Clippy', answer: 'It says who the buddy is: one told to tighten prose edits differently from one told to check facts.' }];
+// The sample thread: a comment by you on `quote`, and a buddy's answer.
+const THREAD = { doc: 'Welcome.md', quote: 'Each AI buddy has a name and a persona', ask: '@Clippy what does a persona do?', by: 'Clippy', answer: 'It says who the buddy is: one told to tighten prose edits differently from one told to check facts.' };
+const OPENS = 'nvidia-hackthon/demo.md'; // the project's doc opened first
 
 const ai = (name) => ({ id: name, name, kind: 'ai' });
 const ago = (minutes) => new Date(Date.now() - minutes * 60_000).toISOString();
@@ -88,22 +63,32 @@ const ago = (minutes) => new Date(Date.now() - minutes * 60_000).toISOString();
 function seed() {
   const settings = { ...DEFAULT_SETTINGS, ...PICKED, id: 'u_preview', name: 'you' };
   const me = { id: settings.id, name: settings.name, kind: 'human' };
-  const files = inFolder ? { ...PROJECT } : { 'Welcome.md': WELCOME };
+  const files = {};
   const comments = {};
-  for (const t of THREADS) {
-    const text = files[t.doc];
-    const start = text.indexOf(t.quote);
+  const buddies = [];
+  if (inFolder) {
+    // As a project's files are: its buddies in .ponjo/buddies, a doc's comments in its sidecar.
+    for (const [path, text] of Object.entries(DEMO.files)) {
+      const buddy = /^\.ponjo\/buddies\/(.+)\.md$/.exec(path);
+      if (buddy) buddies.push(parseBuddy(buddy[1], text));
+      else if (path.endsWith('.comments.jsonl')) comments[path.slice(0, -'.comments.jsonl'.length)] = parseSidecar(text).lines.map((l) => l.comment);
+      else files[path] = text;
+    }
+  } else {
+    const { doc, quote, ask, by, answer } = THREAD;
+    files[doc] = WELCOME;
+    const start = WELCOME.indexOf(quote);
     const id = newId('c');
-    (comments[t.doc] ??= []).push(
-      { id, anchor: createAnchor(text, start, start + t.quote.length), by: me, at: ago(30), body: t.ask },
-      { id: newId('c'), thread: id, by: ai(t.by), at: ago(29), body: t.answer },
-    );
+    comments[doc] = [
+      { id, anchor: createAnchor(WELCOME, start, start + quote.length), by: me, at: ago(30), body: ask },
+      { id: newId('c'), thread: id, by: ai(by), at: ago(29), body: answer },
+    ];
   }
   return {
     settings, files, comments,
     mine: [{ id: 'Clippy', name: 'Clippy', about: 'A general writing assistant that helps draft and edit docs' }],
-    buddies: inFolder ? [{ id: 'Editor', name: 'Editor', about: 'Tightens prose and keeps the tone even' }, { id: 'Researcher', name: 'Researcher', about: 'Finds sources and checks the facts' }] : [],
-    expanded: ['notes'], sidebar: true, carry: null,
+    buddies,
+    expanded: [], sidebar: true, carry: null,
     room: null,
     versions: {}, // by doc: the buddies' edits, { id: its reply, by, before, text, changes, undone }
   };
@@ -126,7 +111,8 @@ save();
 
 const DOC = /\.(md|markdown)$/i;
 const docs = () => Object.keys(s.files).filter((path) => DOC.test(path)).sort();
-let current = s.files[params.get('doc')] !== undefined && DOC.test(params.get('doc')) ? params.get('doc') : docs()[0];
+const opens = (path) => s.files[path] !== undefined && DOC.test(path);
+let current = [params.get('doc'), OPENS].find(opens) ?? docs()[0];
 const name = (path) => path.split('/').pop();
 const me = () => ({ id: s.settings.id, name: s.settings.name, kind: 'human' });
 const comments = () => (s.comments[current] ??= []);
@@ -311,6 +297,8 @@ const calls = {
   lockRoom: ({ locked }) => changeRoom((r) => ({ ...r, locked })),
   setLevel: ({ id, level }) => changeRoom((r) => ({ ...r, players: r.players.map((p) => (p.id === id ? { ...p, level } : p)) })),
   kick: ({ id }) => changeRoom((r) => ({ ...r, players: r.players.filter((p) => p.id !== id) })),
+  // An image the doc shows, `src` as written in it: preview/demo's.
+  image: ({ src }) => DEMO.images[decodeURIComponent(new URL(src, `file:///${current}`).pathname.slice(1))] ?? refuse('no such image'),
   history: () => ({ versions: [] }),
   version: ({ id }) => versions().find((v) => v.id === id) ?? refuse('no such version'),
   restoreVersion: () => refuse('no history in the preview'),
@@ -379,7 +367,7 @@ if (inFolder) {
       const carry = s.carry;
       s.carry = null;
       save();
-      return Promise.resolve({ name: 'Sample Project', current, expanded: s.expanded, sidebar: s.sidebar, carry });
+      return Promise.resolve({ name: 'ponjo-demo', current, expanded: s.expanded, sidebar: s.sidebar, carry });
     },
     openInFolder: (path) => open(path),
     folderRename(from, kind, to) {
