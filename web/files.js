@@ -12,14 +12,21 @@
 // at once, just as this one left it, and then reads the folders again.
 // A teammate's page has the same tree, from the host, with no app: see
 // browserFolder.
+// The field under the tree filters the paths (Mod+P) or, switched to search
+// (Mod+Shift+F), searches the files' text as the find bar does (find.js),
+// each hit opening its file with the find bar on it.
 
+import { searchPattern } from '../src/core/search.js';
 import { api } from './api.js';
+import { findOptions, optionToggles } from './find.js';
 import { icon } from './icons.js';
 
 const DRAG_SLOP_PX = 4;
 const OPEN_ON_HOVER_MS = 700;
 const SCROLL_EDGE_PX = 28; // a drag this close to the tree's top or bottom scrolls it
 const FILTER_KEY = 'ponjo.filesFilter:'; // + the folder's name: what was typed in its filter
+const SEARCH_KEY = 'ponjo.filesSearch:'; // + the folder's name: '1' while its field searches the files' text
+const SEARCH_DELAY_MS = 150;
 const WIDTH_KEY = 'ponjo.filesWidth'; // the sidebar width the human dragged to, in px
 const MIN_WIDTH_PX = 180;
 const MAX_WIDTH_PX = 480;
@@ -36,14 +43,18 @@ const NOT_SHOWN = {
  * teammate's page. Returns `ready`, which resolves once the sidebar is drawn,
  * `state()`, how this page leaves it, `create(kind)`, and the project's files:
  * `paths()`, then `onPaths()` each time they are read again, and `open(path)`.
+ * `onFind(find)` hears a search hit in the doc shown: { query, options, at },
+ * to open its find bar on (a hit in another doc goes to its page in `carry`).
  */
-export function createFileList({ place = null, onError = () => {}, onCarry = () => {}, onPaths = () => {} } = {}) {
+export function createFileList({ place = null, onError = () => {}, onCarry = () => {}, onPaths = () => {}, onFind = () => {} } = {}) {
   const owner = Boolean(window.ponjoDesktop); // only the owner changes files
   const desktop = window.ponjoDesktop ?? (place && browserFolder(place));
   const aside = document.querySelector('.pj-files');
   const head = aside.querySelector('.pj-files-head');
   const tree = aside.querySelector('.pj-files-tree');
   const filter = aside.querySelector('.pj-files-filter');
+  const modeButton = aside.querySelector('.pj-files-mode');
+  const optionsBox = aside.querySelector('.pj-files-find .pj-find-options');
   const toggle = document.querySelector('.pj-files-toggle');
   const preview = document.querySelector('.pj-preview');
   const previewName = document.querySelector('.pj-preview-name');
@@ -68,6 +79,11 @@ export function createFileList({ place = null, onError = () => {}, onCarry = () 
   let justDragged = false;
   let everything = null; // allFiles(), read once a filter is typed or paths() asked, dropped when the folder changes
   let pathsAsked = false; // paths() was: read everything again as the folder changes
+  let searching = false; // the field searches the files' text, not their paths
+  let found = null; // the last search's answer (api.search), or { error }
+  let searchesAsked = 0; // a search answered after a later one was asked is dropped
+  let searchTimer = 0;
+  let jump = null; // the hit being opened in another doc, for its page: { query, options, at }
 
   async function refresh() {
     if (field) {
@@ -92,16 +108,18 @@ export function createFileList({ place = null, onError = () => {}, onCarry = () 
     if (first) {
       try {
         filter.value = localStorage.getItem(FILTER_KEY + view.name) ?? '';
+        if (localStorage.getItem(SEARCH_KEY + view.name) === '1') setSearching(true);
       } catch {
         // no storage: an empty filter
       }
-      if (filter.value) everything = await allFiles();
+      if (filter.value && !searching) everything = await allFiles();
     }
     aside.querySelector('.pj-files-name').textContent = view.name;
     aside.querySelector('.pj-files-name').title = view.name;
     if (previewing && lists.get(parentOf(previewing))?.some(({ name }) => name === nameOf(previewing)) === false) closePreview();
     const focused = tree.contains(document.activeElement) ? document.activeElement.closest('[role="treeitem"]')?.dataset.path : null;
-    tree.replaceChildren(...(filter.value ? matches() : items('', 1)));
+    tree.replaceChildren(...(filter.value ? (searching ? hits() : matches()) : items('', 1)));
+    if (filter.value && searching) search();
     const wanted = focusNext ?? focused;
     focusNext = null;
     const target = (wanted !== null && wanted !== undefined && visibleRow(wanted)) || null;
@@ -111,10 +129,10 @@ export function createFileList({ place = null, onError = () => {}, onCarry = () 
       target.scrollIntoView({ block: 'nearest' });
     }
     show(view.sidebar);
-    if (first && view.carry) {
+    if (first && view.carry) onCarry(view.carry);
+    if (first && view.carry?.lists) {
       tree.scrollTop = view.carry.sidebarScroll ?? 0;
-      onCarry(view.carry);
-      if (view.carry.lists) recheck();
+      recheck();
     } else if (first) {
       tree.querySelector('[aria-current="page"]')?.scrollIntoView({ block: 'nearest' });
     }
@@ -222,7 +240,94 @@ export function createFileList({ place = null, onError = () => {}, onCarry = () 
     return branch(found, '', 1);
   }
 
+  // ---- searching: the files' text, as the find bar finds (find.js) ----
+
+  // Search the files for what is typed, unless it is not a regular
+  // expression where it should be: that is marked, and the last answer stays.
+  async function search() {
+    clearTimeout(searchTimer);
+    const query = filter.value;
+    const options = findOptions();
+    if (query && !searchPattern(query, options)) {
+      filter.setAttribute('aria-invalid', 'true');
+      return;
+    }
+    filter.removeAttribute('aria-invalid');
+    const asked = ++searchesAsked;
+    const answer = query ? await api.search(query, options).catch((error) => ({ error: error.message })) : null;
+    if (asked !== searchesAsked || filter.value !== query || !searching) return;
+    found = answer;
+    tree.replaceChildren(...(query ? hits() : items('', 1)));
+    rove(visibleRow(shown() ?? '') ?? rows()[0] ?? null);
+  }
+
+  // The last search's hits: each file, its folder after its name, then a row
+  // per hit: its line number and its line, the match marked. Both open the
+  // file at their hit (`data-at`: the file row's is its first).
+  function hits() {
+    if (!found) return [el('li', 'pj-files-none', 'Searching…')];
+    if (found.error) return [el('li', 'pj-files-none', found.error)];
+    if (!found.files.length) return [el('li', 'pj-files-none', 'No results')];
+    const list = found.files.map(({ path, hits: fileHits }) => {
+      const item = el('li');
+      item.setAttribute('role', 'none');
+      const node = row('file', path, nameOf(path), 1);
+      node.dataset.at = String(fileHits[0].at);
+      if (parentOf(path)) node.querySelector('.pj-files-label').append(' ', el('span', 'pj-files-where', parentOf(path)));
+      if (path === shown()) node.setAttribute('aria-current', 'page');
+      const group = el('ul');
+      group.setAttribute('role', 'group');
+      group.append(...fileHits.map((hit) => {
+        const li = el('li');
+        li.setAttribute('role', 'none');
+        const hitRow = el('div', 'pj-files-row pj-files-hit');
+        hitRow.setAttribute('role', 'treeitem');
+        hitRow.setAttribute('aria-level', '2');
+        hitRow.tabIndex = -1;
+        hitRow.title = `${path}:${hit.line}`;
+        Object.assign(hitRow.dataset, { path, kind: 'hit', at: String(hit.at) });
+        const label = el('span', 'pj-files-label', hit.text.slice(0, hit.start));
+        label.append(el('mark', '', hit.text.slice(hit.start, hit.end)), hit.text.slice(hit.end));
+        hitRow.append(el('span', 'pj-files-line', String(hit.line)), label);
+        li.append(hitRow);
+        return li;
+      }));
+      item.append(node, group);
+      return item;
+    });
+    if (found.more) list.push(el('li', 'pj-files-none', 'More matches than shown: search for more of the text'));
+    return list;
+  }
+
+  // Switch the field between filtering the paths and searching the text.
+  function setSearching(on) {
+    searching = on;
+    found = null;
+    modeButton.setAttribute('aria-pressed', String(on));
+    modeButton.replaceChildren(on ? icon('search') : '/');
+    modeButton.dataset.tip = on ? 'Filter by path' : 'Search in files';
+    modeButton.dataset.keys = on ? 'Mod+P' : 'Mod+Shift+F';
+    modeButton.setAttribute('aria-label', modeButton.dataset.tip);
+    filter.placeholder = on ? 'Search in files' : 'Filter by regex';
+    filter.setAttribute('aria-label', on ? 'Search the text of the files' : 'Filter files by regular expression');
+    optionsBox.hidden = !on;
+    try {
+      if (view) localStorage.setItem(SEARCH_KEY + view.name, on ? '1' : '');
+    } catch {
+      // no storage: the mode lasts for this page
+    }
+  }
+  optionToggles(optionsBox, () => {
+    if (searching && filter.value) search();
+  });
+  modeButton.addEventListener('click', () => {
+    setSearching(!searching);
+    applyFilter();
+    filter.focus();
+  });
+
   async function applyFilter() {
+    if (searching) return search();
     if (filter.value && !everything) everything = await allFiles();
     tree.replaceChildren(...(filter.value ? matches() : items('', 1)));
     rove(visibleRow(shown() ?? '') ?? rows()[0] ?? null);
@@ -233,7 +338,9 @@ export function createFileList({ place = null, onError = () => {}, onCarry = () 
     } catch {
       // no storage: the filter lasts for this page
     }
-    applyFilter();
+    if (!searching) return applyFilter();
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(search, SEARCH_DELAY_MS);
   });
   filter.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') {
@@ -251,13 +358,20 @@ export function createFileList({ place = null, onError = () => {}, onCarry = () 
       if (first) activate(first);
     }
   });
-  // Mod+P: find a file by its path.
+  // Mod+P: find a file by its path. Mod+Shift+F: search the files' text,
+  // for the selected text when there is some on one line.
   document.addEventListener('keydown', (event) => {
-    if (!(isMac ? event.metaKey : event.ctrlKey) || event.shiftKey || event.altKey || event.code !== 'KeyP' || !view) return;
+    if (!(isMac ? event.metaKey : event.ctrlKey) || event.altKey || !view) return;
+    const pathKey = event.code === 'KeyP' && !event.shiftKey;
+    if (!pathKey && !(event.code === 'KeyF' && event.shiftKey)) return;
     event.preventDefault();
+    const selected = aside.contains(document.activeElement) ? '' : getSelection()?.toString() ?? '';
+    if (searching === pathKey) setSearching(!pathKey);
+    if (!pathKey && selected && !selected.includes('\n')) filter.value = selected;
     reveal();
     filter.focus();
     filter.select();
+    filter.dispatchEvent(new Event('input'));
   });
 
   function show(open) {
@@ -366,26 +480,34 @@ export function createFileList({ place = null, onError = () => {}, onCarry = () 
     }
   }
 
-  // Open the file as a doc, or show it read only when it is not one.
+  // Open the file as a doc, or show it read only when it is not one; a
+  // search's row opens it with the find bar at its hit.
   function openFile(node) {
     node.setAttribute('aria-busy', 'true');
-    openPath(node.dataset.path).finally(() => node.removeAttribute('aria-busy'));
+    const find = node.dataset.at === undefined ? null : { query: filter.value, options: findOptions(), at: Number(node.dataset.at) };
+    openPath(node.dataset.path, find).finally(() => node.removeAttribute('aria-busy'));
   }
   // Until the next doc is shown, the file is marked current and the page left
   // fades (data-switching), so the click shows at once.
-  async function openPath(path) {
-    if (path === view.current) return closePreview();
+  async function openPath(path, find = null) {
+    if (path === view.current) {
+      closePreview();
+      if (find) onFind(find);
+      return undefined;
+    }
     opening = path;
+    jump = find;
     markShown();
     document.documentElement.setAttribute('data-switching', '');
     let opened = true;
     try {
       // The page saves any edit still on its way before it is replaced.
-      opened = await desktop.openInFolder(path);
+      opened = await desktop.openInFolder(path, find);
     } catch (error) {
       onError(`Could not open ${nameOf(path)}: ${error.message}`);
     } finally {
       opening = null;
+      jump = null;
       document.documentElement.removeAttribute('data-switching');
     }
     return opened ? markShown() : showFile(path);
@@ -682,7 +804,7 @@ export function createFileList({ place = null, onError = () => {}, onCarry = () 
   }
 
   tree.addEventListener('pointerdown', (event) => {
-    if (event.button !== 0 || field || !owner) return;
+    if (event.button !== 0 || field || !owner || searching) return;
     const node = event.target.closest('.pj-files-row[data-path]');
     if (!node) return;
     drag = { node, path: node.dataset.path, kind: node.dataset.kind, x: event.clientX, y: event.clientY, pointerId: event.pointerId, started: false, target: null };
@@ -714,6 +836,7 @@ export function createFileList({ place = null, onError = () => {}, onCarry = () 
   aside.addEventListener('contextmenu', (event) => {
     if (field || !owner || event.target.closest('input')) return;
     const node = event.target.closest('.pj-files-row[data-path]');
+    if (node?.dataset.kind === 'hit') return;
     if (!node && !event.target.closest('.pj-files-tree')) return;
     event.preventDefault();
     if (node) rove(node);
@@ -736,9 +859,9 @@ export function createFileList({ place = null, onError = () => {}, onCarry = () 
       else focusRow(list[at + 1]?.dataset.path.startsWith(`${node.dataset.path}/`) ? list[at + 1] : null);
     } else if (key === 'ArrowLeft') {
       if (folder && open) setOpen(node, false);
-      else focusRow(visibleRow(parentOf(node.dataset.path)));
+      else focusRow(visibleRow(node.dataset.kind === 'hit' ? node.dataset.path : parentOf(node.dataset.path)));
     } else if (key === 'Enter' || key === ' ') activate(node);
-    else if (!owner) return;
+    else if (!owner || node.dataset.kind === 'hit') return;
     else if (key === 'F2') startRename(node);
     else if (key === 'Delete' || (isMac && key === 'Backspace' && event.metaKey)) trash(node);
     else if (key === 'ContextMenu' || (key === 'F10' && event.shiftKey)) {
@@ -841,7 +964,7 @@ export function createFileList({ place = null, onError = () => {}, onCarry = () 
   const ready = refresh();
   return {
     ready,
-    state: () => ({ sidebarScroll: tree.scrollTop, startTyping: Boolean(created), lists: [...lists] }),
+    state: () => ({ sidebarScroll: tree.scrollTop, startTyping: Boolean(created), lists: [...lists], ...(jump ? { find: jump } : {}) }),
     /** Name a new file or folder at the top. */
     create: (kind) => startCreate('', kind),
     /**
@@ -880,12 +1003,26 @@ function browserFolder({ name, path }) {
       // kept for this page only
     }
   };
+  // A search hit opened here, for the page of its doc (the app's `carry`).
+  const FIND_KEY = 'ponjo.find';
+  let carry = null;
+  try {
+    carry = JSON.parse(sessionStorage.getItem(FIND_KEY));
+    sessionStorage.removeItem(FIND_KEY);
+  } catch {
+    // no storage: nothing carried
+  }
   return {
-    folder: async () => ({ name, current: path, expanded: kept.expanded ?? [], sidebar: kept.sidebar ?? true }),
+    folder: async () => ({ name, current: path, expanded: kept.expanded ?? [], sidebar: kept.sidebar ?? true, carry }),
     folderExpand: async (rel, open) => keep({ expanded: [...(kept.expanded ?? []).filter((p) => p !== rel), ...(open ? [rel] : [])] }),
     showSidebar: async (open) => keep({ sidebar: open }),
-    async openInFolder(rel) {
+    async openInFolder(rel, find = null) {
       if ((await api.read(rel)).problem) return false;
+      try {
+        if (find) sessionStorage.setItem(FIND_KEY, JSON.stringify({ find }));
+      } catch {
+        // no storage: the doc opens at its top
+      }
       const params = new URLSearchParams(location.search);
       params.set('doc', rel);
       location.search = params;

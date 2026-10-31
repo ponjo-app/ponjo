@@ -24,6 +24,7 @@ import { createHistory } from './history.js';
 import { createRuns } from './runs.js';
 import { revisionMarks } from './marks.js';
 import { createFileList } from './files.js';
+import { setFindOptions } from './find.js';
 import { askName, named } from './join.js';
 import { REFUSED } from './relay.js';
 import { NAME_PATTERN } from '../src/core/mentions.js';
@@ -201,6 +202,7 @@ async function start() {
     onError: (message) => setStatus(message, 'error'),
     onCarry: carried,
     onPaths: loadPaths,
+    onFind: openFind,
   });
 
   openedText = initial.text;
@@ -304,6 +306,7 @@ async function start() {
   carry.then((left) => {
     if (left.commentsHidden) showComments(false);
     if (left.startTyping) startTyping = true;
+    if (left.find) openFind(left.find);
   });
   commentsToggle.addEventListener('click', () => {
     if (narrow.matches) openSheet(!sheetOpen());
@@ -496,6 +499,12 @@ function followViews() {
     }
     made = chosen;
   }).catch((error) => setStatus(`Could not switch the view: ${error.message}`, 'error'));
+}
+
+// A search hit in the sidebar (web/files.js): the find bar on its query, at its match.
+function openFind({ query, options, at }) {
+  setFindOptions(options);
+  editor.find(query, at);
 }
 
 async function remakeView(chosen) {

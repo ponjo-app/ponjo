@@ -45,7 +45,8 @@ import { blocksOf, childPos, diffBlocks, pairRanges, parseRun, replaceBlocks, te
 import { buddyColor } from '../../faces.js';
 import { cursorNode } from '../../marks.js';
 import { createChrome } from './chrome.js';
-import { createFind, matches } from '../../find.js';
+import { matches } from '../../../src/core/search.js';
+import { createFind } from '../../find.js';
 
 const FLASH_MS = 6000;
 const highlightKey = new PluginKey('ponjo-highlights');
@@ -875,7 +876,7 @@ export async function createMarkdownView({
   // ---- find (web/find.js): in what a reader sees ----
 
   let found = []; // the document ranges of the matches, in `foundIn`
-  let query = '';
+  let query = null; // the find bar's pattern (src/core/search.js)
 
   // { count, current }: how many matches, and which is selected (from 1; 0: none).
   function foundState() {
@@ -890,6 +891,18 @@ export async function createMarkdownView({
     v.dispatch(v.state.tr.setMeta(foundKey, DecorationSet.create(v.state.doc, decorations)).setMeta('addToHistory', false));
   }
 
+  function selectFound(next) {
+    const v = view();
+    v.dispatch(v.state.tr.setSelection(TextSelection.create(v.state.doc, next.from, next.to)));
+    // Into view when it is not, below the find bar.
+    const canvas = stage.parentElement;
+    const box = canvas.getBoundingClientRect();
+    const { top, bottom } = v.coordsAtPos(next.from);
+    if (top < box.top + 80 || bottom > box.bottom - 16) canvas.scrollTop += top - (box.top + box.height / 2);
+    paintFound();
+    return foundState();
+  }
+
   const search = {
     find(next) {
       query = next;
@@ -899,7 +912,7 @@ export async function createMarkdownView({
       // nor in a diagram's hidden source.
       found = matches(projection.text, query)
         .filter(([start, end]) => projection.positions.subarray(start, end).every((p, i, all) => i === 0 || p > all[i - 1]))
-        .map(([start, end]) => docRange(projection, start, end))
+        .map(([start, end, match]) => ({ ...docRange(projection, start, end), match }))
         .filter(({ from }) => !(editable && doc.resolve(from).parent.attrs.language === 'mermaid'));
       foundIn = query ? doc : null;
       paintFound();
@@ -911,23 +924,20 @@ export async function createMarkdownView({
       const { from, to } = v.state.selection;
       const same = (r) => r.from === from && r.to === to;
       const i = back ? found.findLastIndex((r) => r.to <= from && !same(r)) : found.findIndex((r) => r.from >= to && !same(r));
-      const next = found.at(i === -1 ? (back ? -1 : 0) : i);
-      v.dispatch(v.state.tr.setSelection(TextSelection.create(v.state.doc, next.from, next.to)));
-      // Into view when it is not, below the find bar.
-      const canvas = stage.parentElement;
-      const box = canvas.getBoundingClientRect();
-      const { top, bottom } = v.coordsAtPos(next.from);
-      if (top < box.top + 80 || bottom > box.bottom - 16) canvas.scrollTop += top - (box.top + box.height / 2);
-      paintFound();
-      return foundState();
+      return selectFound(found.at(i === -1 ? (back ? -1 : 0) : i));
     },
-    replace(text, all) {
+    reveal(at) {
+      if (found.length === 0) return foundState();
+      const pos = caretAt(view().state.doc, at) ?? 0;
+      return selectFound(found.find((r) => r.from >= pos) ?? found[0]);
+    },
+    replace(textFor, all) {
       const v = view();
       const { from, to } = v.state.selection;
       const targets = all ? found : found.filter((r) => r.from === from && r.to === to);
       if (!editable || targets.length === 0) return search.step(false);
       const tr = v.state.tr;
-      for (const r of [...targets].reverse()) tr.insertText(text, r.from, r.to);
+      for (const r of [...targets].reverse()) tr.insertText(textFor(r.match), r.from, r.to);
       v.dispatch(tr.setSelection(TextSelection.create(tr.doc, tr.mapping.map(targets.at(-1).to))));
       search.find(query);
       return all ? foundState() : search.step(false);
@@ -978,6 +988,8 @@ export async function createMarkdownView({
       const { node } = v.domAtPos(range.from);
       (node.nodeType === 1 ? node : node.parentElement)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
     },
+    /** Open the find bar on `query` (as typed in it), at its first match at or after text offset `at`. */
+    find: (query, at) => finder.open(query, at),
     focus: () => view().focus(),
     /** Undo or redo the human's last edit, in this view's own history. */
     undo: () => run('undo'),

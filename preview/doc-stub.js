@@ -20,6 +20,7 @@ import { apply, diffOps } from '../src/core/ot.js';
 import { appendedComments, askedOf, movedAnchor, newComment, newId, parseSidecar, peopleOf, serializeSidecar, threadsOf } from '../src/core/comments.js';
 import { diffEdits, merge3 } from '../src/core/diff.js';
 import { buildPrompt } from '../src/core/prompt.js';
+import { matches, searchPattern } from '../src/core/search.js';
 import { INFER, apply as applyProposal, turn } from '../agents/ponjo-core.mjs';
 import { buddiesHere, checkBuddyPatch, parseBuddy } from '../src/core/buddies.js';
 import { sameName } from '../src/core/mentions.js';
@@ -361,6 +362,21 @@ if (inFolder) {
       .sort((a, b) => (b.folder - a.folder) || a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
   };
   calls.read = ({ path }) => ({ text: s.files[path] ?? '' });
+  // As ProjectService searches, each hit's line whole.
+  calls.search = ({ query, options }) => {
+    const pattern = searchPattern(query, options);
+    const files = Object.keys(s.files).sort().map((path) => {
+      const text = s.files[path];
+      const hits = matches(text, pattern).map(([start, end]) => {
+        const lineStart = text.lastIndexOf('\n', start - 1) + 1;
+        const lineEnd = text.indexOf('\n', start);
+        const line = text.slice(lineStart, lineEnd === -1 ? text.length : lineEnd);
+        return { line: text.slice(0, start).split('\n').length, at: start, text: line, start: start - lineStart, end: Math.min(end - lineStart, line.length) };
+      });
+      return { path, hits };
+    }).filter(({ hits }) => hits.length);
+    return { files, more: false };
+  };
 
   window.ponjoDesktop = {
     folder() {

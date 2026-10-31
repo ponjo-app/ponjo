@@ -45,7 +45,7 @@ designed, not built.
 - **Link definitions** (`[d]: https://…`) are kept as written, and so is
   every reference link (`[docs][d]`) in a block not changed but by typing.
 - **Keys:** Undo, Redo, the formatting above, Comment, Find, and focus
-  mode (Ctrl+Shift+F). Enter and Tab work in lists and tables; Tab in a
+  mode (Ctrl+Shift+.). Enter and Tab work in lists and tables; Tab in a
   table's last cell adds a row; in a code block Tab and Shift+Tab indent and
   outdent its lines by the block's own indent; elsewhere Tab stays in the page.
   Delete at the start of a list item deletes forward, as in any text.
@@ -67,7 +67,8 @@ designed, not built.
   (`image`, as a link resolves, only what the project shows), up to 5 MB.
 - **Find and replace** (Mod+F; Mod+Alt+F with Replace), as in every view: a
   bar at the page's top right finds what a reader sees, not the markup,
-  ignoring case; every match is marked, the current one stronger, with how
+  ignoring case unless Match case is on (and Whole word, Regular
+  expression: [Around the doc](user-experience.md#around-the-doc)); every match is marked, the current one stronger, with how
   many there are. Enter or Mod+G goes to the next, Shift for the one before;
   Escape closes it and selects the match. Replace and Replace all are the
   person's own edit, undone with Cmd+Z. A view that cannot be edited finds
