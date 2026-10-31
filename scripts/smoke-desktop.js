@@ -204,14 +204,14 @@ async function switchesView(page, on, pages, id) {
 }
 
 // In `page`, a Markdown doc: true when the Markdown view's Outline switch
-// hides the outline and Mod+Shift+F turns focus mode on, each at once and
+// hides the outline and Mod+Shift+. turns focus mode on, each at once and
 // back again.
 async function ownSettingsApply(page) {
   const has = (attr) => page.evaluate(`document.documentElement.hasAttribute('${attr}')`);
   const outline = () => page.evaluate(`document.querySelector('.pj-settings [data-owner="markdown"][data-key="outline"]').click()`);
   const modifiers = (process.platform === 'darwin' ? 4 : 2) | 8; // Meta or Ctrl, and Shift
   const focusKey = async () => {
-    for (const type of ['keyDown', 'keyUp']) await page.send('Input.dispatchKeyEvent', { type, modifiers, key: 'F', code: 'KeyF', windowsVirtualKeyCode: 70 });
+    for (const type of ['keyDown', 'keyUp']) await page.send('Input.dispatchKeyEvent', { type, modifiers, key: '>', code: 'Period', windowsVirtualKeyCode: 190 });
   };
   await outline();
   const hidden = await has('data-no-outline');

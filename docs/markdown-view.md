@@ -45,7 +45,7 @@ designed, not built.
 - **Link definitions** (`[d]: https://…`) are kept as written, and so is
   every reference link (`[docs][d]`) in a block not changed but by typing.
 - **Keys:** Undo, Redo, the formatting above, Comment, Find, and focus
-  mode (Ctrl+Shift+F). Enter and Tab work in lists and tables; Tab in a
+  mode (Ctrl+Shift+.). Enter and Tab work in lists and tables; Tab in a
   table's last cell adds a row; in a code block Tab and Shift+Tab indent and
   outdent its lines by the block's own indent; elsewhere Tab stays in the page.
   Delete at the start of a list item deletes forward, as in any text.

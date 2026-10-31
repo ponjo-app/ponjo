@@ -384,6 +384,15 @@ test('markdown view: Enter on an empty heading makes it a paragraph; Backspace a
   assert.equal(await getText(), 'One.\n\nQuoted.\n\n> More.\n');
 });
 
+test('markdown view: Mod+Shift+. turns focus mode on (Mod+Shift+F is the sidebar\'s search)', async () => {
+  await make('markdown', 'Alpha beta.\n', { toolbar: true });
+  await select('beta', 0, 0);
+  await shortcut('f', MOD | 8);
+  assert.deepEqual(await run('contract.saved'), []);
+  for (const type of ['rawKeyDown', 'keyUp']) await page.send('Input.dispatchKeyEvent', { type, key: '>', code: 'Period', windowsVirtualKeyCode: 190, modifiers: MOD | 8 });
+  assert.deepEqual(await run('contract.saved'), [{ focus: true }]);
+});
+
 test('markdown view: the standard keys format the selection, and Mod+K opens the link popover', async () => {
   for (const [letter, modifiers, saved] of [['b', MOD, '**beta**'], ['i', MOD, '*beta*'], ['e', MOD, '`beta`'], ['x', MOD | 8, '~~beta~~']]) {
     await make('markdown', 'Alpha beta.\n', { toolbar: true });
