@@ -203,7 +203,12 @@ works, or what went wrong.
 
 - **Find and replace** (Ctrl+F; Ctrl+Alt+F with Replace), in every view and
   in history: what a reader sees, every match marked, Enter for the next.
-  Replacing is your own edit, undone with Ctrl+Z.
+  It finds what is typed, case ignored; **Aa** matches case, **ab** whole
+  words, **.\*** a regular expression (then `$1` in Replace is its first
+  group). The three are one choice for every find bar and the sidebar's
+  search. Replacing is your own edit, undone with Ctrl+Z.
+- **Print and Export as PDF** (File menu): the doc as a reader sees it,
+  light, without the app around it, its comments or anyone's marks.
 - **Version history** (clock button, Ctrl+Alt+Shift+H): every version with
   who made it (you, a teammate, both when you typed together, an AI buddy
   with the comment it answered, or a program outside Ponjo), a diff against the one before, Undo this change and
@@ -227,7 +232,7 @@ works, or what went wrong.
   Every text file opens in the Plain text view (always on) unless a view
   gives its format a WYSIWYG editor; the built-in one is for Markdown and on
   by default. How changes merge is the same in every view.
-  The **Markdown view** ([design](markdown-view.md)): its toolbar, outline and focus mode (Ctrl+Shift+F)
+  The **Markdown view** ([design](markdown-view.md)): its toolbar, outline and focus mode (Ctrl+Shift+.)
   are part of it. The toolbar formats, and so do the standard keys (Mod+B,
   Mod+I, Mod+E, Mod+Shift+X, Mod+K); typed Markdown such as `## `, `**x**`
   or `- ` stays text (saved escaped). To write Markdown by hand, switch the
@@ -257,7 +262,11 @@ works, or what went wrong.
   Mod+P finds a file by its path in the sidebar's filter (a regular
   expression): the matches show in their folders, those git ignores
   dimmed and last (not inside a folder it ignores), and Enter opens the
-  first. Everyone on the team sees the same tree. A
+  first. Ctrl+Shift+F (or the button before the field) turns the field to
+  search the files' text, as the find bar finds: each file it is in, then
+  each line with its number, the match marked; what git ignores is not
+  searched, and past 1,000 matches it says so. A line opens its file with
+  the find bar at that match. Everyone on the team sees the same tree. A
   doc opens in the editor; any other file shows read only in its place
   (Escape goes back). A file's path in a comment, as Copy Path writes it,
   is a link that opens it; in the link popover, typing finds the

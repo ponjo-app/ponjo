@@ -67,7 +67,8 @@ designed, not built.
   (`image`, as a link resolves, only what the project shows), up to 5 MB.
 - **Find and replace** (Mod+F; Mod+Alt+F with Replace), as in every view: a
   bar at the page's top right finds what a reader sees, not the markup,
-  ignoring case; every match is marked, the current one stronger, with how
+  ignoring case unless Match case is on (and Whole word, Regular
+  expression: [Around the doc](user-experience.md#around-the-doc)); every match is marked, the current one stronger, with how
   many there are. Enter or Mod+G goes to the next, Shift for the one before;
   Escape closes it and selects the match. Replace and Replace all are the
   person's own edit, undone with Cmd+Z. A view that cannot be edited finds

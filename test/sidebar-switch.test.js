@@ -58,3 +58,39 @@ test('the next page draws the sidebar the last one left, then shows the files th
     return now.includes('new.md') && !now.includes('notes/c.md') && now.includes('notes');
   }, 10_000, 'the sidebar read again: new.md there, notes/c.md gone');
 });
+
+test('Mod+Shift+F searches the files\' text; a hit in another doc opens it with the find bar at the match', { timeout: 120_000 }, async () => {
+  await writeFile(join(folder, 'notes', 'd.md'), `${'A line.\n\n'.repeat(40)}The needle is here.\n`);
+  const page = await app.page('b.md', 30_000);
+  await waitFor(() => page.evaluate('window.ponjoReady.then(() => true)'), 10_000, 'the page ready');
+  const key = { key: 'F', code: 'KeyF', windowsVirtualKeyCode: 70, modifiers: (process.platform === 'darwin' ? 4 : 2) | 8 };
+  for (const type of ['rawKeyDown', 'keyUp']) await page.send('Input.dispatchKeyEvent', { type, ...key });
+  assert.ok(await page.evaluate(`document.activeElement.matches('.pj-files-filter') && document.querySelector('.pj-files-mode').getAttribute('aria-pressed') === 'true'`), 'the field searches');
+  await page.send('Input.insertText', { text: 'needle' });
+  await waitFor(() => page.evaluate(`Boolean(document.querySelector('.pj-files-hit[data-path="notes/d.md"]'))`), 10_000, 'the hit in notes/d.md');
+  assert.equal(await page.evaluate(`document.querySelector('.pj-files-hit mark').textContent`), 'needle');
+  await page.evaluate(`document.querySelector('.pj-files-hit[data-path="notes/d.md"]').click()`);
+
+  const next = await app.page('d.md', 30_000);
+  await waitFor(() => next.evaluate(`document.querySelector('.pj-find-count')?.textContent === '1 of 1'`), 10_000, 'the find bar at the match');
+  assert.equal(await next.evaluate(`document.querySelector('.pj-find-input').value`), 'needle');
+  assert.equal(await next.evaluate(`document.querySelector('.pj-found-current')?.textContent`), 'needle', 'the match selected');
+  assert.equal(await next.evaluate(`document.querySelector('.pj-files-filter').value`), 'needle', 'the search stays in the sidebar');
+});
+
+test('printing a doc prints its text alone, every line of a long plain text file', { timeout: 120_000 }, async () => {
+  await writeFile(join(folder, 'long.txt'), Array.from({ length: 400 }, (_, i) => `line ${i + 1}`).join('\n'));
+  const page = await app.page('d.md', 30_000);
+  await page.evaluate(`document.querySelector('.pj-files-mode').click()`); // back to the tree's filter
+  await page.evaluate(`(() => { const f = document.querySelector('.pj-files-filter'); f.value = ''; f.dispatchEvent(new Event('input')); })()`);
+  await waitFor(() => page.evaluate(`Boolean(document.querySelector('.pj-files-file[data-path="long.txt"]'))`), 10_000, 'long.txt in the tree');
+  await page.evaluate(`document.querySelector('.pj-files-file[data-path="long.txt"]').click()`);
+  const long = await app.page('long.txt', 30_000);
+  await waitFor(() => long.evaluate(`Boolean(document.querySelector('.cm-content'))`), 10_000, 'the plain view');
+  await long.send('Emulation.setEmulatedMedia', { media: 'print' });
+  // Printing turns the page to print media: CodeMirror then draws every line, not only those on screen, for a moment.
+  const drawn = `new Promise((done) => { const until = Date.now() + 400; (function count() { const n = document.querySelectorAll('.cm-line').length; if (n === 400 || Date.now() > until) done(n); else setTimeout(count, 10); })(); })`;
+  assert.equal(await long.evaluate(drawn), 400);
+  assert.deepEqual(await long.evaluate(`['.pj-header', '.pj-files', '.pj-toolbar', '.pj-margin', '.cm-gutters'].map((s) => getComputedStyle(document.querySelector(s)).display)`), ['none', 'none', 'none', 'none', 'none']);
+  await long.send('Emulation.setEmulatedMedia', { media: '' });
+});

@@ -76,6 +76,11 @@ export const api = {
   list: (path) => call('list', { path }),
   /** The project's file `path` to show read only: { text } or { problem: 'large' | 'binary' }. */
   read: (path) => call('read', { path }),
+  /**
+   * The project's files `query` is found in, under the find `options`
+   * (src/core/search.js): { files: [{ path, hits: [{ line, at, text, start, end }] }], more }.
+   */
+  search: (query, options) => call('search', { query, options }),
   /** An image the doc shows, `src` as written in it, as a `data:` URL; null when it is too big to send. */
   async image(src) {
     const { type, data } = await call('image', { src });

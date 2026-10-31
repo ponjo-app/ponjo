@@ -86,7 +86,7 @@ function elements(markup) {
  * in `toolbar`, the bubble in `stage`, the outline before it.
  * `onComment` is the bubble's Comment button. `settings` are the view's:
  * the page's font and width, whether the outline and the word count show and
- * focus mode is on; Mod+Shift+F changes focus mode through `saveSettings`.
+ * focus mode is on; Mod+Shift+. changes focus mode through `saveSettings`.
  *
  * @param {object} editor
  * A read-only view (`editable` false) has no tools and no bubble.
@@ -237,7 +237,7 @@ export function createChrome(editor, { toolbar, stage, host, onComment, files = 
   const fade = () => host.toggleAttribute('data-fade', settings.focus && host.matches(':focus-within'));
   document.addEventListener('keydown', (event) => {
     const mod = mac ? event.metaKey : event.ctrlKey;
-    if (mod && event.shiftKey && !event.altKey && event.key.toLowerCase() === 'f') {
+    if (mod && event.shiftKey && !event.altKey && event.code === 'Period') {
       event.preventDefault();
       saveSettings({ focus: !settings.focus });
     }

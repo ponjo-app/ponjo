@@ -293,6 +293,44 @@ for (const name of VIEWS) {
     assert.equal(await getText(), text);
   });
 
+  test(`${name} view: Match case, Whole word and Regular expression narrow the find; a regular expression's replacement takes its groups`, async () => {
+    const text = 'One cat, a Cat and cats.\n\nThe cat sat.\n';
+    await make(name, text);
+    await select('One', 0, 0);
+    await shortcut('f', MOD | 1);
+    const count = () => run(`document.querySelector('.pj-find-count').textContent`);
+    const option = (key) => run(`document.querySelector('.pj-find [data-option="${key}"]').click()`);
+    const query = (value) => run(`(() => { const input = document.querySelector('.pj-find-input'); input.value = ${JSON.stringify(value)}; input.dispatchEvent(new Event('input', { bubbles: true })); })()`);
+    await query('cat');
+    assert.equal(await count(), '4 found');
+    await option('matchCase');
+    assert.equal(await count(), '3 found', 'not Cat');
+    await option('wholeWord');
+    assert.equal(await count(), '2 found', 'not cats');
+    await option('matchCase');
+    await option('wholeWord');
+    await option('regex');
+    await query('(');
+    assert.equal(await run(`document.querySelector('.pj-find-input').hasAttribute('aria-invalid') && document.querySelectorAll('.pj-found').length`), 0, 'not a regular expression: marked, nothing found');
+    await query('(c\\w+) sat');
+    assert.equal(await count(), '1 found');
+    await run(`document.querySelectorAll('.pj-find-input')[1].value = '$1 sits'`);
+    await run(`document.querySelector('.pj-find [data-action="all"]').click()`);
+    assert.equal(await getText(), text.replace('cat sat', 'cat sits'));
+    await option('regex');
+    assert.deepEqual(await run(`[...document.querySelectorAll('.pj-find-option')].map((b) => b.getAttribute('aria-pressed'))`), ['false', 'false', 'false']);
+  });
+
+  test(`${name} view: find(query, at) opens the bar at the first match at or after a text offset`, async () => {
+    const text = 'One cat, a Cat and cats.\n\nThe cat sat.\n';
+    await make(name, text);
+    await run(`view.find('cat', ${text.indexOf('The')})`);
+    assert.equal(await run(`document.querySelector('.pj-find-count').textContent`), '4 of 4');
+    assert.equal(await run(`document.activeElement.matches('.pj-find-input') && document.activeElement.value`), 'cat');
+    await run(`view.find('cat', ${text.indexOf('a Cat')})`);
+    assert.equal(await run(`document.querySelector('.pj-find-count').textContent`), '2 of 4');
+  });
+
   test(`${name} view: a find bar in a read-only view finds, and has no Replace`, async () => {
     await make(name, 'Alpha beta.\n', { editable: false });
     await select('Alpha', 0, 5);

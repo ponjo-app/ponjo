@@ -16,7 +16,8 @@ import { cursorNode } from '../../marks.js';
 import { hydrateIcons } from '../../icons.js';
 import { indentKeys, resolveIndent } from './indent.js';
 import { createStatusBar } from './status.js';
-import { createFind, matches } from '../../find.js';
+import { matches } from '../../../src/core/search.js';
+import { createFind } from '../../find.js';
 import { indentGuides, whitespaceMarks } from './whitespace.js';
 
 const FLASH_MS = 6000;
@@ -98,7 +99,7 @@ export async function createPlainView({ stage, text, name, settings, saveSetting
   let finder = null; // the find bar (web/find.js)
   let found = []; // [from, to) of each of its matches, in `foundIn`
   let foundIn = null; // the doc they were found in, while it has a query
-  let query = '';
+  let query = null; // the find bar's pattern (src/core/search.js)
   let refind = 0;
   let composed = false; // typed in a composition not ended yet
   let bubble = null;
@@ -176,6 +177,11 @@ export async function createPlainView({ stage, text, name, settings, saveSetting
     const { current } = foundState();
     view.dispatch({ effects: setFound.of(Decoration.set(found.map(([from, to], i) => Decoration.mark({ class: i + 1 === current ? 'pj-found pj-found-current' : 'pj-found' }).range(from, to)))) });
   };
+  const selectFound = ([anchor, head]) => {
+    view.dispatch({ selection: { anchor, head }, effects: EditorView.scrollIntoView(anchor, { yMargin: 80 }) });
+    paintFound();
+    return foundState();
+  };
   const search = {
     find(next) {
       query = next;
@@ -189,16 +195,18 @@ export async function createPlainView({ stage, text, name, settings, saveSetting
       const { from, to } = view.state.selection.main;
       const same = ([f, t]) => f === from && t === to;
       const i = back ? found.findLastIndex((r) => r[1] <= from && !same(r)) : found.findIndex((r) => r[0] >= to && !same(r));
-      const [anchor, head] = found.at(i === -1 ? (back ? -1 : 0) : i);
-      view.dispatch({ selection: { anchor, head }, effects: EditorView.scrollIntoView(anchor, { yMargin: 80 }) });
-      paintFound();
-      return foundState();
+      return selectFound(found.at(i === -1 ? (back ? -1 : 0) : i));
     },
-    replace(text, all) {
+    reveal(at) {
+      if (found.length === 0) return foundState();
+      const pos = toDoc(at);
+      return selectFound(found.find((r) => r[0] >= pos) ?? found[0]);
+    },
+    replace(textFor, all) {
       const { from, to } = view.state.selection.main;
       const targets = all ? found : found.filter(([f, t]) => f === from && t === to);
       if (!editable || targets.length === 0) return search.step(false);
-      const changes = view.state.changes(targets.map(([f, t]) => ({ from: f, to: t, insert: text })));
+      const changes = view.state.changes(targets.map(([f, t, match]) => ({ from: f, to: t, insert: textFor(match) })));
       view.dispatch({ changes, selection: { anchor: changes.mapPos(targets.at(-1)[1], 1) }, userEvent: 'input.replace' });
       search.find(query);
       return all ? foundState() : search.step(false);
@@ -309,6 +317,8 @@ export async function createPlainView({ stage, text, name, settings, saveSetting
     scrollTo(at) {
       view.dispatch({ effects: EditorView.scrollIntoView(toDoc(at), { y: 'center' }) });
     },
+    /** Open the find bar on `query` (as typed in it), at its first match at or after text offset `at`. */
+    find: (query, at) => finder.open(query, at),
     focus: () => view.focus(),
     /** The view's settings changed. */
     applySettings(next) {

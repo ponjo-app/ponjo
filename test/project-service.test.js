@@ -160,6 +160,40 @@ test('read: a file\'s text, but not a large or binary one, nor a folder', async 
   await assert.rejects(service.read(''), notFound);
 });
 
+test('search: each text file the query is found in, in the tree\'s order, each hit\'s line and its offset in the text a doc reads', async () => {
+  const { root, outside, service } = await project({
+    'b.md': 'One cat.\r\nTwo Cats and a cat.\r\n', 'a.md': '﻿no match\n', 'notes/c.md': 'cat\n', 'notes/c.md.comments.jsonl': '{"body":"cat"}\n',
+    '.hidden/cat.md': 'cat\n', 'pic.png': Buffer.from([0x63, 0x61, 0x74, 0x00]), 'big.txt': `cat${'x'.repeat(MAX_TEXT_BYTES)}`,
+    '.gitignore': 'dist/\n', 'dist/cat.md': 'cat\n',
+  });
+  await symlink(outside, join(root, 'out'), 'junction');
+  await writeFile(join(outside, 'cat.md'), 'cat\n');
+  execFileSync('git', ['init', '-q'], { cwd: root });
+  const { files, more } = await service.search('cat', {});
+  assert.equal(more, false);
+  assert.deepEqual(files.map((f) => f.path), ['notes/c.md', 'b.md'], 'folders first; not hidden, ignored, binary, large, a sidecar or out of the project');
+  const text = 'One cat.\nTwo Cats and a cat.\n'; // as a doc reads b.md: its lines end in \n
+  assert.deepEqual(files[1].hits, [
+    { line: 1, at: text.indexOf('cat'), text: 'One cat.', start: 4, end: 7 },
+    { line: 2, at: text.indexOf('Cat'), text: 'Two Cats and a cat.', start: 4, end: 7 },
+    { line: 2, at: text.lastIndexOf('cat'), text: '… Cats and a cat.', start: 13, end: 16 }, // cut 12 characters before the match
+  ]);
+  assert.deepEqual((await service.search('Cat', { matchCase: true, wholeWord: false })).files.map((f) => f.hits.length), [1]);
+  assert.deepEqual(await service.search('cat(', { regex: true }), { files: [], more: false }, 'not a regular expression: nothing');
+  assert.deepEqual(await service.search('', {}), { files: [], more: false });
+});
+
+test('search: a long line is cut around its match; past 1000 hits the rest is left out, and said', async () => {
+  const long = `${'a'.repeat(300)}needle${'b'.repeat(300)}`;
+  const { service } = await project({ 'long.txt': `${long}\n`, 'many.txt': 'x '.repeat(1200) });
+  const [hit] = (await service.search('needle', {})).files[0].hits;
+  assert.ok(hit.text.length <= 162 && hit.text.startsWith('…') && hit.text.endsWith('…'), hit.text);
+  assert.equal(hit.text.slice(hit.start, hit.end), 'needle');
+  const many = await service.search('x', {});
+  assert.equal(many.more, true);
+  assert.equal(many.files.reduce((n, f) => n + f.hits.length, 0), 1000);
+});
+
 // Run each swap just before the nth call of an fs/promises function
 // ({ name: [n, swap] }), in every module that imports it, during `fn`.
 async function withSwaps(swaps, fn) {

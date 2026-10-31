@@ -9,7 +9,8 @@ import { spawn } from 'node:child_process';
 import { lstat, open, readFile, readdir, realpath, stat } from 'node:fs/promises';
 import { dirname, extname, isAbsolute, join, relative, resolve as resolvePath, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { MAX_TEXT_BYTES, SIDECAR_SUFFIX } from '../store/files.js';
+import { matches, searchPattern } from '../core/search.js';
+import { MAX_TEXT_BYTES, SIDECAR_SUFFIX, decodeText } from '../store/files.js';
 
 const notFound = (rel) => Object.assign(new Error(`${rel}: no such file in the project`), { code: 'not_found' });
 const hidden = (part) => part.startsWith('.');
@@ -21,6 +22,12 @@ const IMAGE_TYPES = {
   '.png': 'image/png', '.svg': 'image/svg+xml', '.webp': 'image/webp',
 };
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+// A search's answer, small enough for one message to a teammate's page: at
+// most this many hits, each line cut to HIT_LINE characters, the match
+// HIT_CONTEXT characters in when the line is longer.
+const MAX_HITS = 1000;
+const HIT_LINE = 160;
+const HIT_CONTEXT = 12; // the sidebar shows about 30 characters
 
 /**
  * Where link `href` in doc `docPath` goes: from the doc's own place, or, in
@@ -142,6 +149,36 @@ async function openFile(root, rel) {
   }
 }
 
+// The text of the file `rel` as a doc reads it, or null when it is not UTF-8
+// text, is too large, or is gone.
+async function readText(root, rel) {
+  try {
+    const { handle, size } = await openFile(root, rel);
+    try {
+      if (size > MAX_TEXT_BYTES) return null;
+      const bytes = await handle.readFile();
+      return bytes.includes(0) ? null : decodeText(bytes)?.text ?? null;
+    } finally {
+      await handle.close();
+    }
+  } catch {
+    return null;
+  }
+}
+
+// A search hit for the match [start, end) of `text`, on line `line`: that
+// line, cut to HIT_CONTEXT characters before the match and the rest of
+// HIT_LINE after it.
+function hitAt(text, start, end, line) {
+  const lineStart = text.lastIndexOf('\n', start - 1) + 1;
+  const lineEnd = text.indexOf('\n', start);
+  const lineText = text.slice(lineStart, lineEnd === -1 ? text.length : lineEnd);
+  const from = Math.max(0, start - lineStart - HIT_CONTEXT);
+  const cut = (from > 0 ? '…' : '') + lineText.slice(from, from + HIT_LINE) + (from + HIT_LINE < lineText.length ? '…' : '');
+  const offset = (from > 0 ? 1 : 0) - from - lineStart;
+  return { line, at: start, text: cut, start: start + offset, end: Math.min(end + offset, cut.length) };
+}
+
 /** The project in folder `root` (a real path): what everyone may read of it. */
 export function projectService(root) {
   return {
@@ -185,6 +222,50 @@ export function projectService(root) {
       } finally {
         await handle.close();
       }
+    },
+
+    /**
+     * The project's text files that `query` (src/core/search.js, under
+     * `options`) is found in, by path in the tree's order: { files: [{ path,
+     * hits: [{ line, at, text, start, end }] }], more }. A hit is on line
+     * `line` (from 1), at text offset `at` of the file as a doc reads it
+     * (decodeText); `text` is that line, cut around the match when long, the
+     * match at [start, end) in it. Not searched: what git ignores, and what
+     * is not UTF-8 text or is too large to open. At most MAX_HITS hits;
+     * `more` when there were more.
+     */
+    async search(query, options) {
+      const pattern = searchPattern(query, options);
+      if (!pattern) return { files: [], more: false };
+      const files = [];
+      let count = 0;
+      const searchIn = async (rel) => {
+        for (const { name, folder, ignored } of await this.list(rel).catch(() => [])) {
+          if (count > MAX_HITS) return;
+          const path = rel ? `${rel}/${name}` : name;
+          if (ignored) continue;
+          if (folder) {
+            await searchIn(path);
+            continue;
+          }
+          const text = await readText(root, path);
+          if (text === null) continue;
+          const hits = [];
+          let line = 1;
+          let counted = 0; // the lines are counted up to here
+          for (const [start, end] of matches(text, pattern)) {
+            if (++count > MAX_HITS) break;
+            for (let i = text.indexOf('\n', counted); i !== -1 && i < start; i = text.indexOf('\n', i + 1)) {
+              line++;
+              counted = i + 1;
+            }
+            hits.push(hitAt(text, start, end, line));
+          }
+          if (hits.length) files.push({ path, hits });
+        }
+      };
+      await searchIn('');
+      return { files, more: count > MAX_HITS };
     },
 
     /** The image `rel`: { type, data } (base64), or { problem: 'large' }. */

@@ -7,7 +7,7 @@
 
 import { BrowserWindow, Menu, app, clipboard, dialog, ipcMain, nativeTheme, safeStorage, session, shell, utilityProcess } from 'electron';
 import { statSync } from 'node:fs';
-import { mkdir, realpath } from 'node:fs/promises';
+import { mkdir, realpath, writeFile } from 'node:fs/promises';
 import { basename, dirname, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { SHIPPED_AGENTS, agentsDir, installAgents, listAgents, pickedAgent, readAgent } from '../src/store/agents.js';
@@ -382,6 +382,9 @@ function buildMenu() {
         { label: 'Rename…', enabled: Boolean(doc), click: (_item, win) => renameDialog(win) },
         { label: REVEAL_LABEL, enabled: Boolean(doc), click: (_item, win) => revealDoc(win) },
         { type: 'separator' },
+        { label: 'Print…', enabled: Boolean(doc), click: (_item, win) => printDoc(win) },
+        { label: 'Export as PDF…', enabled: Boolean(doc), click: (_item, win) => exportPdf(win) },
+        { type: 'separator' },
         ...(isMac ? [] : [settingsItem, { type: 'separator' }]),
         { role: 'close' },
         ...(isMac ? [] : [{ role: 'quit' }]),
@@ -450,6 +453,35 @@ function pageCommand(win, name) {
 // Settings > Agents > Show folder: where the agents are, to edit them.
 function showAgents() {
   shell.openPath(agentsDir()).catch(() => {});
+}
+
+// Print and Export as PDF: the doc's page as a reader sees it, without the
+// app around it (app.css, print), on A4 paper or, where it is the custom,
+// Letter.
+const MARGIN_IN = 0.7; // inches, as app.css's @page margin
+const pageSize = () => (['US', 'CA', 'MX', 'PH'].includes(app.getLocaleCountryCode()) ? 'Letter' : 'A4');
+
+function printDoc(win) {
+  const page = windows.docFor(win)?.view.webContents;
+  page?.print({ pageSize: pageSize() }, (printed, reason) => {
+    if (!printed && reason !== 'cancelled') dialog.showErrorBox('Could not print', reason);
+  });
+}
+
+async function exportPdf(win) {
+  const entry = windows.docFor(win);
+  if (!entry) return;
+  const name = basename(entry.docPath).replace(/\.[^.]*$/, '') || basename(entry.docPath);
+  const { canceled, filePath } = await dialog.showSaveDialog(win, {
+    defaultPath: join(dirname(entry.docPath), `${name}.pdf`),
+    filters: [{ name: 'PDF', extensions: ['pdf'] }],
+  });
+  if (canceled || !filePath) return;
+  try {
+    await writeFile(filePath, await entry.view.webContents.printToPDF({ pageSize: pageSize(), margins: { top: MARGIN_IN, bottom: MARGIN_IN, left: MARGIN_IN, right: MARGIN_IN } }));
+  } catch (error) {
+    dialog.showErrorBox('Could not export the PDF', error.message);
+  }
 }
 
 function revealDoc(win) {

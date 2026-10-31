@@ -819,6 +819,7 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
         return (project ?? projectService(root)).image(relative(root, fileURLToPath(url)).split(sep).join('/'));
       },
       read: (body) => inProject().read(body?.path),
+      search: (body) => inProject().search(body?.query, body?.options),
       async open(body, who) {
         const opened = await inProject().open(body?.path);
         return can(who, 'owner') ? opened : { path: body.path };
