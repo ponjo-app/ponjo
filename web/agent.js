@@ -332,7 +332,7 @@ export function createPeople({ root, invite, panel, me, getName, getId = () => n
 
   // You, then in a project the room's players, then every buddy here, one
   // line each: a click opens a card, and a buddy is deleted from here. Then
-  // a line to name a new buddy: Enter makes it and opens its card. Only the
+  // New buddy, which makes one and opens its card. Only the
   // owner sees the players and changes anything, and sees who is away,
   // greyed; a player sees who is here.
   function teamCard() {
@@ -349,7 +349,8 @@ export function createPeople({ root, invite, panel, me, getName, getId = () => n
       list.append(el('div', 'pj-setting-group', 'Here'), ...here.filter((p) => !isMe(p)).map((p) => personRow(p, p.owner ? 'Owner' : 'Here', 'idle')));
     }
     list.append(el('div', 'pj-setting-group', 'AI buddies'), ...statuses.map(buddyRow));
-    return owner() ? [head, list, ...newBuddyRow()] : [head, list];
+    if (owner()) list.append(...newBuddyRow());
+    return [head, list];
   }
 
   // Open room while it is closed; once open, Copy link, Lock (or Unlock) and Close room.
@@ -428,38 +429,29 @@ export function createPeople({ root, invite, panel, me, getName, getId = () => n
     return row;
   }
 
+  // A click makes a buddy with the next free name and opens its card, where
+  // its name can be changed.
   function newBuddyRow() {
-    const row = el('label', 'pj-people-row pj-people-new');
+    const row = el('button', 'pj-people-row pj-people-new');
+    row.type = 'button';
     const plus = el('span', 'pj-people-new-face');
     plus.append(icon('plus'));
-    const field = el('input', 'pj-people-new-name');
-    field.type = 'text';
-    field.placeholder = 'New buddy';
-    field.value = defaultName([...agentsHere(), getName(), ...writers.map((p) => p.name), ...(room?.players.map((p) => p.name) ?? [])]);
-    field.maxLength = 64;
-    field.spellcheck = false;
-    field.setAttribute('aria-label', "New buddy's name");
+    row.append(plus, el('span', 'pj-people-name', 'New buddy'));
     const error = el('div', 'pj-input-error');
     error.hidden = true;
-    const failed = (message) => {
-      error.textContent = message;
-      error.hidden = false;
-      field.setAttribute('aria-invalid', 'true');
-    };
-    field.addEventListener('keydown', async (e) => {
-      if (e.key !== 'Enter') return;
-      e.preventDefault();
-      const name = field.value.trim();
-      if (!NAME_PATTERN.test(name)) return failed(NAME_RULE);
+    row.addEventListener('click', async () => {
+      const name = defaultName([...agentsHere(), getName(), ...writers.map((p) => p.name), ...(room?.players.map((p) => p.name) ?? [])]);
+      row.disabled = true;
       try {
         take(await api.createBuddy({ name }));
         toggle(`agent:${name}`);
         panel.querySelector('.pj-profile-about')?.focus();
       } catch (failure) {
-        failed(failure.message);
+        row.disabled = false;
+        error.textContent = failure.message;
+        error.hidden = false;
       }
     });
-    row.append(plus, field);
     return [row, error];
   }
 

@@ -199,7 +199,7 @@ kbd { font: 500 11px/1 var(--ui-font); padding: 2px 6px; border-radius: 4px; bor
 .pj-join .pj-input { width: auto; }
 .pj-people-list { display: flex; flex-direction: column; gap: 2px; margin-top: 8px; }
 .pj-people-row { display: flex; align-items: center; gap: 8px; margin: 0 -8px; }
-.pj-people-row:not(.pj-people-new):hover { background: var(--hover); }
+.pj-people-row:hover { background: var(--hover); }
 /* a buddy: its face, name and who it is open its card; a project's shows Delete on hover */
 .pj-people-open { display: flex; flex: 1; align-items: center; gap: 8px; min-width: 0; padding: 0; border: 0; background: none; color: inherit; text-align: left; }
 .pj-people-delete { opacity: 0; }
@@ -208,11 +208,9 @@ kbd { font: 500 11px/1 var(--ui-font); padding: 2px 6px; border-radius: 4px; bor
 @media (hover: none) { .pj-people-delete { opacity: 1; } }
 .pj-card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .pj-people-name { flex: none; max-width: 60%; overflow: hidden; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
-/* the last row of the doc's agents: make a new one */
-.pj-people-new { margin-top: 6px; color: var(--text-soft); cursor: text; }
-.pj-people-new:hover { background: var(--hover); }
-.pj-people-new-name { flex: 1; min-width: 0; padding: 0; border: 0; background: none; color: var(--text); font: inherit; font-weight: 500; outline: none; }
-.pj-people-new-name::placeholder { color: var(--text-soft); }
+/* the last row of the doc's agents, a button: make a new one */
+.pj-people-new { margin-top: 6px; border: 0; background: none; color: var(--text-soft); text-align: left; }
+.pj-people-new:hover { color: var(--text); }
 .pj-people-new-face { width: 24px; height: 24px; flex: none; display: inline-flex; align-items: center; justify-content: center; border: 1px dashed var(--border-strong); border-radius: 50%; }
 .pj-people-new-face .pj-icon { width: 13px; height: 13px; }
 .pj-people-role { flex: 1; min-width: 0; overflow: hidden; color: var(--text-soft); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
