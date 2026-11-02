@@ -369,9 +369,15 @@ async function start() {
       requestComment();
     }
   });
-  // Clicking empty page space deselects the active comment, as in Docs.
+  // Clicking empty page space deselects the active comment, as in Docs, and
+  // around the text puts the caret at the text nearest the click.
+  const stage = document.querySelector('.pj-stage');
   document.querySelector('.pj-canvas').addEventListener('mousedown', (event) => {
     if (!event.target.closest('.pj-card, [data-thread], .pj-bubble')) select(null);
+    if (event.button === 0 && (event.target === stage || event.target === stage.querySelector('.pj-page')) && !reading()) {
+      event.preventDefault();
+      editor.focusAt(event.clientX, event.clientY);
+    }
   });
 
   document.querySelector('.pj-editor').addEventListener('beforeinput', () => { typedAt = performance.now(); }, true);

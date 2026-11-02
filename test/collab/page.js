@@ -143,6 +143,7 @@ const collab = {
   // Put the caret (or a selection) in view i on characters [start, end) of
   // the first `quote` in its drawn text (a glow can split it across nodes).
   async select(i, quote, start = 0, end = start) {
+    collab.clients[i].view.focus(); // first: it can draw the text again
     const editable = stages[i].querySelector('[contenteditable]');
     const walker = document.createTreeWalker(editable, NodeFilter.SHOW_TEXT);
     const nodes = [];
@@ -157,7 +158,6 @@ const collab = {
         offset -= node.data.length;
       }
     };
-    collab.clients[i].view.focus();
     const range = document.createRange();
     range.setStart(...point(start));
     range.setEnd(...point(end));
@@ -167,6 +167,7 @@ const collab = {
   },
   // Put the caret in view i at place `r` (0 to 1) along its text.
   async caretAt(i, r) {
+    collab.clients[i].view.focus(); // first: it can draw the text again
     const editable = stages[i].querySelector('[contenteditable]');
     const walker = document.createTreeWalker(editable, NodeFilter.SHOW_TEXT);
     const nodes = [];
@@ -174,7 +175,6 @@ const collab = {
     const total = nodes.reduce((n, node) => n + node.data.length, 0);
     let at = Math.floor(r * total);
     const node = nodes.find((node) => (at -= node.data.length) <= 0) ?? nodes.at(-1);
-    collab.clients[i].view.focus();
     if (!node) return;
     const range = document.createRange();
     range.setStart(node, node.data.length + Math.min(0, at));

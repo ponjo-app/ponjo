@@ -35,12 +35,12 @@ const contract = {
   tool: (command) => document.querySelector(`.pj-toolbar [data-command="${command}"]`).dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true })),
   // Put the selection on characters [start, end) of the first piece of text holding `quote`.
   async select(quote, start = 0, end = quote.length) {
+    view.focus(); // first: it can draw the text again
     const editable = stage.querySelector('[contenteditable]');
     const walker = document.createTreeWalker(editable, NodeFilter.SHOW_TEXT);
     let node = walker.nextNode();
     while (node && !node.data.includes(quote)) node = walker.nextNode();
     const at = node.data.indexOf(quote);
-    view.focus();
     const range = document.createRange();
     range.setStart(node, at + start);
     range.setEnd(node, at + end);
