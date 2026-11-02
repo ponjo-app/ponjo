@@ -6,7 +6,7 @@
 // its colour, as in the Markdown view).
 
 import { Annotation, Compartment, EditorState, StateEffect, StateField, Transaction } from '@codemirror/state';
-import { Decoration, EditorView, ViewPlugin, WidgetType, keymap, lineNumbers } from '@codemirror/view';
+import { Decoration, EditorView, ViewPlugin, WidgetType, drawSelection, keymap, lineNumbers } from '@codemirror/view';
 import { LanguageDescription, defaultHighlightStyle, syntaxHighlighting } from '@codemirror/language';
 import { languages } from '@codemirror/language-data';
 import { defaultKeymap, history, historyKeymap, redo, undo } from '@codemirror/commands';
@@ -137,6 +137,7 @@ export async function createPlainView({ stage, text, name, settings, saveSetting
         history(), keymap.of([...indentKeys({ indent: () => indent, keep: () => own.keepIndent }), ...historyKeymap, ...defaultKeymap]), numbers.of(numbersFor(settings)), wrapping.of(wrapFor(settings)), syntax.of([]), marking.of(markingFor(settings)), guiding.of(guidingFor(settings)), marksField, flashField, foundField,
         bidi, EditorView.perLineTextDirection.of(true),
         EditorState.readOnly.of(!editable), EditorView.editable.of(editable),
+        editable ? drawSelection() : [], // the caret and selection stay drawn while the text does not have the focus (app.css)
         EditorView.updateListener.of((update) => {
           // Typing during an IME composition is the person's once it ends.
           if (update.transactions.some((tr) => tr.docChanged && !tr.annotation(fromDisk)) || (composed && !view.composing)) {
@@ -320,6 +321,10 @@ export async function createPlainView({ stage, text, name, settings, saveSetting
     /** Open the find bar on `query` (as typed in it), at its first match at or after text offset `at`. */
     find: (query, at) => finder.open(query, at),
     focus: () => view.focus(),
+    focusAt(x, y) {
+      view.dispatch({ selection: { anchor: view.posAtCoords({ x, y }, false) } });
+      view.focus();
+    },
     /** The view's settings changed. */
     applySettings(next) {
       own = next;

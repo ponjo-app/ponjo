@@ -32,7 +32,7 @@ import { lift } from '@milkdown/kit/prose/commands';
 import { keymap } from '@milkdown/kit/prose/keymap';
 import { addRowAfter, goToNextCell, isInTable } from '@milkdown/kit/prose/tables';
 import { Fragment } from '@milkdown/kit/prose/model';
-import { Plugin, PluginKey, TextSelection } from '@milkdown/kit/prose/state';
+import { Plugin, PluginKey, Selection, TextSelection } from '@milkdown/kit/prose/state';
 import { Decoration, DecorationSet } from '@milkdown/kit/prose/view';
 import { createAnchor, locate } from '../../../src/core/anchor.js';
 import { definesLinks, project, projectBlocks, renderedRange, sourceRange } from '../../../src/markdown/project.js';
@@ -94,10 +94,45 @@ const linkPlugin = $prose(() => new Plugin({
     decorations(state) {
       const range = linkKey.getState(state);
       if (!range || range.from === range.to) return null;
-      return DecorationSet.create(state.doc, [Decoration.inline(range.from, range.to, { class: 'pj-link-target' })]);
+      return DecorationSet.create(state.doc, [Decoration.inline(range.from, range.to, { class: 'pj-held' })]);
     },
   },
 }));
+
+// Once the text has lost the focus, the caret or selection stays drawn where
+// it is (the browser hides its own), the caret still. Focused by a click, CSS
+// hides it until the click's own update takes it out: taken out at once, the
+// text under the click would be drawn again before the browser puts the caret.
+const heldPlugin = $prose(() => {
+  let held = false;
+  let pressed = false; // the focus comes from a click on the text
+  const redraw = (view) => view.dispatch(view.state.tr);
+  return new Plugin({
+    props: {
+      handleDOMEvents: {
+        mousedown: () => { pressed = true; },
+        focus: (view) => {
+          held = false;
+          if (!pressed) redraw(view);
+        },
+        blur: (view) => {
+          held = true;
+          pressed = false;
+          redraw(view);
+        },
+      },
+      decorations(state) {
+        const { selection } = state;
+        if (!held || !(selection instanceof TextSelection)) return null;
+        return DecorationSet.create(state.doc, [selection.empty
+          ? Decoration.widget(selection.head, heldCaret, { side: 1, key: 'held' })
+          : Decoration.inline(selection.from, selection.to, { class: 'pj-held' })]);
+      },
+    },
+  });
+});
+
+const heldCaret = () => Object.assign(document.createElement('span'), { className: 'pj-cursor pj-held-caret' });
 
 // Tab in a table's last cell adds a row. Milkdown's Tab (priority 100) only
 // moves to the next cell, and the key then left the table and broke it.
@@ -382,7 +417,7 @@ export async function createMarkdownView({
       });
     })
     .use(markdownPlugins).use(editable ? diagrams : []).use(history).use(paste).use(clipboard).use(listener).use(cursor).use(trailing).use(tableTab).use(blockKeys).use(codeTab).use(taskBox)
-    .use(decorationPlugin(highlightKey)).use(decorationPlugin(flashKey)).use(decorationPlugin(foundKey)).use(linkPlugin).use(bidiPlugin).use(uiPlugin(hooks))
+    .use(decorationPlugin(highlightKey)).use(decorationPlugin(flashKey)).use(decorationPlugin(foundKey)).use(linkPlugin).use(editable ? heldPlugin : []).use(bidiPlugin).use(uiPlugin(hooks))
     // The standard keys format as the toolbar does; typed Markdown still stays text.
     .use($prose(() => keymap({
       'Mod-b': () => run('bold'),
@@ -991,6 +1026,14 @@ export async function createMarkdownView({
     /** Open the find bar on `query` (as typed in it), at its first match at or after text offset `at`. */
     find: (query, at) => finder.open(query, at),
     focus: () => view().focus(),
+    /** Put the caret at the text nearest viewport point (x, y), with the focus. */
+    focusAt(x, y) {
+      const v = view();
+      const box = v.dom.getBoundingClientRect();
+      const hit = v.posAtCoords({ left: Math.min(Math.max(x, box.left + 1), box.right - 1), top: Math.min(Math.max(y, box.top + 1), box.bottom - 1) });
+      if (hit) v.dispatch(v.state.tr.setSelection(Selection.near(v.state.doc.resolve(hit.pos))));
+      v.focus();
+    },
     /** Undo or redo the human's last edit, in this view's own history. */
     undo: () => run('undo'),
     redo: () => run('redo'),

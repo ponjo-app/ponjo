@@ -344,6 +344,21 @@ for (const name of VIEWS) {
     const directions = () => run(`[...document.querySelectorAll('.ProseMirror > p, .cm-line')].map((el) => getComputedStyle(el).direction)`);
     assert.deepEqual(await directions(), name === 'markdown' ? ['rtl', 'ltr'] : ['rtl', 'ltr', 'ltr', 'ltr']);
   });
+
+  test(`${name} view: out of focus, the caret or selection stays drawn; focusAt(x, y) puts the caret at the text nearest a point`, async () => {
+    await make(name, 'One two three.\n\nFour.\n');
+    // CodeMirror draws its caret and selection a frame or so later.
+    const drawn = (selector, what) => waitFor(() => run(`[...document.querySelectorAll(${JSON.stringify(selector)})].some((el) => getComputedStyle(el).display !== 'none')`), 2000, what);
+    await select('One two', 4, 4);
+    await run('document.activeElement.blur()');
+    await drawn('.pj-held-caret, .cm-cursor', 'the caret');
+    await select('One two', 4, 7);
+    await run('document.activeElement.blur()');
+    await drawn('.pj-held, .cm-selectionBackground', 'the selection');
+    await run(`(() => { const box = [...document.querySelectorAll('.ProseMirror > p, .cm-line')].find((el) => el.textContent === 'Four.').getBoundingClientRect(); view.focusAt(box.left - 6, box.top + box.height / 2); })()`);
+    await type('X');
+    assert.equal(await getText(), 'One two three.\n\nXFour.\n');
+  });
 }
 
 test('markdown view: a read-only view has no formatting tools and no Comment bubble', async () => {
