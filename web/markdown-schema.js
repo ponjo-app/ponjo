@@ -44,10 +44,11 @@ const frontMatterSyntax = $remark('frontMatter', () => function frontMatter() {
 });
 // An empty paragraph between top-level blocks is two more blank lines, not
 // Milkdown's `<br />`, and reads back as one (withBlankParagraphs). One in a
-// quote or a list stays `<br />`.
+// quote or a list stays `<br />`. A paragraph of only a line break (pasted
+// text has them) Milkdown writes with no children.
 const blankLines = $remark('blankLines', () => function blankLines() {
   const compile = this.compiler;
-  const blank = (node) => node.type === 'paragraph' && node.children.length === 1 && node.children[0].type === 'html' && node.children[0].value === '<br />';
+  const blank = (node) => node.type === 'paragraph' && node.children?.length === 1 && node.children[0].type === 'html' && node.children[0].value === '<br />';
   this.compiler = (tree, file) => compile({ ...tree, children: tree.children.map((node) => (blank(node) ? { type: 'html', value: '' } : node)) }, file);
   return (tree, file) => withBlankParagraphs(tree, String(file));
 });

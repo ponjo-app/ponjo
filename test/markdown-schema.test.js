@@ -18,3 +18,11 @@ test('editor: text typed right after a link is not part of it', async () => {
   const parse = await editorParser();
   assert.equal(parse('[a](x)\n').type.schema.marks.link.spec.inclusive, false);
 });
+
+test('editor: a paragraph holding only a line break, as pasted text brings, saves', async () => {
+  const serialize = await editorSerializer();
+  const schema = (await editorParser())('x').type.schema;
+  const { doc, heading, paragraph, hardbreak } = schema.nodes;
+  const blank = paragraph.create(null, hardbreak.create());
+  assert.equal(serialize(doc.create(null, [heading.create({ level: 1 }, schema.text('A')), blank, heading.create({ level: 2 }, schema.text('B'))])), '# A\n\n\n\n## B\n');
+});
