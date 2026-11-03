@@ -27,39 +27,53 @@ not built.
 
 ### Writing
 
-- CommonMark and GFM: headings, paragraphs, lists, quotes, code blocks,
-  tables, rules, links, images, bold, italic, strikethrough, inline code and
-  task lists.
+- All of CommonMark and GFM, and footnotes as GitHub writes them
+  ([#358](https://github.com/ponjo-app/ponjo/issues/358) lists each).
+  Syntax outside them (math, `==highlight==`, wiki links) is text.
 - **Live preview.** Text is drawn formatted and its syntax is hidden, except
   on the lines the selection touches, where it shows, faded:
 
   | Block or span | Away from the selection | On its lines |
   | --- | --- | --- |
-  | Bold, italic, strikethrough, inline code | formatted; `**`, `_`, `~~`, `` ` `` hidden | formatted, the marks faded |
+  | Bold, italic, strikethrough (`~~` or `~`), inline code | formatted; the marks hidden | formatted, the marks faded |
   | Heading (`#`, or underlined with `===`/`---`) | large; `# ` hidden, an underline faded | `# ` faded |
-  | Link | its text, as a link; `[`, `](url)` hidden | the whole source |
-  | Bullet list | a dot for `-`, `*`, `+`; numbers as typed | the marker |
-  | Task list | a checkbox, ticked by a click, which types `x` or a space | the same |
-  | Quote | a bar at the left; `>` hidden | `>` faded |
-  | Code block | monospace on a tint, coloured by its language; fences faded | the same |
-  | Rule (`---`) | a line | the source |
-  | Image | the image | the source |
-  | Table | the table, drawn | the source, monospace, pipes faded |
+  | Link, inline or by reference | its text, as a link; the rest hidden. A `[text]` no definition names is text | the whole source |
+  | Autolink (`<https://…>`, `www.…`, an email) | a link; `<>` hidden | `<>` faded |
+  | Link definition (`[ref]: url`) | muted | the same |
+  | Bullet list | a dot for `-`, `*`, `+`; each level indented; a wrapped line hangs under the item's text | the marker |
+  | Ordered list (`1.`, `1)`) | the number as typed, indented the same | the same |
+  | Task list | a checkbox, ticked by a click, which types `x` or a space; a done item struck through | the checkbox |
+  | Quote | a bar at the left per level; `>` hidden | `>` faded |
+  | Code block, fenced or indented | monospace on a tint, coloured by its language; fences faded | the same |
+  | Rule (`---`, `***`, `___`) | a line | the source |
+  | Image, inline or by reference | the image | the source |
+  | Table | the table, drawn, with its cells' formatting and alignment | the source, monospace, pipes faded |
   | Mermaid block | its diagram | the source |
-  | Front matter, HTML, footnotes | the source, muted | the same |
-
-  A backslash escape (`\*`) shows only its character away from the
-  selection. Lines of a list item that wrap hang under its text.
+  | Footnote (`[^1]`, `[^1]: …`) | a superscript number, in the order of first use; the note small, with its number | the source |
+  | Hard break (a line ending in `\` or two spaces) | the break; `\` hidden | `\` shows |
+  | Escape (`\*`), entity (`&copy;`) | the character | the source |
+  | Front matter, raw HTML | the source, muted | the same |
 - **Typed Markdown formats**, as it is typed. There is no other conversion:
   the characters typed are the characters saved.
-- **The toolbar** formats, and shows the formatting at the caret: undo and
-  redo, the block style (Normal text, headings, code block), bold, italic,
-  strikethrough, inline code, lists, quote, divider, table, link. Each types
-  or removes the syntax: bold wraps the selection in `**` (or unwraps it), a
-  heading sets the line's `#`s, a list or a quote prefixes each line the
-  selection touches, a code block fences them, a table puts in two columns
-  and a row. The standard keys do the same: Mod+B bold, Mod+I italic, Mod+E
-  inline code, Mod+Shift+X strikethrough, Mod+K a link.
+- **The toolbar** is icons in five groups, and shows the formatting at the
+  caret (its buttons pressed, the block's style named):
+
+  | Group | Tools |
+  | --- | --- |
+  | History | Undo, Redo |
+  | Text style, a menu | Normal text, Heading 1–3, Quote, Code block, each with its Markdown (`#`, `>`, ```` ``` ````) |
+  | Inline | Bold, Italic, Strikethrough, Inline code, Link |
+  | Lists | Bulleted, Numbered, Task |
+  | Insert (+), a menu | Table, Divider, Footnote |
+
+  A tool's tooltip says its name and keys. Each types or removes the syntax:
+  bold wraps the selection in `**` (or unwraps it), a style sets the prefix
+  of each line the selection touches (Normal text takes it away), a code
+  block fences them, a table puts in two columns and a row, a footnote puts
+  `[^n]` at the caret and its note at the doc's end, with the caret there.
+  The standard keys do the same: Mod+B bold, Mod+I italic, Mod+E inline
+  code, Mod+Shift+X strikethrough, Mod+K a link. The Task and Footnote icons
+  are new to the design system (`site/design.html`, `web/icons.js`).
 - **Paste.** Formatted text (from a web page, a doc, another editor) is
   turned into Markdown once, as it is pasted, so what shows is what is
   saved; images held in the page itself (`data:`) are left out, which would
@@ -141,6 +155,7 @@ its source), and who typed which characters.
 | View | `web/views/markdown/view.js` | that editor with Markdown's language (`@codemirror/lang-markdown`, GFM) and the preview |
 | Preview | `web/views/markdown/preview.js` | the decorations and widgets of live preview, from the syntax tree, for the lines on screen |
 | Chrome | `web/views/markdown/chrome.js` | toolbar, bubble, link card and popover, outline, focus mode, word count |
+| Syntax | `web/views/markdown/syntax.js` | what Lezer's Markdown parser leaves out: GFM's single-tilde strikethrough, and footnotes |
 | Paste | `web/views/markdown/paste.js` | formatted text pasted, as Markdown |
 | Diagrams | `web/diagrams.js` | a mermaid block as its diagram |
 | Find | `web/find.js` | the find bar, the same in every view; the view finds and replaces |
@@ -222,5 +237,5 @@ Each a pull request, done when its check passes.
 | --- | --- | --- |
 | 1 | This design, in this file, [the UX](user-experience.md) and [the architecture](architecture.md) | agreed |
 | 2 | The plain view's editor moved to `web/views/codemirror.js`, for both views | the plain view behaves as before; the tests pass |
-| 3 | The live-preview view replaces the WYSIWYG one: preview, toolbar, keys, paste, outline, focus mode, word count. Milkdown and the code only it needed go: `blocks.js`, `src/markdown/` (`splice.js`, `project.js`), `pm-text.js`, `markdown-schema.js`, `review.js`, their tests, the micromark, mdast and remark packages, and `scripts/patch-deps.js` | the view contract and many-writers tests pass; `test:perf` holds; tried by hand |
+| 3 | The live-preview view replaces the WYSIWYG one: preview of the syntax in #358, toolbar, keys, paste, outline, focus mode, word count. Milkdown and the code only it needed go: `blocks.js`, `src/markdown/` (`splice.js`, `project.js`), `pm-text.js`, `markdown-schema.js`, `review.js`, their tests, the micromark, mdast and remark packages, and `scripts/patch-deps.js` | the view contract and many-writers tests pass; `test:perf` holds; tried by hand |
 | 4 | Images, tables, mermaid diagrams and task boxes drawn (until then, their source, styled) | tried by hand |
