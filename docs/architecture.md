@@ -141,7 +141,9 @@ so it is built in and not an extension point.
 | Must satisfy | the view contract, `test/views.test.js` |
 
 The Plain text view (`web/views/plain/`) is CodeMirror showing the text as it
-is, with CodeMirror's standard keys for code (Mod+/ comments out lines in a
+is: the editor in `web/views/codemirror.js` (the view interface, marks,
+others' edits, find, right to left), which the Markdown view is to share,
+with CodeMirror's standard keys for code (Mod+/ comments out lines in a
 language that has comments); line numbers, wrapping, font size, whitespace
 marks, indent guides and indentation are its settings, with a status bar
 (`status.js`) whose menu and toggles save the same settings. The Markdown view (`web/views/markdown/`, [design](markdown-view.md)) is
