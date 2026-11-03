@@ -45,7 +45,8 @@ AI buddies.
    with only its files, and New doc and New folder in the page; nothing is
    made until you ask. A doc opened on its own is a
    quick editor for you and your AI buddies: no team, no sharing.
-2. **Write.** A WYSIWYG editor over plain markdown. Saving is automatic and
+2. **Write.** A WYSIWYG editor over plain markdown (*planned:* live
+   preview, see Views below). Saving is automatic and
    keeps the bytes of every block you did not touch, so `git diff` stays clean.
    Any other text file (code, config, notes) opens as plain text, and
    comments and AI buddies work the same there. The WYSIWYG editor is a
@@ -239,6 +240,11 @@ works, or what went wrong.
   view off (Ctrl+Shift+T, again to switch back); `.md` then opens in the plain
   editor. Pasted plain text is read as Markdown (Mod+Shift+V pastes it
   as text); pasted formatted text keeps its formatting.
+  *Planned* ([design](markdown-view.md)): the Markdown view becomes live
+  preview, the file's own text drawn formatted, its syntax shown only on
+  the lines the selection touches. Typed Markdown formats as it is typed;
+  pasted formatted text is turned into Markdown as it is pasted; nothing
+  else changes the text, so what shows is what is saved.
   The plain editor's settings: line numbers, wrapping, font size, whitespace
   marks (in the selection, everywhere or off) and indent guides, and
   indentation: Tab types the file's indent (found from the file, or tabs or
