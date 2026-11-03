@@ -148,7 +148,11 @@ marks, indent guides and indentation are its settings, with a status bar
 WYSIWYG; its toolbar (and the standard keys), outline, focus mode and
 word count are parts of it, switched by its settings, not separate extensions.
 It maps the doc's text to its own document through the rendered text, and
-saves each block the user did not change as it was written.
+saves each block the user did not change as it was written. *Planned*
+([steps](markdown-view.md#steps)): live preview, the CodeMirror editor the
+plain view is, whose text is the doc's own, drawn formatted; no second
+document, so the Markdown library (`src/markdown/`), the rendered-text maps
+and Milkdown go, and with them the dependency patches below.
 
 How edits merge does not depend on the view or the format: people's by
 character, the rest by line (see Interfaces).
@@ -638,4 +642,4 @@ sharing.
 - **One order.** The host orders every edit to a doc, people's and AI
   buddies' alike, and a person's typing is never dropped; see
   [Interfaces](#interfaces). How the Markdown view takes part is
-  [its own design](markdown-view.md), to be proven by a prototype first.
+  [its own design](markdown-view.md#many-writers).
