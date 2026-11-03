@@ -337,65 +337,70 @@ kbd { font: 500 11px/1 var(--ui-font); padding: 2px 6px; border-radius: 4px; bor
 
 /* ---- document typography ---- */
 
-.pj-editor .ProseMirror { outline: none; white-space: pre-wrap; word-wrap: break-word; min-height: 50vh; font-family: var(--doc-font); font-size: var(--doc-size); line-height: var(--doc-leading); letter-spacing: var(--doc-tracking); color: var(--text); caret-color: var(--text); font-kerning: normal; text-rendering: optimizeLegibility; }
-.pj-editor .ProseMirror ::selection { background: color-mix(in srgb, var(--accent) 22%, transparent); }
-.pj-editor h1, .pj-editor h2, .pj-editor h3, .pj-editor h4, .pj-editor h5, .pj-editor h6 { font-weight: 600; line-height: 1.3; letter-spacing: -0.012em; margin: 1.6em 0 0.35em; }
-[data-font="mono"] .pj-editor :is(h1, h2, h3, h4, h5, h6) { letter-spacing: -0.02em; }
-.pj-editor h1 { font-size: 1.875em; margin-top: 1.8em; }
-.pj-editor h2 { font-size: 1.5em; margin-top: 1.5em; }
-.pj-editor h3 { font-size: 1.25em; margin-top: 1.3em; }
-.pj-editor h4, .pj-editor h5, .pj-editor h6 { font-size: 1.05em; }
-.pj-editor h6 { color: var(--text-soft); }
+/* The Markdown view (web/views/markdown/): the doc's text in CodeMirror,
+   drawn formatted (preview.js); syntax on the lines being edited is faded. */
+.pj-editor .cm-editor.pj-md .cm-scroller { font-family: var(--doc-font); font-size: var(--doc-size); line-height: var(--doc-leading); letter-spacing: var(--doc-tracking); font-kerning: normal; text-rendering: optimizeLegibility; }
+.pj-md-mark { color: var(--text-faint); }
+.pj-md-muted { color: var(--text-soft); }
+.pj-editor .pj-md .cm-line.pj-md-h { font-weight: 600; line-height: 1.3; letter-spacing: -0.012em; }
+[data-font="mono"] .pj-editor .pj-md .cm-line.pj-md-h { letter-spacing: -0.02em; }
+.pj-editor .pj-md .cm-line.pj-md-h1 { font-size: 1.875em; padding-top: 0.9em; padding-bottom: 0.2em; }
+.pj-editor .pj-md .cm-line.pj-md-h2 { font-size: 1.5em; padding-top: 0.8em; padding-bottom: 0.1em; }
+.pj-editor .pj-md .cm-line.pj-md-h3 { font-size: 1.25em; padding-top: 0.6em; }
+.pj-editor .pj-md .cm-line:is(.pj-md-h4, .pj-md-h5, .pj-md-h6) { font-size: 1.05em; padding-top: 0.5em; }
+.pj-editor .pj-md .cm-line.pj-md-h6 { color: var(--text-soft); }
 /* the doc's opening heading reads as its title */
-.pj-editor .ProseMirror > h1:first-child { font-size: 2.35em; font-weight: 600; line-height: 1.18; letter-spacing: -0.022em; margin: 0 0 0.5em; }
-.pj-editor .ProseMirror > :first-child { margin-top: 0; }
-.pj-editor p { margin: 0 0 0.8em; }
-.pj-editor ul, .pj-editor ol { padding-left: 1.5em; margin: 0 0 0.8em; }
-.pj-editor li { margin: 0.2em 0; padding-left: 0.2em; }
-.pj-editor li > p { margin: 0; }
-.pj-editor li::marker { color: var(--text-soft); }
-/* A task list item's box, in the gutter in place of its bullet: a .pj-radio's
-   outline, square; ink with a check when done. Clicking it ticks it (view.js). */
-.pj-editor li[data-item-type="task"] { position: relative; list-style: none; }
-.pj-editor li[data-item-type="task"]::before { content: ''; position: absolute; left: -1.3em; top: calc(0.5lh - 0.45em); box-sizing: border-box; width: 0.9em; height: 0.9em; border: 1px solid var(--border-strong); border-radius: 4px; background: var(--canvas); cursor: pointer; }
-.pj-editor li[data-checked="true"]::before { border-color: var(--text); background: var(--text); }
-.pj-editor li[data-checked="true"]::after { content: ''; position: absolute; left: -0.98em; top: calc(0.5lh - 0.33em); width: 0.2em; height: 0.45em; border: solid var(--canvas); border-width: 0 0.12em 0.12em 0; transform: rotate(45deg); pointer-events: none; }
-.pj-editor a, .pj-file-link { color: var(--accent); text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--accent) 40%, transparent); text-underline-offset: 0.18em; }
-:is(.pj-editor a, .pj-file-link):hover { text-decoration-color: currentColor; }
-.pj-editor strong { font-weight: 600; }
-.pj-editor code { font-family: var(--mono); font-size: 0.85em; background: var(--bg-soft); color: var(--text); padding: 0.15em 0.35em; border-radius: 4px; }
-.pj-editor pre { background: var(--bg-soft); padding: 12px 16px; border-radius: 6px; overflow-x: auto; margin: 0 0 1em; font-size: 0.88em; line-height: 1.55; }
-.pj-editor pre code { background: none; padding: 0; color: var(--text); font-size: 1em; }
-.pj-editor pre.pj-front-matter code { color: var(--text-soft); }
-.pj-diagram { margin: 0 0 1em; border-radius: 6px; cursor: default; }
+.pj-editor .pj-md .cm-content > .cm-line.pj-md-h1:first-child { font-size: 2.35em; line-height: 1.18; letter-spacing: -0.022em; padding-top: 0; }
+.pj-md-strong { font-weight: 600; }
+.pj-md-em { font-style: italic; }
+.pj-md-strike { text-decoration: line-through; }
+:is(.pj-md-code, .pj-md-table code) { font-family: var(--mono); font-size: 0.85em; background: var(--bg-soft); padding: 0.15em 0.2em; border-radius: 4px; }
+:is(.pj-md-link, .pj-md-table a, .pj-file-link) { color: var(--accent); text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--accent) 40%, transparent); text-underline-offset: 0.18em; }
+:is(.pj-md-link, .pj-md-table a, .pj-file-link):hover { text-decoration-color: currentColor; }
+.pj-md-link .pj-md-mark { text-decoration: none; }
+/* a list item's marker, drawn: a dot, its number or its box, as wide as one level of indent (preview.js) */
+.pj-md-marker { display: inline-block; width: 1.5em; text-indent: 0; color: var(--text-soft); font-variant-numeric: tabular-nums; }
+.pj-md-listmark { color: var(--text-soft); }
+.pj-md-check-wrap { display: inline-block; }
+/* a task's box: a .pj-radio's outline, square; ink with a check when done; a click ticks it */
+.pj-md-check { position: relative; display: inline-block; box-sizing: border-box; width: 0.9em; height: 0.9em; margin-right: 0.4em; vertical-align: -0.08em; border: 1px solid var(--border-strong); border-radius: 4px; background: var(--canvas); cursor: pointer; }
+.pj-md-checked { border-color: var(--text); background: var(--text); }
+.pj-md-checked::after { content: ""; position: absolute; left: 0.28em; top: 0.1em; width: 0.2em; height: 0.45em; border: solid var(--canvas); border-width: 0 0.12em 0.12em 0; transform: rotate(45deg); }
+.pj-md-done { color: var(--text-soft); text-decoration: line-through; }
+/* a quote's bar per level, at the indent of the list item it is in, if any (--pj-indent, preview.js) */
+.pj-editor .pj-md .cm-line.pj-md-quote { --at: var(--pj-indent, 0em); --bar: linear-gradient(var(--text), var(--text)); padding-left: calc(var(--at) + 1em); background: var(--bar) var(--at) 0 / 3px 100% no-repeat; }
+.pj-editor .pj-md .cm-line.pj-md-quote-d2 { padding-left: calc(var(--at) + 2.2em); background: var(--bar) var(--at) 0 / 3px 100% no-repeat, var(--bar) calc(var(--at) + 1.1em) 0 / 3px 100% no-repeat; }
+.pj-editor .pj-md .cm-line.pj-md-quote-d3 { padding-left: calc(var(--at) + 3.4em); background: var(--bar) var(--at) 0 / 3px 100% no-repeat, var(--bar) calc(var(--at) + 1.1em) 0 / 3px 100% no-repeat, var(--bar) calc(var(--at) + 2.3em) 0 / 3px 100% no-repeat; }
+.pj-editor .pj-md .cm-line:is(.pj-md-codeblock, .pj-md-table-src, .pj-md-frontmatter) { font-family: var(--mono); font-size: 0.88em; line-height: 1.55; letter-spacing: 0; }
+.pj-editor .pj-md .cm-line.pj-md-codeblock { background: var(--bg-soft); padding: 0 16px; }
+.pj-editor .pj-md .cm-line.pj-md-codeblock-first { border-radius: 6px 6px 0 0; padding-top: 8px; }
+.pj-editor .pj-md .cm-line.pj-md-codeblock-last { border-radius: 0 0 6px 6px; padding-bottom: 8px; }
+/* a fence, hidden while the selection is not in its block: only the block's padding */
+.pj-editor .pj-md .cm-line.pj-md-fence { font-size: 1px; line-height: 1; }
+.pj-editor .pj-md .cm-line.pj-md-frontmatter { color: var(--text-soft); }
+.pj-editor .pj-md .cm-line.pj-md-frontmatter span { color: inherit; } /* muted, not coloured as YAML */
+.pj-editor .pj-md .cm-line.pj-md-footnote { font-size: 0.88em; color: var(--text-soft); }
+.pj-md-fnref { font-size: 0.72em; vertical-align: super; line-height: 0; padding: 0 0.1em; color: var(--accent); font-weight: 600; }
+.pj-md-fnlabel { margin-right: 0.4em; color: var(--text-soft); font-weight: 600; }
+.pj-md-hr { display: inline-block; width: 100%; vertical-align: middle; border-top: 1px solid var(--border-strong); }
+/* the editor measures elements without their margins: the space around an image, a table or a diagram is padding */
+.pj-md-image { display: block; padding: 6px 0; }
+.pj-md-img { display: block; max-width: 100%; border-radius: 6px; }
+/* a table or a diagram, drawn in place of its lines; a click shows its source */
+.pj-md-block, .pj-md .pj-diagram { padding: 6px 0 12px; cursor: text; }
+.pj-md-table { border-collapse: collapse; width: 100%; font-family: var(--ui-font); font-size: 0.86em; }
+.pj-md-table :is(th, td) { border: 1px solid var(--border-strong); padding: 6px 12px; vertical-align: top; }
+.pj-md-table th { background: var(--bg-soft); font-weight: 600; }
+.pj-md-table s { color: var(--text-soft); }
+.pj-diagram { border-radius: 6px; }
 .pj-diagram svg { display: block; max-width: 100%; height: auto; }
-.pj-diagram-error { margin: -0.6em 0 1em; font: 0.8em/1.5 var(--mono); white-space: pre-wrap; color: var(--red); }
-.pj-editor blockquote { margin: 0 0 1em; padding: 0.1em 0 0.1em 1em; border-left: 3px solid var(--text); color: var(--text); }
-.pj-editor blockquote p:last-child { margin-bottom: 0; }
-.pj-editor table { border-collapse: collapse; margin: 0 0 1em; font-family: var(--ui-font); font-size: 0.86em; width: 100%; }
-.pj-editor th, .pj-editor td { border: 1px solid var(--border-strong); padding: 6px 12px; text-align: left; vertical-align: top; }
-.pj-editor th { background: var(--bg-soft); font-weight: 600; }
-.pj-editor td p, .pj-editor th p { margin: 0; }
-/* dragging across cells selects whole cells: ProseMirror hides the text selection and marks the cells */
-.pj-editor .selectedCell { background: color-mix(in srgb, var(--accent) 22%, transparent); }
-.pj-editor .ProseMirror.ProseMirror-hideselection ::selection { background: transparent; } /* over the .pj-hl selection colour too */
-.pj-editor .ProseMirror-hideselection { caret-color: transparent; }
-.pj-editor hr { border: 0; border-top: 1px solid var(--border-strong); margin: 2em 0; }
-.pj-editor img { max-width: 100%; border-radius: 6px; }
-.pj-editor .ProseMirror-selectednode { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
-/* the caret between two blocks no text can go between, such as after a table at the end */
-.pj-editor .ProseMirror-gapcursor { display: none; position: absolute; pointer-events: none; }
-.pj-editor .ProseMirror-gapcursor::after { content: ""; position: absolute; top: -2px; width: 20px; border-top: 1px solid var(--text); }
-.pj-editor .ProseMirror[contenteditable="true"] .ProseMirror-gapcursor { display: block; }
-.pj-editor .ProseMirror-focused .ProseMirror-gapcursor::after { animation: pj-gapcursor-blink 1.1s steps(2, start) infinite; }
-/* out of focus (or in the link popover), the caret and selection stay drawn where they are (view.js), not the browser's */
-.pj-editor .ProseMirror[contenteditable="true"]:not(.ProseMirror-focused) ::selection { background: transparent; }
-.pj-editor .pj-held { background: color-mix(in srgb, var(--accent) 22%, transparent); }
-.pj-editor .pj-held-caret { --buddy: var(--text); }
-.pj-editor .ProseMirror-focused .pj-held-caret { display: none; }
-.pj-editor .ProseMirror-focused .pj-held { background: none; }
-.pj-editor .pj-held-caret::before { border-left-width: 1px; }
-@keyframes pj-gapcursor-blink { to { visibility: hidden; } }
+.pj-diagram pre { margin: 0; font: 0.85em/1.5 var(--mono); white-space: pre-wrap; }
+.pj-diagram-error { margin: 0.4em 0 0; font: 0.8em/1.5 var(--mono); white-space: pre-wrap; color: var(--red); }
+/* the toolbar's text style and insert menus */
+.pj-sample-quote { font-family: var(--doc-font); font-size: 14px; padding-left: 8px; border-left: 2px solid var(--text); }
+.pj-sample-code { font-family: var(--mono); font-size: 13px; }
+.pj-menu-item { display: inline-flex; align-items: center; gap: 8px; }
+.pj-menu-item .pj-icon { width: 16px; height: 16px; color: var(--text-soft); }
 
 /* the plain view (web/views/plain/view.js): any other text file, as it is, in mono;
    the page scrolls it, so its scroller lets a flag over the first line show */
@@ -428,8 +433,8 @@ kbd { font: 500 11px/1 var(--ui-font); padding: 2px 6px; border-radius: 4px; bor
 
 /* focus mode: no toolbar or outline, everything but the current block recedes */
 [data-focus] .pj-toolbar, [data-focus] .pj-outline, [data-no-outline] .pj-outline { display: none !important; }
-[data-focus] .pj-editor .ProseMirror > * { transition: opacity 0.2s ease; }
-[data-focus] .pj-editor[data-fade] .ProseMirror > :not(.pj-current) { opacity: 0.28; }
+[data-focus] .pj-editor .pj-md :is(.cm-line, .pj-md-block, .pj-diagram) { transition: opacity 0.2s ease; }
+[data-focus] .pj-editor[data-fade] .pj-md :is(.cm-line:not(.pj-current), .pj-md-block, .pj-diagram) { opacity: 0.28; }
 [data-focus] .pj-margin:not(:hover):not(:focus-within) { opacity: 0.4; }
 
 /* comment highlights */
@@ -450,7 +455,6 @@ del.pj-mark-del { margin-right: 0.15em; }
 
 /* text someone just changed outside a buddy's run, labelled with their name, fading out */
 .pj-flash { animation: pj-flash 6s ease-out forwards; border-radius: 0; }
-.pj-flash-block { animation: pj-flash 6s ease-out forwards; border-radius: 4px; }
 @keyframes pj-flash { 0%, 40% { background: var(--active); } 100% { background: transparent; } }
 .pj-flag { position: relative; display: inline; }
 .pj-flag-label { position: absolute; bottom: 100%; left: -1px; z-index: 4; padding: 0 6px; border-radius: 4px 4px 4px 0; background: var(--buddy, var(--text)); color: var(--buddy-ink, var(--on-text)); font: 600 11px/1.6 var(--ui-font); white-space: nowrap; pointer-events: none; animation: pj-fade 6s ease-out forwards; }
@@ -460,7 +464,8 @@ del.pj-mark-del { margin-right: 0.15em; }
 /* a buddy in the doc: its cursor stays where it last wrote; its name shows while it works */
 .pj-cursor { position: relative; display: inline-block; width: 0; height: 1.1em; vertical-align: text-bottom; pointer-events: none; }
 .pj-cursor::before { content: ''; position: absolute; top: 0; bottom: 0; left: -1px; border-left: 2px solid var(--buddy); }
-.pj-cursor-working::before { animation: pj-gapcursor-blink 1s steps(1) infinite; }
+.pj-cursor-working::before { animation: pj-blink 1s steps(1) infinite; }
+@keyframes pj-blink { to { visibility: hidden; } }
 .pj-cursor-name { display: none; position: absolute; bottom: 100%; left: -1px; z-index: 4; padding: 0 6px; border-radius: 4px 4px 4px 0; background: var(--buddy); color: var(--buddy-ink); font: 600 11px/1.6 var(--ui-font); white-space: nowrap; }
 .pj-cursor-working .pj-cursor-name { display: block; }
 @media (prefers-reduced-motion: reduce) { .pj-cursor-working::before { animation: none; } }
@@ -736,7 +741,6 @@ label.pj-setting { cursor: pointer; }
 .pj-history-changes { display: inline-flex; align-items: center; gap: 6px; color: var(--text-soft); white-space: nowrap; cursor: pointer; }
 .pj-history-changes input { accent-color: var(--text); margin: 0; }
 .pj-history-restore, .pj-history-undo { flex: none; height: 28px; }
-.pj-history-stage .pj-editor .ProseMirror { caret-color: transparent; }
 .pj-history { position: sticky; top: 16px; align-self: start; display: flex; flex-direction: column; max-height: calc(100vh - 150px); background: var(--bg-soft); border-radius: 10px; box-shadow: var(--shadow); overflow: hidden; }
 .pj-history-list { list-style: none; margin: 0; padding: 4px 8px 8px; overflow-y: auto; outline: none; }
 .pj-history-list:focus-visible .pj-version[aria-selected="true"] { box-shadow: inset 0 0 0 2px var(--accent); }
@@ -863,7 +867,7 @@ label.pj-setting { cursor: pointer; }
   .pj-card-active { transform: none; }
   .pj-toolbar { margin: 0 8px 8px; }
   .pj-count { display: none; }
-  .pj-editor .ProseMirror > h1:first-child { font-size: 2em; }
+  .pj-editor .pj-md .cm-content > .cm-line.pj-md-h1:first-child { font-size: 2em; }
   .pj-header { padding: 0 8px 0 12px; }
   .pj-history { order: -1; position: static; max-height: 38vh; margin: 12px 16px 0; }
   :is([data-history] .pj-history-bar, [data-runs] .pj-runs-bar) { margin: 0 8px 8px; flex-wrap: wrap; border-radius: 14px; }
@@ -892,10 +896,10 @@ label.pj-setting { cursor: pointer; }
   .pj-cursor, .pj-flag, .pj-buddy-del, .pj-outline, .cm-gutters { display: none !important; }
   .pj-canvas, .pj-stage, .pj-stage[data-plain] { display: block; overflow: visible; padding: 0; }
   .pj-page, .pj-stage[data-plain] .pj-page { min-height: 0; padding: 0; border: 0; }
-  .pj-editor .ProseMirror, .pj-editor .cm-editor .cm-content { min-height: 0; }
+  .pj-editor .cm-editor .cm-content { min-height: 0; }
   .pj-editor .cm-content { white-space: pre-wrap; overflow-wrap: anywhere; }
-  .pj-editor :is(.pj-hl, .pj-hl-active, .pj-found, .pj-buddy-edit, .pj-flash, .pj-flash-block, .pj-current, .pj-held) { background: none !important; box-shadow: none !important; color: inherit !important; }
-  .pj-editor .ProseMirror > * { opacity: 1 !important; } /* focus mode fades none */
-  .pj-editor :is(pre, blockquote, table, img, .pj-diagram) { break-inside: avoid; }
-  .pj-editor :is(h1, h2, h3, h4, h5, h6) { break-after: avoid; }
+  .pj-editor :is(.pj-hl, .pj-hl-active, .pj-found, .pj-buddy-edit, .pj-flash) { background: none !important; box-shadow: none !important; color: inherit !important; }
+  .pj-editor .pj-md :is(.cm-line, .pj-md-block, .pj-diagram) { opacity: 1 !important; } /* focus mode fades none */
+  .pj-editor :is(.pj-md-block, .pj-md-img, .pj-diagram) { break-inside: avoid; }
+  .pj-editor .pj-md-h { break-after: avoid; }
 }
