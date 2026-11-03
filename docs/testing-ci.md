@@ -11,8 +11,7 @@ Each test guards a rule there; a test that guards none is not needed.
    else.
 2. **The format is a contract.** Its tests are fixtures in
    `spec/conformance/` that any tool can run. Anchors run in Node and in the
-   browser. The markdown editor's rendered text matches the markdown
-   projection on fixtures and on every markdown file in the repository.
+   browser.
 3. **Agents are always faked.** A fake agent script edits its copy and
    prints a reply. No test runs Claude Code, Codex or a model.
 4. **Every platform, every PR.** Rename, scripts and process trees differ
@@ -123,8 +122,19 @@ that fails before the fix.
 | 2. Protocol fuzz | A1–A6, C1, C3–C5, C7 | `npm run test:stress` (`test/stress/concurrency.test.js`) |
 | 3. Named scenarios in real views and pages | D1–D8, A2 A3 A4 A5 A6, B6, C1–C8 | `npm test` (`test/client.test.js`, `test/doc-service.test.js`, `test/runner.test.js`, `test/store.test.js`, `test/views.test.js`, `test/relay.test.js`) |
 | 4. Timings | B1–B5, B7, B8 | `npm run test:perf` |
+| The Markdown view | D5 and what it draws | `npm test` (`test/markdown.test.js`) |
 | 5. By hand | C5, C6 on a real network | [two machines](#sharing--two-machines-by-hand) |
 
+- **The Markdown view** (`test/markdown.test.js`), in Electron: what each
+  piece of CommonMark and GFM draws with the selection away and on it,
+  line by line ([#358](https://github.com/ponjo-app/ponjo/issues/358));
+  what each key and tool does to the text and the selection, written into
+  the text (`‸` the caret, `« »` a selection); where a click lands; the
+  toolbar's state at the caret. And a fuzz from three fixed seeds: random
+  docs of Markdown pieces, random typing, keys, tools, clicks and focus
+  changes, after each of which nothing was thrown, the focus changed no
+  text, a click lands at the character clicked, and the caret's line shows
+  its source.
 - **Layer 2** runs a real DocService on temp files with 1 to 4 clients
   (`web/client.js`) over a fake line that can delay, drop the line (calls
   fail `offline`), lose an event, restart the host, fail a write (the file

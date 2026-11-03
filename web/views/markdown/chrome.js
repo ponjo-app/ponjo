@@ -18,9 +18,11 @@ const TOOLS = `
     </button>
     <ul class="pj-block-menu" role="listbox" aria-label="Text style" hidden>
       <li role="option" data-command="paragraph" data-block="paragraph"><span class="pj-sample-p">Normal text</span></li>
-      <li role="option" data-command="h1" data-block="h1"><span class="pj-sample-h1">Heading 1</span></li>
-      <li role="option" data-command="h2" data-block="h2"><span class="pj-sample-h2">Heading 2</span></li>
-      <li role="option" data-command="h3" data-block="h3"><span class="pj-sample-h3">Heading 3</span></li>
+      <li role="option" data-command="h1" data-block="h1"><span class="pj-sample-h1">Heading 1</span><kbd>#</kbd></li>
+      <li role="option" data-command="h2" data-block="h2"><span class="pj-sample-h2">Heading 2</span><kbd>##</kbd></li>
+      <li role="option" data-command="h3" data-block="h3"><span class="pj-sample-h3">Heading 3</span><kbd>###</kbd></li>
+      <li role="option" data-command="quote" data-block="quote"><span class="pj-sample-quote">Quote</span><kbd>&gt;</kbd></li>
+      <li role="option" data-command="codeBlock" data-block="codeBlock"><span class="pj-sample-code">Code block</span><kbd>\`\`\`</kbd></li>
     </ul>
   </div>
   <span class="pj-sep"></span>
@@ -35,10 +37,16 @@ const TOOLS = `
   <div class="pj-tool-group">
     <button type="button" data-command="bullets" data-icon="bullets" data-tip="Bulleted list" aria-label="Bulleted list"></button>
     <button type="button" data-command="numbers" data-icon="numbers" data-tip="Numbered list" aria-label="Numbered list"></button>
-    <button type="button" data-command="quote" data-icon="quote" data-tip="Quote" aria-label="Quote"></button>
-    <button type="button" data-command="codeBlock" data-icon="codeBlock" data-tip="Code block" aria-label="Code block"></button>
-    <button type="button" data-command="table" data-icon="table" data-tip="Table" aria-label="Table"></button>
-    <button type="button" data-command="divider" data-icon="divider" data-tip="Divider" aria-label="Divider"></button>
+    <button type="button" data-command="tasks" data-icon="tasks" data-tip="Task list" aria-label="Task list"></button>
+  </div>
+  <span class="pj-sep"></span>
+  <div class="pj-block-picker">
+    <button type="button" data-icon="plus" aria-haspopup="menu" aria-expanded="false" data-tip="Insert" aria-label="Insert"></button>
+    <ul class="pj-block-menu" role="menu" aria-label="Insert" hidden>
+      <li role="menuitem" data-command="table"><span class="pj-menu-item"><span data-icon="table"></span>Table</span></li>
+      <li role="menuitem" data-command="divider"><span class="pj-menu-item"><span data-icon="divider"></span>Divider</span><kbd>---</kbd></li>
+      <li role="menuitem" data-command="footnote"><span class="pj-menu-item"><span data-icon="footnote"></span>Footnote</span><kbd>[^1]</kbd></li>
+    </ul>
   </div>`;
 
 const BUBBLE = `
@@ -69,7 +77,7 @@ const LINK = `
     <ul class="pj-mentions pj-link-files" role="listbox" aria-label="Files" hidden></ul>
   </div>`;
 
-const BLOCK_LABELS = { paragraph: 'Normal text', h1: 'Heading 1', h2: 'Heading 2', h3: 'Heading 3', h4: 'Heading 4', h5: 'Heading 5', h6: 'Heading 6', code_block: 'Code block', front_matter: 'Front matter' };
+const BLOCK_LABELS = { paragraph: 'Normal text', h1: 'Heading 1', h2: 'Heading 2', h3: 'Heading 3', h4: 'Heading 4', h5: 'Heading 5', h6: 'Heading 6', quote: 'Quote', codeBlock: 'Code block', front_matter: 'Front matter' };
 
 const mac = /Mac|iPhone|iPad/.test(navigator.platform);
 
@@ -115,8 +123,8 @@ export function createChrome(editor, { toolbar, stage, host, onComment, files = 
   const done = new AbortController();
   const { signal } = done;
   const link = setupLink(editor, { card, popover, host, canvas, files, signal });
-  const outline = setupOutline(editor, { nav: outlineNav, host, canvas, signal });
-  const blockPicker = setupBlockPicker(editor, tools.find((el) => el.matches('.pj-block-picker')), signal);
+  const outline = setupOutline(editor, { nav: outlineNav, canvas, signal });
+  const [blockPicker] = tools.filter((el) => el.matches('.pj-block-picker')).map((el) => setupMenu(editor, el, signal));
   const buttons = tools.flatMap((el) => [...el.querySelectorAll('button[data-command]')]);
   const commentButton = bubble.querySelector('[data-action="comment"]');
 
@@ -244,7 +252,9 @@ export function createChrome(editor, { toolbar, stage, host, onComment, files = 
   }, { signal });
 
   applySettings(settings);
-  refresh();
+  // In a frame, as after each update: refreshing measures the editor, whose
+  // onLayout the page may not be ready for while the view is still being made.
+  update();
   return {
     /** After every editor update: typing, selection, focus. */
     update,
@@ -328,12 +338,14 @@ function setupLink(editor, { card, popover, host, canvas, files, signal }) {
       editor.endLink('');
     }
   });
-  host.addEventListener('click', (event) => {
-    const a = event.target.closest?.('a[href]');
-    if (!a || !(mac ? event.metaKey : event.ctrlKey)) return;
+  // Before the editor hears it: Mod+click would add a caret there.
+  host.addEventListener('mousedown', (event) => {
+    const link = event.target.closest?.('[data-href]');
+    if (!link || !(mac ? event.metaKey : event.ctrlKey)) return;
     event.preventDefault();
-    follow(a.getAttribute('href'));
-  });
+    event.stopPropagation();
+    follow(link.dataset.href);
+  }, { capture: true, signal });
 
   // At most 8 of the project's files whose path has what is typed, ignoring
   // case, the doc's own left out, those git ignores last.
@@ -462,13 +474,13 @@ function setupLink(editor, { card, popover, host, canvas, files, signal }) {
   };
 }
 
-// ---- "Normal text ▾" block style picker ----
+// ---- the toolbar's menus: the text style ("Normal text ▾"), naming the caret's, and Insert ----
 
-function setupBlockPicker(editor, root, signal) {
-  const button = root.querySelector('.pj-block-button');
+function setupMenu(editor, root, signal) {
+  const button = root.querySelector('button');
   const label = root.querySelector('.pj-block-label');
   const menu = root.querySelector('.pj-block-menu');
-  button.append(icon('chevron', 'pj-icon pj-chevron'));
+  if (label) button.append(icon('chevron', 'pj-icon pj-chevron'));
 
   const close = () => {
     menu.hidden = true;
@@ -500,7 +512,7 @@ function setupBlockPicker(editor, root, signal) {
 
 // ---- outline: a tick per heading at the left edge, a list on hover ----
 
-function setupOutline(editor, { nav, host, canvas, signal }) {
+function setupOutline(editor, { nav, canvas, signal }) {
   const ticks = nav.querySelector('.pj-outline-ticks');
   const list = nav.querySelector('.pj-outline-list');
   let signature = '';
@@ -534,10 +546,9 @@ function setupOutline(editor, { nav, host, canvas, signal }) {
 
   function markActive() {
     const top = canvas.getBoundingClientRect().top + 96;
-    const elements = [...host.querySelectorAll('.ProseMirror > :is(h1, h2, h3, h4, h5, h6)')].filter((h) => h.textContent.trim());
     let active = 0;
-    elements.forEach((h, i) => {
-      if (h.getBoundingClientRect().top <= top) active = i;
+    editor.tops(current.map((h) => h.pos)).forEach((at, i) => {
+      if (at <= top) active = i;
     });
     [...ticks.children].forEach((tick, i) => tick.classList.toggle('pj-on', i === active));
     [...list.querySelectorAll('button')].forEach((link, i) => link.classList.toggle('pj-on', i === active));

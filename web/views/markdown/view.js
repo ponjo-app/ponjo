@@ -1,332 +1,49 @@
-// The Markdown view: a Milkdown (ProseMirror) WYSIWYG editor that draws the
-// page's marks (comments, a draft, a revision), with its own chrome (a
-// toolbar, comment bubble, link popover and outline, see
-// chrome.js), and collaborator-style application of changes made
-// on disk: only the blocks that differ are replaced (the caret stays put).
-// A change made by someone else glows with who made it (a buddy's name in
-// its colour).
-//
-// The page talks to a view in offsets on the doc's text, the file's
-// markdown (the view interface is what createMarkdownView returns first;
-// test/views.test.js is its contract). Inside, marks are drawn on the
-// rendered text of the editor's document (web/pm-text.js), which the
-// markdown projection of the text (src/markdown/project.js) matches
-// character for character.
+// The Markdown view: the doc's Markdown in the editor every view is
+// (web/views/codemirror.js), drawn formatted as it is typed (preview.js), its
+// syntax showing on the lines being edited. Its text is the file's: what it
+// shows is what is saved, and nothing but the person's typing changes it.
+// Its tools type the syntax (chrome.js). See docs/markdown-view.md.
 
-import { Editor, rootCtx, defaultValueCtx, editorViewCtx, editorViewOptionsCtx, parserCtx, serializerCtx, remarkStringifyOptionsCtx } from '@milkdown/kit/core';
-import {
-  toggleStrongCommand, toggleEmphasisCommand, wrapInHeadingCommand,
-  wrapInBulletListCommand, wrapInOrderedListCommand, turnIntoTextCommand,
-  toggleInlineCodeCommand, wrapInBlockquoteCommand, createCodeBlockCommand, insertHrCommand, liftListItemCommand,
-  listItemKeymap,
-} from '@milkdown/kit/preset/commonmark';
-import { toggleStrikethroughCommand, insertTableCommand, remarkGFMPlugin } from '@milkdown/kit/preset/gfm';
-import { history, undoCommand, redoCommand } from '@milkdown/kit/plugin/history';
-import { undoDepth, redoDepth } from '@milkdown/kit/prose/history';
-import { clipboard } from '@milkdown/kit/plugin/clipboard';
-import { cursor } from '@milkdown/kit/plugin/cursor';
-import { trailing } from '@milkdown/kit/plugin/trailing';
-import { listener, listenerCtx } from '@milkdown/kit/plugin/listener';
-import { $prose, $shortcut, callCommand } from '@milkdown/kit/utils';
-import { lift } from '@milkdown/kit/prose/commands';
-import { keymap } from '@milkdown/kit/prose/keymap';
-import { addRowAfter, goToNextCell, isInTable } from '@milkdown/kit/prose/tables';
-import { Fragment } from '@milkdown/kit/prose/model';
-import { Plugin, PluginKey, Selection, TextSelection } from '@milkdown/kit/prose/state';
-import { Decoration, DecorationSet } from '@milkdown/kit/prose/view';
-import { createAnchor, locate } from '../../../src/core/anchor.js';
-import { definesLinks, project, projectBlocks, renderedRange, sourceRange } from '../../../src/markdown/project.js';
-import { splice } from '../../../src/markdown/splice.js';
-import { docRange, projectDoc, selectionSpan, textRange } from '../../pm-text.js';
-import { editItems } from '../../review.js';
-import { markdownPlugins } from '../../markdown-schema.js';
-import { diagrams } from '../../diagrams.js';
-import { blocksOf, childPos, diffBlocks, pairRanges, parseRun, replaceBlocks, textOfDoc, textPos } from './blocks.js';
-import { buddyColor } from '../../faces.js';
-import { cursorNode } from '../../marks.js';
+import { EditorSelection, Prec } from '@codemirror/state';
+import { EditorView, keymap } from '@codemirror/view';
+import { HighlightStyle, syntaxHighlighting, syntaxTree } from '@codemirror/language';
+import { languages } from '@codemirror/language-data';
+import { redoDepth, undoDepth } from '@codemirror/commands';
+import { commonmarkLanguage, markdown } from '@codemirror/lang-markdown';
+import { yamlFrontmatter } from '@codemirror/lang-yaml';
+import { tags } from '@lezer/highlight';
+import { GFM } from '@lezer/markdown';
+import { createEditor } from '../codemirror.js';
 import { createChrome } from './chrome.js';
-import { matches } from '../../../src/core/search.js';
-import { createFind } from '../../find.js';
+import { linkTarget, livePreview } from './preview.js';
+import { footnotes, singleTilde } from './syntax.js';
+import { paste } from './paste.js';
 
-const FLASH_MS = 6000;
-const highlightKey = new PluginKey('ponjo-highlights');
-const flashKey = new PluginKey('ponjo-flash');
-const linkKey = new PluginKey('ponjo-link');
-const foundKey = new PluginKey('ponjo-found');
-const bidiKey = new PluginKey('ponjo-bidi');
-const FROM_DISK = 'ponjo-from-disk'; // meta of a change applied from disk, not typed
+// Colour for code in code blocks; Markdown's own spans are the preview's.
+const codeColours = HighlightStyle.define([
+  { tag: tags.keyword, color: '#708' },
+  { tag: [tags.atom, tags.bool], color: '#219' },
+  { tag: tags.literal, color: '#164' },
+  { tag: tags.string, color: '#a11' },
+  { tag: [tags.regexp, tags.special(tags.string)], color: '#e40' },
+  { tag: tags.definition(tags.variableName), color: '#00f' },
+  { tag: tags.local(tags.variableName), color: '#30a' },
+  { tag: [tags.typeName, tags.namespace], color: '#085' },
+  { tag: tags.className, color: '#167' },
+  { tag: [tags.special(tags.variableName), tags.macroName], color: '#256' },
+  { tag: tags.definition(tags.propertyName), color: '#00c' },
+  { tag: tags.comment, color: '#940' },
+]);
 
-// A ProseMirror doc never changes, so its projection is worked out once per
-// doc, however often the marks, the margin ask.
-const projections = new WeakMap();
-
-function projectionOf(doc) {
-  let projection = projections.get(doc);
-  if (!projection) projections.set(doc, (projection = projectDoc(doc)));
-  return projection;
-}
-
-// Decorations replaced wholesale through a meta, mapped through other edits.
-const decorationPlugin = (key) => $prose(() => new Plugin({
-  key,
-  state: {
-    init: () => DecorationSet.empty,
-    apply: (tr, set) => tr.getMeta(key) ?? set.map(tr.mapping, tr.doc),
-  },
-  props: { decorations: (state) => key.getState(state) },
-}));
-
-// The range a link is being written for while the link popover has focus:
-// { from, to }, set and cleared through a meta, mapped through other edits,
-// and shown as a selection would be.
-const linkPlugin = $prose(() => new Plugin({
-  key: linkKey,
-  state: {
-    init: () => null,
-    apply(tr, range) {
-      if (tr.getMeta(linkKey) !== undefined) return tr.getMeta(linkKey);
-      if (!range) return null;
-      const from = tr.mapping.map(range.from, 1);
-      return { from, to: Math.max(from, tr.mapping.map(range.to, -1)) };
-    },
-  },
-  props: {
-    decorations(state) {
-      const range = linkKey.getState(state);
-      if (!range || range.from === range.to) return null;
-      return DecorationSet.create(state.doc, [Decoration.inline(range.from, range.to, { class: 'pj-held' })]);
-    },
-  },
-}));
-
-// Once the text has lost the focus, the caret or selection stays drawn where
-// it is (the browser hides its own), the caret still. Focused by a click, CSS
-// hides it until the click's own update takes it out: taken out at once, the
-// text under the click would be drawn again before the browser puts the caret.
-const heldPlugin = $prose(() => {
-  let held = false;
-  let pressed = false; // the focus comes from a click on the text
-  const redraw = (view) => view.dispatch(view.state.tr);
-  return new Plugin({
-    props: {
-      handleDOMEvents: {
-        mousedown: () => { pressed = true; },
-        focus: (view) => {
-          held = false;
-          if (!pressed) redraw(view);
-        },
-        blur: (view) => {
-          held = true;
-          pressed = false;
-          redraw(view);
-        },
-      },
-      decorations(state) {
-        const { selection } = state;
-        if (!held || !(selection instanceof TextSelection)) return null;
-        return DecorationSet.create(state.doc, [selection.empty
-          ? Decoration.widget(selection.head, heldCaret, { side: 1, key: 'held' })
-          : Decoration.inline(selection.from, selection.to, { class: 'pj-held' })]);
-      },
-    },
-  });
-});
-
-const heldCaret = () => Object.assign(document.createElement('span'), { className: 'pj-cursor pj-held-caret' });
-
-// Tab in a table's last cell adds a row. Milkdown's Tab (priority 100) only
-// moves to the next cell, and the key then left the table and broke it.
-const tableTab = $shortcut(() => ({
-  Tab: {
-    key: 'Tab',
-    priority: 90,
-    onRun: () => (state, dispatch, view) => {
-      if (!isInTable(state)) return false;
-      if (dispatch) {
-        addRowAfter(state, dispatch);
-        goToNextCell(1)(view.state, dispatch);
-      }
-      return true;
-    },
-  },
-}));
-
-// Keys that end a block's formatting, as Docs and Notion do: Enter on an
-// empty heading makes it a paragraph (it kept the heading and added one
-// after), and Backspace at the start of a quote takes the paragraph out of
-// it (it joined the paragraph before).
-const blockKeys = $shortcut(() => ({
-  EmptyHeadingEnter: {
-    key: 'Enter',
-    priority: 90,
-    onRun: () => (state, dispatch) => {
-      const { $from, empty } = state.selection;
-      if (!empty || $from.parent.type.name !== 'heading' || $from.parent.content.size > 0) return false;
-      if (dispatch) dispatch(state.tr.setBlockType($from.pos, $from.pos, state.schema.nodes.paragraph));
-      return true;
-    },
-  },
-  QuoteBackspace: {
-    key: 'Backspace',
-    priority: 90,
-    onRun: () => (state, dispatch) => {
-      const { $from, empty } = state.selection;
-      if (!empty || $from.parentOffset > 0 || $from.depth < 2 || $from.node(-1).type.name !== 'blockquote' || $from.index(-1) > 0) return false;
-      return lift(state, dispatch);
-    },
-  },
-}));
-
-// Tab stays in the page: past the list and table keys, in a code block it
-// indents the lines the selection touches (an empty one: at the caret) by the
-// block's own indent, a tab or the fewest spaces a line starts with (2 when
-// none), and Shift+Tab outdents them; anywhere else in a page that can be
-// edited it does nothing.
-const codeTab = $shortcut(() => ({
-  CodeTab: { key: 'Tab', priority: 10, onRun: () => indentCode(1) },
-  CodeShiftTab: { key: 'Shift-Tab', priority: 10, onRun: () => indentCode(-1) },
-}));
-
-const indentCode = (step) => (state, dispatch, view) => {
-  if (!view?.editable) return false;
-  const { $from, $to, from, to, empty } = state.selection;
-  if ($from.parent.type.name !== 'code_block' || !$from.sameParent($to) || !dispatch) return true;
-  const text = $from.parent.textContent;
-  const start = $from.start();
-  const leads = text.match(/^ +(?=\S)/gm)?.map((lead) => lead.length) ?? [2];
-  const unit = /^\t/m.test(text) ? '\t' : ' '.repeat(Math.min(8, Math.max(2, Math.min(...leads))));
-  const tr = state.tr;
-  if (step > 0 && empty) {
-    dispatch(tr.insertText(unit, from).scrollIntoView());
-    return true;
-  }
-  const lines = [];
-  for (let at = text.lastIndexOf('\n', from - start - 1) + 1; at <= to - start; at = text.indexOf('\n', at) + 1) {
-    lines.push(at);
-    if (text.indexOf('\n', at) === -1) break;
-  }
-  for (const at of lines.reverse()) {
-    if (step > 0) tr.insertText(unit, start + at);
-    else {
-      const lead = text.slice(at).match(unit === '\t' ? /^\t/ : new RegExp(`^ {1,${unit.length}}`))?.[0] ?? '';
-      if (lead) tr.delete(start + at, start + at + lead.length);
-    }
-  }
-  if (tr.docChanged) dispatch(tr.scrollIntoView());
-  return true;
-};
-
-// Pasting a single URL over selected text links the text to it, as Docs and
-// Notion do. Plain text is read as Markdown, and formatted text (HTML) keeps
-// its formatting, by the clipboard plugin, but for images held in the page
-// itself (`data:`, `blob:`), whose bytes would land in the doc. Pasted with
-// Mod+Shift+V, plain text goes in as the text it is, a paragraph a line.
-const paste = $prose(() => {
-  let plain = false; // the last key pressed was Mod+Shift+V
-  return new Plugin({
-    props: {
-      handleKeyDown(_view, event) {
-        plain = event.shiftKey && event.code === 'KeyV';
-        return false;
-      },
-      handlePaste(view, event, slice) {
-        const asText = plain;
-        plain = false;
-        const data = event.clipboardData;
-        const url = data?.getData('text/plain').trim();
-        const { selection: { empty, from, to, $from }, schema, tr } = view.state;
-        const type = schema.marks.link;
-        if (!empty && /^(https?:\/\/|mailto:)\S+$/i.test(url) && $from.parent.type.allowsMarkType(type)) {
-          view.dispatch(tr.removeMark(from, to, type).addMark(from, to, type.create({ href: url })));
-          return true;
-        }
-        // ProseMirror's own slice of plain text: its lines as paragraphs, or as they are in code.
-        if (!asText || !data || data.types.includes('text/html') || data.types.includes('vscode-editor-data')) return false;
-        view.dispatch(tr.replaceSelection(slice).scrollIntoView().setMeta('paste', true).setMeta('uiEvent', 'paste'));
-        return true;
-      },
-      transformPastedHTML(html) {
-        const template = document.createElement('template');
-        template.innerHTML = html;
-        for (const image of template.content.querySelectorAll('img')) {
-          if (/^\s*(data|blob):/i.test(image.getAttribute('src') ?? '')) image.remove();
-        }
-        return template.innerHTML;
-      },
-    },
-  });
-});
-
-// Clicking a task list item's box (app.css draws it in the item's gutter,
-// left of the item) ticks or unticks it.
-const taskBox = $prose(() => new Plugin({
-  props: {
-    handleDOMEvents: {
-      mousedown(view, event) {
-        const item = event.target;
-        if (!view.editable || item.dataset?.itemType !== 'task' || event.clientX >= item.getBoundingClientRect().left) return false;
-        const pos = view.posAtDOM(item, 0) - 1;
-        const node = view.state.doc.nodeAt(pos);
-        event.preventDefault();
-        view.dispatch(view.state.tr.setNodeMarkup(pos, undefined, { ...node.attrs, checked: !node.attrs.checked }));
-        return true;
-      },
-    },
-  },
-}));
-
-// A block holding right-to-left letters (Hebrew, Arabic…) runs the way its
-// text starts, as do the blocks in it: dir="auto". Each top-level block is
-// looked at once.
-const RTL = /[\u0590-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFF]/;
-const directions = new WeakMap(); // a top-level node → the [from, to) of its blocks to mark, from its start
-const bidiPlugin = $prose(() => new Plugin({
-  key: bidiKey,
-  state: {
-    init: (_config, { doc }) => bidiOf(doc),
-    apply: (tr, set) => (tr.docChanged ? bidiOf(tr.doc) : set),
-  },
-  props: { decorations: (state) => bidiKey.getState(state) },
-}));
-
-function bidiOf(doc) {
-  const decorations = [];
-  doc.forEach((node, offset) => {
-    let own = directions.get(node);
-    if (!own) {
-      own = [];
-      if (RTL.test(node.textContent)) {
-        own.push([0, node.nodeSize]);
-        node.descendants((child, pos) => {
-          if (child.isBlock) own.push([pos + 1, pos + 1 + child.nodeSize]);
-        });
-      }
-      directions.set(node, own);
-    }
-    for (const [from, to] of own) decorations.push(Decoration.node(offset + from, offset + to, { dir: 'auto' }));
-  });
-  return DecorationSet.create(doc, decorations);
-}
-
-// Reports every view update, and marks the top-level block holding the caret
-// (for focus mode).
-const uiPlugin = (hooks) => $prose(() => new Plugin({
-  view: () => ({ update: (view) => hooks.onUpdate(view) }),
-  props: {
-    handleDOMEvents: {
-      focus: (view) => hooks.onUpdate(view),
-      blur: (view) => hooks.onUpdate(view),
-    },
-    decorations(state) {
-      const { $from } = state.selection;
-      if ($from.depth === 0) return null;
-      const top = $from.before(1);
-      return DecorationSet.create(state.doc, [Decoration.node(top, top + $from.node(1).nodeSize, { class: 'pj-current' })]);
-    },
-  },
-}));
+// A line's block prefix: its indent, then a heading's, a quote's or a list item's marker.
+const PREFIX = /^(\s*)(#{1,6} |> ?|[-*+] \[[ xX]\] |[-*+] |\d+[.)] )?/;
+// All of a line's block prefixes, one in another (`> - [ ] `).
+const PREFIXES = /^(\s*(#{1,6} |> ?|[-*+] \[[ xX]\] |[-*+] |\d+[.)] ))*/;
 
 /**
+ * The view interface, as every view has it, in offsets on the doc's text
+ * (web/views/codemirror.js), with these options:
+ *
  * A mark is drawn over a range of the doc's text:
  * - { kind: 'comment', id, from, to, active }: commented text, `id` its
  *   thread's (or 'draft'); clicking it calls onMarkClick(id).
@@ -356,833 +73,438 @@ const uiPlugin = (hooks) => $prose(() => new Plugin({
 // as written: a URL the page may show, or null for none. `files` says the
 // project's files and the doc's path in it, for the link popover to offer.
 export async function createMarkdownView({
-  stage, text, editable = true, onChange = () => {}, onEdit = () => {}, onMarkClick = () => {}, onLayout = () => {}, toolbar = null, onComment = () => {},
+  stage, text, editable = true, onChange, onEdit, onMarkClick, onLayout, toolbar = null, onComment = () => {},
   image = async () => null, files = () => null,
   settings = null, saveSettings = () => {},
 }) {
-  // The human changed the doc since `updated` last fired: any change not
-  // applied from disk, even one that brings back the text as it was saved.
-  // What Milkdown plugins append (the empty line kept after a last table or code
-  // block, which saves as nothing) follows from another change.
-  let edited = false;
-  let editing = false; // the same, since onEdit last fired
-  let chrome = null;
-  let finder = null;
-  let foundIn = null; // the doc the find bar's matches were found in, while it has a query
-  let refind = 0;
-  const hooks = {
-    onUpdate: (v) => {
-      chrome?.update();
-      if (foundIn && v.state.doc !== foundIn) {
-        clearTimeout(refind);
-        refind = setTimeout(() => finder.changed(), 100); // not while the view updates, nor on every key
-      }
-    },
-  };
-  // An image's URL by its `src`, asked for once.
-  const images = new Map();
-  const imageView = (node) => {
-    const { src, alt, title } = node.attrs;
-    const dom = Object.assign(document.createElement('img'), { alt, title });
-    if (/^[a-z][a-z\d+.-]*:/i.test(src)) dom.src = src;
-    else {
-      if (!images.has(src)) images.set(src, image(src).catch(() => null));
-      images.get(src).then((url) => url && (dom.src = url));
-    }
-    return { dom };
-  };
   const host = stage.querySelector('.pj-editor');
-  const editor = await Editor.make()
-    .config((ctx) => {
-      ctx.set(rootCtx, host);
-      ctx.set(defaultValueCtx, text);
-      if (!editable) ctx.update(editorViewOptionsCtx, (options) => ({ ...options, editable: () => false }));
-      ctx.update(editorViewOptionsCtx, (options) => ({ ...options, nodeViews: { image: imageView } }));
-      // Delete at the start of a list item deletes forward, as in any text.
-      ctx.update(listItemKeymap.key, (keys) => ({ ...keys, LiftFirstListItem: { shortcuts: 'Backspace' } }));
-      // Match common markdown style so edited blocks change as little as possible.
-      ctx.update(remarkStringifyOptionsCtx, (options) => ({
-        ...options, bullet: '-', emphasis: '*', strong: '*', rule: '-', fences: true, listItemIndent: 'one',
-      }));
-      // A table row is written as its own cells say, not padded to line up
-      // with the others: an edit in one cell then changes only its row, and
-      // two people typing in one table do not both re-pad it.
-      ctx.set(remarkGFMPlugin.options.key, { tablePipeAlign: false });
-      // `updated` is debounced (200 ms) and fires only when the doc changed.
-      ctx.get(listenerCtx).updated(() => {
-        if (edited) {
-          edited = false;
-          onChange();
-        }
-      });
-    })
-    .use(markdownPlugins).use(editable ? diagrams : []).use(history).use(paste).use(clipboard).use(listener).use(cursor).use(trailing).use(tableTab).use(blockKeys).use(codeTab).use(taskBox)
-    .use(decorationPlugin(highlightKey)).use(decorationPlugin(flashKey)).use(decorationPlugin(foundKey)).use(linkPlugin).use(editable ? heldPlugin : []).use(bidiPlugin).use(uiPlugin(hooks))
-    // The standard keys format as the toolbar does; typed Markdown still stays text.
-    .use($prose(() => keymap({
-      'Mod-b': () => run('bold'),
-      'Mod-i': () => run('italic'),
-      'Mod-e': () => run('code'),
-      'Mod-Shift-x': () => run('strike'),
-      'Mod-k': () => Boolean(chrome?.link()),
-    })))
-    .use($prose(() => new Plugin({
-      appendTransaction(trs) {
-        if (trs.some((tr) => tr.docChanged && !tr.getMeta(FROM_DISK) && !tr.getMeta('appendedTransaction'))) edited = editing = true;
-        return null;
-      },
-      // Once the change is in the editor's state, getText reads it.
-      view: () => ({
-        update(v) {
-          if (!editing || v.composing) return; // typing in an IME composition is the person's once it ends
-          editing = false;
-          onEdit();
-        },
-      }),
-      props: {
-        handleDOMEvents: {
-          compositionend: (v) => {
-            setTimeout(() => {
-              if (!editing || v.composing) return;
-              editing = false;
-              onEdit();
-            });
-          },
-        },
-      },
-    })))
-    .create();
+  let chrome = null;
+  let linkHeld = null; // the range the link popover edits: { from, to, link }
 
-  const view = () => editor.ctx.get(editorViewCtx);
-  // Parsing or serializing a long doc takes tens of milliseconds, and a sync
-  // from disk or a save asks for the same ones more than once: each doc is
-  // serialized once, and the last few parses are kept.
-  const serialized = new WeakMap();
-  let parsed = []; // [markdown, doc], newest first
-  const parse = (md) => {
-    const hit = parsed.find(([text]) => text === md);
-    if (hit) return hit[1];
-    const doc = editor.ctx.get(parserCtx)(md);
-    parsed = [[md, doc], ...parsed].slice(0, 4);
-    return doc;
-  };
-  const serialize = (doc) => {
-    let md = serialized.get(doc);
-    if (md === undefined) serialized.set(doc, (md = editor.ctx.get(serializerCtx)(doc)));
-    return md;
-  };
-  // The doc's text as this view was last given it, and the document it was
-  // given to (`base`). A document's text is that, with each block the human
-  // changed in this editor's style and every other block as it was; worked
-  // out once per doc, and projected once when asked. While each top-level
-  // block of `given` pairs with a child of `base` (`base.blocks`, their
-  // ranges; worked out when first asked, null when they do not pair up), a
-  // change in or out is worked out only where it is (blocks.js), so a
-  // long doc others write in stays quick; otherwise it is worked out whole.
-  let given = text;
-  let base = { doc: view().state.doc, blocks: undefined };
-  const baseBlocks = () => {
-    if (base.blocks === undefined) base.blocks = blocksOf(base.doc, given);
-    return base.blocks;
-  };
-  const serializeNodes = (nodes) => editor.ctx.get(serializerCtx)(base.doc.type.create(null, nodes));
-  // { text, blocks }: the doc's text for `doc`, and its children's ranges in it, or null.
-  const textOf = (doc) => {
-    const blocks = baseBlocks();
-    if (doc === base.doc) return { text: given, blocks };
-    const found = blocks && textOfDoc(doc, base.doc, given, blocks, serializeNodes, parse);
-    if (found) return found;
-    const ours = serialize(doc);
-    return { text: ours === serialize(parse(given)) ? given : splice(given, ours), blocks: null };
-  };
-  const texts = new WeakMap(); // doc → { given, text, blocks, projection }
-  const sourceOf = (doc) => {
-    let source = texts.get(doc);
-    if (source?.given !== given) texts.set(doc, (source = { given, ...textOf(doc), projection: null }));
-    return source;
-  };
-  const currentText = () => sourceOf(view().state.doc).text;
-  const projectionCache = new Map(); // a block's text → its rendered lines
-  // A doc that may define links is projected whole: a block's links read by definitions elsewhere.
-  const projected = (doc) => {
-    const source = sourceOf(doc);
-    return (source.projection ??= source.blocks && !definesLinks(source.text) ? projectBlocks(source.text, source.blocks, projectionCache) : project(source.text));
-  };
+  const keys = [
+    { key: 'Mod-b', run: () => run('bold') },
+    { key: 'Mod-i', run: () => run('italic') },
+    { key: 'Mod-e', run: () => run('code') },
+    { key: 'Mod-Shift-x', run: () => run('strike') },
+    { key: 'Mod-k', run: () => Boolean(chrome?.link()) },
+    { key: 'Tab', run: () => tab(1) },
+    { key: 'Shift-Tab', run: () => tab(-1) },
+  ];
+  const { view, editor } = createEditor({
+    stage, host, text, editable, onChange, onEdit, onMarkClick, onLayout, keys,
+    extensions: [
+      Prec.highest(keymap.of([{ key: 'Enter', run: endBlock }, { key: 'Backspace', run: unmark }])), // before Markdown's own
+      // CommonMark and GFM only: CodeMirror's markdownLanguage reads ~x~ as subscript, ^x^ and :x: too.
+      yamlFrontmatter({ content: markdown({ base: commonmarkLanguage, codeLanguages: languages, extensions: [GFM, singleTilde, footnotes] }) }),
+      syntaxHighlighting(codeColours),
+      EditorView.lineWrapping,
+      EditorView.editorAttributes.of({ class: 'pj-md' }),
+      livePreview({ image, diagrams: editable }),
+      paste(),
+    ],
+    onUpdate: () => chrome?.update(),
+  });
 
-  // Rendered ranges of the doc's text and of the editor's document are the
-  // same when the two rendered texts agree, as they should
-  // (test/rendered-text.test.js); otherwise one is found in the other by its
-  // words, or not at all.
-  const across = (from, to, start, end) => (from.text === to.text
-    ? { start, end }
-    : locate(to.text, createAnchor(from.text, start, end)));
+  // The nodes from the one at `pos` out to the doc's.
+  function* around(pos = view.state.selection.main.head, side = -1) {
+    for (let node = syntaxTree(view.state).resolveInner(pos, side); node; node = node.parent) yield node;
+  }
+  const inside = (name) => [...around()].find((node) => node.name === name) ?? null;
 
-  /** The document range drawn from text range [from, to), or null when it draws nothing. */
-  function docRangeOf(doc, from, to) {
-    const projection = projected(doc);
-    const rendered = renderedRange(projection, from, to);
-    if (rendered.start === rendered.end) return null;
-    const editorProjection = projectionOf(doc);
-    const found = across(projection, editorProjection, rendered.start, rendered.end);
-    return found && docRange(editorProjection, found.start, found.end);
+  // ---- formatting: each command types or removes Markdown ----
+
+  // The lines the selection touches.
+  function touched() {
+    const { doc, selection } = view.state;
+    const lines = [];
+    for (let n = doc.lineAt(selection.main.from).number; n <= doc.lineAt(selection.main.to).number; n++) lines.push(doc.line(n));
+    return lines;
   }
 
-  /**
-   * The document range of the character drawn at text offset `at`, or of the
-   * last one when none is at or after it; null for a doc with no text.
-   */
-  function charAt(doc, at) {
-    const projection = projected(doc);
-    if (projection.text.length === 0) return null;
-    const i = Math.min(renderedRange(projection, at, at).start, projection.text.length - 1);
-    const editorProjection = projectionOf(doc);
-    const found = across(projection, editorProjection, i, i + 1);
-    return found && docRange(editorProjection, found.start, found.end);
-  }
-
-  /**
-   * The document position of a caret at text offset `at`: after the
-   * character drawn before it or, when markup is before it (`# `, `**`),
-   * before the one drawn after it; null for a doc with no text.
-   */
-  function caretAt(doc, at) {
-    const projection = projected(doc);
-    const last = projection.text.length - 1;
-    if (last < 0) return null;
-    // One pass over the text: the character drawn before `at`, else the one after it, else the last.
-    const { start, end } = renderedRange(projection, at - 1, at);
-    const i = Math.min(start, last);
-    const editorProjection = projectionOf(doc);
-    const found = across(projection, editorProjection, i, i + 1);
-    if (!found) return null;
-    const range = docRange(editorProjection, found.start, found.end);
-    return start < end || start > last ? range.to : range.from;
-  }
-
-  /** Text offset of document position `pos`, or null when it is not in the text. */
-  function offsetAt(doc, pos) {
-    const editorProjection = projectionOf(doc);
-    const { positions, text: rendered } = editorProjection;
-    const projection = projected(doc);
-    let i = positions.findIndex((p) => p >= pos);
-    if (i === -1) i = rendered.length;
-    const last = i - 1; // the character before `pos`, never the line break after it
-    if (rendered[i] === '\n' && positions[i + 1] === positions[i]) i++;
-    // Before the character at `pos`, else after the one before it.
-    const before = i < rendered.length && positions[i] === pos;
-    const at = before ? i : last;
-    if (at < 0) return 0;
-    const found = across(editorProjection, projection, at, at + 1);
-    return found && projection.offsets[found.start] + (before ? 0 : 1);
-  }
-
-  let marks = [];
-  // What was last painted, so a repaint that would draw the same is skipped.
-  let paintedDoc = null;
-  let painted = '';
-
-  function paintMarks() {
-    const v = view();
-    const { doc } = v.state;
-    const decorations = [];
-    const drawn = [];
-    for (const mark of marks) {
-      if (mark.kind === 'comment') {
-        const range = docRangeOf(doc, mark.from, mark.to);
-        if (!range) continue;
-        const classes = mark.active ? 'pj-hl pj-hl-active' : 'pj-hl';
-        decorations.push(Decoration.inline(range.from, range.to, { class: classes, 'data-thread': mark.id }, { thread: mark.id, active: mark.active }));
-        drawn.push(range.from, range.to, mark.id, classes);
+  // Wrap each selection in `marker`, or unwrap it if it is wrapped.
+  const wrap = (marker) => () => {
+    const { state } = view;
+    const n = marker.length;
+    view.dispatch(state.changeByRange((range) => {
+      if (state.sliceDoc(range.from - n, range.from) === marker && state.sliceDoc(range.to, range.to + n) === marker) {
+        return { changes: [{ from: range.from - n, to: range.from }, { from: range.to, to: range.to + n }], range: EditorSelection.range(range.from - n, range.to - n) };
       }
-    }
-    for (const mark of marks) {
-      const pos = mark.kind === 'cursor' ? caretAt(doc, mark.at) : null;
-      if (pos === null) continue;
-      decorations.push(Decoration.widget(pos, () => cursorNode(mark), { side: 1, key: `cursor-${mark.by}-${mark.working}` }));
-      drawn.push('cursor', mark.by, pos, mark.working);
-    }
-    // A revision shows as a suggestion: removed text struck through, new
-    // text marked. Decorations only; the doc does not change. A new `replay`
-    // number gives the marks new attributes, so ProseMirror redraws them and
-    // their animation runs again. A buddy's (`by`) is in its colour, its
-    // removed text grey.
-    const edits = marks.filter((m) => m.kind === 'edit');
-    const projection = edits.length > 0 ? projected(doc) : null;
-    const editorProjection = projectionOf(doc);
-    (projection ? editItems(projection.source, edits, projection) : []).forEach(({ anchor, mark, widget, by, replay }, i) => {
-      const kindClass = (kind) => (by ? (kind === 'ins' ? 'pj-buddy-edit' : 'pj-buddy-del') : `pj-mark-${kind}`);
-      const classes = (kind) => `${kindClass(kind)}${replay ? ' pj-replay' : ''}`;
-      const style = by ? `--buddy: ${buddyColor(by)}` : '';
-      const found = across(projection, editorProjection, anchor.start, anchor.start + anchor.exact.length);
-      if (!found) return;
-      const range = docRange(editorProjection, found.start, found.end);
-      drawn.push(by, range.from, range.to, mark, replay);
-      if (mark) decorations.push(Decoration.inline(range.from, range.to, { class: classes(mark), style, 'data-replay': String(replay) }));
-      if (!widget) return;
-      const before = widget.side === 'before';
-      const key = `change-${replay}-${i}-${widget.kind}-${widget.text}`;
-      decorations.push(Decoration.widget(before ? range.from : range.to, () => el(widget.kind, classes(widget.kind), widget.text), {
-        side: before ? -1 : 1, key,
-      }));
-      drawn.push(key, widget.side);
+      const inner = state.sliceDoc(range.from, range.to);
+      if (inner.length >= 2 * n && inner.startsWith(marker) && inner.endsWith(marker)) {
+        return { changes: { from: range.from, to: range.to, insert: inner.slice(n, -n) }, range: EditorSelection.range(range.from, range.to - 2 * n) };
+      }
+      return { changes: [{ from: range.from, insert: marker }, { from: range.to, insert: marker }], range: EditorSelection.range(range.from + n, range.to + n) };
+    }), { userEvent: 'input.format' });
+  };
+
+  // The lines that open the items of the list the selection is in, when it is all in one.
+  function listLines() {
+    const { doc, selection } = view.state;
+    const isList = (node) => node.name === 'BulletList' || node.name === 'OrderedList';
+    const list = [...around(selection.main.from, -1)].find(isList) ?? [...around(selection.main.from, 1)].find(isList);
+    if (!list || selection.main.to > list.to) return null;
+    return list.getChildren('ListItem').map((item) => doc.lineAt(item.from));
+  }
+
+  // Each line the selection touches gets `make(i)` in place of its block
+  // prefix, or loses it if every line has it already (`has`). A list made
+  // another kind is made so whole; a heading is one line, without the break
+  // that ended it; a new list or quote is kept apart from the paragraph line
+  // after it, which would read as part of it.
+  const prefix = (make, has, { list = false, heading = false } = {}) => () => {
+    const { doc } = view.state;
+    let lines = touched();
+    const all = lines.every((line) => has.test(line.text));
+    const whole = list && !all && listLines();
+    if (whole) lines = whole;
+    const changes = lines.flatMap((line, i) => {
+      const [marker, indent] = PREFIX.exec(line.text);
+      const change = { from: line.from + indent.length, to: line.from + marker.length, insert: all ? '' : make(i) };
+      const hardBreak = heading && !all && /(\\| {2,})$/.exec(line.text);
+      return hardBreak ? [change, { from: line.to - hardBreak[0].length, to: line.to }] : [change];
     });
-    const signature = JSON.stringify(drawn);
-    if (doc === paintedDoc && signature === painted) return;
-    paintedDoc = doc;
-    painted = signature;
-    v.dispatch(v.state.tr.setMeta(highlightKey, DecorationSet.create(doc, decorations)).setMeta('addToHistory', false));
-    onLayout();
+    const next = lines.at(-1).number < doc.lines ? doc.line(lines.at(-1).number + 1) : null;
+    if (!heading && !all && !whole && next?.text.trim() && !PREFIX.exec(next.text)[2] && !inside('FencedCode')) changes.push({ from: next.from, insert: '\n' });
+    view.dispatch({ changes, userEvent: 'input.format' });
+  };
+
+  // Take the fences of fenced code block `node` away.
+  function unfence(node) {
+    const { doc } = view.state;
+    const open = doc.lineAt(node.from);
+    const close = doc.lineAt(node.to);
+    const changes = [{ from: open.from, to: Math.min(open.to + 1, doc.length) }];
+    if (close.number !== open.number && /^\s*(`{3,}|~{3,})\s*$/.test(close.text)) changes.push({ from: close.from - 1, to: close.to });
+    view.dispatch({ changes, userEvent: 'input.format' });
   }
 
-  const clickMark = (event) => {
-    const mark = event.target.closest?.('[data-thread]');
-    if (mark) onMarkClick(mark.dataset.thread);
-  };
-  host.addEventListener('click', clickMark);
+  // Fence the lines the selection touches as code, or take a block's fences away.
+  function codeBlock() {
+    const fence = inside('FencedCode');
+    if (fence) return unfence(fence);
+    const lines = touched();
+    const { anchor, head } = view.state.selection.main; // on the same characters, in the block
+    return view.dispatch({ changes: [{ from: lines[0].from, insert: '```\n' }, { from: lines.at(-1).to, insert: '\n```' }], selection: { anchor: anchor + 4, head: head + 4 }, userEvent: 'input.format' });
+  }
 
-  // ---- formatting commands, run from the toolbar ----
+  // Normal text: no heading, quote, list item or fence.
+  function paragraph() {
+    const fence = inside('FencedCode');
+    if (fence) return unfence(fence);
+    // Every prefix: a quote's, a list item's in it, a heading's.
+    const changes = touched().flatMap((line) => {
+      const indent = /^\s*/.exec(line.text)[0].length;
+      const prefixes = PREFIXES.exec(line.text)[0].length;
+      return prefixes > indent ? [{ from: line.from + indent, to: line.from + prefixes }] : [];
+    });
+    return view.dispatch({ changes, userEvent: 'input.format' });
+  }
 
-  const listCommand = (type, wrap) => (state, dispatch) => {
-    const list = ancestor(state, (node) => node.type.name === 'bullet_list' || node.type.name === 'ordered_list');
-    if (!list) return editor.action(callCommand(wrap.key));
-    if (list.node.type.name === type) return editor.action(callCommand(liftListItemCommand.key));
-    // The items say which kind of list they are in, too: Milkdown turns a
-    // bulleted list whose items still say ordered back into a numbered one.
-    const tr = state.tr.setNodeMarkup(list.pos, state.schema.nodes[type], { spread: list.node.attrs.spread });
-    const listType = type === 'bullet_list' ? 'bullet' : 'ordered';
-    list.node.forEach((item, offset) => tr.setNodeMarkup(list.pos + 1 + offset, null, { ...item.attrs, listType }));
-    dispatch(tr);
-    return true;
-  };
-  const headingCommand = (level) => (state) => editor.action(blockType(state) === `h${level}`
-    ? callCommand(turnIntoTextCommand.key)
-    : callCommand(wrapInHeadingCommand.key, level));
-  // A block style given to a paragraph changes the lines the selection
-  // touches, not the rest of it: it is split at the line breaks around them
-  // first, and with `each`, between them too (a heading is one line).
-  const onLines = (command, each = false) => (state, dispatch) => {
-    const tr = splitLines(state.tr, each);
-    if (tr.docChanged) dispatch(tr);
-    return command(view().state, dispatch);
-  };
-  const commands = {
-    undo: () => editor.action(callCommand(undoCommand.key)),
-    redo: () => editor.action(callCommand(redoCommand.key)),
-    paragraph: () => editor.action(callCommand(turnIntoTextCommand.key)),
-    h1: onLines(headingCommand(1), true),
-    h2: onLines(headingCommand(2), true),
-    h3: onLines(headingCommand(3), true),
-    bold: () => editor.action(callCommand(toggleStrongCommand.key)),
-    italic: () => editor.action(callCommand(toggleEmphasisCommand.key)),
-    strike: () => editor.action(callCommand(toggleStrikethroughCommand.key)),
-    code: () => editor.action(callCommand(toggleInlineCodeCommand.key)),
-    bullets: onLines(listCommand('bullet_list', wrapInBulletListCommand)),
-    numbers: onLines(listCommand('ordered_list', wrapInOrderedListCommand)),
-    quote: onLines((state, dispatch) => (ancestor(state, (node) => node.type.name === 'blockquote')
-      ? lift(state, dispatch)
-      : editor.action(callCommand(wrapInBlockquoteCommand.key)))),
-    // Its lines stay lines: each line break becomes a newline in the code,
-    // and the blocks the selection touches go in one code block, a block a line.
-    codeBlock: onLines((state, dispatch) => {
-      const { $from, $to } = state.selection;
-      const range = !$from.sameParent($to) && $from.blockRange($to);
-      const blocks = range ? range.parent.content.content.slice(range.startIndex, range.endIndex) : [];
-      if (blocks.length > 1 && blocks.every((node) => node.isTextblock)) {
-        const code = blocks.map((node) => node.textBetween(0, node.content.size, null, (leaf) => (leaf.type.name === 'hardbreak' ? '\n' : ''))).join('\n');
-        const tr = state.tr.replaceWith(range.start, range.end, state.schema.nodes.code_block.create(null, code ? state.schema.text(code) : null));
-        dispatch(tr.setSelection(TextSelection.create(tr.doc, range.start + 1, range.start + 1 + code.length)).scrollIntoView());
-        return true;
-      }
-      const tr = state.tr;
-      $from.parent.forEach((child, offset) => {
-        if (child.type.name === 'hardbreak') tr.replaceWith(tr.mapping.map($from.start() + offset), tr.mapping.map($from.start() + offset + 1), state.schema.text('\n'));
-      });
-      if (tr.docChanged) dispatch(tr);
-      return editor.action(callCommand(createCodeBlockCommand.key));
-    }),
-    divider: () => editor.action(callCommand(insertHrCommand.key)),
-    table: () => editor.action(callCommand(insertTableCommand.key, { row: 3, col: 3 })),
+  // `block` on lines of its own after the selection's last line, a blank line before it; the caret `caret` into it.
+  const insertBlock = (block, caret) => () => {
+    const last = touched().at(-1);
+    const lead = last.text.trim() ? '\n\n' : '';
+    view.dispatch({ changes: { from: last.to, insert: `${lead}${block}\n` }, selection: { anchor: last.to + lead.length + caret }, userEvent: 'input.format', scrollIntoView: true });
   };
 
-  /** Run a named formatting command against the current selection; true, as a key's command. */
+  // A footnote: its reference at the caret, its note at the doc's end, the caret there.
+  function footnote() {
+    const all = view.state.doc.toString();
+    const n = Math.max(0, ...[...all.matchAll(/\[\^(\d+)\]/g)].map((m) => Number(m[1]))) + 1;
+    const at = view.state.selection.main.to;
+    const note = `${all.endsWith('\n\n') || !all ? '' : all.endsWith('\n') ? '\n' : '\n\n'}[^${n}]: `;
+    view.dispatch({
+      changes: [{ from: at, insert: `[^${n}]` }, { from: all.length, insert: note }],
+      selection: { anchor: all.length + `[^${n}]`.length + note.length },
+      userEvent: 'input.format',
+      scrollIntoView: true,
+    });
+  }
+
+  const COMMANDS = {
+    undo: () => editor.undo(),
+    redo: () => editor.redo(),
+    paragraph,
+    h1: prefix(() => '# ', /^\s*# /, { heading: true }),
+    h2: prefix(() => '## ', /^\s*## /, { heading: true }),
+    h3: prefix(() => '### ', /^\s*### /, { heading: true }),
+    quote: prefix(() => '> ', /^\s*> /),
+    codeBlock,
+    bold: wrap('**'),
+    italic: wrap('*'),
+    strike: wrap('~~'),
+    code: wrap('`'),
+    bullets: prefix(() => '- ', /^\s*[-*+] (?!\[[ xX]\] )/, { list: true }),
+    numbers: prefix((i) => `${i + 1}. `, /^\s*\d+[.)] /, { list: true }),
+    tasks: prefix(() => '- [ ] ', /^\s*[-*+] \[[ xX]\] /, { list: true }),
+    table: insertBlock('|  |  |  |\n| --- | --- | --- |\n|  |  |  |\n|  |  |  |', 2),
+    divider: insertBlock('---', 3),
+    footnote,
+  };
+
+  /** Run a named formatting command against the selection; true, as a key's command. */
   function run(name) {
-    const v = view();
     // Front matter is source: nothing formats it.
-    if (editable && (name === 'undo' || name === 'redo' || blockType(v.state) !== 'front_matter')) commands[name]?.(v.state, (tr) => v.dispatch(tr));
-    v.focus();
+    if (editable && (name === 'undo' || name === 'redo' || !inside('Frontmatter'))) COMMANDS[name]?.();
+    view.focus();
     return true;
   }
 
-  /**
-   * What the toolbar reflects: active marks, the block type and lists at the
-   * caret, and whether there is anything to undo or redo.
-   */
-  function formatState() {
-    const { state } = view();
-    const active = new Set();
-    for (const [name, mark] of [['bold', 'strong'], ['italic', 'emphasis'], ['strike', 'strike_through'], ['code', 'inlineCode']]) {
-      if (markActive(state, mark)) active.add(name);
+  // Enter on an empty item of a list, or an empty line of a quote, not in
+  // another block, ends it with a blank line, so what is typed next is not
+  // read as part of it. Otherwise Enter is Markdown's: it continues a list or
+  // a quote (insertNewlineContinueMarkup).
+  function endBlock() {
+    const { state } = view;
+    const { main } = state.selection;
+    const line = state.doc.lineAt(main.head);
+    if (!editable || !main.empty || !/^([-*+]( \[[ xX]\])?|\d+[.)]|>)\s*$/.test(line.text) || inside('FencedCode') || inside('CodeBlock')) return false;
+    view.dispatch({ changes: { from: line.from, to: line.to, insert: '\n' }, selection: { anchor: line.from + 1 }, userEvent: 'input' });
+    return true;
+  }
+
+  // Backspace right after a list item's marker or a quote's: a nested item
+  // moves out a level; else the marker goes, and the line is kept apart from
+  // the line before, which would read it as part of its list or quote.
+  // Otherwise Backspace is Markdown's (deleteMarkupBackward).
+  function unmark() {
+    const { state } = view;
+    const { main } = state.selection;
+    if (!editable || !main.empty) return false;
+    const line = state.doc.lineAt(main.head);
+    const marker = /^(\s*)([-*+] \[[ xX]\] |[-*+] |\d+[.)] |> ?)/.exec(line.text);
+    if (!marker || line.from + marker[0].length !== main.head || inside('FencedCode') || inside('CodeBlock')) return false;
+    if (marker[1] && !marker[2].startsWith('>')) return tab(-1);
+    const apart = line.number > 1 && state.doc.line(line.number - 1).text.trim() ? '\n' : '';
+    const changes = [{ from: line.from + marker[1].length, to: main.head }, { from: line.from, insert: apart }];
+    view.dispatch({ changes, selection: { anchor: line.from + apart.length + marker[1].length }, userEvent: 'delete.backward' });
+    return true;
+  }
+
+  // Tab and Shift+Tab: in a code block or a list item, indent and outdent the
+  // lines the selection touches, by the block's own indent; in a table, go to
+  // the next cell and the one before. Elsewhere Tab stays in the page.
+  function tab(dir) {
+    if (!editable) return false;
+    const { state } = view;
+    const table = inside('Table');
+    if (table) {
+      const head = state.selection.main.head;
+      const pipes = [];
+      table.cursor().iterate((node) => {
+        if (node.name === 'TableDelimiter' && node.to - node.from === 1) pipes.push(node.from);
+      });
+      // A cell starts after a pipe that does not end its row, and a space.
+      const starts = pipes.filter((p) => state.sliceDoc(p + 1, state.doc.lineAt(p).to).trim());
+      const next = dir > 0 ? starts.find((p) => p >= head) : pipes.findLast((p) => p < head - 1);
+      const cell = (p) => p + (state.sliceDoc(p + 1, p + 2) === ' ' ? 2 : 1);
+      if (next !== undefined) view.dispatch({ selection: { anchor: dir > 0 ? cell(next) : Math.max(next - 1, state.doc.lineAt(next).from) } });
+      return true;
     }
-    const list = ancestor(state, (node) => node.type.name === 'bullet_list' || node.type.name === 'ordered_list');
-    if (list) active.add(list.node.type.name === 'bullet_list' ? 'bullets' : 'numbers');
-    if (ancestor(state, (node) => node.type.name === 'blockquote')) active.add('quote');
-    const block = blockType(state);
-    active.add(block);
-    return { active, block, canUndo: undoDepth(state) > 0, canRedo: redoDepth(state) > 0 };
-  }
-
-  // ---- links, written in the link popover ----
-
-  /**
-   * Hold the link at the selection for the popover: the selection widened to
-   * whole links at its ends, or the link around the caret. Returns its href,
-   * or null for a new link.
-   */
-  function beginLink() {
-    const v = view();
-    const target = linkTarget(v.state);
-    v.dispatch(v.state.tr.setMeta(linkKey, { from: target.from, to: target.to }).setMeta('addToHistory', false));
-    return target.href;
-  }
-
-  /**
-   * Finish the held link: `href` sets it, '' removes it, null cancels. A new
-   * link at a bare caret inserts the URL as its text.
-   */
-  function endLink(href) {
-    const v = view();
-    const range = linkKey.getState(v.state);
-    if (!range) return;
-    const { state } = v;
-    const type = state.schema.marks.link;
-    const { from, to } = range;
-    const tr = state.tr.setMeta(linkKey, null);
-    const $from = state.doc.resolve(from);
-    if (href === null || (href && from === to && !$from.parent.type.allowsMarkType(type))) {
-      tr.setMeta('addToHistory', false); // cancelled, or a caret in a code block
-    } else if (!href) {
-      tr.removeMark(from, to, type);
-    } else if (from === to) {
-      const marks = type.create({ href }).addToSet(state.storedMarks ?? $from.marks());
-      tr.insert(from, state.schema.text(href, marks));
-      tr.setSelection(TextSelection.create(tr.doc, from + href.length));
+    const code = inside('FencedCode') ?? inside('CodeBlock');
+    const item = inside('ListItem');
+    if (!code && !item) return true;
+    let unit;
+    if (code) {
+      const leads = state.sliceDoc(code.from, code.to).split('\n').map((l) => /^[ \t]*/.exec(l)[0]).filter(Boolean);
+      unit = leads.some((l) => l.startsWith('\t')) ? '\t' : ' '.repeat(leads.length > 0 ? Math.min(...leads.map((l) => l.length)) : 2);
     } else {
-      tr.removeMark(from, to, type).addMark(from, to, type.create({ href }));
-      tr.setSelection(TextSelection.create(tr.doc, to));
+      const marker = item.getChild('ListMark');
+      unit = ' '.repeat(marker ? marker.to - marker.from + 1 : 2);
     }
-    v.dispatch(tr.scrollIntoView());
-    v.focus();
+    const changes = touched().flatMap((line) => {
+      if (code?.name === 'FencedCode' && /^\s*(`{3,}|~{3,})/.test(line.text)) return []; // not its fences
+      if (dir > 0) return [{ from: line.from, insert: unit }];
+      const lead = /^[ \t]*/.exec(line.text)[0];
+      const cut = lead.startsWith('\t') ? 1 : Math.min(lead.length, unit.length);
+      return cut ? [{ from: line.from, to: line.from + cut }] : [];
+    });
+    if (changes.length > 0) view.dispatch({ changes, userEvent: dir > 0 ? 'input.indent' : 'delete.dedent' });
+    return true;
+  }
+
+  /** What the toolbar reflects: the formatting and the block at the caret, and whether there is anything to undo or redo. */
+  function formatState() {
+    const active = new Set();
+    let block = 'paragraph';
+    const set = (name) => {
+      if (block === 'paragraph') block = name;
+    };
+    let listed = false;
+    for (const node of around()) {
+      const heading = /^(?:ATX|Setext)Heading(\d)$/.exec(node.name);
+      if (heading) set(`h${heading[1]}`);
+      if (node.name === 'StrongEmphasis') active.add('bold');
+      if (node.name === 'Emphasis') active.add('italic');
+      if (node.name === 'Strikethrough') active.add('strike');
+      if (node.name === 'InlineCode') active.add('code');
+      if (node.name === 'Link') active.add('link');
+      if (node.name === 'FencedCode' || node.name === 'CodeBlock') set('codeBlock');
+      if (node.name === 'Frontmatter') set('front_matter');
+      if (node.name === 'Blockquote') set('quote');
+      if (node.name === 'ListItem' && !listed) {
+        listed = true;
+        active.add(node.getChild('Task') ? 'tasks' : node.parent?.name === 'OrderedList' ? 'numbers' : 'bullets');
+      }
+    }
+    active.add(block);
+    return { active, block, canUndo: undoDepth(view.state) > 0, canRedo: redoDepth(view.state) > 0 };
+  }
+
+  // ---- links ----
+
+  // The link at `pos`: { from, to, href, text, url }, for an inline or a
+  // reference link, an autolink or a bare URL; null when none.
+  function linkAt(pos) {
+    const { state } = view;
+    for (const side of [-1, 1]) {
+      for (const node of around(pos, side)) {
+        if (node.name === 'Link') {
+          const marks = node.getChildren('LinkMark');
+          const href = linkTarget(state, node);
+          if (marks.length < 2 || href === null) return null;
+          return { from: node.from, to: node.to, href, text: { from: marks[0].to, to: marks[1].from }, url: node.getChild('URL') };
+        }
+        if (node.name === 'Autolink' || (node.name === 'URL' && !/^(Link|Image|LinkReference|Autolink)$/.test(node.parent?.name ?? ''))) {
+          const url = node.name === 'URL' ? node : node.getChild('URL');
+          return { from: node.from, to: node.to, href: state.sliceDoc(url.from, url.to), text: null, url };
+        }
+      }
+    }
+    return null;
+  }
+
+  // A URL as Markdown writes it in a link: in `<…>` if it has spaces or brackets.
+  const written = (href) => (/[\s()<>]/.test(href) ? `<${href.replace(/[<>]/g, encodeURIComponent)}>` : href);
+
+  const rect = (from, to) => {
+    const start = view.coordsAtPos(from, 1);
+    const end = view.coordsAtPos(to, -1) ?? start;
+    if (!start) return null;
+    return { top: Math.min(start.top, end.top), bottom: Math.max(start.bottom, end.bottom), left: Math.min(start.left, end.left), right: Math.max(start.right, end.right) };
+  };
+
+  /** Hold the link at the caret, or the selection, for the link popover; its href, or null for a new link. */
+  function beginLink() {
+    const { from, to, head } = view.state.selection.main;
+    const link = linkAt(head);
+    linkHeld = { from: link?.from ?? from, to: link?.to ?? to, link };
+    return link?.href ?? null;
+  }
+
+  /** Finish the held link: `href` sets it, '' removes it, null cancels. A new link at a bare caret has its URL as its text. */
+  function endLink(href) {
+    const held = linkHeld;
+    linkHeld = null;
+    if (!held || href === null || !editable || inside('FencedCode') || inside('CodeBlock') || inside('InlineCode')) {
+      view.focus();
+      return;
+    }
+    const { state } = view;
+    const { link, from, to } = held;
+    let spec = null;
+    if (link && !href) {
+      // The link's text stays; its syntax goes.
+      const kept = link.text ? state.sliceDoc(link.text.from, link.text.to) : state.sliceDoc(link.url.from, link.url.to);
+      spec = { changes: { from: link.from, to: link.to, insert: kept }, selection: { anchor: link.from + kept.length } };
+    } else if (link?.text && link.url) {
+      spec = { changes: { from: link.url.from, to: link.url.to, insert: written(href) } }; // its title stays
+    } else if (link?.text) {
+      spec = { changes: { from: link.from, to: link.to, insert: `[${state.sliceDoc(link.text.from, link.text.to)}](${written(href)})` } };
+    } else if (link) {
+      spec = { changes: { from: link.from, to: link.to, insert: `<${href}>` } };
+    } else if (href) {
+      const insert = `[${state.sliceDoc(from, to) || href}](${written(href)})`;
+      spec = { changes: { from, to, insert }, selection: { anchor: from + insert.length } };
+    }
+    if (spec) view.dispatch({ ...spec, userEvent: 'input.format', scrollIntoView: true });
+    view.focus();
   }
 
   /** Viewport rectangle of the held link, or null when none is held. */
-  function linkRect() {
-    const v = view();
-    const range = linkKey.getState(v.state);
-    return range ? rangeRect(v, range.from, range.to) : null;
-  }
+  const linkRect = () => (linkHeld ? rect(linkHeld.from, linkHeld.to) : null);
 
   /** The link at the caret while the editor has focus and nothing is selected: { href, rect }, or null. */
   function caretLink() {
-    const v = view();
-    const { state } = v;
-    if (!v.hasFocus() || !state.selection.empty) return null;
-    const run = linkAround(state.doc, state.selection.from, state.schema.marks.link, 'both');
-    return run ? { href: run.mark.attrs.href, rect: rangeRect(v, run.from, run.to) } : null;
+    const { main } = view.state.selection;
+    if (!view.hasFocus || !main.empty) return null;
+    const link = linkAt(main.head);
+    const where = link && rect(link.from, link.to);
+    return where ? { href: link.href, rect: where } : null;
   }
 
   // ---- outline ----
 
+  /** The doc's headings, as a reader sees them: { level, text, pos }. */
   function headings() {
+    const { state } = view;
     const result = [];
-    view().state.doc.forEach((node, pos) => {
-      if (node.type.name === 'heading' && node.textContent.trim()) result.push({ level: node.attrs.level, text: node.textContent, pos });
+    syntaxTree(state).iterate({
+      enter: ({ name, node }) => {
+        const heading = /^(ATX|Setext)Heading(\d)$/.exec(name);
+        if (!heading) return name === 'Document' || name === 'Body'; // the doc's own blocks only
+        const marks = node.getChildren('HeaderMark');
+        const atx = heading[1] === 'ATX';
+        const from = atx ? (marks[0]?.to ?? node.from) : node.from;
+        const to = atx ? (marks.length > 1 ? marks.at(-1).from : node.to) : state.doc.lineAt(node.to).from - 1;
+        const shown = state.sliceDoc(from, to).replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/[*_~`]/g, '').trim();
+        if (shown) result.push({ level: Number(heading[2]), text: shown, pos: node.from });
+        return false;
+      },
     });
     return result;
   }
 
+  function scrollToHeading(pos) {
+    view.dispatch({ selection: { anchor: view.state.doc.lineAt(pos).to }, effects: EditorView.scrollIntoView(pos, { y: 'start', yMargin: 24 }) });
+    view.focus();
+  }
+
   /** Scroll to the heading a `#fragment` link names, as GitHub names it; false when there is none. */
   function scrollToAnchor(fragment) {
-    const slug = (text) => text.trim().toLowerCase().replace(/[^\p{L}\p{N}\s_-]/gu, '').replace(/\s/g, '-');
+    const slug = (s) => s.trim().toLowerCase().replace(/[^\p{L}\p{N}\s_-]/gu, '').replace(/\s/g, '-');
     const heading = headings().find((h) => slug(h.text) === decodeURIComponent(fragment).toLowerCase());
     if (heading) scrollToHeading(heading.pos);
     return Boolean(heading);
   }
 
-  function scrollToHeading(pos) {
-    const v = view();
-    const dom = v.nodeDOM(pos);
-    if (!(dom instanceof HTMLElement)) return;
-    dom.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    v.dispatch(v.state.tr.setSelection(TextSelection.create(v.state.doc, pos + 1)));
-    v.focus();
-  }
-
-  /** Viewport rectangle of the selection, or null when there is none to point at. */
+  /** Viewport rectangle of the selection while the editor has focus, or null. */
   function selectionRect() {
-    const v = view();
-    const { empty } = v.state.selection;
-    const { from, to } = selectionSpan(v.state.selection);
-    if (empty || !v.hasFocus()) return null;
-    const start = v.coordsAtPos(from);
-    const end = v.coordsAtPos(to);
-    return { top: Math.min(start.top, end.top), bottom: Math.max(start.bottom, end.bottom), left: Math.min(start.left, end.left), right: Math.max(start.right, end.right), commentable: textRange(projectionOf(v.state.doc), from, to) !== null };
+    const { from, to, empty } = view.state.selection.main;
+    const where = !empty && view.hasFocus && rect(from, to);
+    return where ? { ...where, commentable: true } : null;
   }
 
-  // ---- changes from disk ----
-
-  /**
-   * Show `next`, outside the human's undo history: only the top-level blocks
-   * that differ are replaced, glowing and flagged `by` for a while, if
-   * given (in the buddy's colour for a buddy's change, `buddy`).
-   */
-  function applyText(next, { by = null, buddy = false } = {}) {
-    const v = view();
-    const current = v.state.doc;
-    // Only the blocks that differ from the text now are parsed, when that is known.
-    const source = sourceOf(current);
-    const run = source.blocks && parseRun(current, source.text, source.blocks, next, parse);
-    let target;
-    let hunks;
-    if (run) {
-      const kept = current.content.content;
-      target = current.copy(Fragment.from([...kept.slice(0, run.from), ...run.nodes, ...kept.slice(run.to)]));
-      hunks = diffBlocks(Fragment.from(kept.slice(run.from, run.to)), Fragment.from(run.nodes))
-        .map((h) => ({ a0: h.a0 + run.from, a1: h.a1 + run.from, b0: h.b0 + run.from, b1: h.b1 + run.from }));
-    } else {
-      target = parse(next);
-      hunks = diffBlocks(current, target);
-    }
-    const blocks = run ? run.blocks : undefined;
-    given = next;
-    if (hunks.length === 0) {
-      base = { doc: current, blocks };
-      return;
-    }
-    const tr = replaceBlocks(v.state.tr, current, target, hunks).setMeta('addToHistory', false).setMeta(FROM_DISK, true);
-    base = { doc: tr.doc, blocks };
-    if (by) flash(tr, hunks.map((h) => changedRange(current, target, h)).filter(Boolean), by, buddy);
-    v.dispatch(tr);
-    // What the editor makes of it on its own (a table's half-typed row
-    // filled out, an empty line kept after a last table) is still `next`:
-    // it is no one's edit.
-    if (v.state.doc !== tr.doc) {
-      const paired = blocks && pairRanges(v.state.doc.content.content, blocks, true);
-      if (paired || !blocks) base = { doc: v.state.doc, blocks: paired ?? undefined };
-    }
+  // The text the word count reads: the doc's, with what a reader does not see
+  // (URLs, link labels and titles, a code block's language, HTML, front
+  // matter) blanked, so offsets on it stay.
+  function readerText() {
+    const all = view.state.doc.toString().split('');
+    syntaxTree(view.state).iterate({
+      enter(node) {
+        const bare = node.name === 'URL' && !/^(Link|Image|LinkReference)$/.test(node.parent?.name ?? '');
+        if (bare || !/^(URL|LinkLabel|LinkTitle|CodeInfo|HTMLTag|HTMLBlock|Comment|CommentBlock|Frontmatter|LinkReference)$/.test(node.name)) return undefined;
+        all.fill(' ', node.from, node.to);
+        return false;
+      },
+    });
+    return all.join('');
   }
-
-  // Glow `ranges` of the doc `tr` makes, in the same transaction, so the page is drawn once.
-  function flash(tr, ranges, by, buddy) {
-    if (ranges.length === 0) return;
-    const flashId = Symbol('flash');
-    const decorations = ranges.map((r) => (r.node
-      ? Decoration.node(r.from, r.to, { class: 'pj-flash-block' }, { flashId })
-      : Decoration.inline(r.from, r.to, { class: 'pj-flash' }, { flashId })));
-    // The flag at the start of the word the change begins in.
-    const first = ranges[0];
-    const $at = tr.doc.resolve(first.from);
-    const at = first.node ? first.from + 1 : first.from - ($at.parent.textBetween(0, $at.parentOffset).match(/[\p{L}\p{N}_]*$/u)?.[0].length ?? 0);
-    decorations.push(Decoration.widget(at, () => flag(by, buddy ? buddyColor(by) : null), { side: -1, flashId }));
-    tr.setMeta(flashKey, flashKey.getState(view().state).map(tr.mapping, tr.doc).add(tr.doc, decorations));
-    setTimeout(() => updateFlashes((set) => set.remove(set.find(undefined, undefined, (spec) => spec.flashId === flashId))), FLASH_MS);
-  }
-
-  function updateFlashes(change) {
-    const v = view();
-    v.dispatch(v.state.tr.setMeta(flashKey, change(flashKey.getState(v.state))).setMeta('addToHistory', false));
-  }
-
-  // The selection: { from, to }, or null when it is not in the text.
-  function selection() {
-    const { doc, selection } = view().state;
-    const { from, to } = selectionSpan(selection);
-    const rendered = textRange(projectionOf(doc), from, to);
-    if (!rendered) {
-      const at = offsetAt(doc, from);
-      return at === null ? null : { from: at, to: at };
-    }
-    const projection = projected(doc);
-    const found = across(projectionOf(doc), projection, rendered.start, rendered.end);
-    if (!found) return null;
-    const range = sourceRange(projection, found.start, found.end);
-    return { from: range.start, to: range.end };
-  }
-
-  // ---- find (web/find.js): in what a reader sees ----
-
-  let found = []; // the document ranges of the matches, in `foundIn`
-  let query = null; // the find bar's pattern (src/core/search.js)
-
-  // { count, current }: how many matches, and which is selected (from 1; 0: none).
-  function foundState() {
-    const { from, to } = view().state.selection;
-    return { count: found.length, current: found.findIndex((r) => r.from === from && r.to === to) + 1 };
-  }
-
-  function paintFound() {
-    const v = view();
-    const { current } = foundState();
-    const decorations = found.map((r, i) => Decoration.inline(r.from, r.to, { class: i + 1 === current ? 'pj-found pj-found-current' : 'pj-found' }));
-    v.dispatch(v.state.tr.setMeta(foundKey, DecorationSet.create(v.state.doc, decorations)).setMeta('addToHistory', false));
-  }
-
-  function selectFound(next) {
-    const v = view();
-    v.dispatch(v.state.tr.setSelection(TextSelection.create(v.state.doc, next.from, next.to)));
-    // Into view when it is not, below the find bar.
-    const canvas = stage.parentElement;
-    const box = canvas.getBoundingClientRect();
-    const { top, bottom } = v.coordsAtPos(next.from);
-    if (top < box.top + 80 || bottom > box.bottom - 16) canvas.scrollTop += top - (box.top + box.height / 2);
-    paintFound();
-    return foundState();
-  }
-
-  const search = {
-    find(next) {
-      query = next;
-      const { doc } = view().state;
-      const projection = projectionOf(doc);
-      // Not in raw HTML, whose characters share the one position of its atom,
-      // nor in a diagram's hidden source.
-      found = matches(projection.text, query)
-        .filter(([start, end]) => projection.positions.subarray(start, end).every((p, i, all) => i === 0 || p > all[i - 1]))
-        .map(([start, end, match]) => ({ ...docRange(projection, start, end), match }))
-        .filter(({ from }) => !(editable && doc.resolve(from).parent.attrs.language === 'mermaid'));
-      foundIn = query ? doc : null;
-      paintFound();
-      return foundState();
-    },
-    step(back) {
-      if (found.length === 0) return foundState();
-      const v = view();
-      const { from, to } = v.state.selection;
-      const same = (r) => r.from === from && r.to === to;
-      const i = back ? found.findLastIndex((r) => r.to <= from && !same(r)) : found.findIndex((r) => r.from >= to && !same(r));
-      return selectFound(found.at(i === -1 ? (back ? -1 : 0) : i));
-    },
-    reveal(at) {
-      if (found.length === 0) return foundState();
-      const pos = caretAt(view().state.doc, at) ?? 0;
-      return selectFound(found.find((r) => r.from >= pos) ?? found[0]);
-    },
-    replace(textFor, all) {
-      const v = view();
-      const { from, to } = v.state.selection;
-      const targets = all ? found : found.filter((r) => r.from === from && r.to === to);
-      if (!editable || targets.length === 0) return search.step(false);
-      const tr = v.state.tr;
-      for (const r of [...targets].reverse()) tr.insertText(textFor(r.match), r.from, r.to);
-      v.dispatch(tr.setSelection(TextSelection.create(tr.doc, tr.mapping.map(targets.at(-1).to))));
-      search.find(query);
-      return all ? foundState() : search.step(false);
-    },
-    selected: () => {
-      const { state } = view();
-      return state.doc.textBetween(state.selection.from, state.selection.to, '\n');
-    },
-    focus: () => view().focus(),
-  };
-  finder = createFind(search, { host, editable });
 
   if (toolbar) {
     chrome = createChrome({
-      run, formatState, getText: currentText, selection, headings, scrollToHeading, scrollToAnchor,
-      selectionRect, beginLink, endLink, linkRect, caretLink,
+      run, formatState, getText: readerText, selection: editor.selection, headings, scrollToHeading, scrollToAnchor,
+      selectionRect, beginLink, endLink, linkRect, caretLink, tops: editor.tops,
     }, { toolbar, stage, host, onComment, files, settings, saveSettings, editable });
   }
 
   return {
-    // ---- the view interface: every view has these, in offsets on the doc's text ----
-
-    /** The doc's text as saving would write it. */
-    getText: currentText,
-    applyText,
-    /** Whether an IME composition is on: its text is not the person's yet. */
-    composing: () => view().composing,
-    /** Draw `marks` (see above) in place of the ones drawn. */
-    setMarks(next) {
-      marks = next;
-      paintMarks();
-    },
-    /** The selection: { from, to }, or null when it is not in the text. */
-    selection,
-    /** The viewport top of each text offset in `offsets`, or null where it is not drawn. */
-    tops(offsets) {
-      const v = view();
-      return offsets.map((at) => {
-        const range = charAt(v.state.doc, at);
-        return range && v.coordsAtPos(range.from).top;
-      });
-    },
-    /** Scroll text offset `at` into the middle of the view. */
-    scrollTo(at) {
-      const v = view();
-      const range = charAt(v.state.doc, at);
-      if (!range) return;
-      const { node } = v.domAtPos(range.from);
-      (node.nodeType === 1 ? node : node.parentElement)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
-    },
-    /** Open the find bar on `query` (as typed in it), at its first match at or after text offset `at`. */
-    find: (query, at) => finder.open(query, at),
-    focus: () => view().focus(),
-    /** Put the caret at the text nearest viewport point (x, y), with the focus. */
-    focusAt(x, y) {
-      const v = view();
-      const box = v.dom.getBoundingClientRect();
-      const hit = v.posAtCoords({ left: Math.min(Math.max(x, box.left + 1), box.right - 1), top: Math.min(Math.max(y, box.top + 1), box.bottom - 1) });
-      if (hit) v.dispatch(v.state.tr.setSelection(Selection.near(v.state.doc.resolve(hit.pos))));
-      v.focus();
-    },
-    /** Undo or redo the human's last edit, in this view's own history. */
-    undo: () => run('undo'),
-    redo: () => run('redo'),
-    destroy() {
-      chrome?.destroy();
-      finder.destroy();
-      clearTimeout(refind);
-      host.removeEventListener('click', clickMark);
-      return editor.destroy();
-    },
-
-    // ---- the view interface ----
-
+    ...editor,
     /** The view's settings changed. */
     applySettings: (next) => chrome?.applySettings(next),
+    destroy() {
+      chrome?.destroy();
+      editor.destroy();
+    },
   };
-}
-
-// The nearest ancestor of the selection start matching `test`: { node, pos }.
-function ancestor(state, test) {
-  const { $from } = state.selection;
-  for (let depth = $from.depth; depth > 0; depth--) {
-    const node = $from.node(depth);
-    if (test(node)) return { node, pos: $from.before(depth) };
-  }
-  return null;
-}
-
-// `tr` with the top-level paragraph the selection is in split at the line
-// breaks (a soft one, as in the file, or Shift+Enter) just before and after
-// the selection, and with `each`, at those inside it.
-function splitLines(tr, each) {
-  const { $from, $to } = tr.selection;
-  if (!$from.sameParent($to) || $from.depth !== 1 || $from.parent.type.name !== 'paragraph') return tr;
-  const breaks = [];
-  $from.parent.forEach((child, offset) => {
-    if (child.type.name === 'hardbreak') breaks.push($from.start() + offset);
-  });
-  const before = breaks.filter((pos) => pos < $from.pos).at(-1);
-  const after = breaks.find((pos) => pos >= $to.pos);
-  const cuts = [before, ...(each ? breaks.filter((pos) => pos >= $from.pos && pos < $to.pos) : []), after];
-  for (const pos of cuts.filter((pos) => pos !== undefined).reverse()) tr.delete(pos, pos + 1).split(pos);
-  return tr;
-}
-
-// The mark of type `name` at the caret or across the selection, or null.
-function markActive(state, name) {
-  const type = state.schema.marks[name];
-  if (!type) return null;
-  const { empty, $from } = state.selection;
-  const { from, to } = selectionSpan(state.selection);
-  if (empty) return type.isInSet(state.storedMarks ?? $from.marks()) ?? null;
-  let found = null;
-  state.doc.nodesBetween(from, to, (node) => {
-    found ??= type.isInSet(node.marks) ?? null;
-  });
-  return found;
-}
-
-// What the link popover edits: { from, to, href }. A selection grows to take
-// in whole links at its ends; a caret takes the link around it, if any.
-function linkTarget(state) {
-  const type = state.schema.marks.link;
-  const { from, to, empty } = state.selection;
-  const head = linkAround(state.doc, from, type, empty ? 'both' : 'after');
-  const tail = empty ? head : linkAround(state.doc, to, type, 'before');
-  let mark = head?.mark ?? tail?.mark ?? null;
-  if (!empty) {
-    state.doc.nodesBetween(from, to, (node) => {
-      mark ??= type.isInSet(node.marks) ?? null;
-    });
-  }
-  return { from: Math.min(from, head?.from ?? from), to: Math.max(to, tail?.to ?? to), href: mark?.attrs.href ?? null };
-}
-
-function rangeRect(view, from, to) {
-  const start = view.coordsAtPos(from);
-  const end = view.coordsAtPos(to);
-  return { top: Math.min(start.top, end.top), bottom: Math.max(start.bottom, end.bottom), left: Math.min(start.left, end.left), right: Math.max(start.right, end.right) };
-}
-
-// The run of text carrying one link that touches `pos` on `side`
-// ('before', 'after' or 'both'): { from, to, mark }, or null.
-function linkAround(doc, pos, type, side) {
-  const $pos = doc.resolve(pos);
-  const after = side !== 'before' && type.isInSet($pos.nodeAfter?.marks ?? []);
-  const before = side !== 'after' && type.isInSet($pos.nodeBefore?.marks ?? []);
-  const mark = after || before;
-  if (!mark) return null;
-  const { parent } = $pos;
-  let at = $pos.start();
-  let run = null;
-  for (let i = 0; i < parent.childCount; i++) {
-    const child = parent.child(i);
-    if (mark.isInSet(child.marks)) {
-      run = run ? { ...run, to: at + child.nodeSize } : { from: at, to: at + child.nodeSize, mark };
-    } else if (run && run.to >= pos) {
-      break;
-    } else {
-      run = null;
-    }
-    at += child.nodeSize;
-  }
-  return run && run.from <= pos && pos <= run.to ? run : null;
-}
-
-// 'paragraph', 'h1'…'h6', 'code_block' or another node name, for the block at the caret.
-function blockType(state) {
-  const parent = state.selection.$from.parent;
-  return parent.type.name === 'heading' ? `h${parent.attrs.level}` : parent.type.name;
-}
-
-function el(tag, className, text) {
-  const node = document.createElement(tag);
-  node.className = className;
-  node.textContent = text;
-  return node;
-}
-
-// Who made a change, over its start; in a buddy's colour (`color`) for a buddy.
-function flag(name, color = null) {
-  const wrap = document.createElement('span');
-  wrap.className = 'pj-flag';
-  if (color) wrap.style.cssText = `--buddy: ${color}; --buddy-ink: #1f1d24`;
-  const label = document.createElement('span');
-  label.className = 'pj-flag-label';
-  label.textContent = name;
-  wrap.append(label);
-  return wrap;
-}
-
-// The part of the new doc a hunk introduced: the changed characters when one
-// block replaced one block, otherwise the new blocks. Null for a deletion.
-function changedRange(oldDoc, newDoc, h) {
-  if (h.b1 === h.b0) return null;
-  const from = childPos(newDoc, h.b0);
-  const to = childPos(newDoc, h.b1);
-  if (h.a1 - h.a0 === 1 && h.b1 - h.b0 === 1) {
-    const before = oldDoc.child(h.a0).textContent;
-    const node = newDoc.child(h.b0);
-    const after = node.textContent;
-    let p = 0;
-    while (p < before.length && p < after.length && before[p] === after[p]) p++;
-    let s = 0;
-    while (s < before.length - p && s < after.length - p && before[before.length - 1 - s] === after[after.length - 1 - s]) s++;
-    if (after.length - s > p) {
-      return { from: textPos(node, from, p), to: textPos(node, from, after.length - s) };
-    }
-  }
-  if (h.b1 - h.b0 === 1) return { from, to, node: true };
-  return { from: from + 1, to: to - 1 }; // several blocks: glow their text
 }

@@ -539,11 +539,12 @@ test('the browser build finds the project\'s files: Mod+P filters the sidebar, w
     await waitFor(async () => JSON.stringify(await links()) === '["notes/b.md"]', 10_000, 'the link in the comment');
 
     // The link popover: typing finds a file, the arrows pick it, Enter links it by its path from the doc.
-    await shown.evaluate(`{
-      const text = document.createTreeWalker([...document.querySelectorAll('.pj-stage [contenteditable] p')].find((p) => p.textContent.startsWith('Ship')), NodeFilter.SHOW_TEXT).nextNode();
+    await shown.evaluate(`(async () => {
       document.querySelector('.pj-stage [contenteditable]').focus();
+      await new Promise((done) => setTimeout(done, 30)); // the caret's line drawn as its source
+      const text = document.createTreeWalker([...document.querySelectorAll('.pj-stage .cm-line')].find((p) => p.textContent.startsWith('Ship')), NodeFilter.SHOW_TEXT).nextNode();
       getSelection().setBaseAndExtent(text, 0, text, 4);
-    }`);
+    })()`);
     await new Promise((done) => setTimeout(done, 100)); // the editor takes in the selection
     await press(shown, 'k', 'KeyK', MOD);
     await waitFor(() => shown.evaluate(`document.activeElement?.matches('.pj-link-input')`), 5_000, 'the link popover');
@@ -566,11 +567,12 @@ test('the browser build finds the project\'s files: Mod+P filters the sidebar, w
 
     // A path from a doc in a folder goes up first.
     await waitFor(() => shown.evaluate(`document.querySelector('.pj-stage [contenteditable]')?.contentEditable === 'true'`), 30_000, 'editable');
-    await shown.evaluate(`{
-      const text = document.createTreeWalker(document.querySelector('.pj-stage [contenteditable] p'), NodeFilter.SHOW_TEXT).nextNode();
+    await shown.evaluate(`(async () => {
       document.querySelector('.pj-stage [contenteditable]').focus();
+      await new Promise((done) => setTimeout(done, 30)); // the caret's line drawn as its source
+      const text = document.createTreeWalker(document.querySelector('.pj-stage .cm-line'), NodeFilter.SHOW_TEXT).nextNode();
       getSelection().setBaseAndExtent(text, 0, text, 5);
-    }`);
+    })()`);
     await new Promise((done) => setTimeout(done, 100));
     await press(shown, 'k', 'KeyK', MOD);
     await waitFor(() => shown.evaluate(`document.activeElement?.matches('.pj-link-input')`), 5_000, 'the link popover');
@@ -662,18 +664,19 @@ test('C2 C6 D7 E1: the browser build asks a name, then shows the doc live at Edi
     await waitFor(() => shown.evaluate(`document.querySelector('.pj-cursor')?.textContent === 'owner'`), 10_000, 'the owner\'s cursor');
     await host.call('setLevel', { id: noor.id, level: 'write' });
     await waitFor(async () => (await editable()) === 'true', 30_000, 'the page at Edit');
-    await shown.evaluate(`{
+    await shown.evaluate(`(async () => {
       const editor = document.querySelector('.pj-stage [contenteditable]');
       editor.focus();
-      const paragraph = [...editor.querySelectorAll('p')].find((p) => p.textContent.startsWith('Then'));
-      const text = document.createTreeWalker(paragraph, NodeFilter.SHOW_TEXT).nextNode();
+      await new Promise((done) => setTimeout(done, 30)); // the caret's line drawn as its source
+      const line = [...editor.querySelectorAll('.cm-line')].find((p) => p.textContent.startsWith('Then'));
+      const text = document.createTreeWalker(line, NodeFilter.SHOW_TEXT).nextNode();
       getSelection().collapse(text, 4);
-    }`);
+    })()`);
     await until(async () => (await host.call('state')).cursors.some((c) => c.name === 'Noor'), 'Noor\'s cursor at the host');
 
     // D7: a comment being written, and its anchor, stay while the owner types above it.
     await shown.evaluate(`{
-      const text = document.createTreeWalker([...document.querySelectorAll('.pj-stage [contenteditable] p')].find((p) => p.textContent.startsWith('Then')), NodeFilter.SHOW_TEXT).nextNode();
+      const text = document.createTreeWalker([...document.querySelectorAll('.pj-stage .cm-line')].find((p) => p.textContent.startsWith('Then')), NodeFilter.SHOW_TEXT).nextNode();
       getSelection().setBaseAndExtent(text, 5, text, 12);
     }`);
     await new Promise((done) => setTimeout(done, 100)); // the editor takes in the selection
@@ -687,11 +690,13 @@ test('C2 C6 D7 E1: the browser build asks a name, then shows the doc live at Edi
     assert.equal(await shown.evaluate(`[...document.querySelectorAll('.pj-stage [contenteditable] [data-thread="draft"]')].map((m) => m.textContent).join('')`), 'ask for');
 
     // C2: typing not landed lands before the page lets go of its doc.
-    const typeAt = (start) => shown.evaluate(`{
+    const typeAt = (start) => shown.evaluate(`(async () => {
       const editor = document.querySelector('.pj-stage [contenteditable]');
       editor.focus();
-      getSelection().collapse(document.createTreeWalker([...editor.querySelectorAll('p')].find((p) => p.textContent.startsWith('${start}')), NodeFilter.SHOW_TEXT).nextNode(), 0);
-    }`);
+      await new Promise((done) => setTimeout(done, 30)); // the caret's line drawn as its source
+      getSelection().collapse(document.createTreeWalker([...editor.querySelectorAll('.cm-line')].find((p) => p.textContent.startsWith('${start}')), NodeFilter.SHOW_TEXT).nextNode(), 0);
+      await new Promise((done) => setTimeout(done, 30)); // the editor takes the selection in
+    })()`);
     await typeAt('Ship');
     await shown.send('Input.insertText', { text: 'Now: ' });
     await shown.evaluate('window.ponjoLeave()');

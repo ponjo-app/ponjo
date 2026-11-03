@@ -79,8 +79,8 @@ for (const [i, doc] of docs.entries()) {
   const name = doc.split(/[\\/]/).at(-1);
   const page = await app.page(name, 90_000); // a busy Windows runner can take over 30 s to open the second
   const loaded = await page.evaluate(`(async () => {
-    for (let i = 0; i < 100 && !document.querySelector('.ProseMirror'); i++) await new Promise((r) => setTimeout(r, 100));
-    return { title: document.title, text: document.querySelector('.ProseMirror')?.textContent ?? '' };
+    for (let i = 0; i < 100 && !document.querySelector('.pj-md .cm-content'); i++) await new Promise((r) => setTimeout(r, 100));
+    return { title: document.title, text: document.querySelector('.pj-md .cm-content')?.textContent ?? '' };
   })()`);
   check(loaded.title === `${name} — Ponjo`, `a window shows ${name} (${loaded.title})`);
   check(loaded.text.includes('Q4 Launch Plan'), `the editor loaded ${name}`);
@@ -191,7 +191,7 @@ async function commentShows(page, text, quote) {
 // plain one), and `page` its history too, with the comment drawn as before.
 async function switchesView(page, on, pages, id) {
   await page.evaluate(`document.querySelector('.pj-settings [data-owner="markdown"][data-key="enabled"]').click()`);
-  const [shown, gone] = on ? ['.ProseMirror', '.cm-content'] : ['.cm-content', '.ProseMirror'];
+  const [shown, gone] = on ? ['.pj-md', '.cm-editor:not(.pj-md)'] : ['.cm-editor:not(.pj-md)', '.pj-md'];
   const inView = (stage) => `Boolean(document.querySelector('${stage} ${shown}')) && !document.querySelector('${stage} ${gone}')`;
   const doc = `${inView('.pj-stage:not(.pj-history-stage)')} && Boolean(document.querySelector('.pj-outline')) === ${on}`;
   const drawn = `document.querySelector('.pj-stage [data-thread="${id}"]')?.textContent === 'gather feedback'`;

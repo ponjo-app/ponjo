@@ -5,10 +5,6 @@ formatted, with the syntax shown only where the caret is (live preview). It
 is one view ([Views](architecture.md#views)); switched off, Markdown opens in
 the plain view as source.
 
-*Planned:* this design replaces the WYSIWYG view built today (Milkdown),
-in the steps under [Steps](#steps). What is marked *planned* is designed,
-not built.
-
 ## Principles
 
 1. **The file is Markdown, and the view edits it.** The editor's text is the
@@ -31,7 +27,11 @@ not built.
   ([#358](https://github.com/ponjo-app/ponjo/issues/358) lists each).
   Syntax outside them (math, `==highlight==`, wiki links) is text.
 - **Live preview.** Text is drawn formatted and its syntax is hidden, except
-  on the lines the selection touches, where it shows, faded:
+  on the lines the selection touches, where it shows, faded; a table the
+  selection touches shows as its source whole. As a doc opens, before the
+  person is in it, nothing is source; after, the selection's lines stay
+  source when the editor loses the focus too, as the caret stays drawn.
+  An earlier version, read-only, is drawn whole:
 
   | Block or span | Away from the selection | On its lines |
   | --- | --- | --- |
@@ -44,7 +44,7 @@ not built.
   | Ordered list (`1.`, `1)`) | the number as typed, indented the same | the same |
   | Task list | a checkbox, ticked by a click, which types `x` or a space; a done item struck through | the checkbox |
   | Quote | a bar at the left per level; `>` hidden | `>` faded |
-  | Code block, fenced or indented | monospace on a tint, coloured by its language; fences faded | the same |
+  | Code block, fenced or indented | monospace on a tint, coloured by its language; its fences hidden, their lines its padding | its fences, faded |
   | Rule (`---`, `***`, `___`) | a line | the source |
   | Image, inline or by reference | the image | the source |
   | Table | the table, drawn, with its cells' formatting and alignment | the source, monospace, pipes faded |
@@ -83,10 +83,14 @@ not built.
 - **Blank lines** are lines: as many as are typed, saved as typed.
 - **Keys:** Undo, Redo, the formatting above, Comment, Find, and focus mode
   (Ctrl+Shift+.). Enter in a list item continues the list (an empty item
-  ends it), and in a quote the quote; Backspace after a list's or a quote's
-  marker removes it. Tab and Shift+Tab indent and outdent the lines of a
-  list item or a code block, by the doc's own indent; in a table they go to
-  the next and the cell before. Elsewhere Tab stays in the page.
+  ends it, with a blank line), and in a quote the quote; in a code block it
+  is a new line. Backspace right after a list item's marker or a quote's
+  takes the marker away, a blank line keeping the line apart from the
+  list or quote above it; after a nested item's marker it moves the item
+  out a level. Tab and Shift+Tab indent and outdent the lines of a list item
+  (by its marker's width) or a code block (by its own indent); in a table
+  they go to the next cell and the one before. Elsewhere Tab stays in the
+  page.
 - **Links.** At the caret a card says where a link goes: open it, edit it or
   remove it. The link button opens a popover for the URL: Enter applies, an
   empty URL removes, Escape cancels. Mod+click opens a link; `#heading`
@@ -151,12 +155,12 @@ its source), and who typed which characters.
 | Part | File | Does |
 | --- | --- | --- |
 | Declaration | `web/views/markdown/index.js` | id, extensions, settings; loads the view with the first Markdown doc |
-| Editor | `web/views/codemirror.js` | the CodeMirror editor both views are: the contract, marks, others' edits, find, right to left (from today's plain view) |
+| Editor | `web/views/codemirror.js` | the CodeMirror editor both views are: the contract, marks, others' edits, find, right to left |
 | View | `web/views/markdown/view.js` | that editor with Markdown's language (`@codemirror/lang-markdown`, GFM) and the preview |
 | Preview | `web/views/markdown/preview.js` | the decorations and widgets of live preview, from the syntax tree, for the lines on screen |
 | Chrome | `web/views/markdown/chrome.js` | toolbar, bubble, link card and popover, outline, focus mode, word count |
 | Syntax | `web/views/markdown/syntax.js` | what Lezer's Markdown parser leaves out: GFM's single-tilde strikethrough, and footnotes |
-| Paste | `web/views/markdown/paste.js` | formatted text pasted, as Markdown |
+| Paste | `web/views/markdown/paste.js` | formatted text pasted, as Markdown (Turndown, with its GFM tables) |
 | Diagrams | `web/diagrams.js` | a mermaid block as its diagram |
 | Find | `web/find.js` | the find bar, the same in every view; the view finds and replaces |
 
@@ -168,7 +172,16 @@ need no map. The preview is decorations over the text, never a change to
 it: the syntax tree (Lezer's, parsed again only where the text changed)
 says what each span is, and the lines the selection touches are drawn as
 source. Hidden syntax is atomic: the caret steps over it, and reaches it by
-moving onto its line.
+moving onto its line. The language is CommonMark and GFM only, with the
+extensions in `syntax.js`: CodeMirror's own Markdown would read `~x~` as
+subscript, and `^x^` and `:x:` too.
+
+Two things keep a click where it lands. While the pointer is down, what is
+drawn stays as it was when it was pressed, and follows the selection once
+it is let go: a block drawn as its source under the press (a code block's
+fences, a table) takes another height and would move the text being
+clicked. And a block drawn in place of its lines (a table, a diagram, an
+image) has no margins, which the editor does not measure, only padding.
 
 ### Text in, text out
 
@@ -199,8 +212,8 @@ Who anyone is (a mark's `by` is only a name to color), how edits merge
 The parse is incremental and the preview is drawn for the lines on screen
 only, so a key costs about what it costs in the plain view, whatever the
 doc's length. The outline and the word count read the whole tree, a few
-times a second at most. The view's `limits` are set once it is built, by
-`npm run test:perf` against the B rules; the aim is the plain view's.
+times a second at most. Its `limits`: 1,000,000 characters, held by `npm
+run test:perf` to the B rules.
 
 ## Many writers
 
@@ -228,14 +241,3 @@ the preview shows what the text now says, and people fix it by hand.
 The seven cases of the many-writers prototype (#214) run against the real
 host for both views (`test/collab.test.js`), with two more: the doc changed
 outside, and a buddy's turn landing, while one types.
-
-## Steps
-
-Each a pull request, done when its check passes.
-
-| # | Step | Done when |
-| --- | --- | --- |
-| 1 | This design, in this file, [the UX](user-experience.md) and [the architecture](architecture.md) | agreed |
-| 2 | The plain view's editor moved to `web/views/codemirror.js`, for both views | the plain view behaves as before; the tests pass |
-| 3 | The live-preview view replaces the WYSIWYG one: preview of the syntax in #358, toolbar, keys, paste, outline, focus mode, word count. Milkdown and the code only it needed go: `blocks.js`, `src/markdown/` (`splice.js`, `project.js`), `pm-text.js`, `markdown-schema.js`, `review.js`, their tests, the micromark, mdast and remark packages, and `scripts/patch-deps.js` | the view contract and many-writers tests pass; `test:perf` holds; tried by hand |
-| 4 | Images, tables, mermaid diagrams and task boxes drawn (until then, their source, styled) | tried by hand |

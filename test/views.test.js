@@ -3,13 +3,11 @@
 
 import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { build } from 'esbuild';
-import { copyFile, mkdtemp, readFile, writeFile } from 'node:fs/promises';
-import { createRequire } from 'node:module';
-import { tmpdir } from 'node:os';
+import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { launchElectron, waitFor } from '../scripts/devtools.js';
+import { waitFor } from '../scripts/devtools.js';
+import { openViews } from './views/harness.js';
 
 const VIEWS = ['markdown', 'plain'];
 const root = fileURLToPath(new URL('..', import.meta.url));
@@ -17,28 +15,14 @@ const MOD = process.platform === 'darwin' ? 4 : 2; // Meta : Ctrl
 
 let app;
 let page;
+let run;
 
 before(async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'ponjo-views-'));
-  await build({
-    entryPoints: [join(root, 'test', 'views', 'page.js')], outfile: join(dir, 'page.js'),
-    bundle: true, format: 'iife', external: ['mermaid'], logLevel: 'error',
-  });
-  await copyFile(join(root, 'web', 'app.css'), join(dir, 'app.css'));
-  await writeFile(join(dir, 'index.html'), `<!doctype html><meta charset="utf-8"><title>views</title><link rel="stylesheet" href="app.css">
-<main class="pj-canvas"><div class="pj-stage"><article class="pj-page"><div class="pj-editor"></div></article></div></main>
-<script src="page.js"></script>`);
-  const electron = createRequire(import.meta.url)('electron');
-  const env = { ...process.env, VIEWS_PAGE: join(dir, 'index.html') };
-  delete env.ELECTRON_RUN_AS_NODE;
-  app = await launchElectron(electron, [join(root, 'test', 'views', 'main.js'), '--no-sandbox', `--user-data-dir=${join(dir, 'profile')}`], { env });
-  page = await app.page('views');
-  await waitFor(() => page.evaluate('Boolean(window.contract)'), 30_000, 'the contract page');
+  ({ app, page, run } = await openViews());
 });
 
 after(() => app?.quit());
 
-const run = (expression) => page.evaluate(`(async () => ${expression})()`);
 const make = (name, text, options = {}) => run(`contract.make(${JSON.stringify(name)}, ${JSON.stringify(text)}, ${JSON.stringify(options)})`);
 const select = (quote, start, end) => run(`contract.select(${JSON.stringify(quote)}, ${start}, ${end})`);
 const getText = () => run('view.getText()');
@@ -55,6 +39,13 @@ for (const name of VIEWS) {
       assert.equal(await getText(), text);
     }
     assert.equal(await run(`document.querySelectorAll('[contenteditable]').length`), 1, 'destroy takes a view away');
+  });
+
+  test(`${name} view: it calls onLayout only once it is made, with its toolbar and outline`, async () => {
+    const plan = await readFile(join(root, 'test', 'fixtures', 'plan.md'), 'utf8');
+    await make(name, plan, { toolbar: name === 'markdown' });
+    await new Promise((done) => setTimeout(done, 100));
+    assert.equal(await run('contract.early'), false, 'the page lays its margin out by it once it has the view (web/main.js)');
   });
 
   test(`D5: ${name} view: after applyText(t), getText() is t, as someone types Markdown a key at a time; nothing is sent as the person's edit`, async () => {
@@ -124,7 +115,7 @@ for (const name of VIEWS) {
     const top = () => run(`(() => {
       const canvas = document.querySelector('.pj-canvas');
       const top = canvas.getBoundingClientRect().top;
-      return [...canvas.querySelectorAll('.ProseMirror p, .cm-line')].find((line) => line.textContent && line.getBoundingClientRect().bottom > top)?.textContent ?? null;
+      return [...canvas.querySelectorAll('.cm-line')].find((line) => line.textContent && line.getBoundingClientRect().bottom > top)?.textContent ?? null;
     })()`);
     await run(`(() => {
       const canvas = document.querySelector('.pj-canvas');
@@ -256,7 +247,7 @@ for (const name of VIEWS) {
     assert.equal(await getText(), 'Alpha.\n');
   });
 
-  test(`${name} view: Mod+F finds what a reader sees and steps through it; Replace all is the person's own edit, undone by Cmd+Z`, async () => {
+  test(`${name} view: Mod+F finds in the text and steps through it; Replace all is the person's own edit, undone by Cmd+Z`, async () => {
     const text = 'One **cat** and a Cat.\n\nThe cat sat.\n';
     await make(name, text);
     await select('One', 0, 0);
@@ -271,9 +262,9 @@ for (const name of VIEWS) {
     await press('Enter', { modifiers: 8 }); // Shift: the one before, round to the last
     assert.equal(await count(), '3 of 3');
     assert.equal(await run(`document.querySelectorAll('.pj-found-current').length`), 1);
-    // What a reader sees: no markup.
+    // The text as it is, its markup too.
     await run(`(() => { const input = document.querySelector('.pj-find-input'); input.value = '**'; input.dispatchEvent(new Event('input', { bubbles: true })); })()`);
-    assert.equal(await count(), name === 'markdown' ? 'No results' : '2 found');
+    assert.equal(await count(), '2 found');
     await press('Escape');
     assert.equal(await run(`document.querySelector('.pj-find').hidden && document.querySelectorAll('.pj-found').length === 0`), true);
     assert.equal(await run(`Boolean(document.activeElement.closest('.pj-editor'))`), true, 'the text has the focus back');
@@ -284,7 +275,7 @@ for (const name of VIEWS) {
     assert.equal(await run(`document.querySelector('.pj-find-input').value`), 'cat', 'the selection is what to find');
     await type('dog'); // the Replace field has the focus
     await run(`document.querySelector('.pj-find [data-action="all"]').click()`);
-    const replaced = name === 'markdown' ? 'One **dog** and a dog.\n\nThe dog sat.\n' : text.replace(/cat/gi, 'dog');
+    const replaced = text.replace(/cat/gi, 'dog');
     assert.equal(await getText(), replaced);
     assert.equal(await count(), 'No results');
     assert.deepEqual(await run('contract.edits'), [replaced], 'sent as the person\'s edit');
@@ -339,10 +330,10 @@ for (const name of VIEWS) {
     assert.equal(await run(`document.querySelector('.pj-find-count').textContent`), '1 of 1', 'the selection is the match');
   });
 
-  test(`${name} view: a line or paragraph of right-to-left text runs right to left`, async () => {
+  test(`${name} view: a line of right-to-left text runs right to left`, async () => {
     await make(name, 'שלום עולם, hello.\n\nHello, עולם.\n');
-    const directions = () => run(`[...document.querySelectorAll('.ProseMirror > p, .cm-line')].map((el) => getComputedStyle(el).direction)`);
-    assert.deepEqual(await directions(), name === 'markdown' ? ['rtl', 'ltr'] : ['rtl', 'ltr', 'ltr', 'ltr']);
+    const directions = () => run(`[...document.querySelectorAll('.cm-line')].map((el) => getComputedStyle(el).direction)`);
+    assert.deepEqual(await directions(), ['rtl', 'ltr', 'ltr', 'ltr']);
   });
 
   test(`${name} view: out of focus, the caret or selection stays drawn; focusAt(x, y) puts the caret at the text nearest a point`, async () => {
@@ -355,7 +346,7 @@ for (const name of VIEWS) {
     await select('One two', 4, 7);
     await run('document.activeElement.blur()');
     await drawn('.pj-held, .cm-selectionBackground', 'the selection');
-    await run(`(() => { const box = [...document.querySelectorAll('.ProseMirror > p, .cm-line')].find((el) => el.textContent === 'Four.').getBoundingClientRect(); view.focusAt(box.left - 6, box.top + box.height / 2); })()`);
+    await run(`(() => { const box = [...document.querySelectorAll('.cm-line')].find((el) => el.textContent === 'Four.').getBoundingClientRect(); view.focusAt(box.left - 6, box.top + box.height / 2); })()`);
     await type('X');
     assert.equal(await getText(), 'One two three.\n\nXFour.\n');
   });
@@ -368,7 +359,7 @@ test('markdown view: a read-only view has no formatting tools and no Comment bub
   assert.equal(await run(`document.querySelectorAll('.pj-bubble').length`), 0);
 });
 
-test('markdown view: typed Markdown stays text and saves escaped', async () => {
+test('markdown view: typed Markdown formats as it is typed, and is saved as typed', async () => {
   await make('markdown', 'Start.\n');
   await select('Start.', 6, 6);
   // One key press per character, as typing is: input rules run on those.
@@ -380,23 +371,25 @@ test('markdown view: typed Markdown stays text and saves escaped', async () => {
     await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
     await typeKeys(line);
   }
-  assert.equal(await getText(), 'Start.\n\n\\## x\n\n\\*\\*x\\*\\*\n\n\\- x\n');
-  assert.equal(await run(`document.querySelectorAll('.ProseMirror h2, .ProseMirror strong, .ProseMirror ul').length`), 0);
+  assert.equal(await getText(), 'Start.\n## x\n**x**\n- x\n');
+  assert.equal(await run(`document.querySelectorAll('.pj-md-h2, .pj-md-strong').length`), 2);
 });
 
-test('markdown view: Enter on an empty heading makes it a paragraph; Backspace at the start of a quote takes it out', async () => {
-  await make('markdown', '# Title\n\nBody.\n');
-  await select('Title', 0, 5);
-  await press('Backspace');
+test('markdown view: Enter continues a list, an empty item ends it; Backspace after a quote\'s marker takes it out', async () => {
+  await make('markdown', '- one\n');
+  await select('one', 3, 3);
   await press('Enter');
-  assert.equal(await run(`document.querySelector('.ProseMirror').firstElementChild.tagName`), 'P');
-  await type('Intro');
-  assert.equal(await getText(), 'Intro\n\nBody.\n');
+  await type('two');
+  assert.equal(await getText(), '- one\n- two\n');
+  await press('Enter');
+  await press('Enter');
+  await type('After.');
+  assert.equal(await getText(), '- one\n- two\n\nAfter.\n');
 
   await make('markdown', 'One.\n\n> Quoted.\n>\n> More.\n');
   await select('Quoted.', 0, 0);
   await press('Backspace');
-  assert.equal(await getText(), 'One.\n\nQuoted.\n\n> More.\n');
+  assert.equal(await getText(), 'One.\n\nQuoted.\n>\n> More.\n', 'that line out of the quote, the rest in it');
 });
 
 test('markdown view: Mod+Shift+. turns focus mode on (Mod+Shift+F is the sidebar\'s search)', async () => {
@@ -452,22 +445,28 @@ const selectTo = (quote, end) => run(`(() => {
   getSelection().getRangeAt(0).setEnd(node, node.data.indexOf(${JSON.stringify(quote)}) + ${end});
 })()`);
 
-test('markdown view: Tab indents the lines of a code block by its own indent, and Shift+Tab outdents them; elsewhere Tab stays in the page', async () => {
-  for (const [text, quote, saved] of [['```js\nlet a\n```\n', 'let a', '```js\n  let a\n```\n'], ['```py\nif a:\n    b\n```\n', 'if a', '```py\n    if a:\n    b\n```\n']]) {
+test('markdown view: Tab indents the lines of a code block or a list item by its own indent, and Shift+Tab outdents them; elsewhere Tab stays in the page', async () => {
+  for (const [text, quote, saved] of [['```\nlet a\n```\n', 'let a', '```\n  let a\n```\n'], ['```\nif a:\n    b\n```\n', 'if a', '```\n    if a:\n    b\n```\n']]) {
     await make('markdown', text);
     await select(quote, 0, 0);
     await press('Tab');
     assert.equal(await getText(), saved, 'at the caret');
   }
-  await make('markdown', '```js\nlet a\nlet b\n```\n');
+  await make('markdown', '```\nlet a\nlet b\n```\n');
   await select('let a', 0, 3);
   await selectTo('let b', 2);
   await new Promise((done) => setTimeout(done, 50));
   await press('Tab');
-  assert.equal(await getText(), '```js\n  let a\n  let b\n```\n', 'the lines selected');
+  assert.equal(await getText(), '```\n  let a\n  let b\n```\n', 'the lines selected');
   await press('Tab', { modifiers: 8 });
-  assert.equal(await getText(), '```js\nlet a\nlet b\n```\n');
-  for (const [text, quote] of [['Some text.\n', 'text'], ['# Title\n', 'Title'], ['- one\n- two\n', 'one']]) {
+  assert.equal(await getText(), '```\nlet a\nlet b\n```\n');
+  await make('markdown', '- one\n- two\n');
+  await select('two', 0, 0);
+  await press('Tab');
+  assert.equal(await getText(), '- one\n  - two\n', 'a list item, by its marker');
+  await press('Tab', { modifiers: 8 });
+  assert.equal(await getText(), '- one\n- two\n');
+  for (const [text, quote] of [['Some text.\n', 'text'], ['# Title\n', 'Title']]) {
     await make('markdown', text);
     await select(quote, 0, 0);
     await run(`document.addEventListener('keydown', (event) => { window.tabKept = event.defaultPrevented; }, { once: true })`);
@@ -479,9 +478,9 @@ test('markdown view: Tab indents the lines of a code block by its own indent, an
 
 test('markdown view: a block style changes only the lines the selection touches, not the rest of their paragraph', async () => {
   for (const [text, quote, tool, saved] of [
-    ['First line\nsecond line\n\nThird.\n', 'First', 'h1', '# First line\n\nsecond line\n\nThird.\n'],
-    ['Before\nFirst line\nsecond line\n', 'First', 'h2', 'Before\n\n## First line\n\nsecond line\n'],
-    ['Typed\\\nafter Shift+Enter\n', 'Typed', 'h1', '# Typed\n\nafter Shift+Enter\n'],
+    ['First line\nsecond line\n\nThird.\n', 'First', 'h1', '# First line\nsecond line\n\nThird.\n'],
+    ['Before\nFirst line\nsecond line\n', 'First', 'h2', 'Before\n## First line\nsecond line\n'],
+    ['Typed\\\nafter Shift+Enter\n', 'Typed', 'h1', '# Typed\nafter Shift+Enter\n'],
   ]) {
     await make('markdown', text, { toolbar: true });
     await select(quote, 1, 1);
@@ -489,9 +488,9 @@ test('markdown view: a block style changes only the lines the selection touches,
     assert.equal(await getText(), saved, tool);
   }
   for (const [tool, saved] of [
-    ['codeBlock', 'Before\n\n```\nfirst line\nsecond line\n```\n\nAfter\n'],
-    ['bullets', 'Before\n\n- first line\n  second line\n\nAfter\n'],
-    ['h1', 'Before\n\n# first line\n\n# second line\n\nAfter\n'],
+    ['codeBlock', 'Before\n```\nfirst line\nsecond line\n```\nAfter\n'],
+    ['bullets', 'Before\n- first line\n- second line\n\nAfter\n'],
+    ['h1', 'Before\n# first line\n# second line\nAfter\n'],
   ]) {
     await make('markdown', 'Before\nfirst line\nsecond line\nAfter\n', { toolbar: true });
     await select('first line', 2, 2);
@@ -500,13 +499,13 @@ test('markdown view: a block style changes only the lines the selection touches,
     await run(`contract.tool('${tool}')`);
     assert.equal(await getText(), saved, `${tool} over two lines`);
   }
-  // Lines that are paragraphs of their own (typed with Enter) go in one code block too, a block a line.
+  // Lines that are blocks of their own go in one code block too, as they are.
   await make('markdown', 'Before\n\nfirst line\n\n## Second\n\nAfter\n', { toolbar: true });
   await select('first line', 2, 2);
   await selectTo('Second', 2);
   await new Promise((done) => setTimeout(done, 50));
   await run(`contract.tool('codeBlock')`);
-  assert.equal(await getText(), 'Before\n\n```\nfirst line\nSecond\n```\n\nAfter\n', 'codeBlock over a paragraph and a heading');
+  assert.equal(await getText(), 'Before\n\n```\nfirst line\n\n## Second\n```\n\nAfter\n', 'codeBlock over a paragraph and a heading');
 });
 
 test('markdown view: a change applied with who made it glows, with their name', async () => {
@@ -535,7 +534,7 @@ test('markdown view: pasting a URL over selected text links the text; other past
   const paste = (text) => run(`(() => {
     const clipboardData = new DataTransfer();
     clipboardData.setData('text/plain', ${JSON.stringify(text)});
-    document.querySelector('.ProseMirror').dispatchEvent(new ClipboardEvent('paste', { clipboardData, bubbles: true, cancelable: true }));
+    document.querySelector('.cm-content').dispatchEvent(new ClipboardEvent('paste', { clipboardData, bubbles: true, cancelable: true }));
   })()`);
   await make('markdown', 'See the plan here.\n');
   await select('the plan', 0, 8);
@@ -546,9 +545,9 @@ test('markdown view: pasting a URL over selected text links the text; other past
   assert.equal(await getText(), 'See [the plan](https://example.com/plan) not a link.\n');
 });
 
-test('A5: markdown view: plain text pastes as Markdown, and as the text it is with Mod+Shift+V; pasted HTML keeps its formatting but leaves out images held in the page', async () => {
+test('A5: markdown view: plain text pastes as it is, Markdown and all; pasted HTML becomes Markdown, without images held in the page, or its plain text with Mod+Shift+V', async () => {
   const paste = (text, html = null, asText = false) => run(`(() => {
-    const editor = document.querySelector('.ProseMirror');
+    const editor = document.querySelector('.cm-content');
     if (${asText}) editor.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyV', key: 'V', shiftKey: true, ctrlKey: true, bubbles: true }));
     const clipboardData = new DataTransfer();
     clipboardData.setData('text/plain', ${JSON.stringify(text)});
@@ -565,15 +564,15 @@ test('A5: markdown view: plain text pastes as Markdown, and as the text it is wi
   await make('markdown', 'Start.\n');
   await select('Start.', 6, 6);
   await paste(' open __init__.py', null, true);
-  assert.equal(await getText(), 'Start. open \\_\\_init\\_\\_\\.py\n', 'with Mod+Shift+V, Markdown in plain text stays text');
+  assert.equal(await getText(), 'Start. open __init__.py\n', 'with Mod+Shift+V, the same');
   await make('markdown', 'Start.\n');
   await select('Start.', 6, 6);
-  await paste('# not a heading\n# nor this', null, true);
-  assert.equal(await getText(), 'Start.# not a heading\n\n\\# nor this\n', 'a line a paragraph');
+  await paste('Look here', '<p>Look <b>here</b></p>', true);
+  assert.equal(await getText(), 'Start.Look here\n', 'with Mod+Shift+V, HTML\'s plain text');
   await make('markdown', 'Start.\n');
   await select('Start.', 6, 6);
   await paste('Look here', `<p>Look <b>here</b><img src="data:image/png;base64,${'A'.repeat(5000)}"><img src="https://example.com/a.png" alt="pic"></p>`);
-  assert.equal(await getText(), 'Start.Look **here**![pic](https://example.com/a.png "pic")\n');
+  assert.equal(await getText(), 'Start.Look **here**![pic](https://example.com/a.png)\n');
 });
 
 test('A5: markdown view: typing in a doc that defines links keeps its definitions, and its reference links as written', async () => {
@@ -590,15 +589,29 @@ test('A5: markdown view: typing in a doc that defines links keeps its definition
 test('A5: markdown view: front matter shows as source, which nothing formats, and is saved as written', async () => {
   const text = '---\ntitle:  Plan\ntags: [a, b]\n---\n\n# Plan\n\nBody.\n';
   await make('markdown', text, { toolbar: true });
-  assert.equal(await run(`document.querySelector('.ProseMirror').firstElementChild.matches('pre.pj-front-matter')`), true);
-  assert.equal(await run(`document.querySelectorAll('.ProseMirror h1, .ProseMirror h2, .ProseMirror hr').length`), 1, 'no rule, no heading of its own');
-  await select('title:  Plan', 0, 5);
+  assert.equal(await run(`document.querySelector('.cm-line').matches('.pj-md-frontmatter')`), true);
+  assert.equal(await run(`document.querySelectorAll('.pj-md-h, .pj-md-hr').length`), 1, 'no rule, no heading of its own');
+  await select('title', 0, 5);
   await run(`contract.tool('bold')`);
   await run(`contract.tool('h1')`);
   assert.equal(await getText(), text);
-  await select('title:  Plan', 12, 12);
+  await select('Plan', 4, 4);
   await type('s');
   assert.equal(await getText(), text.replace('Plan\ntags', 'Plans\ntags'));
+});
+
+test('markdown view: after front matter, a table is drawn and the outline lists the headings; with the caret in the table, it is its source', async () => {
+  await make('markdown', '---\ntitle: Plan\n---\n\n# Plan\n\n| A | B |\n| --- | --- |\n| **1** | 2 |\n\n## Next\n', { toolbar: true });
+  await waitFor(() => run(`document.querySelectorAll('.pj-outline-list button').length === 2`), 2000, 'the outline');
+  assert.deepEqual(await run(`[...document.querySelectorAll('.pj-outline-list button')].map((b) => b.textContent)`), ['Plan', 'Next']);
+  assert.equal(await run(`document.querySelector('.pj-md-table td').innerHTML`), '<strong>1</strong>');
+  const { x, y } = await run(`(() => {
+    const box = document.querySelector('.pj-md-table td').getBoundingClientRect();
+    return { x: box.left + box.width / 2, y: box.top + box.height / 2 };
+  })()`);
+  for (const type of ['mousePressed', 'mouseReleased']) await page.send('Input.dispatchMouseEvent', { type, x, y, button: 'left', clickCount: 1 });
+  await waitFor(() => run(`document.querySelectorAll('.pj-md-table-src').length === 3`), 2000, 'the table\'s source');
+  assert.equal(await run(`document.querySelectorAll('.pj-md-table').length`), 0);
 });
 
 test('markdown view: an image at a path shows what `image` gives for it; one on the web, as it is', async () => {
@@ -606,43 +619,38 @@ test('markdown view: an image at a path shows what `image` gives for it; one on 
   await run(`contract.images = { 'pics/a.png': ${JSON.stringify(dot)} }`);
   const text = '![a](pics/a.png) ![b](https://example.com/b.png) ![c](missing.png)\n';
   await make('markdown', text);
-  await waitFor(() => run(`document.querySelector('.ProseMirror img[alt="a"]').getAttribute('src')`), 5000, 'the image');
-  assert.deepEqual(await run(`[...document.querySelectorAll('.ProseMirror img:not(.ProseMirror-separator)')].map((i) => [i.alt, i.getAttribute('src')])`), [
+  await waitFor(() => run(`document.querySelector('.pj-md-img[alt="a"]').getAttribute('src')`), 5000, 'the image');
+  assert.deepEqual(await run(`[...document.querySelectorAll('.pj-md-img')].map((i) => [i.alt, i.getAttribute('src')])`), [
     ['a', dot], ['b', 'https://example.com/b.png'], ['c', null],
   ]);
   assert.equal(await getText(), text);
 });
 
-test('markdown view: an empty paragraph is saved as blank lines, and others\' edits keep it and the caret', async () => {
+test('markdown view: blank lines are saved as typed, and others\' edits keep them and the caret', async () => {
   await make('markdown', 'One.\n\nTwo.\n\nThree.\n');
   await select('One.', 4, 4);
   await press('Enter');
   await press('Enter');
-  assert.equal(await getText(), 'One.\n\n\n\n\n\nTwo.\n\nThree.\n', 'two empty paragraphs, no <br />');
+  assert.equal(await getText(), 'One.\n\n\n\nTwo.\n\nThree.\n');
   await run(`view.applyText(view.getText().replace('Three.', 'Three!'))`);
   await type('x');
-  assert.equal(await getText(), 'One.\n\n\n\nx\n\nTwo.\n\nThree!\n');
-  await make('markdown', 'One.\n\n\n\nTwo.\n');
-  assert.equal(await run(`document.querySelector('.ProseMirror').children.length`), 3, 'read back as one');
-  assert.equal(await getText(), 'One.\n\n\n\nTwo.\n');
+  assert.equal(await getText(), 'One.\n\nx\n\nTwo.\n\nThree!\n');
 });
 
 test('markdown view: a task list item shows its box; clicking it ticks the item, saved as written otherwise', async () => {
   await make('markdown', '* [ ] one\n* [X] two\n\nAfter.\n');
-  // A press in the box, in the item's gutter.
-  const tick = async (quote) => {
+  const boxes = () => run(`[...document.querySelectorAll('.pj-md-check')].map((box) => box.matches('.pj-md-checked'))`);
+  const tick = async (i) => {
     const { x, y } = await run(`(() => {
-      const item = [...document.querySelectorAll('.ProseMirror li')].find((li) => li.textContent === ${JSON.stringify(quote)});
-      const box = getComputedStyle(item, '::before');
-      const rect = item.getBoundingClientRect();
-      return { x: rect.left + parseFloat(box.left) + parseFloat(box.width) / 2, y: rect.top + parseFloat(box.top) + parseFloat(box.height) / 2 };
+      const box = document.querySelectorAll('.pj-md-check')[${i}].getBoundingClientRect();
+      return { x: box.left + box.width / 2, y: box.top + box.height / 2 };
     })()`);
     for (const type of ['mousePressed', 'mouseReleased']) await page.send('Input.dispatchMouseEvent', { type, x, y, button: 'left', clickCount: 1 });
   };
-  assert.deepEqual(await run(`[...document.querySelectorAll('.ProseMirror li')].map((li) => [li.dataset.checked, getComputedStyle(li).listStyleType])`), [['false', 'none'], ['true', 'none']]);
-  await tick('one');
+  assert.deepEqual(await boxes(), [false, true]);
+  await tick(0);
   assert.equal(await getText(), '* [x] one\n* [X] two\n\nAfter.\n');
-  await tick('two');
+  await tick(1);
   assert.equal(await getText(), '* [x] one\n* [ ] two\n\nAfter.\n');
 });
 
