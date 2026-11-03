@@ -37,7 +37,7 @@ const rows = (page) => page.evaluate(`[...document.querySelectorAll('.pj-files-r
 
 test('the next page draws the sidebar the last one left, then shows the files that came or went meanwhile', { timeout: 120_000 }, async () => {
   const first = await app.page('a.md', 60_000);
-  await waitFor(() => first.evaluate(`Boolean(document.querySelector('.ProseMirror') && document.querySelector('.pj-files-folder[data-path="notes"]'))`), 30_000, 'the doc and its sidebar');
+  await waitFor(() => first.evaluate(`Boolean(document.querySelector('.pj-md') && document.querySelector('.pj-files-folder[data-path="notes"]'))`), 30_000, 'the doc and its sidebar');
   await first.evaluate(`document.querySelector('.pj-files-folder[data-path="notes"]').click()`);
   await waitFor(async () => (await rows(first)).includes('notes/c.md'), 10_000, 'the subfolder open');
   await waitFor(() => first.evaluate('window.ponjoReady.then(() => true)'), 10_000, 'the page ready');

@@ -39,13 +39,16 @@ before(async () => {
 after(() => app?.quit());
 
 // Select `[from, to)` of the first `quote` in the doc, in the editor.
-const select = (quote, from, to) => page.evaluate(`(() => {
-  const editor = document.querySelector('.ProseMirror');
+const select = (quote, from, to) => page.evaluate(`(async () => {
+  const editor = document.querySelector('.cm-content');
   editor.focus();
+  await new Promise((done) => setTimeout(done, 30)); // the line the caret is on is drawn as its source
   const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT);
   for (let node = walker.nextNode(); node; node = walker.nextNode()) {
     const at = node.data.indexOf(${JSON.stringify(quote)});
-    if (at !== -1) return getSelection().setBaseAndExtent(node, at + ${from}, node, at + ${to});
+    if (at === -1) continue;
+    getSelection().setBaseAndExtent(node, at + ${from}, node, at + ${to});
+    return new Promise((done) => setTimeout(done, 30)); // the editor takes the selection in as it changes
   }
   throw new Error('not in the doc: ' + ${JSON.stringify(quote)});
 })()`);
@@ -71,10 +74,10 @@ const cursorAfter = () => page.evaluate(`(() => {
   const cursor = document.querySelector('.pj-cursor');
   if (!cursor) return null;
   const range = document.createRange();
-  range.setStart(document.querySelector('.ProseMirror'), 0);
+  range.setStart(document.querySelector('.cm-content'), 0);
   range.setEndBefore(cursor);
   const text = range.cloneContents();
-  for (const drawn of text.querySelectorAll('.ProseMirror-widget')) drawn.remove();
+  for (const drawn of text.querySelectorAll('[contenteditable="false"], .cm-widgetBuffer')) drawn.remove();
   return text.textContent;
 })()`);
 

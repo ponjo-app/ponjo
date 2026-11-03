@@ -109,6 +109,12 @@ function diffs(a, b) {
 const stages = [...document.querySelectorAll('.pj-stage')];
 let injected = 0; // a third writer's edits: each its own id
 
+// Focus view i, and let it draw again.
+async function focused(i) {
+  collab.clients[i].view.focus();
+  await new Promise((done) => setTimeout(done, 30));
+}
+
 const collab = {
   host,
   clients: [],
@@ -143,9 +149,15 @@ const collab = {
   // Put the caret (or a selection) in view i on characters [start, end) of
   // the first `quote` in its drawn text (a glow can split it across nodes).
   async select(i, quote, start = 0, end = start) {
-    collab.clients[i].view.focus(); // first: it can draw the text again
-    const editable = stages[i].querySelector('[contenteditable]');
-    const walker = document.createTreeWalker(editable, NodeFilter.SHOW_TEXT);
+    await focused(i); // first: it can draw the text again, once it has drawn it
+    const editable = stages[i].querySelector('[contenteditable="true"]');
+    // A table the Markdown view draws shows its source once clicked.
+    const drawn = [...editable.querySelectorAll('[contenteditable="false"]')].find((el) => el.textContent.includes(quote));
+    if (drawn) {
+      drawn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+      await new Promise((done) => setTimeout(done, 30));
+    }
+    const walker = document.createTreeWalker(editable, NodeFilter.SHOW_TEXT, { acceptNode: (node) => (node.parentElement.closest('[contenteditable="false"]') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT) });
     const nodes = [];
     for (let node = walker.nextNode(); node; node = walker.nextNode()) nodes.push(node);
     const at = nodes.map((node) => node.data).join('').indexOf(quote);
@@ -167,8 +179,8 @@ const collab = {
   },
   // Put the caret in view i at place `r` (0 to 1) along its text.
   async caretAt(i, r) {
-    collab.clients[i].view.focus(); // first: it can draw the text again
-    const editable = stages[i].querySelector('[contenteditable]');
+    await focused(i); // first: it can draw the text again, once it has drawn it
+    const editable = stages[i].querySelector('[contenteditable="true"]');
     const walker = document.createTreeWalker(editable, NodeFilter.SHOW_TEXT);
     const nodes = [];
     for (let node = walker.nextNode(); node; node = walker.nextNode()) nodes.push(node);

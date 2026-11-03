@@ -114,11 +114,17 @@
     <button class="pj-icon-btn" type="button" aria-label="Settings"><svg class="pj-icon" viewBox="0 0 24 24"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg></button>
   </div>
   <h3>Toolbar: pressed is ink on grey</h3>
+  <p>The Markdown view's tools, in five groups: Undo and Redo; the text style, a menu (Normal text, Heading 1 to 3, Quote, Code block, each with its Markdown in a <code>kbd</code>); Bold, Italic, Strikethrough, Inline code, Link; the lists (Bulleted, Numbered, Task); Insert, a <code>plus</code> menu (Table, Divider, Footnote). Each tool's tooltip says its keys.</p>
   <div class="pj-toolbar ds-toolbar">
     <div class="pj-tool-group">
       <button type="button" aria-pressed="true" aria-label="Bold"><svg class="pj-icon" viewBox="0 0 24 24"><path d="M6 12h8a4 4 0 0 1 0 8H6V4h7a4 4 0 0 1 0 8"/></svg></button>
       <button type="button" aria-label="Italic"><svg class="pj-icon" viewBox="0 0 24 24"><path d="M19 4h-9M14 20H5M15 4 9 20"/></svg></button>
       <button type="button" aria-label="Link"><svg class="pj-icon" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></button>
+    </div>
+    <span class="pj-sep"></span>
+    <div class="pj-tool-group">
+      <button type="button" aria-label="Task list"><svg class="pj-icon" viewBox="0 0 24 24"><path d="M3 4h6v6H3zM3 14h6v6H3zM13 7h8M13 17h8M4.5 7l1.2 1.2L7.8 5.6"/></svg></button>
+      <button type="button" aria-label="Footnote"><svg class="pj-icon" viewBox="0 0 24 24"><path d="M4 7h10M4 12h16M4 17h16M18 3v6M16.5 4.2 18 3"/></svg></button>
     </div>
     <span class="pj-spacer"></span>
     <button class="pj-pill pj-tool-comment" type="button" aria-pressed="false"><svg class="pj-icon" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Comments<span class="pj-comment-count">3</span></button>

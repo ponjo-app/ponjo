@@ -18,8 +18,7 @@
 // the Plain text view, for any text file.
 //
 // A view keeps its latency promise (docs/architecture.md, Latency) only up to
-// a size, its `limits`: { chars, the doc's length, and blockChars, the
-// longest run of text without a blank line }. A doc past them opens in the
+// a size, its `limits`: { chars, the doc's length }. A doc past them opens in the
 // Plain text view, unless the person chooses the view anyway; past the Plain
 // text view's limits too, it opens read-only. The Plain text view colours
 // syntax only while no run is past its colorBlockChars.
@@ -77,7 +76,7 @@ export function viewFor(name, settings, text = '', { anySize = false } = {}) {
   };
 }
 
-const fits = ({ limits }, text) => !limits || (text.length <= limits.chars && (!limits.blockChars || longestBlock(text) <= limits.blockChars));
+const fits = ({ limits }, text) => !limits || text.length <= limits.chars;
 
 // The longest run of `text` without a blank line in it.
 function longestBlock(text) {

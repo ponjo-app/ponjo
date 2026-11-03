@@ -72,7 +72,7 @@ async function switches(names) {
   const ms = [];
   for (const name of names) {
     const page = await app.page(name === 'a.md' ? 'b.md' : 'a.md', 60_000);
-    await waitFor(() => page.evaluate(`Boolean(document.querySelector('.ProseMirror') && document.querySelector('.pj-files-file[data-path="${name}"]'))`), 30_000, 'the doc and its sidebar');
+    await waitFor(() => page.evaluate(`Boolean(document.querySelector('.pj-md') && document.querySelector('.pj-files-file[data-path="${name}"]'))`), 30_000, 'the doc and its sidebar');
     const shown = await pages();
     const start = performance.now();
     await page.evaluate(`document.querySelector('.pj-files-file[data-path="${name}"]').click()`);

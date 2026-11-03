@@ -45,11 +45,15 @@ export async function launchElectron(exe, args, { env, onLine = () => {} }) {
           throw new Error(`${error.message}\npages:\n${shown.join('\n') || 'none'}\nthe app's stderr, last lines:\n${stderr}`);
         });
       const cdp = await connect(target.webSocketDebuggerUrl);
+      // The page has the focus as a person's window would, though the test's
+      // window may not: an editor takes no selection in a page without it.
+      await cdp.send('Emulation.setFocusEmulationEnabled', { enabled: true });
       return {
         send: (method, params) => cdp.send(method, params),
         async evaluate(expression) {
           const res = await cdp.send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true });
-          if (res.result?.exceptionDetails) throw new Error(res.result.exceptionDetails.text);
+          const thrown = res.result?.exceptionDetails;
+          if (thrown) throw new Error(thrown.exception?.description ?? thrown.text);
           return res.result?.result?.value;
         },
       };

@@ -96,13 +96,11 @@ flowchart TD
   end
   shell["Shell<br>desktop/"]
   host["DocService, Runner<br>src/host/"]
-  markdown["Markdown library<br>src/markdown/"]
   store["Store<br>src/store/"]
   core["Core<br>src/core/"]
   shell --> host & store & core
   host --> store & core
-  web --> markdown & core
-  markdown --> core
+  web --> core
   store --> core
   web -. IPC .- shell
   web -. message port .- host
@@ -112,7 +110,6 @@ flowchart TD
 | --- | --- |
 | Format | `X` + `X.comments.jsonl`, anchors on X's text ([SPEC](../spec/SPEC.md)) |
 | Core (`src/core/`) | computing on text, the same in the doc host and the page; no I/O: anchors, diff (Myers', `diff.js`) and the three-way merge by line (`merge3`), text operations and how they merge by character (`ot.js`), the sidecar's lines and threads, @mentions and the inbox, what a buddy file and the settings may hold |
-| Markdown library (`src/markdown/`) | not a view; what the Markdown view and the page use: a doc's rendered text and its map back to the source (`project.js`), and saving with the bytes of unchanged blocks kept (`splice.js`) |
 | Store (`src/store/`) | the files: a doc and its sidecar, each written whole (`files.js`), watched (`watch.js`), and the doc's versions (`history.js`); the settings and agents (programs and their manifests) in the config folder; buddy files (the user's there, a project's in its folder) |
 | DocService (`src/host/doc-service.js`) | every write to a doc and its sidecar, one at a time; outside changes; versions |
 | Runner (`src/host/runner.js`) | which turns should start (the inbox), runs them, their status in memory |
@@ -140,21 +137,18 @@ so it is built in and not an extension point.
 | Its settings | an ordered list of fields `{ key, type: 'switch' \| 'choice' \| 'number', label, hint?, default, group?, when? }`, rendered as its page in Settings > Views; `viewSettings` keeps a stored value only if its field allows it |
 | Must satisfy | the view contract, `test/views.test.js` |
 
-The Plain text view (`web/views/plain/`) is CodeMirror showing the text as it
-is: the editor in `web/views/codemirror.js` (the view interface, marks,
-others' edits, find, right to left), which the Markdown view is to share,
+Both views are one editor, CodeMirror, whose text is the doc's own
+(`web/views/codemirror.js`: the view interface, marks, others' edits, find,
+right to left), each with its own keys, language and display.
+The Plain text view (`web/views/plain/`) shows the text as it is,
 with CodeMirror's standard keys for code (Mod+/ comments out lines in a
 language that has comments); line numbers, wrapping, font size, whitespace
 marks, indent guides and indentation are its settings, with a status bar
 (`status.js`) whose menu and toggles save the same settings. The Markdown view (`web/views/markdown/`, [design](markdown-view.md)) is
-WYSIWYG; its toolbar (and the standard keys), outline, focus mode and
-word count are parts of it, switched by its settings, not separate extensions.
-It maps the doc's text to its own document through the rendered text, and
-saves each block the user did not change as it was written. *Planned*
-([steps](markdown-view.md#steps)): live preview, the CodeMirror editor the
-plain view is, whose text is the doc's own, drawn formatted; no second
-document, so the Markdown library (`src/markdown/`), the rendered-text maps
-and Milkdown go, and with them the dependency patches below.
+live preview: the text drawn formatted, its syntax showing on the lines
+being edited, and nothing but typing changing it. Its toolbar (and the
+standard keys), outline, focus mode and word count are parts of it,
+switched by its settings, not separate extensions.
 
 How edits merge does not depend on the view or the format: people's by
 character, the rest by line (see Interfaces).
@@ -239,13 +233,11 @@ numbers are `LATENCY` in `web/views/index.js`, which the tests read:
 | --- | --- |
 | E1 | At any moment the page is in exactly one true state: Saved, Saving, Not saved (and why), Offline or Read-only. Alone too. The toolbar shows it (`paintSave` in `web/main.js`); other problems show apart, beside the doc's name. |
 
-A view keeps the B rules only up to a size, its `limits`: how long the doc is, and
-for the Markdown view how long a run of text without a blank line is (one
-paragraph is parsed whole on every edit in it):
+A view keeps the B rules only up to a size, its `limits`: how long the doc is:
 
 | View | Up to | Past it |
 | --- | --- | --- |
-| Markdown | 100,000 characters; no block over 10,000 | opens as plain text, and says so; the person may choose the Markdown view anyway, for that window |
+| Markdown | 1,000,000 characters | opens as plain text, and says so; the person may choose the Markdown view anyway, for that window |
 | Plain text | 5,000,000 characters | opens read-only, and says so |
 | Plain text's colour | no block over 10,000 characters | the doc opens without colour |
 
@@ -256,10 +248,7 @@ its limits, and a key to a teammate's page through the relay
 person makes as it is made (`onEdit`), one edit on its way at a time: keys
 typed while one is on its way go out together once it is answered, so
 typing reaches others while it goes on, not once it pauses; a teammate far
-from the relay sends one edit per round trip. Two dependencies are quadratic in one
-paragraph's length; installs and builds patch them in node_modules, for the
-page and the doc host alike (`scripts/patch-deps.js`), until
-they are fixed upstream.
+from the relay sends one edit per round trip.
 
 ### Interfaces
 

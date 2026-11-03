@@ -45,17 +45,17 @@ AI buddies.
    with only its files, and New doc and New folder in the page; nothing is
    made until you ask. A doc opened on its own is a
    quick editor for you and your AI buddies: no team, no sharing.
-2. **Write.** A WYSIWYG editor over plain markdown (*planned:* live
-   preview, see Views below). Saving is automatic and
-   keeps the bytes of every block you did not touch, so `git diff` stays clean.
-   Any other text file (code, config, notes) opens as plain text, and
-   comments and AI buddies work the same there. The WYSIWYG editor is a
-   view (see Views below): switched off, Markdown opens as plain text too.
-   A doc too long to write in smoothly in a view opens in the next one, and
-   says so in a banner: past 100,000 characters (or a paragraph past
-   10,000), Markdown opens as plain text, and the banner offers the Markdown
-   view anyway, warning that typing may lag; past 5,000,000, any doc opens
-   read-only.
+2. **Write.** Plain markdown, drawn formatted as you type (live preview):
+   the syntax shows only on the lines you are editing. What you see is the
+   file: saving is automatic and changes nothing you did not type, so `git
+   diff` stays clean. Any other text file (code, config, notes) opens as
+   plain text, and comments and AI buddies work the same there. The
+   Markdown editor is a view (see Views below): switched off, Markdown
+   opens as plain text too. A doc too long to write in smoothly in a view
+   opens in the next one, and says so in a banner: past 1,000,000
+   characters, Markdown opens as plain text, and the banner offers the
+   Markdown view anyway, warning that typing may lag; past 5,000,000, any
+   doc opens read-only.
 3. **Comment.** Select text and click the comment button at the page edge
    (Ctrl+Alt+M). The comment sits in the margin beside its text and follows
    it as the text changes.
@@ -231,20 +231,18 @@ works, or what went wrong.
   Settings > Views (it lists the views with their files, what they do and
   whether they are on; a view's page has its switch and its own settings).
   Every text file opens in the Plain text view (always on) unless a view
-  gives its format a WYSIWYG editor; the built-in one is for Markdown and on
-  by default. How changes merge is the same in every view.
-  The **Markdown view** ([design](markdown-view.md)): its toolbar, outline and focus mode (Ctrl+Shift+.)
-  are part of it. The toolbar formats, and so do the standard keys (Mod+B,
-  Mod+I, Mod+E, Mod+Shift+X, Mod+K); typed Markdown such as `## `, `**x**`
-  or `- ` stays text (saved escaped). To write Markdown by hand, switch the
-  view off (Ctrl+Shift+T, again to switch back); `.md` then opens in the plain
-  editor. Pasted plain text is read as Markdown (Mod+Shift+V pastes it
-  as text); pasted formatted text keeps its formatting.
-  *Planned* ([design](markdown-view.md)): the Markdown view becomes live
-  preview, the file's own text drawn formatted, its syntax shown only on
-  the lines the selection touches. Typed Markdown formats as it is typed;
-  pasted formatted text is turned into Markdown as it is pasted; nothing
-  else changes the text, so what shows is what is saved.
+  gives its format an editor of its own; the built-in one is for Markdown
+  and on by default. How changes merge is the same in every view.
+  The **Markdown view** ([design](markdown-view.md)) is live preview: the
+  file's own text drawn formatted, its syntax shown only on the lines the
+  selection touches. All of CommonMark and GFM, and footnotes, are drawn
+  (#358). Typed Markdown formats as it is typed; the toolbar types it too,
+  and so do the standard keys (Mod+B, Mod+I, Mod+E, Mod+Shift+X, Mod+K).
+  Its toolbar, outline and focus mode (Ctrl+Shift+.) are part of it.
+  Pasted formatted text is turned into Markdown as it is pasted; plain text
+  goes in as it is. To see the whole file as source, switch the view off
+  (Ctrl+Shift+T, again to switch back); `.md` then opens in the plain
+  editor.
   The plain editor's settings: line numbers, wrapping, font size, whitespace
   marks (in the selection, everywhere or off) and indent guides, and
   indentation: Tab types the file's indent (found from the file, or tabs or

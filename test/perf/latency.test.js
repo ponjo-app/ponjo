@@ -62,7 +62,7 @@ function verses(chars) {
 
 const CASES = [
   ['markdown', 'blocks', blocks(markdown.limits.chars)],
-  ['markdown', 'one long block', verses(markdown.limits.blockChars)],
+  ['markdown', 'one long block', verses(markdown.limits.chars)],
   ['plain', 'blocks', blocks(plain.limits.chars)],
   ['plain', 'verses', verses(plain.limits.chars)],
   ['plain', 'one long coloured block', verses(plain.limits.colorBlockChars)],

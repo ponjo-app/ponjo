@@ -295,7 +295,7 @@ for (const [prefix, teammate] of [['', false], ['through the relay: ', true]]) {
 // Measured, with no bar (docs/markdown-view.md, The prototype).
 
 test('measure: how often merges break bold, links or tables', MEASURE, async () => {
-  const count = () => run(`['strong', 'a', 'table', 'tr', 'td', 'th'].map((s) => document.querySelector('.ProseMirror').querySelectorAll(s).length).join()`);
+  const count = () => run(`['.pj-md-strong', '.pj-md-link', '.pj-md-table', 'tr', 'td', 'th'].map((s) => document.querySelector('.pj-md').querySelectorAll(s).length).join()`);
   let seed = 5;
   const random = (n) => {
     seed = (seed * 1103515245 + 12345) % 2 ** 31;
