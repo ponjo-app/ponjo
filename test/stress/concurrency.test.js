@@ -20,6 +20,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, writeFile } from 'node:fs/promises';
 import { createClient } from '../../web/client.js';
+import { mapOffset } from '../../src/core/ot.js';
 import { openDoc } from '../../src/host/doc-service.js';
 import { readDoc } from '../../src/store/files.js';
 import { fakeConfig, openTestDoc, readOnly, tempDoc, until } from '../helpers.js';
@@ -143,11 +144,15 @@ async function run(c) {
     // The first is the owner; the others teammates who can edit, or read.
     const page = { k, online: true, up: [], down: [], held: [], errors: [], level: k === 0 ? 'owner' : 'write' };
     const who = k === 0 ? () => owner : () => ({ id: `p_${k}`, name: `P${k}`, kind: 'human', level: page.level });
-    page.view = { text: '', getText: () => page.view.text, selection: () => null };
+    // Its caret where it last typed, moved over others' edits, as a view's is.
+    page.view = { text: '', caret: 0, getText: () => page.view.text, selection: () => ({ to: page.view.caret }) };
     page.client = createClient({
       view: page.view,
       call: (type, arg) => new Promise((resolve, reject) => (page.online ? page.up : page.held).push({ type, arg, who, resolve, reject })),
-      show: (text) => { page.view.text = text; },
+      show: (text, ops) => {
+        page.view.text = text;
+        page.view.caret = mapOffset(page.view.caret, ops);
+      },
       caughtUp: (state) => { page.reading = state.level === 'read'; }, // its view can no longer be typed in
       onError: (error) => page.errors.push(error),
     });
@@ -187,6 +192,7 @@ async function run(c) {
   };
   const connect = (page) => {
     page.online = true;
+    page.lost = false;
     page.down.push({ hello: true });
     page.up.push(...page.held.splice(0));
   };
@@ -203,12 +209,14 @@ async function run(c) {
           typedTokens.push(token);
           page.view.text = text.slice(0, from) + token + text.slice(from);
         }
+        page.view.caret = page.view.text.length - (text.length - from);
         page.client.edited();
       } else if (kind === 'up' && page.up.length > 0) await deliver(page);
       else if (kind === 'down' && page.down.length > 0) take(page);
       else if (kind === 'lose') {
         const lost = page.down.findIndex((message) => message.event);
         if (lost !== -1) page.down.splice(lost, 1);
+        page.lost ||= lost !== -1; // its line drops, and says hello when it is back
       } else if (kind === 'drop' && page.online) drop(page);
       else if (kind === 'connect' && !page.online) connect(page);
       else if (kind === 'level' && page.k > 0) setLevel(page, page.level === 'read' ? 'write' : 'read');
@@ -245,7 +253,7 @@ async function run(c) {
     // The writers stop; the lines come back and carry all there is, and
     // everyone may edit again: what was typed while set to Read lands too.
     if (!writable) await readOnly(docPath, false);
-    for (const page of pages) if (!page.online) connect(page);
+    for (const page of pages) if (!page.online || page.lost) connect(page);
     for (const page of pages) if (page.level === 'read') setLevel(page, 'write');
     const deadline = Date.now() + 20_000;
     for (;;) {
