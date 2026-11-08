@@ -136,8 +136,9 @@ that fails before the fix.
   text, a click lands at the character clicked, and the caret's line shows
   its source.
 - **Layer 2** runs a real DocService on temp files with 1 to 4 clients
-  (`web/client.js`) over a fake line that can delay, drop the line (calls
-  fail `offline`), lose an event, restart the host, fail a write (the file
+  (`web/client.js`), each on a view with a caret where it last typed, over
+  a fake line that can delay, drop the line (calls fail `offline`), lose an
+  event (a line that dropped: it says hello when it is back), restart the host, fail a write (the file
   read-only), make an outside change, land a buddy's edit and change a
   level. Each seed makes a list of steps, run one at a time, so it runs
   the same every time. On a pull request, a fixed 300 seeds on Linux and

@@ -8,7 +8,7 @@
 // it, and what was composed would be lost. The same for every
 // view, and for the two-writer harness (test/collab/page.js).
 
-import { apply, diffOps, mapOffset, transform } from '../src/core/ot.js';
+import { apply, compose, diffOps, mapOffset, transform } from '../src/core/ot.js';
 
 /**
  * Keep `view` ({ getText, selection, composing? }) in the host's order: `call(type,
@@ -72,6 +72,7 @@ export function createClient({ view, call, show, caughtUp = () => {}, onLine = (
       pending = [diffOps(confirmed, last)].filter((ops) => ops.length > 0);
     }
     if (pending.length > 0) {
+      pending = [pending.reduce(compose)];
       sent = { ops: pending[0], rev, epoch, id: `${name}.${++sends}` };
       post(sent);
     } else {
@@ -106,7 +107,10 @@ export function createClient({ view, call, show, caughtUp = () => {}, onLine = (
     });
   }
 
-  // The view's typing since it was last read is pending too.
+  // The view's typing since it was last read is pending too: read on each
+  // change, so it is what was typed, not one of the diffs that make the
+  // same text (a token typed either side of another, diffed as one, could
+  // take that one's characters for its own).
   function flush() {
     const text = view.getText();
     if (text === last) return;
@@ -186,7 +190,7 @@ export function createClient({ view, call, show, caughtUp = () => {}, onLine = (
     /** The person changed the view: their typing goes out now, or once the edit on its way is answered. */
     edited() {
       release();
-      if (sent === null && !catching) flush();
+      flush();
     },
     /** An `ops` event: an edit landed. */
     receive(event) {

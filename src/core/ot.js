@@ -13,14 +13,22 @@ import { lineMatches, sameEnd, sameStart } from './diff.js';
  * pages restyle a block the same way (`__x__` to `**x**`, a Markdown view's
  * first touch of it), they send the same operations, which land once.
  * `caret`, an offset in `text`, is where the writer's edit ended: what
- * differs is not trimmed past it, so of two places an edit could be (a
- * deleted sentence that ends as the next one starts), it is at the caret.
+ * follows it is trimmed first, and what differs not past it, so of two
+ * places an edit could be (a deleted sentence that ends as the next one
+ * starts, a word typed before one it starts like), it is at the caret.
  */
 export function diffOps(base, text, caret) {
   if (base === text) return [];
   const max = Math.min(base.length, text.length);
-  let start = sameStart(base, text, Math.min(max, caret ?? max));
-  let end = sameEnd(base, text, Math.min(max - start, caret === undefined ? max : text.length - caret));
+  let start;
+  let end;
+  if (caret === undefined) {
+    start = sameStart(base, text, max);
+    end = sameEnd(base, text, max - start);
+  } else { // the edit ends at the caret: what follows it is trimmed first
+    end = sameEnd(base, text, Math.min(max, text.length - caret));
+    start = sameStart(base, text, Math.min(max - end, caret));
+  }
   // Never split a surrogate pair.
   if (start > 0 && isHigh(base.charCodeAt(start - 1))) start--;
   if (end > 0 && isLow(base.charCodeAt(base.length - end))) end--;
@@ -124,6 +132,51 @@ export function transform(ops, landed, { first = false } = {}) {
       if (!y?.delete) at += n;
       if ((x.n -= n) === 0) i++;
       if (y && (y.n -= n) === 0) j++;
+    }
+  }
+  return out;
+}
+
+/**
+ * Edit `ops` and then edit `next`, on the text `ops` makes, as one edit:
+ * apply(t, compose(a, b)) === apply(apply(t, a), b).
+ */
+export function compose(ops, next) {
+  const a = parts(ops);
+  const b = parts(next);
+  const out = [];
+  let i = 0;
+  let j = 0;
+  let at = 0; // offset in the text before `ops`
+  const emit = (to, insert) => {
+    const last = out.at(-1);
+    if (last?.to === at) {
+      last.to = to;
+      last.insert += insert;
+    } else out.push({ from: at, to, insert });
+    at = to;
+  };
+  while (i < a.length || j < b.length) {
+    const x = a[i] ?? { n: Infinity }; // past the last part, the text is kept
+    const y = b[j] ?? { n: Infinity };
+    if (y.insert !== undefined) {
+      emit(at, y.insert);
+      j++;
+    } else if (x.delete) {
+      emit(at + x.n, '');
+      i++;
+    } else {
+      // What `ops` kept or typed, kept or deleted by `next`: take the shorter run.
+      const n = Math.min(x.insert?.length ?? x.n, y.n);
+      if (x.insert !== undefined) {
+        if (!y.delete) emit(at, x.insert.slice(0, n));
+        if ((x.insert = x.insert.slice(n)) === '') i++;
+      } else {
+        if (y.delete) emit(at + n, '');
+        else at += n;
+        if ((x.n -= n) === 0) i++;
+      }
+      if ((y.n -= n) === 0) j++;
     }
   }
   return out;

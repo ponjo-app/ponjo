@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { apply, diffOps, mapOffset, transform } from '../src/core/ot.js';
+import { apply, compose, diffOps, mapOffset, transform } from '../src/core/ot.js';
 import { lineMatches, merge3, sameEnd, sameStart } from '../src/core/diff.js';
 import { SAMPLE as SAMPLE_PLAN } from './helpers.js';
 import { createClient } from '../web/client.js';
@@ -16,6 +16,25 @@ test('diffOps is trimmed to the edit, and apply makes the text', () => {
   assert.deepEqual(diffOps(deleted, 'First. Third.'), [{ from: 9, to: 31, insert: '' }], 'without the caret, after the repeated "Th"');
   assert.deepEqual(diffOps(deleted, 'First. Third.', 7), [{ from: 7, to: 29, insert: '' }], 'at the caret: the sentence itself');
   for (const caret of [0, 3, 7, 13]) assert.equal(apply(deleted, diffOps(deleted, 'First. Third.', caret)), 'First. Third.');
+  assert.deepEqual(diffOps('x[p1] y', 'x[p2][p1] y', 5), [{ from: 1, to: 1, insert: '[p2]' }], 'a word typed before one it starts like, as typed');
+});
+
+test('compose makes two edits one', () => {
+  let seed = 11;
+  const random = (n) => {
+    seed = (seed * 1103515245 + 12345) % 2 ** 31;
+    return Math.floor((seed / 2 ** 31) * n);
+  };
+  const edit = (text) => {
+    const from = random(text.length + 1);
+    return text.slice(0, from) + 'ab😀\n'.slice(random(5)) + text.slice(Math.min(text.length, from + random(4)));
+  };
+  for (let run = 0; run < 5000; run++) {
+    const text = edit(edit('ab\ncd'));
+    const once = edit(text);
+    const twice = edit(once);
+    assert.equal(apply(text, compose(diffOps(text, once), diffOps(once, twice))), twice, JSON.stringify([text, once, twice]));
+  }
 });
 
 test('a caret follows others\' edits: after text inserted at it, at the end of text that replaced it', () => {
