@@ -252,14 +252,23 @@ export async function createMarkdownView({
 
   // Enter on an empty item of a list, or an empty line of a quote, not in
   // another block, ends it with a blank line, so what is typed next is not
-  // read as part of it. Otherwise Enter is Markdown's: it continues a list or
-  // a quote (insertNewlineContinueMarkup).
+  // read as part of it. Enter in a paragraph or an ATX heading not in a list
+  // or a quote starts a new paragraph a blank line apart, as in Typora, so
+  // the next line reads on its own (`- ` there is a list, not the line above
+  // made a heading); Shift+Enter is a new line in it. Otherwise Enter is
+  // Markdown's: it continues a list or a quote (insertNewlineContinueMarkup).
   function endBlock() {
     const { state } = view;
     const { main } = state.selection;
     const line = state.doc.lineAt(main.head);
-    if (!editable || !main.empty || !/^([-*+]( \[[ xX]\])?|\d+[.)]|>)\s*$/.test(line.text) || inside('FencedCode') || inside('CodeBlock')) return false;
-    view.dispatch({ changes: { from: line.from, to: line.to, insert: '\n' }, selection: { anchor: line.from + 1 }, userEvent: 'input' });
+    if (!editable || !main.empty || inside('FencedCode') || inside('CodeBlock')) return false;
+    if (/^([-*+]( \[[ xX]\])?|\d+[.)]|>)\s*$/.test(line.text)) {
+      view.dispatch({ changes: { from: line.from, to: line.to, insert: '\n' }, selection: { anchor: line.from + 1 }, userEvent: 'input' });
+      return true;
+    }
+    const blocks = [...around()].map((node) => node.name);
+    if (!blocks.some((name) => /^(Paragraph|ATXHeading\d)$/.test(name)) || blocks.includes('ListItem') || blocks.includes('Blockquote')) return false;
+    view.dispatch({ changes: { from: main.head, insert: '\n\n' }, selection: { anchor: main.head + 2 }, userEvent: 'input' });
     return true;
   }
 

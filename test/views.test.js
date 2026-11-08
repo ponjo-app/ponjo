@@ -371,7 +371,7 @@ test('markdown view: typed Markdown formats as it is typed, and is saved as type
     await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
     await typeKeys(line);
   }
-  assert.equal(await getText(), 'Start.\n## x\n**x**\n- x\n');
+  assert.equal(await getText(), 'Start.\n\n## x\n\n**x**\n\n- x\n');
   assert.equal(await run(`document.querySelectorAll('.pj-md-h2, .pj-md-strong').length`), 2);
 });
 
@@ -629,8 +629,7 @@ test('markdown view: an image at a path shows what `image` gives for it; one on 
 test('markdown view: blank lines are saved as typed, and others\' edits keep them and the caret', async () => {
   await make('markdown', 'One.\n\nTwo.\n\nThree.\n');
   await select('One.', 4, 4);
-  await press('Enter');
-  await press('Enter');
+  await press('Enter'); // a new paragraph, a blank line apart
   assert.equal(await getText(), 'One.\n\n\n\nTwo.\n\nThree.\n');
   await run(`view.applyText(view.getText().replace('Three.', 'Three!'))`);
   await type('x');
