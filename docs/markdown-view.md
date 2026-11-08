@@ -82,9 +82,11 @@ the plain view as source.
   Pasting a URL over selected text links the text.
 - **Blank lines** are lines: as many as are typed, saved as typed.
 - **Keys:** Undo, Redo, the formatting above, Comment, Find, and focus mode
-  (Ctrl+Shift+.). Enter in a list item continues the list (an empty item
-  ends it, with a blank line), and in a quote the quote; in a code block it
-  is a new line. Backspace right after a list item's marker or a quote's
+  (Ctrl+Shift+.). Enter in a paragraph or a heading starts a new
+  paragraph a blank line apart, as in Typora, and Shift+Enter is a new line
+  in it. Enter in a list item continues the list (an empty item ends it,
+  with a blank line), and in a quote the quote; in a code block it is a new
+  line. Backspace right after a list item's marker or a quote's
   takes the marker away, a blank line keeping the line apart from the
   list or quote above it; after a nested item's marker it moves the item
   out a level. Tab and Shift+Tab indent and outdent the lines of a list item
