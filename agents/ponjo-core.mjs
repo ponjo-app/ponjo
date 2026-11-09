@@ -52,7 +52,7 @@ const TOOLS = [
   },
   {
     name: 'comment',
-    description: 'Start a new thread in the doc, as a member does, for a member to decide something: never a mark in the doc itself. It is added when your turn ends, with your edits.',
+    description: 'Start a new thread in the doc, as a member does, for a member to decide something: never a mark in the doc itself. It is added when your turn ends, with your edits, and its text must still be in the doc as they leave it.',
     parameters: {
       type: 'object',
       properties: {
@@ -101,14 +101,14 @@ const TOOLS = [
 export async function turn({ prompt, doc, sidecar, thread }, { infer, readFile, resolve = (path) => path }) {
   const files = await listing(readFile, [doc, sidecar]);
   const messages = [{ role: 'user', content: files ? `${prompt}\n\n${files}` : prompt }];
-  const lines = []; // the sidecar's, from comment and resolve, added with the proposal
-  const added = () => (lines.length ? [{ path: sidecar, old: '', new: lines.join('\n') }] : []);
+  const comments = []; // the sidecar's lines from comment and resolve, as objects, added with the proposal
+  const added = () => (comments.length ? [{ path: sidecar, old: '', new: comments.map((c) => JSON.stringify(c)).join('\n') }] : []);
   for (let step = 0; step < STEPS; step++) {
     const { calls, text, sent } = await infer(messages, TOOLS);
     messages.push({ role: 'assistant', calls, sent });
     if (!calls.length) return { edits: added(), reply: text.trim() }; // an answer without a call, as any agent's
     for (const call of calls) {
-      const result = await use(call, { doc, sidecar, thread, lines, added, readFile, resolve });
+      const result = await use(call, { doc, sidecar, thread, comments, added, readFile, resolve });
       if (typeof result !== 'string') return result;
       messages.push({ role: 'tool', id: call.id, content: result });
     }
@@ -117,7 +117,7 @@ export async function turn({ prompt, doc, sidecar, thread }, { infer, readFile, 
 }
 
 // What a tool call gives back to the model, or a valid proposal's { edits, reply }.
-async function use({ name, args: json }, { doc, sidecar, thread, lines, added, readFile, resolve }) {
+async function use({ name, args: json }, { doc, sidecar, thread, comments, added, readFile, resolve }) {
   let args;
   try {
     args = JSON.parse(json);
@@ -129,15 +129,17 @@ async function use({ name, args: json }, { doc, sidecar, thread, lines, added, r
   if (name === 'comment') {
     const { on, body } = args;
     if (typeof on !== 'string' || typeof body !== 'string' || !body.trim()) return 'Not added: comment takes { on, body }, body not empty.';
-    const text = (await readFile(doc)).replace(/\r\n/g, '\n');
-    const found = on && text.split(on.replace(/\r\n/g, '\n'));
-    if (found && found.length !== 2) return `Not added: on is ${found.length < 2 ? 'not in the doc: quote it exactly' : 'in the doc more than once: quote more of it'}, or give "" for the whole doc.`;
-    lines.push(JSON.stringify(on ? { anchor: { exact: on }, body } : { body }));
-    return on ? `Added when your turn ends, on line ${found[0].split('\n').length}.` : 'Added when your turn ends, on the whole doc.';
+    if (!on.trim()) {
+      comments.push({ body });
+      return 'Added when your turn ends, on the whole doc.';
+    }
+    const { count, line } = quoted(await readFile(doc), on);
+    if (count !== 1) return `Not added: on is ${count ? 'in the doc more than once: quote more of it' : 'not in the doc: quote it exactly'}, or give "" for the whole doc.`;
+    comments.push({ anchor: { exact: on }, body });
+    return `Added when your turn ends, on line ${line}.`;
   }
   if (name === 'resolve') {
-    const line = JSON.stringify({ thread, resolved: true });
-    if (!lines.includes(line)) lines.push(line);
+    if (!comments.some((c) => c.resolved)) comments.push({ thread, resolved: true });
     return 'This thread is resolved when your turn ends.';
   }
   if (name !== 'propose') return `No tool ${name}: call ${ANY_TOOL}.`;
@@ -146,12 +148,39 @@ async function use({ name, args: json }, { doc, sidecar, thread, lines, added, r
   const off = edits.find((edit) => edit?.path !== undefined && resolve(edit.path) !== doc);
   if (off) return `Nothing was changed. ${off.path} cannot change: edits change only ${doc}, and comments are the comment tool's.`;
   const all = [...edits.map((edit) => ({ ...edit, path: doc })), ...added()];
+  let texts;
   try {
-    apply(all, { doc, sidecar }, { doc: await readFile(doc), sidecar: await readFile(sidecar) }, resolve);
+    texts = apply(all, { doc, sidecar }, { doc: await readFile(doc), sidecar: await readFile(sidecar) }, resolve);
   } catch (error) {
     return `Nothing was changed. ${error.message}`;
   }
+  // The app finds a comment's text in the doc as the edits leave it: one they change or repeat would be on the whole doc.
+  const lost = comments.filter((c) => c.anchor && quoted(texts.doc, c.anchor.exact).count !== 1);
+  if (lost.length) {
+    comments.splice(0, comments.length, ...comments.filter((c) => !lost.includes(c)));
+    return `Nothing was changed. Your edits leave the text of ${lost.length > 1 ? 'comments' : 'a comment'} on ${lost.map((c) => JSON.stringify(c.anchor.exact)).join(', ')} not in the doc once, so ${lost.length > 1 ? 'they were' : 'it was'} taken back: comment again on text the edits keep, or on the whole doc, then propose.`;
+  }
   return { edits: all, reply };
+}
+
+/**
+ * How the app finds a comment's text `exact` in the doc's `text`
+ * (src/core/comments.js, appendedComments): as it is, else with any run of
+ * whitespace standing for any other, in the text with its line ends as \n.
+ * `count` is 0, 1, or 2 for more; the app anchors the comment only on 1.
+ * `line` is where the first is.
+ */
+export function quoted(text, exact) {
+  const doc = text.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n');
+  const escape = (part) => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  for (const pattern of exact.trim() ? [escape(exact), exact.trim().split(/\s+/).map(escape).join('\\s+')] : []) {
+    const regex = new RegExp(pattern, 'g');
+    const first = regex.exec(doc);
+    if (!first) continue;
+    regex.lastIndex = first.index + 1;
+    return { count: regex.exec(doc) ? 2 : 1, line: doc.slice(0, first.index).split('\n').length };
+  }
+  return { count: 0 };
 }
 
 // A file read as it is, with a note when the doc's folder has one by the

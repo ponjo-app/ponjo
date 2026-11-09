@@ -11,11 +11,12 @@ import { mkdir, mkdtemp, readFile, realpath, symlink, writeFile } from 'node:fs/
 import { tmpdir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
 import { text } from 'node:stream/consumers';
-import { INFER, turn } from '../agents/ponjo-core.mjs';
+import { INFER, quoted, turn } from '../agents/ponjo-core.mjs';
 import { files, inProject } from '../agents/ponjo.mjs';
+import { appendedComments } from '../src/core/comments.js';
 import { projectService } from '../src/host/project-service.js';
 import { agentScript, installAgents } from '../src/store/agents.js';
-import { MAX_TEXT_BYTES } from '../src/store/files.js';
+import { MAX_TEXT_BYTES, decodeText } from '../src/store/files.js';
 import { SAMPLE } from './helpers.js';
 
 const HEADER = '{"comments":1}\n';
@@ -58,10 +59,10 @@ test('a turn reads the doc by line number, comments, resolves and proposes an ed
   const { doc, sidecar } = await copies();
   const infer = fake(
     calling(['read', { path: doc, lines: [8, 8] }]),
-    calling(['comment', { on: '', body: 'Is week one too soon?' }], ['comment', { on: 'extra load', body: 'Measured?' }], ['resolve', {}], ['resolve', {}], ['propose', { edits: [{ old: 'extra load', new: 'extra peak load' }], reply: 'Peak load is the risk.' }]),
+    calling(['comment', { on: '', body: 'Is week one too soon?' }], ['comment', { on: 'cannot handle', body: 'Measured?' }], ['resolve', {}], ['resolve', {}], ['propose', { edits: [{ old: 'extra load', new: 'extra peak load' }], reply: 'Peak load is the risk.' }]),
   );
   assert.deepEqual(await turn({ prompt: 'the prompt', doc, sidecar, thread: 'c_asked' }, { infer, readFile: seen({ doc, sidecar }) }), {
-    edits: [{ old: 'extra load', new: 'extra peak load', path: doc }, { path: sidecar, old: '', new: '{"body":"Is week one too soon?"}\n{"anchor":{"exact":"extra load"},"body":"Measured?"}\n{"thread":"c_asked","resolved":true}' }],
+    edits: [{ old: 'extra load', new: 'extra peak load', path: doc }, { path: sidecar, old: '', new: '{"body":"Is week one too soon?"}\n{"anchor":{"exact":"cannot handle"},"body":"Measured?"}\n{"thread":"c_asked","resolved":true}' }],
     reply: 'Peak load is the risk.',
   }, 'the program writes the sidecar\'s lines, the thread resolved once');
   assert.deepEqual(infer.messages[0], { role: 'user', content: 'the prompt' }, 'the first message is the prompt as is');
@@ -90,6 +91,42 @@ test('a bad comment or proposal goes back saying what to fix', async () => {
   assert.deepEqual(await turn({ prompt: 'p', doc, sidecar, thread: 'c_asked' }, { infer, readFile: seen({ doc, sidecar }), resolve: inProject }), good, 'an edit may name the doc; no comment was added');
   const said = results(infer.messages);
   bad.forEach(([, , why], i) => assert.match(said[i], why));
+});
+
+test('a comment\'s text is checked as the app finds it, in the doc as the edits leave it', async () => {
+  const { doc, sidecar } = await copies();
+  const infer = fake(
+    calling(['comment', { on: 'the  `sync` service\ncannot', body: 'Which service?' }], ['comment', { on: 'extra load', body: 'Measured?' }], ['propose', { edits: [{ old: 'extra load', new: 'extra peak load' }], reply: '' }]),
+    calling(['comment', { on: '', body: 'Measured?' }], ['propose', { edits: [{ old: 'extra load', new: 'extra peak load' }], reply: 'Done.' }]),
+  );
+  const { edits } = await turn({ prompt: 'p', doc, sidecar, thread: 'c_asked' }, { infer, readFile: seen({ doc, sidecar }) });
+  const said = results(infer.messages);
+  assert.equal(said[0], 'Added when your turn ends, on line 8.', 'a run of whitespace stands for another');
+  assert.equal(said[2], 'Nothing was changed. Your edits leave the text of a comment on "extra load" not in the doc once, so it was taken back: comment again on text the edits keep, or on the whole doc, then propose.');
+  assert.equal(edits.at(-1).new, '{"anchor":{"exact":"the  `sync` service\\ncannot"},"body":"Which service?"}\n{"body":"Measured?"}', 'the one taken back is gone');
+});
+
+// A comment's text in a doc: whether the app anchors it, and so the program takes it.
+const QUOTES = [
+  ['a b c', 'b', true],
+  ['a b b', 'b', false, 'twice'],
+  ['a b c', 'd', false],
+  ['one two\nthree', 'two three', true, 'a hard-wrapped line quoted as one'],
+  ['one two three', 'two\nthree', true, 'and the other way round'],
+  ['one\r\ntwo', 'one\ntwo', true, 'a CRLF doc'],
+  ['x one\ntwo y one two', 'one\ntwo', true, 'found as it is, once'],
+  ['x one\ntwo y one  two', 'one two', false, 'found twice with any whitespace'],
+  ['a (b) c', '(b)', true, 'no regular expression'],
+  ['\uFEFFhead', 'head', true],
+];
+
+test('a comment\'s text is found as the app finds it: one table of cases, run on both', () => {
+  for (const [text, exact, anchored, why = `${exact} in ${text}`] of QUOTES) {
+    assert.equal(quoted(text, exact).count === 1, anchored, `the agent: ${why}`);
+    const after = `${HEADER}${JSON.stringify({ anchor: { exact }, body: 'b' })}\n`;
+    const [comment] = appendedComments(HEADER, after, { text: decodeText(Buffer.from(text)).text, by: {}, at: '', threads: new Set(), own: '' }).comments;
+    assert.equal(comment.anchor !== null, anchored, `the app: ${why}`);
+  }
 });
 
 test('an answer without a tool call is the reply, with no edits', async () => {

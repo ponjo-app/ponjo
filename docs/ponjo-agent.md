@@ -104,8 +104,11 @@ by the program and added with the proposal. Their own tools, as a member's
 own actions, and not fields of `propose`: a model writing those lines
 itself got the path, the JSON or the thread's id wrong, and one filling a
 `resolve` field of its last call resolved each thread it had done what was
-asked in. A comment's text that the edits then change puts it on the whole
-doc, as the app does with any quote it cannot find.
+asked in. A comment's text is found as the app finds it: as quoted, else
+with any run of whitespace standing for another, and only once. The app
+looks for it in the doc as the edits leave it, so `propose` checks it there
+too: one the edits change or repeat would quietly be on the whole doc, so it
+is taken back and the proposal sent back, saying to comment again.
 
 **`propose({ edits: [{ old, new }], reply })`** ends the turn. The edits
 change the doc only: `old` must be found in it exactly once. One bad edit
@@ -156,7 +159,10 @@ flowchart LR
 | `effort` | choice: low, medium, high | `low`: scoped edits; higher thinks longer before it answers |
 
 - **Tests** call `turn` with a fake `infer`, and each `infer` on a fake
-  server of its API.
+  server of its API. The program's check of a comment's text and the
+  app's (`src/core/comments.js`) run on one table of cases, so they
+  cannot drift apart: the program runs from the config folder and cannot
+  import it.
 - **The benchmark** (`npm run bench:agent`, on your own key, not in CI)
   runs each case of `scripts/bench-cases.js` a few times on a real model,
   under the contract, and checks what it left: a doc and a thread asking
