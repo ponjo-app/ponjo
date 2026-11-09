@@ -30,8 +30,9 @@ the plain view as source.
   where it is being edited, as in Typora: a span's (bold, a link, code)
   while the selection touches it, faded; a block's markers on the lines the
   selection touches, hanging in the margin (`#`, `>`) or in the box its
-  bullet takes, so the text does not move; a table the selection touches
-  shows as its source whole. As a doc opens, before the person is in it,
+  bullet takes, so the text does not move; a table is edited as a grid
+  (below), and shows as its source whole only with the selection in its
+  text (a match found there, or Edit as Markdown). As a doc opens, before the person is in it,
   nothing is source; after, what the selection touches stays source when
   the editor loses the focus too, as the caret stays drawn. An earlier
   version, read-only, is drawn whole:
@@ -50,7 +51,7 @@ the plain view as source.
   | Code block, fenced or indented | monospace on a tint, coloured by its language; its fences hidden, their lines its padding | its fences, faded |
   | Rule (`---`, `***`, `___`) | a line | the source |
   | Image, inline or by reference | the image | touched, the source |
-  | Table | the table, drawn, with its cells' formatting and alignment; a header with no text left out | the source, monospace, pipes faded |
+  | Table | the table, drawn, with its cells' formatting and alignment; a header with no text left out | the grid, a cell at a time; with the selection in its text, the source, monospace, pipes faded |
   | Mermaid block | its diagram | the source |
   | Footnote (`[^1]`, `[^1]: …`) | a superscript number, in the order of first use; the note small, with its number | a reference touched, a note on its lines: the source |
   | Hard break (a line ending in `\` or two spaces) | the break; `\` hidden | touched, `\` shows |
@@ -101,8 +102,8 @@ the plain view as source.
   takes the marker away, a blank line keeping the line apart from the
   list or quote above it; after a nested item's marker it moves the item
   out a level. Tab and Shift+Tab indent and outdent the lines of a list item
-  (by its marker's width) or a code block (by its own indent); in a table
-  they go to the next cell and the one before. Elsewhere Tab stays in the
+  (by its marker's width) or a code block (by its own indent); in a table's
+  source they go to the next cell and the one before. Elsewhere Tab stays in the
   page.
 - **Links.** At the caret a card says where a link goes: open it, edit it or
   remove it. The link button opens a popover for the URL: Enter applies, an
@@ -111,6 +112,17 @@ the plain view as source.
 - **Diagrams.** A ` ```mermaid ` block shows as its diagram; with the
   selection in it, as its source, typed into as any text. An AI buddy can
   change it too, asked in a comment.
+- **Tables** are edited as a grid. A click on a cell edits it in place:
+  its own text, Markdown and all, typed into its range of the doc, a `|`
+  typed as `\|`. Tab and Shift+Tab go to the next cell and the one before,
+  Enter and the arrows to the cell below or above (past the last row, Tab
+  and Enter add one; past the first or the last, the arrows leave the
+  table), and Escape leaves it; arrow down from the line above, or up from
+  the line below, goes into it. Mod+B, Mod+I and Mod+E wrap what is
+  selected in the cell. The ⋯ at its top right inserts and deletes rows
+  and columns, aligns a column, or edits it as Markdown. The pipes are
+  typed as written, never lined up again: rows no one changed keep their
+  bytes. A header with no text shows while the table is edited.
 - **Code blocks.** A fenced block names its language at its top right
   (Plain text for none). A click on it opens a list that finds a language
   by name, the common ones first: picking one types it after the fence,
@@ -165,8 +177,7 @@ in one can be seen.
 
 ### Not here
 
-A slash menu, inserting images, WYSIWYG table editing (a table is edited as
-its source), and who typed which characters.
+A slash menu, inserting images, and who typed which characters.
 
 ## Architecture
 
@@ -180,6 +191,7 @@ its source), and who typed which characters.
 | Preview | `web/views/markdown/preview.js` | the decorations and widgets of live preview, from the syntax tree, for the lines on screen |
 | Chrome | `web/views/markdown/chrome.js` | toolbar, bubble, link card and popover, outline, focus mode, word count |
 | Syntax | `web/views/markdown/syntax.js` | what Lezer's Markdown parser leaves out: GFM's single-tilde strikethrough, and footnotes |
+| Table | `web/views/markdown/table.js` | a table drawn as a grid, edited a cell at a time |
 | Pairs | `web/views/markdown/pairs.js` | brackets, backticks and `**` closed as they are typed |
 | Paste | `web/views/markdown/paste.js` | formatted text pasted, as Markdown (Turndown, with its GFM tables) |
 | Diagrams | `web/diagrams.js` | a mermaid block as its diagram |

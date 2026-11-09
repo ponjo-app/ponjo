@@ -397,6 +397,16 @@ kbd { font: 500 11px/1 var(--ui-font); padding: 2px 6px; border-radius: 4px; bor
 .pj-md-table :is(th, td) { border: 1px solid var(--border-strong); padding: 6px 12px; vertical-align: top; }
 .pj-md-table th { background: var(--bg-soft); font-weight: 600; }
 .pj-md-table s { color: var(--text-soft); }
+/* a table edited a cell at a time (table.js): the cell being edited, its box, and the ⋯ menu at the table's top right */
+.pj-md-grid { position: relative; }
+.pj-md-table :is(th, td).pj-md-editing { box-shadow: inset 0 0 0 2px var(--accent); }
+.pj-md-cell { display: block; width: 100%; margin: 0; padding: 0; border: 0; outline: none; resize: none; field-sizing: content; background: none; color: inherit; font: inherit; line-height: inherit; text-align: inherit; }
+.pj-md-table-tools { position: absolute; top: -22px; right: 0; }
+.pj-md-table-menu { display: flex; align-items: center; justify-content: center; width: 24px; height: 22px; padding: 0; border: 0; border-radius: 6px; background: none; color: var(--text-soft); cursor: pointer; }
+.pj-md-table-menu:hover { background: var(--hover); color: var(--text); }
+.pj-md-table-menu .pj-icon { width: 16px; height: 16px; }
+.pj-block-menu li[aria-disabled="true"] { color: var(--text-faint); cursor: default; }
+.pj-block-menu li[aria-disabled="true"]:hover { background: none; }
 .pj-diagram { border-radius: 6px; }
 .pj-diagram svg { display: block; max-width: 100%; height: auto; }
 .pj-diagram pre { margin: 0; font: 0.85em/1.5 var(--mono); white-space: pre-wrap; }

@@ -4,14 +4,15 @@
 // touches their block markers, in the margin or the bullet's box, so the
 // text does not move. Before the person is in the editor, nothing is being
 // edited, so the whole doc is drawn. Nothing here changes the text.
-// Tables and diagrams are drawn in place of their lines (a state field, as
+// Tables (as grids, table.js) and diagrams are drawn in place of their lines (a state field, as
 // block decorations must be); everything else only for the lines on screen.
 
-import { RangeSet, StateEffect, StateField } from '@codemirror/state';
-import { Decoration, EditorView, ViewPlugin, WidgetType } from '@codemirror/view';
+import { Prec, RangeSet, StateEffect, StateField } from '@codemirror/state';
+import { Decoration, EditorView, ViewPlugin, WidgetType, keymap } from '@codemirror/view';
 import { LanguageDescription, syntaxTree } from '@codemirror/language';
 import { languages } from '@codemirror/language-data';
 import { diagramDom, forgetDiagram } from '../../diagrams.js';
+import { TableGrid, enterTable } from './table.js';
 
 const INDENT_EM = 1.5; // one list level, and a list marker's width
 // The nodes blocks are in: the doc (its Markdown is the front matter
@@ -269,6 +270,8 @@ class Block extends WidgetType {
 
 // ---- inline Markdown drawn as HTML: a table's cells ----
 
+const drawCell = (state, node, parent) => inlineInto(state, node, node.from, node.to, parent);
+
 function inlineInto(state, node, from, to, parent) {
   let pos = from;
   const text = (a, b) => {
@@ -318,41 +321,6 @@ function inlineElement(state, node) {
   }
 }
 
-// A table row's cells, split at its pipes: an empty cell has no node.
-function rowCells(row) {
-  const pipes = row.getChildren('TableDelimiter');
-  const bounds = [row.from, ...pipes.flatMap((p) => [p.from, p.to]), row.to];
-  const segments = [];
-  for (let i = 0; i < bounds.length; i += 2) segments.push({ from: bounds[i], to: bounds[i + 1] });
-  if (pipes[0]?.from === row.from) segments.shift();
-  if (pipes.at(-1)?.to === row.to) segments.pop();
-  const cells = row.getChildren('TableCell');
-  return segments.map((s) => cells.find((c) => c.from >= s.from && c.to <= s.to) ?? null);
-}
-
-function tableDom(state, table) {
-  const delimiter = table.getChildren('TableDelimiter')[0];
-  const align = delimiter ? state.sliceDoc(delimiter.from, delimiter.to).replace(/^\s*\||\|\s*$/g, '').split('|')
-    .map((d) => d.trim()).map((d) => (d.endsWith(':') ? (d.startsWith(':') ? 'center' : 'right') : 'left')) : [];
-  const dom = Object.assign(document.createElement('table'), { className: 'pj-md-table' });
-  for (let row = table.firstChild; row; row = row.nextSibling) {
-    if (row.name !== 'TableHeader' && row.name !== 'TableRow') continue;
-    const cells = rowCells(row);
-    // A header with no text (`| | |`), as tables of terms have, is not drawn.
-    if (row.name === 'TableHeader' && cells.every((cell) => !cell || !state.sliceDoc(cell.from, cell.to).trim())) continue;
-    const tr = dom.insertRow();
-    cells.forEach((cell, k) => {
-      const td = document.createElement(row.name === 'TableHeader' ? 'th' : 'td');
-      if (cell) inlineInto(state, cell, cell.from, cell.to, td);
-      td.style.textAlign = align[k] ?? 'left';
-      tr.append(td);
-    });
-  }
-  const wrap = Object.assign(document.createElement('div'), { className: 'pj-md-block' });
-  wrap.append(dom);
-  return wrap;
-}
-
 // ---- the decorations ----
 
 const hide = Decoration.replace({});
@@ -392,9 +360,7 @@ function blocks(state, diagrams) {
       const lines = (node.name === 'Table' || node.name === 'FencedCode') && wholeLines(doc, node);
       if (!lines || on(lines)) return false;
       if (node.name === 'Table') {
-        const table = node.node;
-        const source = doc.sliceString(node.from, node.to);
-        ranges.push(Decoration.replace({ widget: new Block(`table:${source}`, node.from, () => tableDom(state, table)), block: true }).range(lines.from, lines.to));
+        ranges.push(Decoration.replace({ widget: new TableGrid(doc.sliceString(node.from, node.to), node.from, state, drawCell), block: true }).range(lines.from, lines.to));
       } else if (diagrams) {
         const info = node.node.getChild('CodeInfo');
         const text = node.node.getChild('CodeText');
@@ -654,5 +620,6 @@ export function livePreview({ image, diagrams = true, pickLanguage = null }) {
     blockField,
     inlinePlugin,
     EditorView.atomicRanges.of(hidden),
+    Prec.high(keymap.of([{ key: 'ArrowDown', run: (view) => enterTable(view, 1) }, { key: 'ArrowUp', run: (view) => enterTable(view, -1) }])), // before the editor's own
   ];
 }

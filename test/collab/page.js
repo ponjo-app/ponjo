@@ -9,6 +9,7 @@
 // `make` can make the second view a teammate who can edit, reaching the doc
 // host through the relay at URL (web/relay.js), as a browser page does.
 
+import { EditorView } from '@codemirror/view';
 import { createMarkdownView } from '../../web/views/markdown/view.js';
 import { markdown } from '../../web/views/markdown/index.js';
 import { plain } from '../../web/views/plain/index.js';
@@ -151,10 +152,11 @@ const collab = {
   async select(i, quote, start = 0, end = start) {
     await focused(i); // first: it can draw the text again, once it has drawn it
     const editable = stages[i].querySelector('[contenteditable="true"]');
-    // A table the Markdown view draws shows its source once clicked.
+    // A table the Markdown view draws shows its source with the selection in it.
     const drawn = [...editable.querySelectorAll('[contenteditable="false"]')].find((el) => el.textContent.includes(quote));
     if (drawn) {
-      drawn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+      const editor = EditorView.findFromDOM(stages[i].querySelector('.cm-editor'));
+      editor.dispatch({ selection: { anchor: editor.state.doc.toString().indexOf(quote) } });
       await new Promise((done) => setTimeout(done, 30));
     }
     const walker = document.createTreeWalker(editable, NodeFilter.SHOW_TEXT, { acceptNode: (node) => (node.parentElement.closest('[contenteditable="false"]') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT) });

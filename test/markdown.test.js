@@ -394,6 +394,84 @@ test('find: a match inside hidden syntax shows its line as source', async () => 
   assert.deepEqual(await shown(), ['See <a>‹[›the plan‹]›‹(›</a><a>‹plan.md›</a><a>‹)›</a> now.', ''], 'the match marked splits the link\'s span');
 });
 
+// ---- a table edited as a grid (table.js) ----
+
+const cell = (r, c) => run(`(() => {
+  const rows = document.querySelectorAll('.pj-md-grid tr');
+  rows[${r}].cells[${c}].dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+})()`);
+const menu = (label) => run(`(() => {
+  document.querySelector('.pj-md-table-menu').dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+  const item = [...document.querySelectorAll('.pj-md-grid .pj-block-menu li')].find((li) => li.textContent === ${JSON.stringify(label)});
+  item.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+})()`);
+const text = () => run('view.getText()');
+const TABLE = 'Above\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\nBelow\n';
+
+test('grid: typing in a cell types into its text only, a | escaped, the spaces around it kept', async () => {
+  await at(`‸${TABLE}`);
+  await cell(1, 1);
+  await type(' x|y z');
+  assert.equal(await text(), 'Above\n\n| a | b |\n|---|---|\n| 1 | 2 x\\|y z |\n\nBelow\n');
+  assert.equal(await run(`document.activeElement.className`), 'pj-md-cell', 'the cell keeps the focus as the table is drawn again');
+  assert.deepEqual(await errors(), []);
+});
+
+test('grid: Tab goes to the next cell and, past the last, adds a row; Enter goes to the cell below', async () => {
+  await at(`‸${TABLE}`);
+  await cell(0, 1);
+  await press('Tab');
+  await type('A');
+  await press('Tab');
+  await press('Tab');
+  await type('N');
+  assert.equal(await text(), 'Above\n\n| a | b |\n|---|---|\n| 1A | 2 |\n| N |   |\n\nBelow\n');
+  await cell(0, 0);
+  await press('Enter');
+  await type('B');
+  assert.equal((await text()).split('\n')[4], '| 1AB | 2 |');
+});
+
+test('grid: the menu adds and deletes rows and columns and aligns a column', async () => {
+  await at(`‸${TABLE}`);
+  await cell(1, 0);
+  await menu('Insert column right');
+  assert.equal(await text(), 'Above\n\n| a |   | b |\n|---| --- |---|\n| 1 |   | 2 |\n\nBelow\n');
+  await menu('Align column center');
+  assert.equal((await text()).split('\n')[3], '|---| :---: |---|');
+  await menu('Delete column');
+  await menu('Insert row above');
+  assert.equal(await text(), 'Above\n\n| a | b |\n|---|---|\n|   |   |\n| 1 | 2 |\n\nBelow\n');
+  await menu('Delete row');
+  assert.equal(await text(), `${TABLE}`);
+});
+
+test('grid: Escape and the arrows leave the table; arrow down from above edits its first cell', async () => {
+  await at(`Above‸\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\nBelow\n`);
+  await press('ArrowDown'); // to the blank line
+  await press('ArrowDown');
+  assert.equal(await run(`document.activeElement.value`), 'a');
+  await press('ArrowDown');
+  await press('ArrowDown');
+  assert.equal(await marked(), 'Above\n\n| a | b |\n|---|---|\n| 1 | 2 |\n‸\nBelow\n', 'down from the last row, the line below');
+  assert.equal(await run(`document.querySelectorAll('.pj-md-grid').length`), 1, 'the table still drawn');
+  await cell(1, 1);
+  await press('Escape');
+  assert.equal(await marked(), 'Above\n\n| a | b |\n|---|---|\n| 1 | 2 |\n‸\nBelow\n');
+});
+
+test('grid: Cmd+Z in a cell takes back its typing; a header with no text shows while the table is edited', async () => {
+  await at('a‸\n\n| | |\n|---|---|\n| 1 | 2 |\n');
+  assert.equal(await run(`document.querySelectorAll('.pj-md-grid tr').length`), 1);
+  await cell(0, 0); // the first row drawn: the one under the header
+  assert.equal(await run(`document.querySelectorAll('.pj-md-grid tr').length`), 2, 'the header, to type in');
+  await press('ArrowUp');
+  await type('H');
+  assert.equal(await text(), 'a\n\n| H | |\n|---|---|\n| 1 | 2 |\n');
+  await press('z', MOD);
+  assert.equal(await text(), 'a\n\n| | |\n|---|---|\n| 1 | 2 |\n');
+});
+
 test('language: a code block\'s label picks its language, as found or as typed', async () => {
   const pick = async (typed) => {
     await run(`document.querySelector('.pj-md-lang').dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }))`);
