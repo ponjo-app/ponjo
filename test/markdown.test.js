@@ -58,27 +58,28 @@ async function shown() {
 
 // [name, source, shown with the selection away (as a doc opens), shown with the caret at `on` (an offset)]
 const DRAWN = [
-  ['an ATX heading', '# Title\n', ['[h h1] Title', ''], 0, ['[h h1] ‹#› Title', '']],
-  ['a level 6 heading', '###### Six\n', ['[h h6] Six', ''], 0, ['[h h6] ‹######› Six', '']],
+  ['an ATX heading', '# Title\n', ['[h h1] Title', ''], 0, ['[h h1] ‹# ›Title', '']],
+  ['a level 6 heading', '###### Six\n', ['[h h6] Six', ''], 0, ['[h h6] ‹###### ›Six', '']],
   ['a setext heading', 'Title\n===\n', ['[h h1] Title', '‹===›', ''], 0, ['[h h1] Title', '‹===›', '']],
   ['an empty heading', '#\n', ['[h h1] ', ''], 0, ['[h h1] ‹#›', '']],
   ['bold, italic, strikethrough, code', '**b** *i* ~~s~~ ~t~ `c`\n', ['<b>b</b> <i>i</i> <s>s</s> <s>t</s> <c>c</c>', ''], 0,
-    ['<b>‹**›b‹**›</b> <i>‹*›i‹*›</i> <s>‹~~›s‹~~›</s> <s>‹~›t‹~›</s> <c>‹`›c‹`›</c>', '']],
-  ['underscores', '__b__ _i_\n', ['<b>b</b> <i>i</i>', ''], 0, ['<b>‹__›b‹__›</b> <i>‹_›i‹_›</i>', '']],
-  ['an escape', '5 \\* 3\n', ['5 * 3', ''], 0, ['5 \\* 3', '']],
-  ['entities', '&copy; &#8594;\n', ['⟨©⟩ ⟨→⟩', ''], 0, ['‹&copy;› ‹&#8594;›', '']],
-  ['an inline link', 'See [the plan](plan.md "Plan").\n', ['See <a>the plan</a>.', ''], 0, ['See <a>‹[›the plan‹]›‹(›‹plan.md› ‹"Plan"›‹)›</a>.', '']],
+    ['<b>‹**›b‹**›</b> <i>i</i> <s>s</s> <s>t</s> <c>c</c>', '']],
+  ['code at the caret, only it', '**b** `c`\n', ['<b>b</b> <c>c</c>', ''], 7, ['<b>b</b> <c>‹`›c‹`›</c>', '']],
+  ['underscores', '__b__ _i_\n', ['<b>b</b> <i>i</i>', ''], 0, ['<b>‹__›b‹__›</b> <i>i</i>', '']],
+  ['an escape', '5 \\* 3\n', ['5 * 3', ''], 2, ['5 \\* 3', '']],
+  ['entities', '&copy; &#8594;\n', ['⟨©⟩ ⟨→⟩', ''], 0, ['‹&copy;› ⟨→⟩', '']],
+  ['an inline link', 'See [the plan](plan.md "Plan").\n', ['See <a>the plan</a>.', ''], 4, ['See <a>‹[›the plan‹]›‹(›‹plan.md› ‹"Plan"›‹)›</a>.', '']],
   ['a reference link and its definition', '[docs][d] and [d]\n\n[d]: https://example.com\n', ['<a>docs</a> and <a>d</a>', '', '<m>[d]: https://example.com</m>', ''], null, null],
   ['a [text] no definition names', 'Just [text] here.\n', ['Just [text] here.', ''], null, null],
   ['autolinks', '<https://a.b> www.c.d e@f.gh\n', ['<a>https://a.b</a> <a>www.c.d</a> <a>e@f.gh</a>', ''], 0, ['<a>‹<›https://a.b‹>›</a> <a>www.c.d</a> <a>e@f.gh</a>', '']],
   ['an image', '![a cat](cat.png)\n', ['⟨img:a cat⟩', ''], 0, ['<m>![a cat](cat.png)</m>', '']],
   ['bullet lists, nested', '- a\n  - b\n* c\n', ['{padding-left: 1.5em; text-indent: -1.5em;} ⟨•⟩a', '{padding-left: 3em; text-indent: -1.5em;} ⟨•⟩b', '{padding-left: 1.5em; text-indent: -1.5em;} ⟨•⟩c', ''], 0,
-    ['- a', '{padding-left: 3em; text-indent: -1.5em;} ⟨•⟩b', '{padding-left: 1.5em; text-indent: -1.5em;} ⟨•⟩c', '']],
+    ['{padding-left: 1.5em; text-indent: -1.5em;} - a', '{padding-left: 3em; text-indent: -1.5em;} ⟨•⟩b', '{padding-left: 1.5em; text-indent: -1.5em;} ⟨•⟩c', '']],
   ['ordered lists', '1. a\n2. b\n\n7) c\n', ['{padding-left: 1.5em; text-indent: -1.5em;} ⟨1.⟩a', '{padding-left: 1.5em; text-indent: -1.5em;} ⟨2.⟩b', '', '{padding-left: 1.5em; text-indent: -1.5em;} ⟨7)⟩c', ''], null, null],
   ['a list item over two lines', '- one\n  more\n', ['{padding-left: 1.5em; text-indent: -1.5em;} ⟨•⟩one', '{padding-left: 1.5em; text-indent: 0em;} more', ''], null, null],
   ['task lists', '- [ ] a\n- [x] b\n', ['{padding-left: 1.5em; text-indent: -1.5em;} ⟨☐⟩a', '{padding-left: 1.5em; text-indent: -1.5em;} ⟨☑⟩<d>b</d>', ''], 0,
-    ['- ⟨☐⟩ a', '{padding-left: 1.5em; text-indent: -1.5em;} ⟨☑⟩<d>b</d>', '']],
-  ['quotes, nested', '> q\n>\n> > n\n', ['[quote quote-d1] q', '[quote quote-d1] ', '[quote quote-d1 quote-d2] n', ''], 0, ['[quote quote-d1] ‹>› q', '[quote quote-d1] ', '[quote quote-d1 quote-d2] n', '']],
+    ['{padding-left: 1.5em; text-indent: -1.5em;} ‹- ›⟨☐⟩a', '{padding-left: 1.5em; text-indent: -1.5em;} ⟨☑⟩<d>b</d>', '']],
+  ['quotes, nested', '> q\n>\n> > n\n', ['[quote quote-d1] q', '[quote quote-d1] ', '[quote quote-d1 quote-d2] n', ''], 0, ['[quote quote-d1] ‹> ›q', '[quote quote-d1] ', '[quote quote-d1 quote-d2] n', '']],
   ['a quote in a list item', '- a\n  > q\n', ['{padding-left: 1.5em; text-indent: -1.5em;} ⟨•⟩a', '[quote quote-d1] {--pj-indent: 1.5em;} q', ''], null, null],
   ['a fenced code block', '```js\nlet a\n```\n', ['[codeblock codeblock-first fence] ⟨JavaScript⟩', '[codeblock] let a', '[codeblock codeblock-last fence] ', ''], 6,
     ['[codeblock codeblock-first] ‹```›‹js›', '[codeblock] let a', '[codeblock codeblock-last] ‹```›', '']],
@@ -87,12 +88,12 @@ const DRAWN = [
   ['an indented code block', 'a\n\n    code\n', ['a', '', '[codeblock codeblock-first codeblock-last]     code', ''], null, null],
   ['rules', 'a\n\n---\n\n***\n', ['a', '', '⟨—⟩', '', '⟨—⟩', ''], 3, ['a', '', '‹---›', '', '⟨—⟩', '']],
   ['a table', '| a | b |\n|---|:-:|\n| `x` |  |\n| y\\|z | **w** |\n', ['[block] [table a|b / x| / y|z|w]', ''], 2,
-    ['[table-src] ‹|› a ‹|› b ‹|›', '[table-src] ‹|---|:-:|›', '[table-src] ‹|› <c>‹`›x‹`›</c> ‹|›  ‹|›', '[table-src] ‹|› y\\|z ‹|› <b>‹**›w‹**›</b> ‹|›', '']],
+    ['[table-src] ‹|› a ‹|› b ‹|›', '[table-src] ‹|---|:-:|›', '[table-src] ‹|› <c>x</c> ‹|›  ‹|›', '[table-src] ‹|› y|z ‹|› <b>w</b> ‹|›', '']],
   ['a table without outer pipes', 'a | b\n--|--\n1 | 2\n', ['[block] [table a|b / 1|2]', ''], null, null],
   ['a table with an empty header row', '| | |\n|---|---|\n| 1 | 2 |\n', ['[block] [table 1|2]', ''], null, null],
   ['front matter', '---\ntitle: x\n---\n\n# H\n', ['[frontmatter] ---', '[frontmatter] title: x', '[frontmatter] ---', '', '[h h1] H', ''], null, null],
-  ['footnotes, numbered by first use', 'a[^n] b[^m]\n\n[^m]: M\n[^n]: N\n', ['a⟨1⟩ b⟨2⟩', '', '[footnote] ⟨2.⟩M', '[footnote] ⟨1.⟩N', ''], 0, ['a‹[^n]› b‹[^m]›', '', '[footnote] ⟨2.⟩M', '[footnote] ⟨1.⟩N', '']],
-  ['hard breaks', 'a\\\nb  \nc\n', ['a', 'b  ', 'c', ''], 0, ['a\\', 'b  ', 'c', '']],
+  ['footnotes, numbered by first use', 'a[^n] b[^m]\n\n[^m]: M\n[^n]: N\n', ['a⟨1⟩ b⟨2⟩', '', '[footnote] ⟨2.⟩M', '[footnote] ⟨1.⟩N', ''], 1, ['a‹[^n]› b⟨2⟩', '', '[footnote] ⟨2.⟩M', '[footnote] ⟨1.⟩N', '']],
+  ['hard breaks', 'a\\\nb  \nc\n', ['a', 'b  ', 'c', ''], 1, ['a\\', 'b  ', 'c', '']],
   ['HTML', '<details>\nx\n</details>\n\nan <b>inline</b> tag\n', ['<m><details></m>', '<m>x</m>', '<m></details></m>', '', 'an <m><b></m>inline<m></b></m> tag', ''], null, null],
   ['a link holding emphasis', '[**b** c](u)\n', ['<a><b>b</b> c</a>', ''], null, null],
   ['an empty doc', '', [''], 0, ['']],
@@ -459,7 +460,7 @@ const PIECES = ['# Head', '## Sub', 'Text with **bold** and *it*', '[link](u)', 
   '```js', 'code()', '```', '| a | b |', '|---|---|', '| 1 | 2 |', '---', '![i](a.png)', 'x[^1]', '[^1]: note', '&amp;', 'a\\', '<b>h</b>', '~~s~~', '', ''];
 const TYPED = ['a', ' ', '*', '`', '#', '>', '-', '|', '[', ']', '(', ')', '\n', '~', '!'];
 
-test('invariant: random editing draws without errors, and the caret\'s line shows its source', async () => {
+test('invariant: random editing draws without errors, and the caret is never in hidden syntax', async () => {
   let seed = 0;
   const random = (n) => {
     seed = (seed * 1103515245 + 12345) % 2 ** 31;
@@ -468,7 +469,7 @@ test('invariant: random editing draws without errors, and the caret\'s line show
   for (let doc = 0; doc < 45; doc++) {
     if (doc % 15 === 0) seed = [7, 1009, 31337][doc / 15]; // three runs, each from its own seed
     const text = Array.from({ length: 6 + random(14) }, () => PIECES[random(PIECES.length)]).join('\n');
-    await at(`‸${text}`); // in the editor from the start: the caret's line is source
+    await at(`‸${text}`); // in the editor from the start
     for (let step = 0; step < 40; step++) {
       const length = await run('view.getText().length');
       const choice = random(7);
@@ -513,21 +514,21 @@ test('invariant: random editing draws without errors, and the caret\'s line show
       }
       await settle();
       assert.deepEqual(await errors(), [], `no error, doc ${doc} step ${step}`);
-      // The caret's line, drawn, is its source: no syntax hidden there.
-      const caretLine = await run(`(() => {
+      // No syntax is hidden around the caret: no hidden range holds it, but a
+      // task's box (a click ticks it) and a list line's indent (Tab sets it).
+      const hiddenAt = await run(`(() => {
         const editor = contract.editor();
         const { head } = editor.state.selection.main;
-        const line = editor.state.doc.lineAt(head);
-        const lines = contract.lines();
-        const element = editor.domAtPos(line.from).node;
-        const el = (element.nodeType === 3 ? element.parentElement : element).closest('.cm-line');
-        const index = [...document.querySelector('.cm-content').children].indexOf(el);
-        return { source: line.text, drawn: index === -1 ? null : lines[index].text };
+        let found = null;
+        for (const ranges of editor.state.facet(editor.constructor.atomicRanges)) {
+          ranges(editor).between(head, head, (from, to) => {
+            const text = editor.state.sliceDoc(from, to);
+            if (from < head && head < to && text.trim() && !/^\\[[ xX]\\] ?$/.test(text)) found = text;
+          });
+        }
+        return found;
       })()`);
-      if (caretLine.drawn === null) continue; // in a block drawn in its place: never the caret's
-      // Formatting written as tags in `lines`, and syntax faded, are the same characters; the source may hold such tags too.
-      const plain = (s) => s.replace(/<\/?[bisacmd]>|[‹›]/g, '').replace(/⟨☐⟩/g, '[ ]').replace(/⟨☑⟩/g, '[x]').toLowerCase();
-      assert.equal(plain(caretLine.drawn), plain(caretLine.source), `the caret's line shows its source, doc ${doc} step ${step}`);
+      assert.equal(hiddenAt, null, `the caret is not in hidden syntax, doc ${doc} step ${step}: ${JSON.stringify(await marked())}`);
     }
   }
 });

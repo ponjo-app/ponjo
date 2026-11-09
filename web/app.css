@@ -361,7 +361,8 @@ kbd { font: 500 11px/1 var(--ui-font); padding: 2px 6px; border-radius: 4px; bor
 /* a list item's marker, drawn: a dot, its number or its box, as wide as one level of indent (preview.js) */
 .pj-md-marker { display: inline-block; width: 1.5em; text-indent: 0; color: var(--text-soft); font-variant-numeric: tabular-nums; }
 .pj-md-listmark { color: var(--text-soft); }
-.pj-md-check-wrap { display: inline-block; }
+/* a block's markers being edited (`#`, `>`, a task's `-`), in the margin, so its text stays where it is */
+.pj-md-hang { position: absolute; transform: translateX(calc(-100% - 0.25em)); white-space: pre; }
 /* a task's box: a .pj-radio's outline, square; ink with a check when done; a click ticks it */
 .pj-md-check { position: relative; display: inline-block; box-sizing: border-box; width: 0.9em; height: 0.9em; margin-right: 0.4em; vertical-align: -0.08em; border: 1px solid var(--border-strong); border-radius: 4px; background: var(--canvas); cursor: pointer; }
 .pj-md-checked { border-color: var(--text); background: var(--text); }
@@ -410,7 +411,7 @@ kbd { font: 500 11px/1 var(--ui-font); padding: 2px 6px; border-radius: 4px; bor
    the page scrolls it, so its scroller lets a flag over the first line show */
 .pj-editor .cm-editor.cm-focused { outline: none; }
 .pj-editor .cm-editor .cm-scroller { font: var(--code-size)/1.6 var(--mono); overflow: visible; }
-.pj-editor .cm-editor:not(.cm-lineWrapping) .cm-scroller { overflow-x: auto; }
+.pj-editor .cm-editor:not(:has(> .cm-scroller > .cm-lineWrapping)) .cm-scroller { overflow-x: auto; }
 .pj-editor .cm-gutters { background: none; border: 0; color: var(--text-faint); font-variant-numeric: tabular-nums; }
 .pj-editor .cm-lineNumbers .cm-gutterElement { padding: 0 16px 0 0; }
 .pj-editor .cm-editor .cm-content { min-height: 50vh; padding: 0; color: var(--text); caret-color: var(--text); tab-size: 4; }

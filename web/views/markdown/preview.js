@@ -1,7 +1,9 @@
 // Live preview: decorations over the Markdown text, from its syntax tree.
-// Away from the lines the selection touches the syntax is hidden and blocks
-// are drawn; on them the source shows, its marks faded. Out of focus, no line
-// is being edited, so the whole doc is drawn. Nothing here changes the text.
+// Syntax is hidden and blocks are drawn, but where they are being edited: a
+// span the selection touches shows its marks, faded, and the lines it
+// touches their block markers, in the margin or the bullet's box, so the
+// text does not move. Before the person is in the editor, nothing is being
+// edited, so the whole doc is drawn. Nothing here changes the text.
 // Tables and diagrams are drawn in place of their lines (a state field, as
 // block decorations must be); everything else only for the lines on screen.
 
@@ -26,8 +28,8 @@ const engagedField = StateField.define({
   update: (engaged, tr) => engaged || Boolean(tr.selection) || tr.effects.some((e) => e.is(setFocus) && e.value),
 });
 
-// While the pointer is down, the lines being edited stay those they were
-// when it was pressed: drawn as source under it, a code block or a table
+// While the pointer is down, what is being edited stays what it was when it
+// was pressed: drawn as source under it, a code block or a table
 // takes another height and would move the text the press is selecting. They
 // follow the selection once it is let go.
 const setHeld = StateEffect.define();
@@ -39,7 +41,7 @@ const heldField = StateField.define({
 const hold = EditorView.domEventHandlers({
   mousedown(event, view) {
     if (event.button !== 0 || view.state.field(heldField)) return false;
-    view.dispatch({ effects: setHeld.of(activeLines(view.state)) });
+    view.dispatch({ effects: setHeld.of(editing(view.state)) });
     // After the editor has taken the release (it may select once more on it).
     const release = () => setTimeout(() => {
       window.removeEventListener('mouseup', release);
@@ -53,17 +55,20 @@ const hold = EditorView.domEventHandlers({
 });
 
 /**
- * The numbers of the lines the selection touches, once the person has been
- * in the editor, and every line of a table it touches: a table shows as its
- * source whole. None in a read-only view.
+ * What is being edited, once the person has been in the editor: `ranges`,
+ * the selection's, whose spans show their syntax; `lines`, the numbers of
+ * the lines it touches, whose blocks show theirs, with every line of a table
+ * it touches (a table shows as its source whole). None in a read-only view.
  */
-function activeLines(state) {
+function editing(state) {
   const held = state.field(heldField);
   if (held) return held;
   const lines = new Set();
-  if (state.readOnly || !state.field(engagedField)) return lines;
+  const ranges = [];
+  if (state.readOnly || !state.field(engagedField)) return { lines, ranges };
   const { doc } = state;
   for (const range of state.selection.ranges) {
+    ranges.push({ from: range.from, to: range.to });
     let [from, to] = [range.from, range.to];
     for (const end of [range.from, range.to]) {
       for (let node = syntaxTree(state).resolveInner(end, 1); node; node = node.parent) {
@@ -74,7 +79,7 @@ function activeLines(state) {
     }
     for (let n = doc.lineAt(from).number; n <= doc.lineAt(to).number; n++) lines.add(n);
   }
-  return lines;
+  return { lines, ranges };
 }
 
 // ---- what the text means ----
@@ -352,6 +357,7 @@ function tableDom(state, table) {
 
 const hide = Decoration.replace({});
 const faded = Decoration.mark({ class: 'pj-md-mark' });
+const hang = Decoration.mark({ class: 'pj-md-mark pj-md-hang' });
 const lineClass = (className) => Decoration.line({ class: className });
 const mark = (className, attributes) => Decoration.mark({ class: className, attributes });
 // Not words: code, URLs, HTML and front matter are not spell checked.
@@ -373,7 +379,7 @@ function wholeLines(doc, node) {
 // Tables, and diagrams if `diagrams`, drawn in place of their lines while the selection is not on them.
 function blocks(state, diagrams) {
   const tree = syntaxTree(state);
-  const active = activeLines(state);
+  const active = editing(state).lines;
   const { doc } = state;
   const on = ({ from, to }) => {
     for (let n = doc.lineAt(from).number; n <= doc.lineAt(to).number; n++) if (active.has(n)) return true;
@@ -407,12 +413,22 @@ function blocks(state, diagrams) {
 // chooses a code block's language, null for no choosing.
 function inline(state, from, to, image, pick) {
   const tree = syntaxTree(state);
-  const active = activeLines(state);
+  const { lines: active, ranges: selected } = editing(state);
   const { doc } = state;
   const lineOf = (pos) => doc.lineAt(pos).number;
+  // A block's syntax shows on the lines being edited; a span's, while the selection touches it.
   const on = (a, b = a) => {
     for (let n = lineOf(a); n <= lineOf(b); n++) if (active.has(n)) return true;
     return false;
+  };
+  const near = (a, b) => selected.some((r) => r.from <= b && r.to >= a);
+  const spanOf = (node) => node.node.parent ?? node.node;
+  // A line's block markers being edited, from `a` to the text after them,
+  // hang in the margin, so the text stays where it is; on a line with no
+  // text after them, they show in place.
+  const markers = (a, run) => {
+    const end = a + run.length;
+    add(a, end, doc.sliceString(end, doc.lineAt(a).to).trim() ? hang : faded);
   };
   const ranges = [];
   const add = (a, b, deco) => ranges.push(deco.range(a, b));
@@ -442,26 +458,28 @@ function inline(state, from, to, image, pick) {
       }
       switch (name) {
         case 'HeaderMark':
-          if (node.node.parent?.name.startsWith('Setext') || on(a)) add(a, b, faded);
-          else add(a, withSpace(b), hide);
+          if (node.node.parent?.name.startsWith('Setext')) add(a, b, faded);
+          else if (!on(a)) add(a, withSpace(b), hide);
+          else if (a === node.node.parent.from) markers(a, doc.sliceString(a, withSpace(b)));
+          else add(a, b, faded); // a closing `#`
           return undefined;
         case 'Emphasis': add(a, b, mark('pj-md-em')); return undefined;
         case 'StrongEmphasis': add(a, b, mark('pj-md-strong')); return undefined;
         case 'Strikethrough': add(a, b, mark('pj-md-strike')); return undefined;
         case 'InlineCode': add(a, b, mark('pj-md-code', VERBATIM)); return undefined;
-        case 'EmphasisMark': case 'StrikethroughMark': add(a, b, on(a) ? faded : hide); return undefined;
-        case 'CodeMark': add(a, b, node.node.parent?.name === 'InlineCode' && !on(a) ? hide : faded); return undefined;
+        case 'EmphasisMark': case 'StrikethroughMark': add(a, b, near(spanOf(node).from, spanOf(node).to) ? faded : hide); return undefined;
+        case 'CodeMark': add(a, b, node.node.parent?.name === 'InlineCode' && !near(spanOf(node).from, spanOf(node).to) ? hide : faded); return undefined;
         case 'CodeInfo': add(a, b, faded); return undefined;
-        case 'Escape': if (!on(a)) add(a, a + 1, hide); return undefined;
+        case 'Escape': if (!near(a, b)) add(a, a + 1, hide); return undefined;
         case 'Entity':
-          add(a, b, on(a) ? faded : Decoration.replace({ widget: new Text(decodeEntity(doc.sliceString(a, b)), '') }));
+          add(a, b, near(a, b) ? faded : Decoration.replace({ widget: new Text(decodeEntity(doc.sliceString(a, b)), '') }));
           return undefined;
         case 'Link': {
           const href = linkTarget(state, node.node);
           if (href === null) return false; // `[text]` no definition names is text
           add(a, b, mark('pj-md-link', { 'data-href': href }));
           const marks = node.node.getChildren('LinkMark');
-          if (on(a, b)) {
+          if (near(a, b)) {
             for (const part of [...marks, ...['URL', 'LinkLabel', 'LinkTitle'].flatMap((n) => node.node.getChildren(n))]) add(part.from, part.to, faded);
           } else if (marks.length >= 2) {
             add(marks[0].from, marks[0].to, hide);
@@ -472,7 +490,7 @@ function inline(state, from, to, image, pick) {
         case 'Autolink': {
           const url = node.node.getChild('URL');
           add(a, b, mark('pj-md-link', { 'data-href': url ? doc.sliceString(url.from, url.to) : '', ...VERBATIM }));
-          for (const m of node.node.getChildren('LinkMark')) add(m.from, m.to, on(a) ? faded : hide);
+          for (const m of node.node.getChildren('LinkMark')) add(m.from, m.to, near(a, b) ? faded : hide);
           return false;
         }
         case 'URL':
@@ -480,7 +498,7 @@ function inline(state, from, to, image, pick) {
           else add(a, b, mark('pj-md-link', { 'data-href': doc.sliceString(a, b), ...VERBATIM }));
           return undefined;
         case 'Image': {
-          if (on(a, b)) {
+          if (near(a, b)) {
             add(a, b, mark('pj-md-muted', VERBATIM));
             return false;
           }
@@ -492,32 +510,36 @@ function inline(state, from, to, image, pick) {
         }
         case 'LinkReference': add(a, b, mark('pj-md-muted', VERBATIM)); return false;
         case 'FootnoteReference':
-          add(a, b, on(a) ? faded : Decoration.replace({ widget: new Text(String(noteNumber(state, doc.sliceString(a, b))), 'pj-md-fnref') }));
+          add(a, b, near(a, b) ? faded : Decoration.replace({ widget: new Text(String(noteNumber(state, doc.sliceString(a, b))), 'pj-md-fnref') }));
           return undefined;
         case 'FootnoteDefinition': eachLine(a, b, lineClass('pj-md-footnote')); return undefined;
         case 'FootnoteLabel':
           add(a, b, on(a) ? faded : Decoration.replace({ widget: new Text(`${noteNumber(state, doc.sliceString(a, b))}.`, 'pj-md-fnlabel') }));
           return undefined;
         case 'ListMark': {
+          // Being edited, a marker shows in the box its bullet takes, or, before a task's box, hangs.
           const item = node.node.parent;
-          if (on(a)) add(a, b, mark('pj-md-listmark'));
-          else if (item?.getChild('Task')) add(a, withSpace(b), hide);
-          else {
-            const ordered = item?.parent?.name === 'OrderedList';
-            add(a, withSpace(b), Decoration.replace({ widget: new Text(ordered ? doc.sliceString(a, b) : '•', ordered ? 'pj-md-marker pj-md-number' : 'pj-md-marker') }));
-          }
+          const ordered = item?.parent?.name === 'OrderedList';
+          const task = item?.getChild('Task');
+          if (on(a)) add(a, withSpace(b), task ? hang : mark(`pj-md-marker pj-md-listmark${ordered ? ' pj-md-number' : ''}`));
+          else if (task) add(a, withSpace(b), hide);
+          else add(a, withSpace(b), Decoration.replace({ widget: new Text(ordered ? doc.sliceString(a, b) : '•', ordered ? 'pj-md-marker pj-md-number' : 'pj-md-marker') }));
           return undefined;
         }
         case 'TaskMarker': {
           const checked = /x/i.test(doc.sliceString(a, b));
-          const off = !on(a);
-          add(a, off ? withSpace(b) : b, Decoration.replace({ widget: new Checkbox(checked, a, off ? 'pj-md-marker' : 'pj-md-check-wrap') }));
+          add(a, withSpace(b), Decoration.replace({ widget: new Checkbox(checked, a, 'pj-md-marker') }));
           const task = node.node.parent;
           if (checked && task && b + 1 < task.to) add(b + 1, task.to, mark('pj-md-done'));
           return undefined;
         }
         case 'Blockquote': eachLine(a, b, lineClass(`pj-md-quote pj-md-quote-d${Math.min(ancestors(node.node, 'Blockquote') + 1, 3)}`)); return undefined;
-        case 'QuoteMark': if (on(a)) add(a, b, faded); else add(a, withSpace(b), hide); return undefined;
+        case 'QuoteMark': {
+          if (!on(a)) add(a, withSpace(b), hide);
+          // The line's first `>` shows them all: `> > `, a list's marker after them its own.
+          else if (!/>\s*$/.test(doc.sliceString(doc.lineAt(a).from, a))) markers(a, /^(>\s?)+/.exec(doc.sliceString(a, doc.lineAt(a).to))[0]);
+          return undefined;
+        }
         case 'CodeBlock': codeLines(a, b); return undefined;
         case 'FencedCode':
           codeLines(a, b);
@@ -544,7 +566,7 @@ function inline(state, from, to, image, pick) {
           // A backslash at a line's end is a hard break: drawn as the break alone.
           for (let n = lineOf(Math.max(a, from)); n < lineOf(b) && n <= lineOf(to); n++) {
             const line = doc.line(n);
-            if (!active.has(n) && /(^|[^\\])(\\\\)*\\$/.test(line.text)) add(line.to - 1, line.to, hide);
+            if (!near(line.to - 1, line.to) && /(^|[^\\])(\\\\)*\\$/.test(line.text)) add(line.to - 1, line.to, hide);
           }
           return undefined;
         case 'Frontmatter': eachLine(a, b, Decoration.line({ class: 'pj-md-frontmatter', attributes: VERBATIM })); return false;
@@ -553,10 +575,9 @@ function inline(state, from, to, image, pick) {
     },
   });
 
-  // List lines not being edited: indented by their level, a wrapped line
-  // hanging under its item's text; a quote in an item has its bar there.
+  // List lines: indented by their level, a wrapped line hanging under its
+  // item's text; a quote in an item has its bar there.
   for (let n = lineOf(from); n <= lineOf(to); n++) {
-    if (active.has(n)) continue;
     const line = doc.line(n);
     const lead = /^[ \t]*/.exec(line.text)[0].length;
     if (lead === line.length) continue;

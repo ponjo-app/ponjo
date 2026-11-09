@@ -27,31 +27,34 @@ the plain view as source.
   ([#358](https://github.com/ponjo-app/ponjo/issues/358) lists each).
   Syntax outside them (math, `==highlight==`, wiki links) is text.
 - **Live preview.** Text is drawn formatted and its syntax is hidden, except
-  on the lines the selection touches, where it shows, faded; a table the
-  selection touches shows as its source whole. As a doc opens, before the
-  person is in it, nothing is source; after, the selection's lines stay
-  source when the editor loses the focus too, as the caret stays drawn.
-  An earlier version, read-only, is drawn whole:
+  where it is being edited, as in Typora: a span's (bold, a link, code)
+  while the selection touches it, faded; a block's markers on the lines the
+  selection touches, hanging in the margin (`#`, `>`) or in the box its
+  bullet takes, so the text does not move; a table the selection touches
+  shows as its source whole. As a doc opens, before the person is in it,
+  nothing is source; after, what the selection touches stays source when
+  the editor loses the focus too, as the caret stays drawn. An earlier
+  version, read-only, is drawn whole:
 
-  | Block or span | Away from the selection | On its lines |
+  | Block or span | Away from the selection | Being edited |
   | --- | --- | --- |
-  | Bold, italic, strikethrough (`~~` or `~`), inline code | formatted; the marks hidden | formatted, the marks faded |
-  | Heading (`#`, or underlined with `===`/`---`) | large; `# ` hidden, an underline faded | `# ` faded |
-  | Link, inline or by reference | its text, as a link; the rest hidden. A `[text]` no definition names is text | the whole source |
-  | Autolink (`<https://…>`, `www.…`, an email) | a link; `<>` hidden | `<>` faded |
+  | Bold, italic, strikethrough (`~~` or `~`), inline code | formatted; the marks hidden | the span the selection touches: formatted, its marks faded |
+  | Heading (`#`, or underlined with `===`/`---`) | large; `# ` hidden, an underline faded | `# ` faded, in the margin |
+  | Link, inline or by reference | its text, as a link; the rest hidden. A `[text]` no definition names is text | touched, the whole source |
+  | Autolink (`<https://…>`, `www.…`, an email) | a link; `<>` hidden | touched, `<>` faded |
   | Link definition (`[ref]: url`) | muted | the same |
-  | Bullet list | a dot for `-`, `*`, `+`; each level indented; a wrapped line hangs under the item's text | the marker |
+  | Bullet list | a dot for `-`, `*`, `+`; each level indented; a wrapped line hangs under the item's text | the marker, in the dot's place |
   | Ordered list (`1.`, `1)`) | the number as typed, indented the same | the same |
-  | Task list | a checkbox, ticked by a click, which types `x` or a space; a done item struck through | the checkbox |
-  | Quote | a bar at the left per level; `>` hidden | `>` faded |
+  | Task list | a checkbox, ticked by a click, which types `x` or a space; a done item struck through | the checkbox, `- ` in the margin |
+  | Quote | a bar at the left per level; `>` hidden | `>` faded, in the margin |
   | Code block, fenced or indented | monospace on a tint, coloured by its language; its fences hidden, their lines its padding | its fences, faded |
   | Rule (`---`, `***`, `___`) | a line | the source |
-  | Image, inline or by reference | the image | the source |
+  | Image, inline or by reference | the image | touched, the source |
   | Table | the table, drawn, with its cells' formatting and alignment; a header with no text left out | the source, monospace, pipes faded |
   | Mermaid block | its diagram | the source |
-  | Footnote (`[^1]`, `[^1]: …`) | a superscript number, in the order of first use; the note small, with its number | the source |
-  | Hard break (a line ending in `\` or two spaces) | the break; `\` hidden | `\` shows |
-  | Escape (`\*`), entity (`&copy;`) | the character | the source |
+  | Footnote (`[^1]`, `[^1]: …`) | a superscript number, in the order of first use; the note small, with its number | a reference touched, a note on its lines: the source |
+  | Hard break (a line ending in `\` or two spaces) | the break; `\` hidden | touched, `\` shows |
+  | Escape (`\*`), entity (`&copy;`) | the character | touched, the source |
   | Front matter, raw HTML | the source, muted | the same |
 - **Typed Markdown formats**, as it is typed. There is no other conversion:
   the characters typed are the characters saved.
@@ -188,9 +191,11 @@ The editor's document is the doc's text, so an offset on the doc is a
 position in the editor: marks, the selection, anchors and others' edits
 need no map. The preview is decorations over the text, never a change to
 it: the syntax tree (Lezer's, parsed again only where the text changed)
-says what each span is, and the lines the selection touches are drawn as
-source. Hidden syntax is atomic: the caret steps over it, and reaches it by
-moving onto its line. The language is CommonMark and GFM only, with the
+says what each span is; a span the selection touches, and the block
+markers of the lines it touches, are drawn as source. Hidden syntax is
+atomic: the caret steps over it, and reaches it by moving next to it. A
+marker that hangs in the margin is the text itself, positioned there
+(`.pj-md-hang`), so the caret and a click reach it as any text. The language is CommonMark and GFM only, with the
 extensions in `syntax.js`: CodeMirror's own Markdown would read `~x~` as
 subscript, and `^x^` and `:x:` too.
 
