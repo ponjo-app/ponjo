@@ -111,7 +111,7 @@ export async function createMarkdownView({
       EditorView.lineWrapping,
       EditorView.editorAttributes.of({ class: 'pj-md' }),
       EditorView.contentAttributes.of({ spellcheck: String(editable) }), // prose; not its code (preview.js)
-      livePreview({ image, diagrams: editable }),
+      livePreview({ image, diagrams: editable, pickLanguage: (at, where) => chrome?.pickLanguage(at, where) }),
       paste(),
       pairs(),
     ],
@@ -443,6 +443,17 @@ export async function createMarkdownView({
     view.focus();
   }
 
+  /** Make the first word of the info string on the fence line at `at` `tag` ('' none; null: as it is); the focus goes back to the text. */
+  function setLanguage(at, tag) {
+    const line = view.state.doc.lineAt(at);
+    const [, fence, space, word] = /^(\s*(?:`{3,}|~{3,}))(\s*)(\S*)/.exec(line.text) ?? [];
+    if (editable && fence && tag !== null && tag !== word) {
+      const from = line.from + fence.length + space.length;
+      view.dispatch({ changes: { from, to: from + word.length, insert: tag }, userEvent: 'input.format' });
+    }
+    view.focus();
+  }
+
   /** Viewport rectangle of the held link, or null when none is held. */
   const linkRect = () => (linkHeld ? rect(linkHeld.from, linkHeld.to) : null);
 
@@ -516,7 +527,7 @@ export async function createMarkdownView({
   if (toolbar) {
     chrome = createChrome({
       run, formatState, getText: readerText, selection: editor.selection, headings, scrollToHeading, scrollToAnchor,
-      selectionRect, beginLink, endLink, linkRect, caretLink, tops: editor.tops,
+      selectionRect, beginLink, endLink, linkRect, caretLink, setLanguage, tops: editor.tops,
     }, { toolbar, stage, host, onComment, files, settings, saveSettings, editable });
   }
 

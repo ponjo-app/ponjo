@@ -376,7 +376,11 @@ kbd { font: 500 11px/1 var(--ui-font); padding: 2px 6px; border-radius: 4px; bor
 .pj-editor .pj-md .cm-line.pj-md-codeblock-first { border-radius: 6px 6px 0 0; padding-top: 8px; }
 .pj-editor .pj-md .cm-line.pj-md-codeblock-last { border-radius: 0 0 6px 6px; padding-bottom: 8px; }
 /* a fence, hidden while the selection is not in its block: only the block's padding */
-.pj-editor .pj-md .cm-line.pj-md-fence { font-size: 1px; line-height: 1; }
+.pj-editor .pj-md .cm-line.pj-md-fence { position: relative; font-size: 1px; line-height: 1; }
+/* a code block's language, at its top right: a click picks another */
+.pj-md-lang { position: absolute; top: 4px; right: 6px; z-index: 1; height: 22px; padding: 0 6px; border: 0; border-radius: 6px; background: none; color: var(--text-faint); font: 12px/22px var(--ui-font); cursor: pointer; }
+.pj-md-lang:hover { background: var(--hover); color: var(--text-soft); }
+.pj-lang { width: 260px; }
 .pj-editor .pj-md .cm-line.pj-md-frontmatter { color: var(--text-soft); }
 .pj-editor .pj-md .cm-line.pj-md-frontmatter span { color: inherit; } /* muted, not coloured as YAML */
 .pj-editor .pj-md .cm-line.pj-md-footnote { font-size: 0.88em; color: var(--text-soft); }

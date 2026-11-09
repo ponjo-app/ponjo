@@ -80,10 +80,10 @@ const DRAWN = [
     ['- ⟨☐⟩ a', '{padding-left: 1.5em; text-indent: -1.5em;} ⟨☑⟩<d>b</d>', '']],
   ['quotes, nested', '> q\n>\n> > n\n', ['[quote quote-d1] q', '[quote quote-d1] ', '[quote quote-d1 quote-d2] n', ''], 0, ['[quote quote-d1] ‹>› q', '[quote quote-d1] ', '[quote quote-d1 quote-d2] n', '']],
   ['a quote in a list item', '- a\n  > q\n', ['{padding-left: 1.5em; text-indent: -1.5em;} ⟨•⟩a', '[quote quote-d1] {--pj-indent: 1.5em;} q', ''], null, null],
-  ['a fenced code block', '```js\nlet a\n```\n', ['[codeblock codeblock-first fence] ', '[codeblock] let a', '[codeblock codeblock-last fence] ', ''], 6,
+  ['a fenced code block', '```js\nlet a\n```\n', ['[codeblock codeblock-first fence] ⟨JavaScript⟩', '[codeblock] let a', '[codeblock codeblock-last fence] ', ''], 6,
     ['[codeblock codeblock-first] ‹```›‹js›', '[codeblock] let a', '[codeblock codeblock-last] ‹```›', '']],
-  ['a tilde fence', '~~~\nx\n~~~\n', ['[codeblock codeblock-first fence] ', '[codeblock] x', '[codeblock codeblock-last fence] ', ''], null, null],
-  ['an unclosed fence', '```\nopen\n', ['[codeblock codeblock-first fence] ', '[codeblock codeblock-last] open', ''], null, null],
+  ['a tilde fence', '~~~\nx\n~~~\n', ['[codeblock codeblock-first fence] ⟨Plain text⟩', '[codeblock] x', '[codeblock codeblock-last fence] ', ''], null, null],
+  ['an unclosed fence', '```\nopen\n', ['[codeblock codeblock-first fence] ⟨Plain text⟩', '[codeblock codeblock-last] open', ''], null, null],
   ['an indented code block', 'a\n\n    code\n', ['a', '', '[codeblock codeblock-first codeblock-last]     code', ''], null, null],
   ['rules', 'a\n\n---\n\n***\n', ['a', '', '⟨—⟩', '', '⟨—⟩', ''], 3, ['a', '', '‹---›', '', '⟨—⟩', '']],
   ['a table', '| a | b |\n|---|:-:|\n| `x` |  |\n| y\\|z | **w** |\n', ['[block] [table a|b / x| / y|z|w]', ''], 2,
@@ -391,6 +391,22 @@ test('find: a match inside hidden syntax shows its line as source', async () => 
   await at(text, { focus: false });
   await run(`view.find('plan.md', 0)`);
   assert.deepEqual(await shown(), ['See <a>‹[›the plan‹]›‹(›</a><a>‹plan.md›</a><a>‹)›</a> now.', ''], 'the match marked splits the link\'s span');
+});
+
+test('language: a code block\'s label picks its language, as found or as typed', async () => {
+  const pick = async (typed) => {
+    await run(`document.querySelector('.pj-md-lang').dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }))`);
+    await run(`(() => { const input = document.querySelector('.pj-lang input'); input.value = ${JSON.stringify(typed)}; input.dispatchEvent(new Event('input')); input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); })()`);
+    return run('view.getText()');
+  };
+  await at('a‸\n\n```js\nlet a\n```\n');
+  assert.equal(await pick('pyth'), 'a\n\n```python\nlet a\n```\n');
+  assert.equal(await pick('zig'), 'a\n\n```zig\nlet a\n```\n', 'one not found, as typed');
+  assert.equal(await pick('plain'), 'a\n\n```\nlet a\n```\n', 'Plain text takes it away');
+  await at('a‸\n\n```js\nlet a\n```\n');
+  await run(`document.querySelector('.pj-md-lang').dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }))`);
+  await run(`document.querySelector('.pj-lang input').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
+  assert.equal(await marked(), 'a‸\n\n```js\nlet a\n```\n', 'Escape cancels, the caret where it was');
 });
 
 test('spelling: prose is checked; code, URLs, HTML and front matter are not', async () => {

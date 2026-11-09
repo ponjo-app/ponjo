@@ -108,6 +108,10 @@ the plain view as source.
 - **Diagrams.** A ` ```mermaid ` block shows as its diagram; with the
   selection in it, as its source, typed into as any text. An AI buddy can
   change it too, asked in a comment.
+- **Code blocks.** A fenced block names its language at its top right
+  (Plain text for none). A click on it opens a list that finds a language
+  by name, the common ones first: picking one types it after the fence,
+  Enter with none found types what was typed, Escape cancels.
 - **Images** in the file show; the view does not insert them. One on the web
   (`https:`) loads from there; one at a path comes from the doc host
   (`image`, as a link resolves, only what the project shows), up to 5 MB.

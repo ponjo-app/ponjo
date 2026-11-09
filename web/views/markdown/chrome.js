@@ -4,6 +4,7 @@
 // The view makes it when the page gives it a toolbar
 // (web/views/markdown/view.js).
 
+import { languages } from '@codemirror/language-data';
 import { hydrateIcons, icon } from '../../icons.js';
 
 const TOOLS = `
@@ -77,6 +78,22 @@ const LINK = `
     <ul class="pj-mentions pj-link-files" role="listbox" aria-label="Files" hidden></ul>
   </div>`;
 
+const LANGUAGE = `
+  <div class="pj-link pj-lang" role="dialog" aria-label="Code block language" hidden>
+    <span class="pj-link-icon" data-icon="code"></span>
+    <input class="pj-link-input" type="text" autocomplete="off" spellcheck="false" aria-label="Language" placeholder="Find a language" role="combobox" aria-autocomplete="list" aria-expanded="true">
+    <ul class="pj-mentions pj-link-files" role="listbox" aria-label="Languages"></ul>
+  </div>`;
+
+// What a code block may name: { name, tag, alias }, `tag` what is typed after its fence.
+const LANGUAGES = [
+  { name: 'Plain text', tag: '', alias: [] },
+  { name: 'Mermaid', tag: 'mermaid', alias: ['diagram'] },
+  ...languages.map(({ name, alias, extensions }) => ({ name, alias, tag: [name.toLowerCase(), ...alias].find((n) => /^[\w+#.-]+$/.test(n)) ?? extensions[0] }))
+    .filter((l) => l.tag),
+];
+const COMMON = ['Plain text', 'JavaScript', 'TypeScript', 'Python', 'Shell', 'JSON', 'HTML', 'CSS', 'Mermaid'];
+
 const BLOCK_LABELS = { paragraph: 'Normal text', h1: 'Heading 1', h2: 'Heading 2', h3: 'Heading 3', h4: 'Heading 4', h5: 'Heading 5', h6: 'Heading 6', quote: 'Quote', codeBlock: 'Code block', front_matter: 'Front matter' };
 
 const mac = /Mac|iPhone|iPad/.test(navigator.platform);
@@ -110,13 +127,14 @@ export function createChrome(editor, { toolbar, stage, host, onComment, files = 
   const [bubble] = elements(BUBBLE);
   const [outlineNav] = elements(OUTLINE);
   const [card, popover] = elements(LINK);
+  const [languagePopover] = elements(LANGUAGE);
   const count = Object.assign(document.createElement('span'), { className: 'pj-count', title: 'Word count' });
   if (editable) toolbar.prepend(...tools); // a read-only view has nothing to format or comment on
   toolbar.querySelector('.pj-spacer').after(count);
   if (editable) stage.append(bubble);
   stage.before(outlineNav);
-  document.body.append(card, popover);
-  const made = [...tools, count, bubble, outlineNav, card, popover];
+  document.body.append(card, popover, languagePopover);
+  const made = [...tools, count, bubble, outlineNav, card, popover, languagePopover];
 
   const canvas = stage.parentElement; // scrolls the page
   const page = host.closest('.pj-page');
@@ -124,6 +142,7 @@ export function createChrome(editor, { toolbar, stage, host, onComment, files = 
   const { signal } = done;
   const link = setupLink(editor, { card, popover, host, canvas, files, signal });
   const outline = setupOutline(editor, { nav: outlineNav, canvas, signal });
+  const language = setupLanguage(editor, { popover: languagePopover, signal });
   const [blockPicker] = tools.filter((el) => el.matches('.pj-block-picker')).map((el) => setupMenu(editor, el, signal));
   const buttons = tools.flatMap((el) => [...el.querySelectorAll('button[data-command]')]);
   const commentButton = bubble.querySelector('[data-action="comment"]');
@@ -264,6 +283,8 @@ export function createChrome(editor, { toolbar, stage, host, onComment, files = 
       link.toggle(buttons.find((b) => b.dataset.command === 'link'));
       return true;
     },
+    /** Choose the language of the code block whose fence line starts at `at`, under its label at `rect`. */
+    pickLanguage: (at, rect) => editable && language.open(at, rect),
     applySettings,
     destroy() {
       done.abort();
@@ -470,6 +491,88 @@ function setupLink(editor, { card, popover, host, canvas, files, signal }) {
     toggle(from) {
       if (popover.hidden) open(from);
       else close(null);
+    },
+  };
+}
+
+// ---- a code block's language: a popover under its label ----
+
+// What is typed finds a language by its name or alias, at most 8, those
+// starting with it first; with nothing typed, the common ones. The arrows
+// pick one, Enter or a click sets it; Enter with none found sets what is
+// typed. Escape or clicking away cancels.
+function setupLanguage(editor, { popover, signal }) {
+  const input = popover.querySelector('input');
+  const list = popover.querySelector('ul');
+  let at = null; // the fence line's start
+  let offered = [];
+  let picked = 0;
+
+  function offer() {
+    const typed = input.value.trim().toLowerCase();
+    const names = (l) => [l.name.toLowerCase(), l.tag, ...l.alias];
+    offered = !typed ? COMMON.map((name) => LANGUAGES.find((l) => l.name === name)).filter(Boolean)
+      : LANGUAGES.filter((l) => names(l).some((n) => n.includes(typed)))
+        .sort((a, b) => names(b).some((n) => n.startsWith(typed)) - names(a).some((n) => n.startsWith(typed))).slice(0, 8);
+    picked = 0;
+    paint();
+  }
+
+  function paint() {
+    list.replaceChildren(...offered.map((l, i) => {
+      const item = Object.assign(document.createElement('li'), { className: `pj-mention${i === picked ? ' pj-selected' : ''}` });
+      item.setAttribute('role', 'option');
+      item.setAttribute('aria-selected', String(i === picked));
+      const what = Object.assign(document.createElement('span'), { className: 'pj-mention-who' });
+      what.append(Object.assign(document.createElement('span'), { className: 'pj-mention-name', textContent: l.name }));
+      if (l.tag) what.append(Object.assign(document.createElement('span'), { className: 'pj-mention-sub', textContent: l.tag }));
+      item.append(what);
+      item.addEventListener('mousedown', (event) => {
+        event.preventDefault();
+        close(l.tag);
+      });
+      return item;
+    }));
+    list.hidden = offered.length === 0;
+    list.querySelector('.pj-selected')?.scrollIntoView({ block: 'nearest' });
+  }
+  input.addEventListener('input', offer, { signal });
+
+  // `tag`: the language to set, null to cancel.
+  function close(tag) {
+    if (popover.hidden) return;
+    popover.hidden = true;
+    editor.setLanguage(at, tag);
+  }
+
+  popover.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      close(null);
+    } else if ((event.key === 'ArrowDown' || event.key === 'ArrowUp') && offered.length > 0) {
+      event.preventDefault();
+      picked = (picked + (event.key === 'ArrowDown' ? 1 : -1) + offered.length) % offered.length;
+      paint();
+    } else if (event.key === 'Enter') {
+      event.preventDefault();
+      close(offered[picked]?.tag ?? input.value.trim());
+    }
+  });
+  document.addEventListener('mousedown', (event) => {
+    if (!popover.hidden && !popover.contains(event.target)) close(null);
+  }, { capture: true, signal });
+
+  return {
+    open(pos, rect) {
+      at = pos;
+      input.value = '';
+      offer();
+      popover.hidden = false;
+      const width = popover.offsetWidth;
+      popover.style.left = `${Math.min(Math.max(rect.right - width, 8), window.innerWidth - width - 8)}px`;
+      popover.style.top = `${rect.bottom + 6}px`;
+      input.focus();
     },
   };
 }

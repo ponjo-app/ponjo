@@ -7,7 +7,8 @@
 
 import { RangeSet, StateEffect, StateField } from '@codemirror/state';
 import { Decoration, EditorView, ViewPlugin, WidgetType } from '@codemirror/view';
-import { syntaxTree } from '@codemirror/language';
+import { LanguageDescription, syntaxTree } from '@codemirror/language';
+import { languages } from '@codemirror/language-data';
 import { diagramDom, forgetDiagram } from '../../diagrams.js';
 
 const INDENT_EM = 1.5; // one list level, and a list marker's width
@@ -197,6 +198,39 @@ class Image extends WidgetType {
   }
 }
 
+// A fenced code block's language, at its top right: a click calls `pick` to choose another.
+class Language extends WidgetType {
+  constructor(name, at, pick) {
+    super();
+    Object.assign(this, { name, at, pick });
+  }
+
+  eq(other) {
+    return other.name === this.name && other.at === this.at;
+  }
+
+  toDOM() {
+    const button = Object.assign(document.createElement('button'), { type: 'button', className: 'pj-md-lang', textContent: this.name });
+    button.dataset.tip = 'Language';
+    button.addEventListener('mousedown', (event) => {
+      event.preventDefault(); // the caret stays out of the block
+      this.pick(this.at, button.getBoundingClientRect());
+    });
+    return button;
+  }
+
+  ignoreEvent() {
+    return true;
+  }
+}
+
+/** What a code block's info string names, as a reader would call it. */
+function languageName(info) {
+  if (!info) return 'Plain text';
+  if (info === 'mermaid') return 'Mermaid';
+  return LanguageDescription.matchLanguageName(languages, info, false)?.name ?? info;
+}
+
 // A block drawn in place of its lines; a click puts the caret at its start, showing its source.
 class Block extends WidgetType {
   constructor(key, at, render, forget = () => {}) {
@@ -369,8 +403,9 @@ function blocks(state, diagrams) {
   return Decoration.set(ranges, true);
 }
 
-// Everything else, for the lines from `from` to `to`.
-function inline(state, from, to, image) {
+// Everything else, for the lines from `from` to `to`; `pick(at, rect)`
+// chooses a code block's language, null for no choosing.
+function inline(state, from, to, image, pick) {
   const tree = syntaxTree(state);
   const active = activeLines(state);
   const { doc } = state;
@@ -491,7 +526,9 @@ function inline(state, from, to, image) {
             const fences = [doc.lineAt(a), doc.lineAt(b)].filter((l, i, both) => (i === 0 || l.number !== both[0].number) && /^\s*(`{3,}|~{3,})/.test(l.text) && l.from >= from && l.from <= to);
             for (const line of fences) {
               add(line.from, line.from, lineClass('pj-md-fence'));
-              add(line.from, line.to, hide);
+              const info = line.from === doc.lineAt(a).from && node.node.getChild('CodeInfo');
+              const name = pick && !state.readOnly && line.from === doc.lineAt(a).from && languageName(info ? doc.sliceString(info.from, info.to) : '');
+              add(line.from, line.to, name ? Decoration.replace({ widget: new Language(name, line.from, pick) }) : hide);
             }
           }
           return undefined;
@@ -549,9 +586,11 @@ function inline(state, from, to, image) {
 
 /**
  * The live preview. `image(src)` gives the URL to show an image at `src`
- * (one on the web is shown as it is); `diagrams` draws mermaid blocks.
+ * (one on the web is shown as it is); `diagrams` draws mermaid blocks;
+ * `pickLanguage(at, rect)`, given, is asked for a fenced code block's
+ * language when its label is clicked (`at` its fence line's start).
  */
-export function livePreview({ image, diagrams = true }) {
+export function livePreview({ image, diagrams = true, pickLanguage = null }) {
   const urls = new Map(); // an image's URL by its src, asked for once
   const imageUrl = (src) => {
     if (/^[a-z][a-z\d+.-]*:/i.test(src)) return Promise.resolve(src);
@@ -568,11 +607,11 @@ export function livePreview({ image, diagrams = true }) {
 
   const inlinePlugin = ViewPlugin.fromClass(class {
     constructor(view) {
-      this.decorations = inline(view.state, view.viewport.from, view.viewport.to, imageUrl);
+      this.decorations = inline(view.state, view.viewport.from, view.viewport.to, imageUrl, pickLanguage);
     }
 
     update(update) {
-      if (update.viewportChanged || update.transactions.some(changed)) this.decorations = inline(update.state, update.view.viewport.from, update.view.viewport.to, imageUrl);
+      if (update.viewportChanged || update.transactions.some(changed)) this.decorations = inline(update.state, update.view.viewport.from, update.view.viewport.to, imageUrl, pickLanguage);
     }
   }, { decorations: (plugin) => plugin.decorations });
 
