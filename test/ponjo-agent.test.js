@@ -312,15 +312,15 @@ test('the first message lists the project\'s files as the sidebar does, its top 
 });
 
 /**
- * A fake API on 127.0.0.1: `answers` are [status, body] in turn; `requests`
+ * A fake API on 127.0.0.1: `answers` are [status, body, headers?] in turn; `requests`
  * what it was sent, { url, headers, body }. `url` is its address.
  */
 async function fakeApi(answers) {
   const requests = [];
   const server = createServer(async (req, res) => {
     requests.push({ url: req.url, headers: req.headers, body: JSON.parse(await text(req)) });
-    const [status, body] = answers.shift() ?? [500, { error: 'no answer queued' }];
-    res.writeHead(status, { 'content-type': 'application/json' }).end(JSON.stringify(body));
+    const [status, body, headers] = answers.shift() ?? [500, { error: 'no answer queued' }];
+    res.writeHead(status, { 'content-type': 'application/json', ...headers }).end(JSON.stringify(body));
   });
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
   return { requests, url: `http://127.0.0.1:${server.address().port}/v1`, close: () => new Promise((r) => server.close(r)) };
@@ -353,6 +353,25 @@ test('Anthropic: the Messages API, the tools and the prompt cached, the model\'s
     ]);
     await assert.rejects(infer(messages, []), /^Error: The model refused: Not this\.$/);
     assert.equal((await infer(messages, [])).text, 'Fine as is.', 'an answer without a call: its text blocks');
+  } finally {
+    await api.close();
+  }
+});
+
+test('a busy API is asked once more, the same request, after its retry-after; any other failure, never', async () => {
+  const done = { stop_reason: 'end_turn', content: [{ type: 'text', text: 'ok' }] };
+  const busy = (status) => [status, { error: 'busy' }, { 'retry-after': '0' }];
+  const api = await fakeApi([busy(529), [200, done], busy(429), busy(429), [500, { error: 'broken' }]]);
+  try {
+    const infer = INFER.anthropic({ model: 'claude-opus-5-5', key: 'k', effort: 'low' }, api.url);
+    const messages = [{ role: 'user', content: 'p' }];
+    assert.equal((await infer(messages, [])).text, 'ok', 'a 529 is retried');
+    assert.equal(api.requests.length, 2);
+    assert.deepEqual(api.requests[1].body, api.requests[0].body);
+    await assert.rejects(infer(messages, []), /: 429 \{"error":"busy"\}/, 'once only');
+    assert.equal(api.requests.length, 4);
+    await assert.rejects(infer(messages, []), /: 500 \{"error":"broken"\}/, 'a 500 is not retried');
+    assert.equal(api.requests.length, 5);
   } finally {
     await api.close();
   }

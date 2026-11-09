@@ -76,6 +76,16 @@ models refuse a forced tool call, and Nemotron, forced, answered a question
 with `comment`. A step without one is the model's answer, as for any agent:
 its `text` is the reply.
 
+A request that failed where the server most likely did no work is sent once
+more, the same body, after its `retry-after` (at most 60 seconds) or 5
+seconds: a 429, 503 or 529, or a connection refused or reset before any
+answer. A repeat is safe: a request has no effect but its answer, a step is
+added to the messages only once its answer arrives, and nothing touches the
+copies before a valid `propose`; a duplicate costs only tokens. Anything
+else fails the turn: a 500 may fail the same way again, a name that does not
+resolve is a wrong endpoint, and a timeout has already waited (Node's
+`fetch` gives up on a reply that takes five minutes to start).
+
 **`read({ path, lines? })`** returns the text with line numbers, from line
 `lines[0]` to `lines[1]`. A file over 20,000 characters without `lines`
 returns its outline instead (Markdown headings with their line ranges); a

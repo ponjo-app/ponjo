@@ -389,12 +389,28 @@ export const INFER = {
   nebius: ({ model, key }) => INFER.openai({ endpoint: 'https://api.tokenfactory.nebius.com/v1', model, key }),
 };
 
-// POST `body` to `url` as JSON: the reply, or an error that says what failed and where to change it.
+// Failures where the server most likely did no work, sent once more: busy
+// or overloaded, or the connection refused or reset before any answer.
+const BUSY = [429, 503, 529];
+const DROPPED = ['ECONNREFUSED', 'ECONNRESET', 'UND_ERR_SOCKET'];
+
+// POST `body` to `url` as JSON: the reply, or an error that says what failed
+// and where to change it. A busy server or a dropped connection gets the same
+// body once more, after its retry-after (at most 60 s) or 5 s; a request has
+// no effect but its answer, so a repeat costs only tokens.
 async function post(url, headers, body) {
-  const response = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify(body) }).catch((error) => {
-    throw new Error(`Cannot reach ${url} (${error.cause?.code ?? error.message}).\n${SETTINGS}`);
-  });
-  if (!response.ok) throw new Error([`${url}: ${response.status} ${await response.text()}`, HINTS[response.status], SETTINGS].filter(Boolean).join('\n'));
-  return response.json();
+  const request = { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify(body) };
+  for (let again = true; ; again = false) {
+    const response = await fetch(url, request).catch((error) => error);
+    const failed = response instanceof Error;
+    if (again && (failed ? DROPPED.includes(response.cause?.code) : BUSY.includes(response.status))) {
+      const after = failed ? NaN : Number(response.headers.get('retry-after') ?? NaN);
+      await new Promise((resolve) => setTimeout(resolve, (Number.isFinite(after) ? Math.min(after, 60) : 5) * 1000));
+      continue;
+    }
+    if (failed) throw new Error(`Cannot reach ${url} (${response.cause?.code ?? response.message}).\n${SETTINGS}`);
+    if (!response.ok) throw new Error([`${url}: ${response.status} ${await response.text()}`, HINTS[response.status], SETTINGS].filter(Boolean).join('\n'));
+    return response.json();
+  }
 }
 
