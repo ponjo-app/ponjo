@@ -272,10 +272,18 @@ class Block extends WidgetType {
 
 const drawCell = (state, node, parent) => inlineInto(state, node, node.from, node.to, parent);
 
+// Text drawn for the doc's [from, to): it says where it came from
+// (`pjFrom`, `pjTo`), so a click on it finds its character (table.js).
+const sourced = (text, from, to = from + text.length) => Object.assign(document.createTextNode(text), { pjFrom: from, pjTo: to });
+const holding = (element, text, from, to) => {
+  element.append(sourced(text, from, to));
+  return element;
+};
+
 function inlineInto(state, node, from, to, parent) {
   let pos = from;
   const text = (a, b) => {
-    if (b > a) parent.append(state.sliceDoc(a, b));
+    if (b > a) parent.append(sourced(state.sliceDoc(a, b), a));
   };
   for (let child = node.firstChild; child; child = child.nextSibling) {
     if (child.to <= from || child.from >= to) continue;
@@ -300,7 +308,10 @@ function inlineElement(state, node) {
     case 'Strikethrough': return between('StrikethroughMark', 's');
     case 'InlineCode': {
       const marks = node.getChildren('CodeMark');
-      return Object.assign(el('code'), { textContent: state.sliceDoc(marks[0]?.to ?? node.from, marks.at(-1)?.from ?? node.to).trim() });
+      const [a, b] = [marks[0]?.to ?? node.from, marks.at(-1)?.from ?? node.to];
+      const code = state.sliceDoc(a, b);
+      const lead = code.length - code.trimStart().length;
+      return holding(el('code'), code.trim(), a + lead);
     }
     case 'Link': {
       const href = linkTarget(state, node);
@@ -311,13 +322,14 @@ function inlineElement(state, node) {
     }
     case 'Autolink': case 'URL': {
       const url = node.name === 'URL' ? node : node.getChild('URL');
-      return Object.assign(el('a'), { textContent: state.sliceDoc(url?.from ?? node.from, url?.to ?? node.to) });
+      const [a, b] = [url?.from ?? node.from, url?.to ?? node.to];
+      return holding(el('a'), state.sliceDoc(a, b), a);
     }
-    case 'Escape': return document.createTextNode(state.sliceDoc(node.from + 1, node.to));
-    case 'Entity': return document.createTextNode(decodeEntity(state.sliceDoc(node.from, node.to)));
+    case 'Escape': return sourced(state.sliceDoc(node.from + 1, node.to), node.from, node.to);
+    case 'Entity': return sourced(decodeEntity(state.sliceDoc(node.from, node.to)), node.from, node.to);
     case 'HardBreak': return el('br');
-    case 'FootnoteReference': return Object.assign(el('sup', 'pj-md-fnref'), { textContent: noteNumber(state, state.sliceDoc(node.from, node.to)) });
-    default: return Object.assign(el('span', 'pj-md-muted'), { textContent: state.sliceDoc(node.from, node.to) });
+    case 'FootnoteReference': return holding(el('sup', 'pj-md-fnref'), String(noteNumber(state, state.sliceDoc(node.from, node.to))), node.from, node.to);
+    default: return holding(el('span', 'pj-md-muted'), state.sliceDoc(node.from, node.to), node.from);
   }
 }
 

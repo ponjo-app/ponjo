@@ -363,6 +363,8 @@ kbd { font: 500 11px/1 var(--ui-font); padding: 2px 6px; border-radius: 4px; bor
 .pj-md-listmark { color: var(--text-soft); }
 /* a block's markers being edited (`#`, `>`, a task's `-`), in the margin, so its text stays where it is */
 .pj-md-hang { position: absolute; transform: translateX(calc(-100% - 0.25em)); white-space: pre; }
+/* a narrow window has no margin to hang them in (20px): they show in place */
+@media (max-width: 900px) { .pj-md-hang { position: static; transform: none; } }
 /* a task's box: a .pj-radio's outline, square; ink with a check when done; a click ticks it */
 .pj-md-check { position: relative; display: inline-block; box-sizing: border-box; width: 0.9em; height: 0.9em; margin-right: 0.4em; vertical-align: -0.08em; border: 1px solid var(--border-strong); border-radius: 4px; background: var(--canvas); cursor: pointer; }
 .pj-md-checked { border-color: var(--text); background: var(--text); }

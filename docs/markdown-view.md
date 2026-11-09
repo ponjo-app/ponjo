@@ -29,8 +29,9 @@ the plain view as source.
 - **Live preview.** Text is drawn formatted and its syntax is hidden, except
   where it is being edited, as in Typora: a span's (bold, a link, code)
   while the selection touches it, faded; a block's markers on the lines the
-  selection touches, hanging in the margin (`#`, `>`) or in the box its
-  bullet takes, so the text does not move; a table is edited as a grid
+  selection touches, hanging in the margin (`#`, `>`; in a window too
+  narrow to have one, in place) or in the box its bullet takes, so the text
+  does not move; a table is edited as a grid
   (below), and shows as its source whole only with the selection in its
   text (a match found there, or Edit as Markdown). As a doc opens, before the person is in it,
   nothing is source; after, what the selection touches stays source when
@@ -113,8 +114,8 @@ the plain view as source.
 - **Diagrams.** A ` ```mermaid ` block shows as its diagram; with the
   selection in it, as its source, typed into as any text. An AI buddy can
   change it too, asked in a comment.
-- **Tables** are edited as a grid. A click on a cell edits it in place:
-  its own text, Markdown and all, typed into its range of the doc, a `|`
+- **Tables** are edited as a grid. A click on a cell edits it in place,
+  the caret at the character clicked: its own text, Markdown and all, typed into its range of the doc, a `|`
   typed as `\|`. Tab and Shift+Tab go to the next cell and the one before,
   Enter and the arrows to the cell below or above (past the last row, Tab
   and Enter add one; past the first or the last, the arrows leave the

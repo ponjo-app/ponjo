@@ -202,7 +202,7 @@ function render(wrap, state, at) {
         cell.addEventListener('mousedown', (event) => {
           if (event.target.closest('a') || wrap.pjView.state.readOnly || event.target === wrap.pjEdit?.box) return;
           event.preventDefault();
-          editCell(wrap, r, c);
+          editCell(wrap, r, c, clickedAt(event));
         });
         tr.append(cell);
       }
@@ -234,14 +234,30 @@ function render(wrap, state, at) {
 const refresh = (wrap) => render(wrap, wrap.pjView.state, wrap.pjView.posAtDOM(wrap));
 const tableOf = (wrap) => tableAt(wrap.pjView.state, wrap.pjView.posAtDOM(wrap));
 
-/** Edit cell (r, c) of the table drawn in `wrap`, the caret at its end, or at its start (`caret` 'start'). */
+// The doc's position of the character a click on a drawn cell lands at
+// (its text says where it came from: preview.js `sourced`), or 'end' for a
+// click on no text.
+function clickedAt(event) {
+  const point = document.caretRangeFromPoint?.(event.clientX, event.clientY);
+  const node = point?.startContainer;
+  if (!node || node.pjFrom === undefined) return 'end';
+  return Math.min(node.pjFrom + point.startOffset, node.pjTo);
+}
+
+/**
+ * Edit cell (r, c) of the table drawn in `wrap`, the caret at its end, at
+ * its start (`caret` 'start'), or at the doc's position `caret`.
+ */
 function editCell(wrap, r, c, caret = 'end') {
   const box = wrap.pjEdit?.box ?? makeBox(wrap);
   const table = tableOf(wrap);
-  wrap.pjEdit = { r, c, box, pads: padsOf(wrap.pjView.state, table?.rows[r]?.cells[c]) };
+  const cell = table?.rows[r]?.cells[c];
+  wrap.pjEdit = { r, c, box, pads: padsOf(wrap.pjView.state, cell) };
   refresh(wrap);
   box.focus();
-  const at = caret === 'start' ? 0 : box.value.length;
+  const at = caret === 'start' ? 0
+    : typeof caret === 'number' && cell ? Math.max(0, Math.min(caret - cell.from - wrap.pjEdit.pads.lead.length, box.value.length))
+    : box.value.length;
   box.setSelectionRange(at, at);
   box.scrollIntoView({ block: 'nearest' });
 }

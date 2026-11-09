@@ -420,6 +420,28 @@ test('grid: typing in a cell types into its text only, a | escaped, the spaces a
   assert.deepEqual(await errors(), []);
 });
 
+test('grid: a click on a cell puts the caret at the character clicked, its syntax counted', async () => {
+  await at('‸Above\n\n| a | b |\n|---|---|\n| **bold** word | 2 |\n');
+  for (const [text, at, caret] of [['word', 1, 10], ['bold', 2, 4]]) {
+    await run('document.activeElement.blur()');
+    await settle(); // the cell left drawn again
+    const { x, y } = await run(`(() => {
+      const walker = document.createTreeWalker(document.querySelector('.pj-md-grid'), NodeFilter.SHOW_TEXT);
+      let node = walker.nextNode();
+      while (node && !node.data.includes(${JSON.stringify(text)})) node = walker.nextNode();
+      const range = document.createRange();
+      const i = node.data.indexOf(${JSON.stringify(text)}) + ${at};
+      range.setStart(node, i);
+      range.setEnd(node, i + 1);
+      const box = range.getBoundingClientRect();
+      return { x: box.left + 1, y: box.top + box.height / 2 };
+    })()`);
+    for (const type of ['mousePressed', 'mouseReleased']) await page.send('Input.dispatchMouseEvent', { type, x, y, button: 'left', clickCount: 1 });
+    await settle();
+    assert.deepEqual(await run('[document.activeElement.value, document.activeElement.selectionStart]'), ['**bold** word', caret], `a click on "${text}"`);
+  }
+});
+
 test('grid: Tab goes to the next cell and, past the last, adds a row; Enter goes to the cell below', async () => {
   await at(`‸${TABLE}`);
   await cell(0, 1);
