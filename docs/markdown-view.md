@@ -111,6 +111,9 @@ the plain view as source.
   Escape closes it and selects the match. Replace and Replace all are the
   person's own edit, undone with Cmd+Z. A view that cannot be edited finds
   only.
+- **Spelling** is checked as the person types, by the system's spell
+  checker: the text, not its code, URLs, HTML or front matter. A right-click
+  on a misspelt word offers its corrections. An earlier version is not checked.
 - **Right to left:** a line of Hebrew or Arabic runs the way its text starts.
 
 ### Reading

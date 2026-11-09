@@ -338,6 +338,25 @@ test('find: a match inside hidden syntax shows its line as source', async () => 
   assert.deepEqual(await shown(), ['See <a>‹[›the plan‹]›‹(›</a><a>‹plan.md›</a><a>‹)›</a> now.', ''], 'the match marked splits the link\'s span');
 });
 
+test('spelling: prose is checked; code, URLs, HTML and front matter are not', async () => {
+  const words = (text) => run(`(async () => {
+    await contract.at(${JSON.stringify(text)});
+    await new Promise((done) => setTimeout(done, 20));
+    const content = document.querySelector('.cm-content');
+    const walker = document.createTreeWalker(content, NodeFilter.SHOW_TEXT);
+    const checked = [];
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      if (node.parentElement.closest('[spellcheck]').spellcheck) checked.push(node.data);
+    }
+    return checked.join(' ').match(/[a-z]+/g) ?? [];
+  })()`);
+  const fm = '---\nfm: one\n---\n';
+  const code = '\n```js\nblock\n```\n';
+  assert.deepEqual(await words(`${fm}\n‸prose \`code\` [link](https://url.example) <https://auto.example> <kbd>key</kbd> ![alt](img.png)\n${code}`), ['prose', 'link', 'key']);
+  assert.deepEqual(await words(`${fm}\nprose [link][ref]\n\n[ref]: https://url.example\n${code}‸`), ['prose', 'link']);
+  assert.equal(await run(`(async () => { await contract.at('prose', { editable: false, toolbar: false }); return document.querySelector('.cm-content').spellcheck; })()`), false, 'an earlier version is not checked');
+});
+
 test('read-only: an earlier version is drawn whole wherever its selection is, and its boxes do not tick', async () => {
   const text = '# Title\n\n- [ ] task\n';
   await at(text, { editable: false, toolbar: false });

@@ -99,6 +99,7 @@ export async function createMarkdownView({
       syntaxHighlighting(codeColours),
       EditorView.lineWrapping,
       EditorView.editorAttributes.of({ class: 'pj-md' }),
+      EditorView.contentAttributes.of({ spellcheck: String(editable) }), // prose; not its code (preview.js)
       livePreview({ image, diagrams: editable }),
       paste(),
     ],

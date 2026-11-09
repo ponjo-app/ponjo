@@ -317,6 +317,8 @@ const hide = Decoration.replace({});
 const faded = Decoration.mark({ class: 'pj-md-mark' });
 const lineClass = (className) => Decoration.line({ class: className });
 const mark = (className, attributes) => Decoration.mark({ class: className, attributes });
+// Not words: code, URLs, HTML and front matter are not spell checked.
+const VERBATIM = { spellcheck: 'false' };
 
 const ancestors = (node, name) => {
   let n = 0;
@@ -385,7 +387,7 @@ function inline(state, from, to, image) {
   const withSpace = (at) => (doc.sliceString(at, at + 1) === ' ' ? at + 1 : at);
   const codeLines = (a, b) => {
     const last = doc.lineAt(b > a && doc.lineAt(b).from === b ? b - 1 : b);
-    eachLine(a, b, lineClass('pj-md-codeblock'));
+    eachLine(a, b, Decoration.line({ class: 'pj-md-codeblock', attributes: VERBATIM }));
     if (doc.lineAt(a).from >= from) add(doc.lineAt(a).from, doc.lineAt(a).from, lineClass('pj-md-codeblock-first'));
     if (last.from <= to) add(last.from, last.from, lineClass('pj-md-codeblock-last'));
   };
@@ -408,7 +410,7 @@ function inline(state, from, to, image) {
         case 'Emphasis': add(a, b, mark('pj-md-em')); return undefined;
         case 'StrongEmphasis': add(a, b, mark('pj-md-strong')); return undefined;
         case 'Strikethrough': add(a, b, mark('pj-md-strike')); return undefined;
-        case 'InlineCode': add(a, b, mark('pj-md-code')); return undefined;
+        case 'InlineCode': add(a, b, mark('pj-md-code', VERBATIM)); return undefined;
         case 'EmphasisMark': case 'StrikethroughMark': add(a, b, on(a) ? faded : hide); return undefined;
         case 'CodeMark': add(a, b, node.node.parent?.name === 'InlineCode' && !on(a) ? hide : faded); return undefined;
         case 'CodeInfo': add(a, b, faded); return undefined;
@@ -431,16 +433,17 @@ function inline(state, from, to, image) {
         }
         case 'Autolink': {
           const url = node.node.getChild('URL');
-          add(a, b, mark('pj-md-link', { 'data-href': url ? doc.sliceString(url.from, url.to) : '' }));
+          add(a, b, mark('pj-md-link', { 'data-href': url ? doc.sliceString(url.from, url.to) : '', ...VERBATIM }));
           for (const m of node.node.getChildren('LinkMark')) add(m.from, m.to, on(a) ? faded : hide);
           return false;
         }
         case 'URL':
-          if (!/^(Link|Image|LinkReference)$/.test(node.node.parent?.name)) add(a, b, mark('pj-md-link', { 'data-href': doc.sliceString(a, b) }));
+          if (/^(Link|Image|LinkReference)$/.test(node.node.parent?.name)) add(a, b, mark('', VERBATIM));
+          else add(a, b, mark('pj-md-link', { 'data-href': doc.sliceString(a, b), ...VERBATIM }));
           return undefined;
         case 'Image': {
           if (on(a, b)) {
-            add(a, b, mark('pj-md-muted'));
+            add(a, b, mark('pj-md-muted', VERBATIM));
             return false;
           }
           const url = node.node.getChild('URL');
@@ -449,7 +452,7 @@ function inline(state, from, to, image) {
           if (src) add(a, b, Decoration.replace({ widget: new Image(src, alt, image) }));
           return false;
         }
-        case 'LinkReference': add(a, b, mark('pj-md-muted')); return false;
+        case 'LinkReference': add(a, b, mark('pj-md-muted', VERBATIM)); return false;
         case 'FootnoteReference':
           add(a, b, on(a) ? faded : Decoration.replace({ widget: new Text(String(noteNumber(state, doc.sliceString(a, b))), 'pj-md-fnref') }));
           return undefined;
@@ -495,7 +498,7 @@ function inline(state, from, to, image) {
         case 'Table': eachLine(a, b, lineClass('pj-md-table-src')); return undefined;
         case 'TableDelimiter': add(a, b, faded); return undefined;
         case 'HTMLBlock': case 'CommentBlock': case 'ProcessingInstructionBlock': case 'HTMLTag': case 'Comment':
-          add(a, b, mark('pj-md-muted'));
+          add(a, b, mark('pj-md-muted', VERBATIM));
           return false;
         case 'Paragraph':
           // A backslash at a line's end is a hard break: drawn as the break alone.
@@ -504,7 +507,7 @@ function inline(state, from, to, image) {
             if (!active.has(n) && /(^|[^\\])(\\\\)*\\$/.test(line.text)) add(line.to - 1, line.to, hide);
           }
           return undefined;
-        case 'Frontmatter': eachLine(a, b, lineClass('pj-md-frontmatter')); return false;
+        case 'Frontmatter': eachLine(a, b, Decoration.line({ class: 'pj-md-frontmatter', attributes: VERBATIM })); return false;
         default: return undefined;
       }
     },
