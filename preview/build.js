@@ -24,7 +24,9 @@ if (!doc.includes('doc-stub.js') || !doc.includes('connect-src')) throw new Erro
 await writeFile(join(out, 'index.html'), doc);
 
 // preview/demo's files by path, for doc-stub.js as DEMO: its images as the
-// doc host sends them (web/api.js `image`), the rest as text.
+// doc host sends them (web/api.js `image`), the rest as text. Its
+// ponjo-docs/ are the repo's docs as they are now, without their images,
+// which would make the page megabytes.
 const IMAGES = { '.jpg': 'image/jpeg', '.png': 'image/png' };
 const demo = join(root, 'preview', 'demo');
 const DEMO = { files: {}, images: {} };
@@ -35,6 +37,9 @@ for (const entry of await readdir(demo, { recursive: true, withFileTypes: true }
   const type = IMAGES[extname(path).toLowerCase()];
   if (type) DEMO.images[path] = { type, data: (await readFile(file)).toString('base64') };
   else DEMO.files[path] = await readFile(file, 'utf8');
+}
+for (const name of await readdir(join(root, 'docs'))) {
+  if (name.endsWith('.md')) DEMO.files[`ponjo-docs/${name}`] = await readFile(join(root, 'docs', name), 'utf8');
 }
 
 const stub = (name, format, define) => build({
