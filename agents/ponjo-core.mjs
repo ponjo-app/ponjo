@@ -10,6 +10,8 @@ const MAX_LINE = 500; // characters of a line grep shows
 const MAX_LISTED = 200; // the project's files the first message lists; over that, its top folder's
 const SIDECAR = '.comments.jsonl';
 const ANY_TOOL = 'read, find, grep, comment, resolve or propose';
+const READS = ['read', 'find', 'grep'];
+const NOT_RUN = 'Not run: propose once, in a step with no read, find or grep: it ends your turn, so it comes after what you read.';
 const PATTERN = 'A JavaScript regular expression, not a glob. Case is ignored unless it has a capital letter.';
 
 // The tools, as each provider's infer gets them: { name, description, parameters (a JSON schema) }.
@@ -69,7 +71,7 @@ const TOOLS = [
   },
   {
     name: 'propose',
-    description: 'End your turn: your edits of the doc and your reply. Each edit replaces `old`, quoted exactly from the doc and found there once, with `new`; no other file can change, and comments are the comment tool\'s. `reply` is what you print, your answer in this thread, and may be empty. One bad edit sends the whole proposal back, saying what to fix.',
+    description: 'End your turn, once you have read what you need: your edits of the doc and your reply, all in one call. Each edit replaces `old`, quoted exactly from the doc and found there once, with `new`; no other file can change, and comments are the comment tool\'s. `reply` is what you print, your answer in this thread, and may be empty. One bad edit sends the whole proposal back, saying what to fix.',
     parameters: {
       type: 'object',
       properties: {
@@ -96,7 +98,7 @@ const TOOLS = [
  *
  * The messages are in one form for every provider: { role: 'user', content },
  * { role: 'assistant', calls, sent }, and { role: 'tool', id, content }, a
- * call's result. Each call of a step runs, in order.
+ * call's result. Each call of a step runs, in order, but a propose last.
  */
 export async function turn({ prompt, doc, sidecar, thread }, { infer, readFile, resolve = (path) => path }) {
   const files = await listing(readFile, [doc, sidecar]);
@@ -107,11 +109,18 @@ export async function turn({ prompt, doc, sidecar, thread }, { infer, readFile, 
     const { calls, text, sent } = await infer(messages, TOOLS);
     messages.push({ role: 'assistant', calls, sent });
     if (!calls.length) return { edits: added(), reply: text.trim() }; // an answer without a call, as any agent's
-    for (const call of calls) {
-      const result = await use(call, { doc, sidecar, thread, comments, added, readFile, resolve });
+    // A propose ends the turn: it runs after the step's other calls, and only
+    // alone and in a step that reads nothing, since it was written before
+    // the model saw what the reads return.
+    const ends = calls.filter((call) => call.name === 'propose');
+    const runs = ends.length === 1 && !calls.some((call) => READS.includes(call.name));
+    const results = new Map();
+    for (const call of [...calls.filter((c) => !ends.includes(c)), ...ends]) {
+      const result = ends.includes(call) && !runs ? NOT_RUN : await use(call, { doc, sidecar, thread, comments, added, readFile, resolve });
       if (typeof result !== 'string') return result;
-      messages.push({ role: 'tool', id: call.id, content: result });
+      results.set(call, result);
     }
+    for (const call of calls) messages.push({ role: 'tool', id: call.id, content: results.get(call) });
   }
   throw new Error(`No proposal in ${STEPS} steps.`);
 }

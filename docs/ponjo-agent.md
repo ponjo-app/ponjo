@@ -113,7 +113,10 @@ is taken back and the proposal sent back, saying to comment again.
 **`propose({ edits: [{ old, new }], reply })`** ends the turn. The edits
 change the doc only: `old` must be found in it exactly once. One bad edit
 sends the whole proposal back, saying what to fix. `reply` is printed, and
-may be empty.
+may be empty. It runs after the other calls of its step, so a comment sent
+with it is in. In a step that also reads, or with another `propose`, it is
+not run, and says so: it was written before the model saw what the reads
+return.
 
 ## The loop
 
@@ -121,7 +124,8 @@ may be empty.
 step(messages, budget):
   calls = infer(messages, tools)
   if there are none: return the comments, and its text as the reply
-  run each call in order; at a valid propose: return it, with the comments
+  run each call in order, a propose last, and only one in a step with no
+    read, find or grep; a valid one: return it, with the comments
   if budget is 0: fail
   return step(messages + calls + their results, budget - 1)
 ```

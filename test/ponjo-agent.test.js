@@ -59,7 +59,8 @@ test('a turn reads the doc by line number, comments, resolves and proposes an ed
   const { doc, sidecar } = await copies();
   const infer = fake(
     calling(['read', { path: doc, lines: [8, 8] }]),
-    calling(['comment', { on: '', body: 'Is week one too soon?' }], ['comment', { on: 'cannot handle', body: 'Measured?' }], ['resolve', {}], ['resolve', {}], ['propose', { edits: [{ old: 'extra load', new: 'extra peak load' }], reply: 'Peak load is the risk.' }]),
+    calling(['comment', { on: '', body: 'Is week one too soon?' }], ['comment', { on: 'cannot handle', body: 'Measured?' }], ['resolve', {}], ['resolve', {}]),
+    calling(['propose', { edits: [{ old: 'extra load', new: 'extra peak load' }], reply: 'Peak load is the risk.' }]),
   );
   assert.deepEqual(await turn({ prompt: 'the prompt', doc, sidecar, thread: 'c_asked' }, { infer, readFile: seen({ doc, sidecar }) }), {
     edits: [{ old: 'extra load', new: 'extra peak load', path: doc }, { path: sidecar, old: '', new: '{"body":"Is week one too soon?"}\n{"anchor":{"exact":"cannot handle"},"body":"Measured?"}\n{"thread":"c_asked","resolved":true}' }],
@@ -127,6 +128,23 @@ test('a comment\'s text is found as the app finds it: one table of cases, run on
     const [comment] = appendedComments(HEADER, after, { text: decodeText(Buffer.from(text)).text, by: {}, at: '', threads: new Set(), own: '' }).comments;
     assert.equal(comment.anchor !== null, anchored, `the app: ${why}`);
   }
+});
+
+test('a propose runs after the other calls of its step, and not with a read or another propose', async () => {
+  const { doc, sidecar } = await copies();
+  const edit = { edits: [{ old: 'week one', new: 'week two' }], reply: 'Moved it.' };
+  const infer = fake(
+    calling(['read', { path: doc, lines: [1, 1] }], ['propose', edit]),
+    calling(['propose', edit], ['propose', edit]),
+    calling(['propose', edit], ['comment', { on: '', body: 'Two weeks?' }], ['resolve', {}]),
+  );
+  assert.deepEqual(await turn({ prompt: 'p', doc, sidecar, thread: 'c_asked' }, { infer, readFile: seen({ doc, sidecar }) }), {
+    edits: [{ ...edit.edits[0], path: doc }, { path: sidecar, old: '', new: '{"body":"Two weeks?"}\n{"thread":"c_asked","resolved":true}' }],
+    reply: 'Moved it.',
+  }, 'the comment and resolve after it are in');
+  const notRun = 'Not run: propose once, in a step with no read, find or grep: it ends your turn, so it comes after what you read.';
+  assert.deepEqual(results(infer.messages), ['1\t# Q4 Launch Plan', notRun, notRun, notRun], 'the read runs; each result in the order of its call');
+  assert.equal(infer.steps, 3);
 });
 
 test('an answer without a tool call is the reply, with no edits', async () => {
