@@ -133,8 +133,8 @@ that fails before the fix.
   toolbar's state at the caret. And a fuzz from three fixed seeds: random
   docs of Markdown pieces, random typing, keys, tools, clicks and focus
   changes, after each of which nothing was thrown, the focus changed no
-  text, a click lands at the character clicked, and the caret's line shows
-  its source.
+  text, a click lands at the character clicked, and the caret is never in
+  hidden syntax.
 - **Layer 2** runs a real DocService on temp files with 1 to 4 clients
   (`web/client.js`), each on a view with a caret where it last typed, over
   a fake line that can delay, drop the line (calls fail `offline`), lose an

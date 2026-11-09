@@ -609,3 +609,13 @@ test('a person is shown by the name in their latest comment', async () => {
     assert.deepEqual((await state()).people, [{ id: 'u_frank001', name: 'Frank' }]);
   }, { sidecar: `{"comments":3}\n${line(old)}\n${line(later)}\n` });
 });
+
+test('an image pasted into the doc is written beside it by the owner alone', async () => {
+  await withDoc(async ({ doc, docPath }) => {
+    const owner = await doc.owner();
+    const image = { name: 'shot.png', type: 'image/png', data: Buffer.from([137, 80, 78, 71]).toString('base64') };
+    assert.deepEqual(await doc.call('saveImage', image, owner), { src: 'assets/shot.png' });
+    assert.deepEqual([...await readFile(join(dirname(docPath), 'assets', 'shot.png'))], [137, 80, 78, 71]);
+    await assert.rejects(doc.call('saveImage', image, { ...owner, level: 'write' }), refused('forbidden'), 'a teammate adds no file to the owner\'s folder');
+  });
+});

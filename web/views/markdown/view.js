@@ -18,6 +18,7 @@ import { createChrome } from './chrome.js';
 import { linkTarget, livePreview } from './preview.js';
 import { footnotes, singleTilde } from './syntax.js';
 import { paste } from './paste.js';
+import { pairs } from './pairs.js';
 
 // Colour for code in code blocks; Markdown's own spans are the preview's.
 const codeColours = HighlightStyle.define([
@@ -57,6 +58,7 @@ const PREFIXES = /^(\s*(#{1,6} |> ?|[-*+] \[[ xX]\] |[-*+] |\d+[.)] ))*/;
  * @param {{ stage: HTMLElement, text: string, editable?: boolean, onChange?: () => void, onEdit?: () => void,
  *           onMarkClick?: (id: string) => void, onLayout?: () => void,
  *           toolbar?: HTMLElement, onComment?: () => void, image?: (src: string) => Promise<string | null>,
+           saveImage?: ((image: { name: string, type: string, data: string }) => Promise<string>) | null,
  *           files?: () => { paths: string[], current: string } | null,
  *           settings?: object, saveSettings?: (patch: object) => void }} options
  */
@@ -70,11 +72,13 @@ const PREFIXES = /^(\s*(#{1,6} |> ?|[-*+] \[[ xX]\] |[-*+] |\d+[.)] ))*/;
 // follows the view's `settings` (web/views/markdown/index.js) and changes
 // them through `saveSettings` (the focus mode shortcut).
 // An image at a path, not on the web, shows what `image` gives for its `src`
-// as written: a URL the page may show, or null for none. `files` says the
+// as written: a URL the page may show, or null for none. `saveImage(image)`,
+// given, writes an image pasted or dropped in ({ name, type, data }, data
+// base64) beside the doc and gives the path to link it by. `files` says the
 // project's files and the doc's path in it, for the link popover to offer.
 export async function createMarkdownView({
   stage, text, editable = true, onChange, onEdit, onMarkClick, onLayout, toolbar = null, onComment = () => {},
-  image = async () => null, files = () => null,
+  image = async () => null, saveImage = null, files = () => null,
   settings = null, saveSettings = () => {},
 }) {
   const host = stage.querySelector('.pj-editor');
@@ -87,6 +91,16 @@ export async function createMarkdownView({
     { key: 'Mod-e', run: () => run('code') },
     { key: 'Mod-Shift-x', run: () => run('strike') },
     { key: 'Mod-k', run: () => Boolean(chrome?.link()) },
+    // The block styles, as Google Docs keys them (Mod+digit is the browser's tabs).
+    { key: 'Mod-Alt-0', run: () => run('paragraph') },
+    { key: 'Mod-Alt-1', run: () => run('h1') },
+    { key: 'Mod-Alt-2', run: () => run('h2') },
+    { key: 'Mod-Alt-3', run: () => run('h3') },
+    { key: 'Mod-Alt-q', run: () => run('quote') },
+    { key: 'Mod-Alt-c', run: () => run('codeBlock') },
+    { key: 'Mod-Shift-7', run: () => run('numbers') },
+    { key: 'Mod-Shift-8', run: () => run('bullets') },
+    { key: 'Mod-Shift-9', run: () => run('tasks') },
     { key: 'Tab', run: () => tab(1) },
     { key: 'Shift-Tab', run: () => tab(-1) },
   ];
@@ -99,8 +113,10 @@ export async function createMarkdownView({
       syntaxHighlighting(codeColours),
       EditorView.lineWrapping,
       EditorView.editorAttributes.of({ class: 'pj-md' }),
-      livePreview({ image, diagrams: editable }),
-      paste(),
+      EditorView.contentAttributes.of({ spellcheck: String(editable) }), // prose; not its code (preview.js)
+      livePreview({ image, diagrams: editable, pickLanguage: (at, where) => chrome?.pickLanguage(at, where) }),
+      paste(saveImage),
+      pairs(),
     ],
     onUpdate: () => chrome?.update(),
   });
@@ -430,6 +446,17 @@ export async function createMarkdownView({
     view.focus();
   }
 
+  /** Make the first word of the info string on the fence line at `at` `tag` ('' none; null: as it is); the focus goes back to the text. */
+  function setLanguage(at, tag) {
+    const line = view.state.doc.lineAt(at);
+    const [, fence, space, word] = /^(\s*(?:`{3,}|~{3,}))(\s*)(\S*)/.exec(line.text) ?? [];
+    if (editable && fence && tag !== null && tag !== word) {
+      const from = line.from + fence.length + space.length;
+      view.dispatch({ changes: { from, to: from + word.length, insert: tag }, userEvent: 'input.format' });
+    }
+    view.focus();
+  }
+
   /** Viewport rectangle of the held link, or null when none is held. */
   const linkRect = () => (linkHeld ? rect(linkHeld.from, linkHeld.to) : null);
 
@@ -503,7 +530,7 @@ export async function createMarkdownView({
   if (toolbar) {
     chrome = createChrome({
       run, formatState, getText: readerText, selection: editor.selection, headings, scrollToHeading, scrollToAnchor,
-      selectionRect, beginLink, endLink, linkRect, caretLink, tops: editor.tops,
+      selectionRect, beginLink, endLink, linkRect, caretLink, setLanguage, tops: editor.tops,
     }, { toolbar, stage, host, onComment, files, settings, saveSettings, editable });
   }
 

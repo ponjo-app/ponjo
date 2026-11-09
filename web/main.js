@@ -481,6 +481,7 @@ function makeView(chosen, text) {
     },
     onLayout: () => margin.layout(),
     image: api.image,
+    saveImage: level === 'owner' ? api.saveImage : null, // a teammate's page adds no file to the owner's folder
     files: () => projectFiles,
     editable: chosen.editable && !reading(),
     color: chosen.color,

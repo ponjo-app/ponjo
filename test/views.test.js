@@ -600,7 +600,7 @@ test('A5: markdown view: front matter shows as source, which nothing formats, an
   assert.equal(await getText(), text.replace('Plan\ntags', 'Plans\ntags'));
 });
 
-test('markdown view: after front matter, a table is drawn and the outline lists the headings; with the caret in the table, it is its source', async () => {
+test('markdown view: after front matter, a table is drawn and the outline lists the headings; a click on a cell edits its text in place', async () => {
   await make('markdown', '---\ntitle: Plan\n---\n\n# Plan\n\n| A | B |\n| --- | --- |\n| **1** | 2 |\n\n## Next\n', { toolbar: true });
   await waitFor(() => run(`document.querySelectorAll('.pj-outline-list button').length === 2`), 2000, 'the outline');
   assert.deepEqual(await run(`[...document.querySelectorAll('.pj-outline-list button')].map((b) => b.textContent)`), ['Plan', 'Next']);
@@ -610,8 +610,9 @@ test('markdown view: after front matter, a table is drawn and the outline lists 
     return { x: box.left + box.width / 2, y: box.top + box.height / 2 };
   })()`);
   for (const type of ['mousePressed', 'mouseReleased']) await page.send('Input.dispatchMouseEvent', { type, x, y, button: 'left', clickCount: 1 });
-  await waitFor(() => run(`document.querySelectorAll('.pj-md-table-src').length === 3`), 2000, 'the table\'s source');
-  assert.equal(await run(`document.querySelectorAll('.pj-md-table').length`), 0);
+  await waitFor(() => run(`document.activeElement.matches('.pj-md-cell')`), 2000, 'the cell edited');
+  assert.equal(await run('document.activeElement.value'), '**1**');
+  assert.equal(await run(`document.querySelectorAll('.pj-md-table-src').length`), 0, 'the table still drawn');
 });
 
 test('markdown view: an image at a path shows what `image` gives for it; one on the web, as it is', async () => {

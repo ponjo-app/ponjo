@@ -6,7 +6,7 @@
 // of either may start with `.`. Anything else is as if it were not there.
 
 import { spawn } from 'node:child_process';
-import { lstat, open, readFile, readdir, realpath, stat } from 'node:fs/promises';
+import { lstat, mkdir, open, readFile, readdir, realpath, stat } from 'node:fs/promises';
 import { dirname, extname, isAbsolute, join, relative, resolve as resolvePath, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { matches, searchPattern } from '../core/search.js';
@@ -34,6 +34,38 @@ const HIT_CONTEXT = 12; // the sidebar shows about 30 characters
  * project `root` (null for a single doc), from the project's top when it
  * starts with `/`, as GitHub resolves links in a repo.
  */
+const badImage = (message) => Object.assign(new Error(message), { code: 'bad_input' });
+
+/**
+ * Write an image pasted or dropped into a doc, `data` base64 of `type`, in
+ * the `assets` folder beside it (`dir`, the doc's folder), under `name`
+ * made safe or a name of its own, never over a file there: the path to
+ * write in the doc, relative to it.
+ */
+export async function saveImage(dir, { name, type, data } = {}) {
+  const ext = Object.keys(IMAGE_TYPES).find((e) => IMAGE_TYPES[e] === type && e !== '.jpeg');
+  if (!ext || typeof data !== 'string') throw badImage('not an image the doc can show');
+  const bytes = Buffer.from(data, 'base64');
+  if (bytes.length > MAX_IMAGE_BYTES) throw badImage('the image is over 5 MB, more than a doc shows');
+  const stem = String(name ?? '').replace(/\.[^.]*$/, '').normalize('NFC').replace(/[^\p{L}\p{N}_-]+/gu, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'image';
+  const assets = join(dir, 'assets');
+  await mkdir(assets, { recursive: true });
+  for (let n = 1; ; n++) {
+    const file = `${stem}${n > 1 ? `-${n}` : ''}${ext}`;
+    try {
+      const handle = await open(join(assets, file), 'wx');
+      try {
+        await handle.writeFile(bytes);
+      } finally {
+        await handle.close();
+      }
+      return `assets/${file}`;
+    } catch (error) {
+      if (error.code !== 'EEXIST') throw error;
+    }
+  }
+}
+
 export function linkURL(href, docPath, root) {
   if (root && href.startsWith('/')) return new URL(`.${href}`, pathToFileURL(join(root, sep)));
   return new URL(href, pathToFileURL(docPath));

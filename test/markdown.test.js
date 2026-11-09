@@ -11,6 +11,7 @@ import { waitFor } from '../scripts/devtools.js';
 import { openViews } from './views/harness.js';
 
 const MOD = process.platform === 'darwin' ? 4 : 2; // Meta : Ctrl
+const ALT = 1;
 const SHIFT = 8;
 
 let app;
@@ -41,6 +42,11 @@ async function press(key, modifiers = 0) {
   if (text && !modifiers) await page.send('Input.dispatchKeyEvent', { type: 'char', key, text, unmodifiedText: text });
   await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key, code: key.length === 1 ? `Key${key.toUpperCase()}` : key, windowsVirtualKeyCode: code, modifiers });
 }
+// A key with modifiers as a keyboard sends it: `key` what it types (`&` for
+// Shift+7), `keyCode` the key's own.
+async function chord(key, keyCode, modifiers) {
+  for (const type of ['rawKeyDown', 'keyUp']) await page.send('Input.dispatchKeyEvent', { type, key, windowsVirtualKeyCode: keyCode, modifiers });
+}
 const tool = (command) => run(`contract.tool(${JSON.stringify(command)})`);
 // What the lines show, a line a string: [classes] {style} text.
 async function shown() {
@@ -52,40 +58,45 @@ async function shown() {
 
 // [name, source, shown with the selection away (as a doc opens), shown with the caret at `on` (an offset)]
 const DRAWN = [
-  ['an ATX heading', '# Title\n', ['[h h1] Title', ''], 0, ['[h h1] ‹#› Title', '']],
-  ['a level 6 heading', '###### Six\n', ['[h h6] Six', ''], 0, ['[h h6] ‹######› Six', '']],
+  ['an ATX heading', '# Title\n', ['[h h1] Title', ''], 0, ['[h h1] ‹# ›Title', '']],
+  ['a level 6 heading', '###### Six\n', ['[h h6] Six', ''], 0, ['[h h6] ‹###### ›Six', '']],
   ['a setext heading', 'Title\n===\n', ['[h h1] Title', '‹===›', ''], 0, ['[h h1] Title', '‹===›', '']],
   ['an empty heading', '#\n', ['[h h1] ', ''], 0, ['[h h1] ‹#›', '']],
   ['bold, italic, strikethrough, code', '**b** *i* ~~s~~ ~t~ `c`\n', ['<b>b</b> <i>i</i> <s>s</s> <s>t</s> <c>c</c>', ''], 0,
-    ['<b>‹**›b‹**›</b> <i>‹*›i‹*›</i> <s>‹~~›s‹~~›</s> <s>‹~›t‹~›</s> <c>‹`›c‹`›</c>', '']],
-  ['underscores', '__b__ _i_\n', ['<b>b</b> <i>i</i>', ''], 0, ['<b>‹__›b‹__›</b> <i>‹_›i‹_›</i>', '']],
-  ['an escape', '5 \\* 3\n', ['5 * 3', ''], 0, ['5 \\* 3', '']],
-  ['entities', '&copy; &#8594;\n', ['⟨©⟩ ⟨→⟩', ''], 0, ['‹&copy;› ‹&#8594;›', '']],
-  ['an inline link', 'See [the plan](plan.md "Plan").\n', ['See <a>the plan</a>.', ''], 0, ['See <a>‹[›the plan‹]›‹(›‹plan.md› ‹"Plan"›‹)›</a>.', '']],
+    ['<b>‹**›b‹**›</b> <i>i</i> <s>s</s> <s>t</s> <c>c</c>', '']],
+  ['code at the caret, only it', '**b** `c`\n', ['<b>b</b> <c>c</c>', ''], 7, ['<b>b</b> <c>‹`›c‹`›</c>', '']],
+  ['underscores', '__b__ _i_\n', ['<b>b</b> <i>i</i>', ''], 0, ['<b>‹__›b‹__›</b> <i>i</i>', '']],
+  ['an escape', '5 \\* 3\n', ['5 * 3', ''], 2, ['5 \\* 3', '']],
+  ['entities', '&copy; &#8594;\n', ['⟨©⟩ ⟨→⟩', ''], 0, ['‹&copy;› ⟨→⟩', '']],
+  ['an inline link', 'See [the plan](plan.md "Plan").\n', ['See <a>the plan</a>.', ''], 4, ['See <a>‹[›the plan‹]›‹(›‹plan.md› ‹"Plan"›‹)›</a>.', '']],
   ['a reference link and its definition', '[docs][d] and [d]\n\n[d]: https://example.com\n', ['<a>docs</a> and <a>d</a>', '', '<m>[d]: https://example.com</m>', ''], null, null],
   ['a [text] no definition names', 'Just [text] here.\n', ['Just [text] here.', ''], null, null],
   ['autolinks', '<https://a.b> www.c.d e@f.gh\n', ['<a>https://a.b</a> <a>www.c.d</a> <a>e@f.gh</a>', ''], 0, ['<a>‹<›https://a.b‹>›</a> <a>www.c.d</a> <a>e@f.gh</a>', '']],
   ['an image', '![a cat](cat.png)\n', ['⟨img:a cat⟩', ''], 0, ['<m>![a cat](cat.png)</m>', '']],
   ['bullet lists, nested', '- a\n  - b\n* c\n', ['{padding-left: 1.5em; text-indent: -1.5em;} ⟨•⟩a', '{padding-left: 3em; text-indent: -1.5em;} ⟨•⟩b', '{padding-left: 1.5em; text-indent: -1.5em;} ⟨•⟩c', ''], 0,
-    ['- a', '{padding-left: 3em; text-indent: -1.5em;} ⟨•⟩b', '{padding-left: 1.5em; text-indent: -1.5em;} ⟨•⟩c', '']],
+    ['{padding-left: 1.5em; text-indent: -1.5em;} - a', '{padding-left: 3em; text-indent: -1.5em;} ⟨•⟩b', '{padding-left: 1.5em; text-indent: -1.5em;} ⟨•⟩c', '']],
   ['ordered lists', '1. a\n2. b\n\n7) c\n', ['{padding-left: 1.5em; text-indent: -1.5em;} ⟨1.⟩a', '{padding-left: 1.5em; text-indent: -1.5em;} ⟨2.⟩b', '', '{padding-left: 1.5em; text-indent: -1.5em;} ⟨7)⟩c', ''], null, null],
-  ['a list item over two lines', '- one\n  more\n', ['{padding-left: 1.5em; text-indent: -1.5em;} ⟨•⟩one', '{padding-left: 1.5em; text-indent: 0em;} more', ''], null, null],
+  ['a list item over two lines', '- one\n  more\n', ['{padding-left: 1.5em; text-indent: -1.5em;} ⟨•⟩one⟨ ⟩more', ''], 2,
+    ['{padding-left: 1.5em; text-indent: -1.5em;} - one', '{padding-left: 1.5em; text-indent: 0em;} more', '']],
+  ['a paragraph wrapped by hand', 'one \ntwo\nthree\n\nfour\n', ['one⟨ ⟩two⟨ ⟩three', '', 'four', ''], 0, ['one ', 'two', 'three', '', 'four', '']],
+  ['a quote wrapped by hand', '> one\n> two\n', ['[quote quote-d1] one⟨ ⟩two', ''], null, null],
   ['task lists', '- [ ] a\n- [x] b\n', ['{padding-left: 1.5em; text-indent: -1.5em;} ⟨☐⟩a', '{padding-left: 1.5em; text-indent: -1.5em;} ⟨☑⟩<d>b</d>', ''], 0,
-    ['- ⟨☐⟩ a', '{padding-left: 1.5em; text-indent: -1.5em;} ⟨☑⟩<d>b</d>', '']],
-  ['quotes, nested', '> q\n>\n> > n\n', ['[quote quote-d1] q', '[quote quote-d1] ', '[quote quote-d1 quote-d2] n', ''], 0, ['[quote quote-d1] ‹>› q', '[quote quote-d1] ', '[quote quote-d1 quote-d2] n', '']],
+    ['{padding-left: 1.5em; text-indent: -1.5em;} ‹- ›⟨☐⟩a', '{padding-left: 1.5em; text-indent: -1.5em;} ⟨☑⟩<d>b</d>', '']],
+  ['quotes, nested', '> q\n>\n> > n\n', ['[quote quote-d1] q', '[quote quote-d1] ', '[quote quote-d1 quote-d2] n', ''], 0, ['[quote quote-d1] ‹> ›q', '[quote quote-d1] ', '[quote quote-d1 quote-d2] n', '']],
   ['a quote in a list item', '- a\n  > q\n', ['{padding-left: 1.5em; text-indent: -1.5em;} ⟨•⟩a', '[quote quote-d1] {--pj-indent: 1.5em;} q', ''], null, null],
-  ['a fenced code block', '```js\nlet a\n```\n', ['[codeblock codeblock-first fence] ', '[codeblock] let a', '[codeblock codeblock-last fence] ', ''], 6,
+  ['a fenced code block', '```js\nlet a\n```\n', ['[codeblock codeblock-first fence] ⟨JavaScript⟩', '[codeblock] let a', '[codeblock codeblock-last fence] ', ''], 6,
     ['[codeblock codeblock-first] ‹```›‹js›', '[codeblock] let a', '[codeblock codeblock-last] ‹```›', '']],
-  ['a tilde fence', '~~~\nx\n~~~\n', ['[codeblock codeblock-first fence] ', '[codeblock] x', '[codeblock codeblock-last fence] ', ''], null, null],
-  ['an unclosed fence', '```\nopen\n', ['[codeblock codeblock-first fence] ', '[codeblock codeblock-last] open', ''], null, null],
+  ['a tilde fence', '~~~\nx\n~~~\n', ['[codeblock codeblock-first fence] ⟨Plain text⟩', '[codeblock] x', '[codeblock codeblock-last fence] ', ''], null, null],
+  ['an unclosed fence', '```\nopen\n', ['[codeblock codeblock-first fence] ⟨Plain text⟩', '[codeblock codeblock-last] open', ''], null, null],
   ['an indented code block', 'a\n\n    code\n', ['a', '', '[codeblock codeblock-first codeblock-last]     code', ''], null, null],
   ['rules', 'a\n\n---\n\n***\n', ['a', '', '⟨—⟩', '', '⟨—⟩', ''], 3, ['a', '', '‹---›', '', '⟨—⟩', '']],
   ['a table', '| a | b |\n|---|:-:|\n| `x` |  |\n| y\\|z | **w** |\n', ['[block] [table a|b / x| / y|z|w]', ''], 2,
-    ['[table-src] ‹|› a ‹|› b ‹|›', '[table-src] ‹|---|:-:|›', '[table-src] ‹|› <c>‹`›x‹`›</c> ‹|›  ‹|›', '[table-src] ‹|› y\\|z ‹|› <b>‹**›w‹**›</b> ‹|›', '']],
+    ['[table-src] ‹|› a ‹|› b ‹|›', '[table-src] ‹|---|:-:|›', '[table-src] ‹|› <c>x</c> ‹|›  ‹|›', '[table-src] ‹|› y|z ‹|› <b>w</b> ‹|›', '']],
   ['a table without outer pipes', 'a | b\n--|--\n1 | 2\n', ['[block] [table a|b / 1|2]', ''], null, null],
+  ['a table with an empty header row', '| | |\n|---|---|\n| 1 | 2 |\n', ['[block] [table 1|2]', ''], null, null],
   ['front matter', '---\ntitle: x\n---\n\n# H\n', ['[frontmatter] ---', '[frontmatter] title: x', '[frontmatter] ---', '', '[h h1] H', ''], null, null],
-  ['footnotes, numbered by first use', 'a[^n] b[^m]\n\n[^m]: M\n[^n]: N\n', ['a⟨1⟩ b⟨2⟩', '', '[footnote] ⟨2.⟩M', '[footnote] ⟨1.⟩N', ''], 0, ['a‹[^n]› b‹[^m]›', '', '[footnote] ⟨2.⟩M', '[footnote] ⟨1.⟩N', '']],
-  ['hard breaks', 'a\\\nb  \nc\n', ['a', 'b  ', 'c', ''], 0, ['a\\', 'b  ', 'c', '']],
+  ['footnotes, numbered by first use', 'a[^n] b[^m]\n\n[^m]: M\n[^n]: N\n', ['a⟨1⟩ b⟨2⟩', '', '[footnote] ⟨2.⟩M', '[footnote] ⟨1.⟩N', ''], 1, ['a‹[^n]› b⟨2⟩', '', '[footnote] ⟨2.⟩M', '[footnote] ⟨1.⟩N', '']],
+  ['hard breaks', 'a\\\nb  \nc\n', ['a', 'b  ', 'c', ''], 1, ['a\\', 'b  ', 'c', '']],
   ['HTML', '<details>\nx\n</details>\n\nan <b>inline</b> tag\n', ['<m><details></m>', '<m>x</m>', '<m></details></m>', '', 'an <m><b></m>inline<m></b></m> tag', ''], null, null],
   ['a link holding emphasis', '[**b** c](u)\n', ['<a><b>b</b> c</a>', ''], null, null],
   ['an empty doc', '', [''], 0, ['']],
@@ -188,6 +199,54 @@ const EDITS = [
   ['nothing makes front matter a heading', '---\nti‸tle: x\n---\n', ['tool', 'h1'], '---\nti‸tle: x\n---\n'],
   ['typing a closing ** makes bold', 'a **b‸', '**', 'a **b**‸'],
 ];
+
+// [name, before, what is typed (a key's name, or a character a time), after]: pairs typed as one.
+const PAIRS = [
+  ['( types its )', 'a ‸', ['('], 'a (‸)'],
+  ['[ types its ]', 'a ‸', ['['], 'a [‸]'],
+  ['` types its `', 'a ‸', ['`'], 'a `‸`'],
+  ['typing the closer steps over it', 'a ‸', ['(', 'b', ')'], 'a (b)‸'],
+  ['Backspace in an empty pair takes both', 'a ‸', ['(', 'Backspace'], 'a ‸'],
+  ['a fence\'s backticks are typed as they are', '‸', ['`', '`', '`'], '```‸'],
+  ['** types its **', 'a ‸', ['*', '*'], 'a **‸**'],
+  ['bold typed whole steps over the closer', 'a ‸', ['*', '*', 'b', '*', '*', ' '], 'a **b** ‸'],
+  ['Backspace in an empty ** takes both', 'a ‸', ['*', '*', 'Backspace'], 'a ‸'],
+  ['*** is a rule', '‸', ['*', '*', '*'], '***‸'],
+  ['* and a space is a list', '‸', ['*', ' '], '* ‸'],
+  ['** in a word is typed as it is', 'a‸', ['*', '*'], 'a**‸'],
+  ['* over a selection wraps it', 'a «b» c', ['*'], 'a *«b»* c'],
+  ['* twice over a selection makes it bold', 'a «b» c', ['*', '*'], 'a **«b»** c'],
+  ['~ over a selection wraps it', '«b»', ['~'], '~«b»~'],
+  ['** in code is typed as it is', '```\nf(‸)\n```', ['*', '*'], '```\nf(**‸)\n```'],
+];
+
+for (const [name, before, keys, after] of PAIRS) {
+  test(`pairs: ${name}`, async () => {
+    await at(before);
+    for (const key of keys) await (key.length > 1 ? press(key) : type(key));
+    assert.equal(await marked(), after);
+  });
+}
+
+// [name, before, [key, keyCode, modifiers], after]: the block styles' keys.
+const KEYS = [
+  ['Mod+Alt+1 makes a heading 1', 'a‸', ['1', 49, MOD | ALT], '# a‸'],
+  ['Mod+Alt+3 makes a heading 3', 'a‸', ['3', 51, MOD | ALT], '### a‸'],
+  ['Mod+Alt+0 makes normal text', '## a‸', ['0', 48, MOD | ALT], 'a‸'],
+  ['Mod+Alt+Q makes a quote', 'a‸', ['q', 81, MOD | ALT], '> a‸'],
+  ['Mod+Alt+C makes a code block', 'a‸', ['c', 67, MOD | ALT], '```\na‸\n```'],
+  ['Mod+Shift+7 makes a numbered list', 'a‸', ['&', 55, MOD | SHIFT], '1. a‸'],
+  ['Mod+Shift+8 makes a bulleted list', 'a‸', ['*', 56, MOD | SHIFT], '- a‸'],
+  ['Mod+Shift+9 makes a task list', 'a‸', ['(', 57, MOD | SHIFT], '- [ ] a‸'],
+];
+
+for (const [name, before, keys, after] of KEYS) {
+  test(`key: ${name}`, async () => {
+    await at(before);
+    await chord(...keys);
+    assert.equal(await marked(), after);
+  });
+}
 
 for (const [name, before, what, after] of EDITS) {
   test(`edit: ${name}`, async () => {
@@ -338,6 +397,168 @@ test('find: a match inside hidden syntax shows its line as source', async () => 
   assert.deepEqual(await shown(), ['See <a>‹[›the plan‹]›‹(›</a><a>‹plan.md›</a><a>‹)›</a> now.', ''], 'the match marked splits the link\'s span');
 });
 
+// ---- a table edited as a grid (table.js) ----
+
+const cell = (r, c) => run(`(() => {
+  const rows = document.querySelectorAll('.pj-md-grid tr');
+  rows[${r}].cells[${c}].dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+})()`);
+const menu = (label) => run(`(() => {
+  document.querySelector('.pj-md-table-menu').dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+  const item = [...document.querySelectorAll('.pj-md-grid .pj-block-menu li')].find((li) => li.textContent === ${JSON.stringify(label)});
+  item.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+})()`);
+const text = () => run('view.getText()');
+const TABLE = 'Above\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\nBelow\n';
+
+test('grid: typing in a cell types into its text only, a | escaped, the spaces around it kept', async () => {
+  await at(`‸${TABLE}`);
+  await cell(1, 1);
+  await type(' x|y z');
+  assert.equal(await text(), 'Above\n\n| a | b |\n|---|---|\n| 1 | 2 x\\|y z |\n\nBelow\n');
+  assert.equal(await run(`document.activeElement.className`), 'pj-md-cell', 'the cell keeps the focus as the table is drawn again');
+  assert.deepEqual(await errors(), []);
+});
+
+test('grid: a click on a cell puts the caret at the character clicked, its syntax counted', async () => {
+  await at('‸Above\n\n| a | b |\n|---|---|\n| **bold** word | 2 |\n');
+  for (const [text, at, caret] of [['word', 1, 10], ['bold', 2, 4]]) {
+    await run('document.activeElement.blur()');
+    await settle(); // the cell left drawn again
+    const { x, y } = await run(`(() => {
+      const walker = document.createTreeWalker(document.querySelector('.pj-md-grid'), NodeFilter.SHOW_TEXT);
+      let node = walker.nextNode();
+      while (node && !node.data.includes(${JSON.stringify(text)})) node = walker.nextNode();
+      const range = document.createRange();
+      const i = node.data.indexOf(${JSON.stringify(text)}) + ${at};
+      range.setStart(node, i);
+      range.setEnd(node, i + 1);
+      const box = range.getBoundingClientRect();
+      return { x: box.left + 1, y: box.top + box.height / 2 };
+    })()`);
+    for (const type of ['mousePressed', 'mouseReleased']) await page.send('Input.dispatchMouseEvent', { type, x, y, button: 'left', clickCount: 1 });
+    await settle();
+    assert.deepEqual(await run('[document.activeElement.value, document.activeElement.selectionStart]'), ['**bold** word', caret], `a click on "${text}"`);
+  }
+});
+
+test('grid: Tab goes to the next cell and, past the last, adds a row; Enter goes to the cell below', async () => {
+  await at(`‸${TABLE}`);
+  await cell(0, 1);
+  await press('Tab');
+  await type('A');
+  await press('Tab');
+  await press('Tab');
+  await type('N');
+  assert.equal(await text(), 'Above\n\n| a | b |\n|---|---|\n| 1A | 2 |\n| N |   |\n\nBelow\n');
+  await cell(0, 0);
+  await press('Enter');
+  await type('B');
+  assert.equal((await text()).split('\n')[4], '| 1AB | 2 |');
+});
+
+test('grid: the menu adds and deletes rows and columns and aligns a column', async () => {
+  await at(`‸${TABLE}`);
+  await cell(1, 0);
+  await menu('Insert column right');
+  assert.equal(await text(), 'Above\n\n| a |   | b |\n|---| --- |---|\n| 1 |   | 2 |\n\nBelow\n');
+  await menu('Align column center');
+  assert.equal((await text()).split('\n')[3], '|---| :---: |---|');
+  await menu('Delete column');
+  await menu('Insert row above');
+  assert.equal(await text(), 'Above\n\n| a | b |\n|---|---|\n|   |   |\n| 1 | 2 |\n\nBelow\n');
+  await menu('Delete row');
+  assert.equal(await text(), `${TABLE}`);
+});
+
+test('grid: Escape and the arrows leave the table; arrow down from above edits its first cell', async () => {
+  await at(`Above‸\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\nBelow\n`);
+  await press('ArrowDown'); // to the blank line
+  await press('ArrowDown');
+  assert.equal(await run(`document.activeElement.value`), 'a');
+  await press('ArrowDown');
+  await press('ArrowDown');
+  assert.equal(await marked(), 'Above\n\n| a | b |\n|---|---|\n| 1 | 2 |\n‸\nBelow\n', 'down from the last row, the line below');
+  assert.equal(await run(`document.querySelectorAll('.pj-md-grid').length`), 1, 'the table still drawn');
+  await cell(1, 1);
+  await press('Escape');
+  assert.equal(await marked(), 'Above\n\n| a | b |\n|---|---|\n| 1 | 2 |\n‸\nBelow\n');
+});
+
+test('grid: Cmd+Z in a cell takes back its typing; a header with no text shows while the table is edited', async () => {
+  await at('a‸\n\n| | |\n|---|---|\n| 1 | 2 |\n');
+  assert.equal(await run(`document.querySelectorAll('.pj-md-grid tr').length`), 1);
+  await cell(0, 0); // the first row drawn: the one under the header
+  assert.equal(await run(`document.querySelectorAll('.pj-md-grid tr').length`), 2, 'the header, to type in');
+  await press('ArrowUp');
+  await type('H');
+  assert.equal(await text(), 'a\n\n| H | |\n|---|---|\n| 1 | 2 |\n');
+  await press('z', MOD);
+  assert.equal(await text(), 'a\n\n| | |\n|---|---|\n| 1 | 2 |\n');
+});
+
+test('images: one pasted with no text, or dropped, is saved beside the doc and linked; a read-only page adds none', async () => {
+  const send = (kind, where) => run(`(() => {
+    const data = new DataTransfer();
+    data.items.add(new File([new Uint8Array([137, 80, 78, 71])], 'shot.png', { type: 'image/png' }));
+    const content = document.querySelector('.cm-content');
+    const box = content.querySelector('.cm-line').getBoundingClientRect();
+    content.dispatchEvent(${JSON.stringify(kind)} === 'paste'
+      ? new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true })
+      : new DragEvent('drop', { dataTransfer: data, clientX: box.left + ${where}, clientY: box.top + box.height / 2, bubbles: true, cancelable: true }));
+  })()`);
+  await at('a ‸b\n');
+  await run('contract.savedImages = []');
+  await send('paste', 0);
+  await waitFor(() => run('view.getText()').then((t) => t.includes('![')), 2000, 'the image linked');
+  assert.equal(await marked(), 'a ![](assets/shot.png)‸b\n');
+  assert.deepEqual(await run('contract.savedImages.map((i) => [i.name, i.type, i.data])'), [['shot.png', 'image/png', 'iVBORw==']]);
+  await at('ab\n');
+  await send('drop', 1);
+  await waitFor(() => run('view.getText()').then((t) => t.includes('![')), 2000, 'the image linked');
+  assert.match(await run('view.getText()'), /^a?!\[\]\(assets\/shot\.png\)b?/);
+  await at('ab\n', { editable: false, toolbar: false });
+  await run('contract.savedImages = []');
+  await send('paste', 0);
+  await new Promise((done) => setTimeout(done, 100));
+  assert.deepEqual(await run('contract.savedImages'), []);
+});
+
+test('language: a code block\'s label picks its language, as found or as typed', async () => {
+  const pick = async (typed) => {
+    await run(`document.querySelector('.pj-md-lang').dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }))`);
+    await run(`(() => { const input = document.querySelector('.pj-lang input'); input.value = ${JSON.stringify(typed)}; input.dispatchEvent(new Event('input')); input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); })()`);
+    return run('view.getText()');
+  };
+  await at('a‸\n\n```js\nlet a\n```\n');
+  assert.equal(await pick('pyth'), 'a\n\n```python\nlet a\n```\n');
+  assert.equal(await pick('zig'), 'a\n\n```zig\nlet a\n```\n', 'one not found, as typed');
+  assert.equal(await pick('plain'), 'a\n\n```\nlet a\n```\n', 'Plain text takes it away');
+  await at('a‸\n\n```js\nlet a\n```\n');
+  await run(`document.querySelector('.pj-md-lang').dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }))`);
+  await run(`document.querySelector('.pj-lang input').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
+  assert.equal(await marked(), 'a‸\n\n```js\nlet a\n```\n', 'Escape cancels, the caret where it was');
+});
+
+test('spelling: prose is checked; code, URLs, HTML and front matter are not', async () => {
+  const words = (text) => run(`(async () => {
+    await contract.at(${JSON.stringify(text)});
+    await new Promise((done) => setTimeout(done, 20));
+    const content = document.querySelector('.cm-content');
+    const walker = document.createTreeWalker(content, NodeFilter.SHOW_TEXT);
+    const checked = [];
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      if (node.parentElement.closest('[spellcheck]').spellcheck) checked.push(node.data);
+    }
+    return checked.join(' ').match(/[a-z]+/g) ?? [];
+  })()`);
+  const fm = '---\nfm: one\n---\n';
+  const code = '\n```js\nblock\n```\n';
+  assert.deepEqual(await words(`${fm}\n‸prose \`code\` [link](https://url.example) <https://auto.example> <kbd>key</kbd> ![alt](img.png)\n${code}`), ['prose', 'link', 'key']);
+  assert.deepEqual(await words(`${fm}\nprose [link][ref]\n\n[ref]: https://url.example\n${code}‸`), ['prose', 'link']);
+  assert.equal(await run(`(async () => { await contract.at('prose', { editable: false, toolbar: false }); return document.querySelector('.cm-content').spellcheck; })()`), false, 'an earlier version is not checked');
+});
+
 test('read-only: an earlier version is drawn whole wherever its selection is, and its boxes do not tick', async () => {
   const text = '# Title\n\n- [ ] task\n';
   await at(text, { editable: false, toolbar: false });
@@ -369,7 +590,7 @@ const PIECES = ['# Head', '## Sub', 'Text with **bold** and *it*', '[link](u)', 
   '```js', 'code()', '```', '| a | b |', '|---|---|', '| 1 | 2 |', '---', '![i](a.png)', 'x[^1]', '[^1]: note', '&amp;', 'a\\', '<b>h</b>', '~~s~~', '', ''];
 const TYPED = ['a', ' ', '*', '`', '#', '>', '-', '|', '[', ']', '(', ')', '\n', '~', '!'];
 
-test('invariant: random editing draws without errors, and the caret\'s line shows its source', async () => {
+test('invariant: random editing draws without errors, and the caret is never in hidden syntax', async () => {
   let seed = 0;
   const random = (n) => {
     seed = (seed * 1103515245 + 12345) % 2 ** 31;
@@ -378,7 +599,7 @@ test('invariant: random editing draws without errors, and the caret\'s line show
   for (let doc = 0; doc < 45; doc++) {
     if (doc % 15 === 0) seed = [7, 1009, 31337][doc / 15]; // three runs, each from its own seed
     const text = Array.from({ length: 6 + random(14) }, () => PIECES[random(PIECES.length)]).join('\n');
-    await at(`‸${text}`); // in the editor from the start: the caret's line is source
+    await at(`‸${text}`); // in the editor from the start
     for (let step = 0; step < 40; step++) {
       const length = await run('view.getText().length');
       const choice = random(7);
@@ -423,21 +644,21 @@ test('invariant: random editing draws without errors, and the caret\'s line show
       }
       await settle();
       assert.deepEqual(await errors(), [], `no error, doc ${doc} step ${step}`);
-      // The caret's line, drawn, is its source: no syntax hidden there.
-      const caretLine = await run(`(() => {
+      // No syntax is hidden around the caret: no hidden range holds it, but a
+      // task's box (a click ticks it) and a list line's indent (Tab sets it).
+      const hiddenAt = await run(`(() => {
         const editor = contract.editor();
         const { head } = editor.state.selection.main;
-        const line = editor.state.doc.lineAt(head);
-        const lines = contract.lines();
-        const element = editor.domAtPos(line.from).node;
-        const el = (element.nodeType === 3 ? element.parentElement : element).closest('.cm-line');
-        const index = [...document.querySelector('.cm-content').children].indexOf(el);
-        return { source: line.text, drawn: index === -1 ? null : lines[index].text };
+        let found = null;
+        for (const ranges of editor.state.facet(editor.constructor.atomicRanges)) {
+          ranges(editor).between(head, head, (from, to) => {
+            const text = editor.state.sliceDoc(from, to);
+            if (from < head && head < to && text.trim() && !/^\\[[ xX]\\] ?$/.test(text)) found = text;
+          });
+        }
+        return found;
       })()`);
-      if (caretLine.drawn === null) continue; // in a block drawn in its place: never the caret's
-      // Formatting written as tags in `lines`, and syntax faded, are the same characters; the source may hold such tags too.
-      const plain = (s) => s.replace(/<\/?[bisacmd]>|[‹›]/g, '').replace(/⟨☐⟩/g, '[ ]').replace(/⟨☑⟩/g, '[x]').toLowerCase();
-      assert.equal(plain(caretLine.drawn), plain(caretLine.source), `the caret's line shows its source, doc ${doc} step ${step}`);
+      assert.equal(hiddenAt, null, `the caret is not in hidden syntax, doc ${doc} step ${step}: ${JSON.stringify(await marked())}`);
     }
   }
 });

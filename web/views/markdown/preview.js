@@ -1,14 +1,18 @@
 // Live preview: decorations over the Markdown text, from its syntax tree.
-// Away from the lines the selection touches the syntax is hidden and blocks
-// are drawn; on them the source shows, its marks faded. Out of focus, no line
-// is being edited, so the whole doc is drawn. Nothing here changes the text.
-// Tables and diagrams are drawn in place of their lines (a state field, as
+// Syntax is hidden and blocks are drawn, but where they are being edited: a
+// span the selection touches shows its marks, faded, and the lines it
+// touches their block markers, in the margin or the bullet's box, so the
+// text does not move. Before the person is in the editor, nothing is being
+// edited, so the whole doc is drawn. Nothing here changes the text.
+// Tables (as grids, table.js) and diagrams are drawn in place of their lines (a state field, as
 // block decorations must be); everything else only for the lines on screen.
 
-import { RangeSet, StateEffect, StateField } from '@codemirror/state';
-import { Decoration, EditorView, ViewPlugin, WidgetType } from '@codemirror/view';
-import { syntaxTree } from '@codemirror/language';
+import { Prec, RangeSet, StateEffect, StateField } from '@codemirror/state';
+import { Decoration, EditorView, ViewPlugin, WidgetType, keymap } from '@codemirror/view';
+import { LanguageDescription, syntaxTree } from '@codemirror/language';
+import { languages } from '@codemirror/language-data';
 import { diagramDom, forgetDiagram } from '../../diagrams.js';
+import { TableGrid, enterTable } from './table.js';
 
 const INDENT_EM = 1.5; // one list level, and a list marker's width
 // The nodes blocks are in: the doc (its Markdown is the front matter
@@ -25,8 +29,8 @@ const engagedField = StateField.define({
   update: (engaged, tr) => engaged || Boolean(tr.selection) || tr.effects.some((e) => e.is(setFocus) && e.value),
 });
 
-// While the pointer is down, the lines being edited stay those they were
-// when it was pressed: drawn as source under it, a code block or a table
+// While the pointer is down, what is being edited stays what it was when it
+// was pressed: drawn as source under it, a code block or a table
 // takes another height and would move the text the press is selecting. They
 // follow the selection once it is let go.
 const setHeld = StateEffect.define();
@@ -38,7 +42,7 @@ const heldField = StateField.define({
 const hold = EditorView.domEventHandlers({
   mousedown(event, view) {
     if (event.button !== 0 || view.state.field(heldField)) return false;
-    view.dispatch({ effects: setHeld.of(activeLines(view.state)) });
+    view.dispatch({ effects: setHeld.of(editing(view.state)) });
     // After the editor has taken the release (it may select once more on it).
     const release = () => setTimeout(() => {
       window.removeEventListener('mouseup', release);
@@ -52,17 +56,20 @@ const hold = EditorView.domEventHandlers({
 });
 
 /**
- * The numbers of the lines the selection touches, once the person has been
- * in the editor, and every line of a table it touches: a table shows as its
- * source whole. None in a read-only view.
+ * What is being edited, once the person has been in the editor: `ranges`,
+ * the selection's, whose spans show their syntax; `lines`, the numbers of
+ * the lines it touches, whose blocks show theirs, with every line of a table
+ * it touches (a table shows as its source whole). None in a read-only view.
  */
-function activeLines(state) {
+function editing(state) {
   const held = state.field(heldField);
   if (held) return held;
   const lines = new Set();
-  if (state.readOnly || !state.field(engagedField)) return lines;
+  const ranges = [];
+  if (state.readOnly || !state.field(engagedField)) return { lines, ranges };
   const { doc } = state;
   for (const range of state.selection.ranges) {
+    ranges.push({ from: range.from, to: range.to });
     let [from, to] = [range.from, range.to];
     for (const end of [range.from, range.to]) {
       for (let node = syntaxTree(state).resolveInner(end, 1); node; node = node.parent) {
@@ -73,7 +80,7 @@ function activeLines(state) {
     }
     for (let n = doc.lineAt(from).number; n <= doc.lineAt(to).number; n++) lines.add(n);
   }
-  return lines;
+  return { lines, ranges };
 }
 
 // ---- what the text means ----
@@ -197,6 +204,39 @@ class Image extends WidgetType {
   }
 }
 
+// A fenced code block's language, at its top right: a click calls `pick` to choose another.
+class Language extends WidgetType {
+  constructor(name, at, pick) {
+    super();
+    Object.assign(this, { name, at, pick });
+  }
+
+  eq(other) {
+    return other.name === this.name && other.at === this.at;
+  }
+
+  toDOM() {
+    const button = Object.assign(document.createElement('button'), { type: 'button', className: 'pj-md-lang', textContent: this.name });
+    button.dataset.tip = 'Language';
+    button.addEventListener('mousedown', (event) => {
+      event.preventDefault(); // the caret stays out of the block
+      this.pick(this.at, button.getBoundingClientRect());
+    });
+    return button;
+  }
+
+  ignoreEvent() {
+    return true;
+  }
+}
+
+/** What a code block's info string names, as a reader would call it. */
+function languageName(info) {
+  if (!info) return 'Plain text';
+  if (info === 'mermaid') return 'Mermaid';
+  return LanguageDescription.matchLanguageName(languages, info, false)?.name ?? info;
+}
+
 // A block drawn in place of its lines; a click puts the caret at its start, showing its source.
 class Block extends WidgetType {
   constructor(key, at, render, forget = () => {}) {
@@ -230,10 +270,20 @@ class Block extends WidgetType {
 
 // ---- inline Markdown drawn as HTML: a table's cells ----
 
+const drawCell = (state, node, parent) => inlineInto(state, node, node.from, node.to, parent);
+
+// Text drawn for the doc's [from, to): it says where it came from
+// (`pjFrom`, `pjTo`), so a click on it finds its character (table.js).
+const sourced = (text, from, to = from + text.length) => Object.assign(document.createTextNode(text), { pjFrom: from, pjTo: to });
+const holding = (element, text, from, to) => {
+  element.append(sourced(text, from, to));
+  return element;
+};
+
 function inlineInto(state, node, from, to, parent) {
   let pos = from;
   const text = (a, b) => {
-    if (b > a) parent.append(state.sliceDoc(a, b));
+    if (b > a) parent.append(sourced(state.sliceDoc(a, b), a));
   };
   for (let child = node.firstChild; child; child = child.nextSibling) {
     if (child.to <= from || child.from >= to) continue;
@@ -258,7 +308,10 @@ function inlineElement(state, node) {
     case 'Strikethrough': return between('StrikethroughMark', 's');
     case 'InlineCode': {
       const marks = node.getChildren('CodeMark');
-      return Object.assign(el('code'), { textContent: state.sliceDoc(marks[0]?.to ?? node.from, marks.at(-1)?.from ?? node.to).trim() });
+      const [a, b] = [marks[0]?.to ?? node.from, marks.at(-1)?.from ?? node.to];
+      const code = state.sliceDoc(a, b);
+      const lead = code.length - code.trimStart().length;
+      return holding(el('code'), code.trim(), a + lead);
     }
     case 'Link': {
       const href = linkTarget(state, node);
@@ -269,54 +322,26 @@ function inlineElement(state, node) {
     }
     case 'Autolink': case 'URL': {
       const url = node.name === 'URL' ? node : node.getChild('URL');
-      return Object.assign(el('a'), { textContent: state.sliceDoc(url?.from ?? node.from, url?.to ?? node.to) });
+      const [a, b] = [url?.from ?? node.from, url?.to ?? node.to];
+      return holding(el('a'), state.sliceDoc(a, b), a);
     }
-    case 'Escape': return document.createTextNode(state.sliceDoc(node.from + 1, node.to));
-    case 'Entity': return document.createTextNode(decodeEntity(state.sliceDoc(node.from, node.to)));
+    case 'Escape': return sourced(state.sliceDoc(node.from + 1, node.to), node.from, node.to);
+    case 'Entity': return sourced(decodeEntity(state.sliceDoc(node.from, node.to)), node.from, node.to);
     case 'HardBreak': return el('br');
-    case 'FootnoteReference': return Object.assign(el('sup', 'pj-md-fnref'), { textContent: noteNumber(state, state.sliceDoc(node.from, node.to)) });
-    default: return Object.assign(el('span', 'pj-md-muted'), { textContent: state.sliceDoc(node.from, node.to) });
+    case 'FootnoteReference': return holding(el('sup', 'pj-md-fnref'), String(noteNumber(state, state.sliceDoc(node.from, node.to))), node.from, node.to);
+    default: return holding(el('span', 'pj-md-muted'), state.sliceDoc(node.from, node.to), node.from);
   }
-}
-
-// A table row's cells, split at its pipes: an empty cell has no node.
-function rowCells(row) {
-  const pipes = row.getChildren('TableDelimiter');
-  const bounds = [row.from, ...pipes.flatMap((p) => [p.from, p.to]), row.to];
-  const segments = [];
-  for (let i = 0; i < bounds.length; i += 2) segments.push({ from: bounds[i], to: bounds[i + 1] });
-  if (pipes[0]?.from === row.from) segments.shift();
-  if (pipes.at(-1)?.to === row.to) segments.pop();
-  const cells = row.getChildren('TableCell');
-  return segments.map((s) => cells.find((c) => c.from >= s.from && c.to <= s.to) ?? null);
-}
-
-function tableDom(state, table) {
-  const delimiter = table.getChildren('TableDelimiter')[0];
-  const align = delimiter ? state.sliceDoc(delimiter.from, delimiter.to).replace(/^\s*\||\|\s*$/g, '').split('|')
-    .map((d) => d.trim()).map((d) => (d.endsWith(':') ? (d.startsWith(':') ? 'center' : 'right') : 'left')) : [];
-  const dom = Object.assign(document.createElement('table'), { className: 'pj-md-table' });
-  for (let row = table.firstChild; row; row = row.nextSibling) {
-    if (row.name !== 'TableHeader' && row.name !== 'TableRow') continue;
-    const tr = dom.insertRow();
-    rowCells(row).forEach((cell, k) => {
-      const td = document.createElement(row.name === 'TableHeader' ? 'th' : 'td');
-      if (cell) inlineInto(state, cell, cell.from, cell.to, td);
-      td.style.textAlign = align[k] ?? 'left';
-      tr.append(td);
-    });
-  }
-  const wrap = Object.assign(document.createElement('div'), { className: 'pj-md-block' });
-  wrap.append(dom);
-  return wrap;
 }
 
 // ---- the decorations ----
 
 const hide = Decoration.replace({});
 const faded = Decoration.mark({ class: 'pj-md-mark' });
+const hang = Decoration.mark({ class: 'pj-md-mark pj-md-hang' });
 const lineClass = (className) => Decoration.line({ class: className });
 const mark = (className, attributes) => Decoration.mark({ class: className, attributes });
+// Not words: code, URLs, HTML and front matter are not spell checked.
+const VERBATIM = { spellcheck: 'false' };
 
 const ancestors = (node, name) => {
   let n = 0;
@@ -331,10 +356,19 @@ function wholeLines(doc, node) {
   return { from: first.from, to: doc.lineAt(node.to).to };
 }
 
-// Tables, and diagrams if `diagrams`, drawn in place of their lines while the selection is not on them.
+// A line ending in a hard break: a backslash (not escaped), or two spaces or more.
+const HARD_BREAK = /((^|[^\\])(\\\\)*\\| {2,})$/;
+const softBreak = new Text(' ', '');
+
+// Tables, and diagrams if `diagrams`, drawn in place of their lines while
+// the selection is not on them; and a paragraph wrapped by hand, as one
+// flowing paragraph: each soft break (a line break that is not a hard
+// one) drawn as the space it reads as, the line's trailing space and the
+// next one's indent or `>` with it. Spanning line breaks, these must be
+// the state field's.
 function blocks(state, diagrams) {
   const tree = syntaxTree(state);
-  const active = activeLines(state);
+  const active = editing(state).lines;
   const { doc } = state;
   const on = ({ from, to }) => {
     for (let n = doc.lineAt(from).number; n <= doc.lineAt(to).number; n++) if (active.has(n)) return true;
@@ -344,12 +378,22 @@ function blocks(state, diagrams) {
   tree.iterate({
     enter(node) {
       if (CONTAINERS.has(node.name)) return undefined;
+      if (node.name === 'Paragraph') {
+        const last = doc.lineAt(node.to).number;
+        if (on(node)) return false;
+        for (let n = doc.lineAt(node.from).number; n < last; n++) {
+          const line = doc.line(n);
+          const next = doc.line(n + 1);
+          if (HARD_BREAK.test(line.text)) continue;
+          const from = line.to - /[ \t]*$/.exec(line.text)[0].length;
+          ranges.push(Decoration.replace({ widget: softBreak }).range(from, next.from + /^[ \t]*(>[ \t]?)*[ \t]*/.exec(next.text)[0].length));
+        }
+        return false;
+      }
       const lines = (node.name === 'Table' || node.name === 'FencedCode') && wholeLines(doc, node);
       if (!lines || on(lines)) return false;
       if (node.name === 'Table') {
-        const table = node.node;
-        const source = doc.sliceString(node.from, node.to);
-        ranges.push(Decoration.replace({ widget: new Block(`table:${source}`, node.from, () => tableDom(state, table)), block: true }).range(lines.from, lines.to));
+        ranges.push(Decoration.replace({ widget: new TableGrid(doc.sliceString(node.from, node.to), node.from, state, drawCell), block: true }).range(lines.from, lines.to));
       } else if (diagrams) {
         const info = node.node.getChild('CodeInfo');
         const text = node.node.getChild('CodeText');
@@ -364,15 +408,26 @@ function blocks(state, diagrams) {
   return Decoration.set(ranges, true);
 }
 
-// Everything else, for the lines from `from` to `to`.
-function inline(state, from, to, image) {
+// Everything else, for the lines from `from` to `to`; `pick(at, rect)`
+// chooses a code block's language, null for no choosing.
+function inline(state, from, to, image, pick) {
   const tree = syntaxTree(state);
-  const active = activeLines(state);
+  const { lines: active, ranges: selected } = editing(state);
   const { doc } = state;
   const lineOf = (pos) => doc.lineAt(pos).number;
+  // A block's syntax shows on the lines being edited; a span's, while the selection touches it.
   const on = (a, b = a) => {
     for (let n = lineOf(a); n <= lineOf(b); n++) if (active.has(n)) return true;
     return false;
+  };
+  const near = (a, b) => selected.some((r) => r.from <= b && r.to >= a);
+  const spanOf = (node) => node.node.parent ?? node.node;
+  // A line's block markers being edited, from `a` to the text after them,
+  // hang in the margin, so the text stays where it is; on a line with no
+  // text after them, they show in place.
+  const markers = (a, run) => {
+    const end = a + run.length;
+    add(a, end, doc.sliceString(end, doc.lineAt(a).to).trim() ? hang : faded);
   };
   const ranges = [];
   const add = (a, b, deco) => ranges.push(deco.range(a, b));
@@ -385,7 +440,7 @@ function inline(state, from, to, image) {
   const withSpace = (at) => (doc.sliceString(at, at + 1) === ' ' ? at + 1 : at);
   const codeLines = (a, b) => {
     const last = doc.lineAt(b > a && doc.lineAt(b).from === b ? b - 1 : b);
-    eachLine(a, b, lineClass('pj-md-codeblock'));
+    eachLine(a, b, Decoration.line({ class: 'pj-md-codeblock', attributes: VERBATIM }));
     if (doc.lineAt(a).from >= from) add(doc.lineAt(a).from, doc.lineAt(a).from, lineClass('pj-md-codeblock-first'));
     if (last.from <= to) add(last.from, last.from, lineClass('pj-md-codeblock-last'));
   };
@@ -402,26 +457,28 @@ function inline(state, from, to, image) {
       }
       switch (name) {
         case 'HeaderMark':
-          if (node.node.parent?.name.startsWith('Setext') || on(a)) add(a, b, faded);
-          else add(a, withSpace(b), hide);
+          if (node.node.parent?.name.startsWith('Setext')) add(a, b, faded);
+          else if (!on(a)) add(a, withSpace(b), hide);
+          else if (a === node.node.parent.from) markers(a, doc.sliceString(a, withSpace(b)));
+          else add(a, b, faded); // a closing `#`
           return undefined;
         case 'Emphasis': add(a, b, mark('pj-md-em')); return undefined;
         case 'StrongEmphasis': add(a, b, mark('pj-md-strong')); return undefined;
         case 'Strikethrough': add(a, b, mark('pj-md-strike')); return undefined;
-        case 'InlineCode': add(a, b, mark('pj-md-code')); return undefined;
-        case 'EmphasisMark': case 'StrikethroughMark': add(a, b, on(a) ? faded : hide); return undefined;
-        case 'CodeMark': add(a, b, node.node.parent?.name === 'InlineCode' && !on(a) ? hide : faded); return undefined;
+        case 'InlineCode': add(a, b, mark('pj-md-code', VERBATIM)); return undefined;
+        case 'EmphasisMark': case 'StrikethroughMark': add(a, b, near(spanOf(node).from, spanOf(node).to) ? faded : hide); return undefined;
+        case 'CodeMark': add(a, b, node.node.parent?.name === 'InlineCode' && !near(spanOf(node).from, spanOf(node).to) ? hide : faded); return undefined;
         case 'CodeInfo': add(a, b, faded); return undefined;
-        case 'Escape': if (!on(a)) add(a, a + 1, hide); return undefined;
+        case 'Escape': if (!near(a, b)) add(a, a + 1, hide); return undefined;
         case 'Entity':
-          add(a, b, on(a) ? faded : Decoration.replace({ widget: new Text(decodeEntity(doc.sliceString(a, b)), '') }));
+          add(a, b, near(a, b) ? faded : Decoration.replace({ widget: new Text(decodeEntity(doc.sliceString(a, b)), '') }));
           return undefined;
         case 'Link': {
           const href = linkTarget(state, node.node);
           if (href === null) return false; // `[text]` no definition names is text
           add(a, b, mark('pj-md-link', { 'data-href': href }));
           const marks = node.node.getChildren('LinkMark');
-          if (on(a, b)) {
+          if (near(a, b)) {
             for (const part of [...marks, ...['URL', 'LinkLabel', 'LinkTitle'].flatMap((n) => node.node.getChildren(n))]) add(part.from, part.to, faded);
           } else if (marks.length >= 2) {
             add(marks[0].from, marks[0].to, hide);
@@ -431,16 +488,17 @@ function inline(state, from, to, image) {
         }
         case 'Autolink': {
           const url = node.node.getChild('URL');
-          add(a, b, mark('pj-md-link', { 'data-href': url ? doc.sliceString(url.from, url.to) : '' }));
-          for (const m of node.node.getChildren('LinkMark')) add(m.from, m.to, on(a) ? faded : hide);
+          add(a, b, mark('pj-md-link', { 'data-href': url ? doc.sliceString(url.from, url.to) : '', ...VERBATIM }));
+          for (const m of node.node.getChildren('LinkMark')) add(m.from, m.to, near(a, b) ? faded : hide);
           return false;
         }
         case 'URL':
-          if (!/^(Link|Image|LinkReference)$/.test(node.node.parent?.name)) add(a, b, mark('pj-md-link', { 'data-href': doc.sliceString(a, b) }));
+          if (/^(Link|Image|LinkReference)$/.test(node.node.parent?.name)) add(a, b, mark('', VERBATIM));
+          else add(a, b, mark('pj-md-link', { 'data-href': doc.sliceString(a, b), ...VERBATIM }));
           return undefined;
         case 'Image': {
-          if (on(a, b)) {
-            add(a, b, mark('pj-md-muted'));
+          if (near(a, b)) {
+            add(a, b, mark('pj-md-muted', VERBATIM));
             return false;
           }
           const url = node.node.getChild('URL');
@@ -449,34 +507,38 @@ function inline(state, from, to, image) {
           if (src) add(a, b, Decoration.replace({ widget: new Image(src, alt, image) }));
           return false;
         }
-        case 'LinkReference': add(a, b, mark('pj-md-muted')); return false;
+        case 'LinkReference': add(a, b, mark('pj-md-muted', VERBATIM)); return false;
         case 'FootnoteReference':
-          add(a, b, on(a) ? faded : Decoration.replace({ widget: new Text(String(noteNumber(state, doc.sliceString(a, b))), 'pj-md-fnref') }));
+          add(a, b, near(a, b) ? faded : Decoration.replace({ widget: new Text(String(noteNumber(state, doc.sliceString(a, b))), 'pj-md-fnref') }));
           return undefined;
         case 'FootnoteDefinition': eachLine(a, b, lineClass('pj-md-footnote')); return undefined;
         case 'FootnoteLabel':
           add(a, b, on(a) ? faded : Decoration.replace({ widget: new Text(`${noteNumber(state, doc.sliceString(a, b))}.`, 'pj-md-fnlabel') }));
           return undefined;
         case 'ListMark': {
+          // Being edited, a marker shows in the box its bullet takes, or, before a task's box, hangs.
           const item = node.node.parent;
-          if (on(a)) add(a, b, mark('pj-md-listmark'));
-          else if (item?.getChild('Task')) add(a, withSpace(b), hide);
-          else {
-            const ordered = item?.parent?.name === 'OrderedList';
-            add(a, withSpace(b), Decoration.replace({ widget: new Text(ordered ? doc.sliceString(a, b) : '•', ordered ? 'pj-md-marker pj-md-number' : 'pj-md-marker') }));
-          }
+          const ordered = item?.parent?.name === 'OrderedList';
+          const task = item?.getChild('Task');
+          if (on(a)) add(a, withSpace(b), task ? hang : mark(`pj-md-marker pj-md-listmark${ordered ? ' pj-md-number' : ''}`));
+          else if (task) add(a, withSpace(b), hide);
+          else add(a, withSpace(b), Decoration.replace({ widget: new Text(ordered ? doc.sliceString(a, b) : '•', ordered ? 'pj-md-marker pj-md-number' : 'pj-md-marker') }));
           return undefined;
         }
         case 'TaskMarker': {
           const checked = /x/i.test(doc.sliceString(a, b));
-          const off = !on(a);
-          add(a, off ? withSpace(b) : b, Decoration.replace({ widget: new Checkbox(checked, a, off ? 'pj-md-marker' : 'pj-md-check-wrap') }));
+          add(a, withSpace(b), Decoration.replace({ widget: new Checkbox(checked, a, 'pj-md-marker') }));
           const task = node.node.parent;
           if (checked && task && b + 1 < task.to) add(b + 1, task.to, mark('pj-md-done'));
           return undefined;
         }
         case 'Blockquote': eachLine(a, b, lineClass(`pj-md-quote pj-md-quote-d${Math.min(ancestors(node.node, 'Blockquote') + 1, 3)}`)); return undefined;
-        case 'QuoteMark': if (on(a)) add(a, b, faded); else add(a, withSpace(b), hide); return undefined;
+        case 'QuoteMark': {
+          if (!on(a)) add(a, withSpace(b), hide);
+          // The line's first `>` shows them all: `> > `, a list's marker after them its own.
+          else if (!/>\s*$/.test(doc.sliceString(doc.lineAt(a).from, a))) markers(a, /^(>\s?)+/.exec(doc.sliceString(a, doc.lineAt(a).to))[0]);
+          return undefined;
+        }
         case 'CodeBlock': codeLines(a, b); return undefined;
         case 'FencedCode':
           codeLines(a, b);
@@ -485,7 +547,9 @@ function inline(state, from, to, image) {
             const fences = [doc.lineAt(a), doc.lineAt(b)].filter((l, i, both) => (i === 0 || l.number !== both[0].number) && /^\s*(`{3,}|~{3,})/.test(l.text) && l.from >= from && l.from <= to);
             for (const line of fences) {
               add(line.from, line.from, lineClass('pj-md-fence'));
-              add(line.from, line.to, hide);
+              const info = line.from === doc.lineAt(a).from && node.node.getChild('CodeInfo');
+              const name = pick && !state.readOnly && line.from === doc.lineAt(a).from && languageName(info ? doc.sliceString(info.from, info.to) : '');
+              add(line.from, line.to, name ? Decoration.replace({ widget: new Language(name, line.from, pick) }) : hide);
             }
           }
           return undefined;
@@ -495,25 +559,24 @@ function inline(state, from, to, image) {
         case 'Table': eachLine(a, b, lineClass('pj-md-table-src')); return undefined;
         case 'TableDelimiter': add(a, b, faded); return undefined;
         case 'HTMLBlock': case 'CommentBlock': case 'ProcessingInstructionBlock': case 'HTMLTag': case 'Comment':
-          add(a, b, mark('pj-md-muted'));
+          add(a, b, mark('pj-md-muted', VERBATIM));
           return false;
         case 'Paragraph':
           // A backslash at a line's end is a hard break: drawn as the break alone.
           for (let n = lineOf(Math.max(a, from)); n < lineOf(b) && n <= lineOf(to); n++) {
             const line = doc.line(n);
-            if (!active.has(n) && /(^|[^\\])(\\\\)*\\$/.test(line.text)) add(line.to - 1, line.to, hide);
+            if (!near(line.to - 1, line.to) && /(^|[^\\])(\\\\)*\\$/.test(line.text)) add(line.to - 1, line.to, hide);
           }
           return undefined;
-        case 'Frontmatter': eachLine(a, b, lineClass('pj-md-frontmatter')); return false;
+        case 'Frontmatter': eachLine(a, b, Decoration.line({ class: 'pj-md-frontmatter', attributes: VERBATIM })); return false;
         default: return undefined;
       }
     },
   });
 
-  // List lines not being edited: indented by their level, a wrapped line
-  // hanging under its item's text; a quote in an item has its bar there.
+  // List lines: indented by their level, a wrapped line hanging under its
+  // item's text; a quote in an item has its bar there.
   for (let n = lineOf(from); n <= lineOf(to); n++) {
-    if (active.has(n)) continue;
     const line = doc.line(n);
     const lead = /^[ \t]*/.exec(line.text)[0].length;
     if (lead === line.length) continue;
@@ -543,9 +606,11 @@ function inline(state, from, to, image) {
 
 /**
  * The live preview. `image(src)` gives the URL to show an image at `src`
- * (one on the web is shown as it is); `diagrams` draws mermaid blocks.
+ * (one on the web is shown as it is); `diagrams` draws mermaid blocks;
+ * `pickLanguage(at, rect)`, given, is asked for a fenced code block's
+ * language when its label is clicked (`at` its fence line's start).
  */
-export function livePreview({ image, diagrams = true }) {
+export function livePreview({ image, diagrams = true, pickLanguage = null }) {
   const urls = new Map(); // an image's URL by its src, asked for once
   const imageUrl = (src) => {
     if (/^[a-z][a-z\d+.-]*:/i.test(src)) return Promise.resolve(src);
@@ -562,11 +627,11 @@ export function livePreview({ image, diagrams = true }) {
 
   const inlinePlugin = ViewPlugin.fromClass(class {
     constructor(view) {
-      this.decorations = inline(view.state, view.viewport.from, view.viewport.to, imageUrl);
+      this.decorations = inline(view.state, view.viewport.from, view.viewport.to, imageUrl, pickLanguage);
     }
 
     update(update) {
-      if (update.viewportChanged || update.transactions.some(changed)) this.decorations = inline(update.state, update.view.viewport.from, update.view.viewport.to, imageUrl);
+      if (update.viewportChanged || update.transactions.some(changed)) this.decorations = inline(update.state, update.view.viewport.from, update.view.viewport.to, imageUrl, pickLanguage);
     }
   }, { decorations: (plugin) => plugin.decorations });
 
@@ -588,5 +653,6 @@ export function livePreview({ image, diagrams = true }) {
     blockField,
     inlinePlugin,
     EditorView.atomicRanges.of(hidden),
+    Prec.high(keymap.of([{ key: 'ArrowDown', run: (view) => enterTable(view, 1) }, { key: 'ArrowUp', run: (view) => enterTable(view, -1) }])), // before the editor's own
   ];
 }
