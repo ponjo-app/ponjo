@@ -18,6 +18,7 @@ import { createChrome } from './chrome.js';
 import { linkTarget, livePreview } from './preview.js';
 import { footnotes, singleTilde } from './syntax.js';
 import { paste } from './paste.js';
+import { pairs } from './pairs.js';
 
 // Colour for code in code blocks; Markdown's own spans are the preview's.
 const codeColours = HighlightStyle.define([
@@ -112,6 +113,7 @@ export async function createMarkdownView({
       EditorView.contentAttributes.of({ spellcheck: String(editable) }), // prose; not its code (preview.js)
       livePreview({ image, diagrams: editable }),
       paste(),
+      pairs(),
     ],
     onUpdate: () => chrome?.update(),
   });

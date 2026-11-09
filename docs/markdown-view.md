@@ -83,6 +83,11 @@ the plain view as source.
   put their bytes in the file. Plain text goes in as it is, so pasted
   Markdown formats. Mod+Shift+V pastes the plain text of anything.
   Pasting a URL over selected text links the text.
+- **Pairs.** `(`, `[` and `` ` `` type their closer after the caret, and
+  `**` its `**` (a `*` typed after one that starts a word); typing the
+  closer steps over it, and Backspace in an empty pair takes both. A
+  fence's backticks, `***` and `* ` are typed as they are, and in code only
+  its language's pairs close. `*`, `_` or `~` typed over a selection wraps it.
 - **Blank lines** are lines: as many as are typed, saved as typed.
 - **Keys:** Undo, Redo, the formatting above, Comment, Find, and focus mode
   (Ctrl+Shift+.). Enter in a paragraph or a heading starts a new
@@ -168,6 +173,7 @@ its source), and who typed which characters.
 | Preview | `web/views/markdown/preview.js` | the decorations and widgets of live preview, from the syntax tree, for the lines on screen |
 | Chrome | `web/views/markdown/chrome.js` | toolbar, bubble, link card and popover, outline, focus mode, word count |
 | Syntax | `web/views/markdown/syntax.js` | what Lezer's Markdown parser leaves out: GFM's single-tilde strikethrough, and footnotes |
+| Pairs | `web/views/markdown/pairs.js` | brackets, backticks and `**` closed as they are typed |
 | Paste | `web/views/markdown/paste.js` | formatted text pasted, as Markdown (Turndown, with its GFM tables) |
 | Diagrams | `web/diagrams.js` | a mermaid block as its diagram |
 | Find | `web/find.js` | the find bar, the same in every view; the view finds and replaces |

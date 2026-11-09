@@ -196,6 +196,34 @@ const EDITS = [
   ['typing a closing ** makes bold', 'a **b‸', '**', 'a **b**‸'],
 ];
 
+// [name, before, what is typed (a key's name, or a character a time), after]: pairs typed as one.
+const PAIRS = [
+  ['( types its )', 'a ‸', ['('], 'a (‸)'],
+  ['[ types its ]', 'a ‸', ['['], 'a [‸]'],
+  ['` types its `', 'a ‸', ['`'], 'a `‸`'],
+  ['typing the closer steps over it', 'a ‸', ['(', 'b', ')'], 'a (b)‸'],
+  ['Backspace in an empty pair takes both', 'a ‸', ['(', 'Backspace'], 'a ‸'],
+  ['a fence\'s backticks are typed as they are', '‸', ['`', '`', '`'], '```‸'],
+  ['** types its **', 'a ‸', ['*', '*'], 'a **‸**'],
+  ['bold typed whole steps over the closer', 'a ‸', ['*', '*', 'b', '*', '*', ' '], 'a **b** ‸'],
+  ['Backspace in an empty ** takes both', 'a ‸', ['*', '*', 'Backspace'], 'a ‸'],
+  ['*** is a rule', '‸', ['*', '*', '*'], '***‸'],
+  ['* and a space is a list', '‸', ['*', ' '], '* ‸'],
+  ['** in a word is typed as it is', 'a‸', ['*', '*'], 'a**‸'],
+  ['* over a selection wraps it', 'a «b» c', ['*'], 'a *«b»* c'],
+  ['* twice over a selection makes it bold', 'a «b» c', ['*', '*'], 'a **«b»** c'],
+  ['~ over a selection wraps it', '«b»', ['~'], '~«b»~'],
+  ['** in code is typed as it is', '```\nf(‸)\n```', ['*', '*'], '```\nf(**‸)\n```'],
+];
+
+for (const [name, before, keys, after] of PAIRS) {
+  test(`pairs: ${name}`, async () => {
+    await at(before);
+    for (const key of keys) await (key.length > 1 ? press(key) : type(key));
+    assert.equal(await marked(), after);
+  });
+}
+
 // [name, before, [key, keyCode, modifiers], after]: the block styles' keys.
 const KEYS = [
   ['Mod+Alt+1 makes a heading 1', 'a‸', ['1', 49, MOD | ALT], '# a‸'],
