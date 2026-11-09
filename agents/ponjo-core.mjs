@@ -10,6 +10,8 @@ const MAX_LINE = 500; // characters of a line grep shows
 const MAX_LISTED = 200; // the project's files the first message lists; over that, its top folder's
 const SIDECAR = '.comments.jsonl';
 const ANY_TOOL = 'read, find, grep, comment, resolve or propose';
+const READS = ['read', 'find', 'grep'];
+const NOT_RUN = 'Not run: propose once, in a step with no read, find or grep: it ends your turn, so it comes after what you read.';
 const PATTERN = 'A JavaScript regular expression, not a glob. Case is ignored unless it has a capital letter.';
 
 // The tools, as each provider's infer gets them: { name, description, parameters (a JSON schema) }.
@@ -52,7 +54,7 @@ const TOOLS = [
   },
   {
     name: 'comment',
-    description: 'Start a new thread in the doc, as a member does, for a member to decide something: never a mark in the doc itself. It is added when your turn ends, with your edits.',
+    description: 'Start a new thread in the doc, as a member does, for a member to decide something: never a mark in the doc itself. It is added when your turn ends, with your edits, and its text must still be in the doc as they leave it.',
     parameters: {
       type: 'object',
       properties: {
@@ -69,7 +71,7 @@ const TOOLS = [
   },
   {
     name: 'propose',
-    description: 'End your turn: your edits of the doc and your reply. Each edit replaces `old`, quoted exactly from the doc and found there once, with `new`; no other file can change, and comments are the comment tool\'s. `reply` is what you print, your answer in this thread, and may be empty. One bad edit sends the whole proposal back, saying what to fix.',
+    description: 'End your turn, once you have read what you need: your edits of the doc and your reply, all in one call. Each edit replaces `old`, quoted exactly from the doc and found there once, with `new`; no other file can change, and comments are the comment tool\'s. `reply` is what you print, your answer in this thread, and may be empty. One bad edit sends the whole proposal back, saying what to fix.',
     parameters: {
       type: 'object',
       properties: {
@@ -96,28 +98,36 @@ const TOOLS = [
  *
  * The messages are in one form for every provider: { role: 'user', content },
  * { role: 'assistant', calls, sent }, and { role: 'tool', id, content }, a
- * call's result. Each call of a step runs, in order.
+ * call's result. Each call of a step runs, in order, but a propose last.
  */
 export async function turn({ prompt, doc, sidecar, thread }, { infer, readFile, resolve = (path) => path }) {
-  const files = await listing(readFile, [doc, sidecar]);
-  const messages = [{ role: 'user', content: files ? `${prompt}\n\n${files}` : prompt }];
-  const lines = []; // the sidecar's, from comment and resolve, added with the proposal
-  const added = () => (lines.length ? [{ path: sidecar, old: '', new: lines.join('\n') }] : []);
+  // Nearly every turn needs the doc, so it comes with the prompt, as read gives it: a step saved.
+  const opening = [prompt, await listing(readFile, [doc, sidecar]), `The doc, ${doc}, as read gives it:\n\n${await read({ path: doc }, readFile, doc)}`];
+  const messages = [{ role: 'user', content: opening.filter(Boolean).join('\n\n') }];
+  const comments = []; // the sidecar's lines from comment and resolve, as objects, added with the proposal
+  const added = () => (comments.length ? [{ path: sidecar, old: '', new: comments.map((c) => JSON.stringify(c)).join('\n') }] : []);
   for (let step = 0; step < STEPS; step++) {
     const { calls, text, sent } = await infer(messages, TOOLS);
     messages.push({ role: 'assistant', calls, sent });
     if (!calls.length) return { edits: added(), reply: text.trim() }; // an answer without a call, as any agent's
-    for (const call of calls) {
-      const result = await use(call, { doc, sidecar, thread, lines, added, readFile, resolve });
+    // A propose ends the turn: it runs after the step's other calls, and only
+    // alone and in a step that reads nothing, since it was written before
+    // the model saw what the reads return.
+    const ends = calls.filter((call) => call.name === 'propose');
+    const runs = ends.length === 1 && !calls.some((call) => READS.includes(call.name));
+    const results = new Map();
+    for (const call of [...calls.filter((c) => !ends.includes(c)), ...ends]) {
+      const result = ends.includes(call) && !runs ? NOT_RUN : await use(call, { doc, sidecar, thread, comments, added, readFile, resolve });
       if (typeof result !== 'string') return result;
-      messages.push({ role: 'tool', id: call.id, content: result });
+      results.set(call, result);
     }
+    for (const call of calls) messages.push({ role: 'tool', id: call.id, content: results.get(call) });
   }
   throw new Error(`No proposal in ${STEPS} steps.`);
 }
 
 // What a tool call gives back to the model, or a valid proposal's { edits, reply }.
-async function use({ name, args: json }, { doc, sidecar, thread, lines, added, readFile, resolve }) {
+async function use({ name, args: json }, { doc, sidecar, thread, comments, added, readFile, resolve }) {
   let args;
   try {
     args = JSON.parse(json);
@@ -129,15 +139,17 @@ async function use({ name, args: json }, { doc, sidecar, thread, lines, added, r
   if (name === 'comment') {
     const { on, body } = args;
     if (typeof on !== 'string' || typeof body !== 'string' || !body.trim()) return 'Not added: comment takes { on, body }, body not empty.';
-    const text = (await readFile(doc)).replace(/\r\n/g, '\n');
-    const found = on && text.split(on.replace(/\r\n/g, '\n'));
-    if (found && found.length !== 2) return `Not added: on is ${found.length < 2 ? 'not in the doc: quote it exactly' : 'in the doc more than once: quote more of it'}, or give "" for the whole doc.`;
-    lines.push(JSON.stringify(on ? { anchor: { exact: on }, body } : { body }));
-    return on ? `Added when your turn ends, on line ${found[0].split('\n').length}.` : 'Added when your turn ends, on the whole doc.';
+    if (!on.trim()) {
+      comments.push({ body });
+      return 'Added when your turn ends, on the whole doc.';
+    }
+    const { count, line } = quoted(await readFile(doc), on);
+    if (count !== 1) return `Not added: on is ${count ? 'in the doc more than once: quote more of it' : 'not in the doc: quote it exactly'}, or give "" for the whole doc.`;
+    comments.push({ anchor: { exact: on }, body });
+    return `Added when your turn ends, on line ${line}.`;
   }
   if (name === 'resolve') {
-    const line = JSON.stringify({ thread, resolved: true });
-    if (!lines.includes(line)) lines.push(line);
+    if (!comments.some((c) => c.resolved)) comments.push({ thread, resolved: true });
     return 'This thread is resolved when your turn ends.';
   }
   if (name !== 'propose') return `No tool ${name}: call ${ANY_TOOL}.`;
@@ -146,12 +158,39 @@ async function use({ name, args: json }, { doc, sidecar, thread, lines, added, r
   const off = edits.find((edit) => edit?.path !== undefined && resolve(edit.path) !== doc);
   if (off) return `Nothing was changed. ${off.path} cannot change: edits change only ${doc}, and comments are the comment tool's.`;
   const all = [...edits.map((edit) => ({ ...edit, path: doc })), ...added()];
+  let texts;
   try {
-    apply(all, { doc, sidecar }, { doc: await readFile(doc), sidecar: await readFile(sidecar) }, resolve);
+    texts = apply(all, { doc, sidecar }, { doc: await readFile(doc), sidecar: await readFile(sidecar) }, resolve);
   } catch (error) {
     return `Nothing was changed. ${error.message}`;
   }
+  // The app finds a comment's text in the doc as the edits leave it: one they change or repeat would be on the whole doc.
+  const lost = comments.filter((c) => c.anchor && quoted(texts.doc, c.anchor.exact).count !== 1);
+  if (lost.length) {
+    comments.splice(0, comments.length, ...comments.filter((c) => !lost.includes(c)));
+    return `Nothing was changed. Your edits leave the text of ${lost.length > 1 ? 'comments' : 'a comment'} on ${lost.map((c) => JSON.stringify(c.anchor.exact)).join(', ')} not in the doc once, so ${lost.length > 1 ? 'they were' : 'it was'} taken back: comment again on text the edits keep, or on the whole doc, then propose.`;
+  }
   return { edits: all, reply };
+}
+
+/**
+ * How the app finds a comment's text `exact` in the doc's `text`
+ * (src/core/comments.js, appendedComments): as it is, else with any run of
+ * whitespace standing for any other, in the text with its line ends as \n.
+ * `count` is 0, 1, or 2 for more; the app anchors the comment only on 1.
+ * `line` is where the first is.
+ */
+export function quoted(text, exact) {
+  const doc = text.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n');
+  const escape = (part) => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  for (const pattern of exact.trim() ? [escape(exact), exact.trim().split(/\s+/).map(escape).join('\\s+')] : []) {
+    const regex = new RegExp(pattern, 'g');
+    const first = regex.exec(doc);
+    if (!first) continue;
+    regex.lastIndex = first.index + 1;
+    return { count: regex.exec(doc) ? 2 : 1, line: doc.slice(0, first.index).split('\n').length };
+  }
+  return { count: 0 };
 }
 
 // A file read as it is, with a note when the doc's folder has one by the
@@ -313,19 +352,21 @@ const CACHED = { type: 'ephemeral' };
  */
 export const INFER = {
   // Anthropic's Messages API. The model thinks as it needs, at `effort`; its
-  // messages go back as they came, thinking included. The tools and the
-  // prompt are cached for the turn's later steps.
+  // messages go back as they came, thinking included. Everything up to the
+  // last message is cached, the mark moved each step, so a step pays in
+  // full only for what is new.
   anthropic: ({ model, key, effort }, url = 'https://api.anthropic.com/v1') => async (messages, tools) => {
     const reply = await post(`${url}/messages`, { 'x-api-key': key, 'anthropic-version': '2023-06-01' }, {
       model,
       max_tokens: 16_000,
       output_config: { effort },
       tool_choice: { type: 'auto' },
-      tools: tools.map(({ name, description, parameters }, i) => ({ name, description, input_schema: parameters, ...(i === tools.length - 1 && { cache_control: CACHED }) })),
+      tools: tools.map(({ name, description, parameters }) => ({ name, description, input_schema: parameters })),
       messages: messages.map((m, i) => {
+        const last = i === messages.length - 1 && { cache_control: CACHED };
         if (m.role === 'assistant') return { role: 'assistant', content: m.sent };
-        if (m.role === 'tool') return { role: 'user', content: [{ type: 'tool_result', tool_use_id: m.id, content: m.content }] };
-        return { role: 'user', content: [{ type: 'text', text: m.content, ...(i === 0 && { cache_control: CACHED }) }] };
+        if (m.role === 'tool') return { role: 'user', content: [{ type: 'tool_result', tool_use_id: m.id, content: m.content, ...last }] };
+        return { role: 'user', content: [{ type: 'text', text: m.content, ...last }] };
       }),
     });
     if (reply.stop_reason === 'refusal') throw new Error(`The model refused: ${reply.stop_details?.explanation ?? 'no reason given.'}`);
@@ -351,12 +392,28 @@ export const INFER = {
   nebius: ({ model, key }) => INFER.openai({ endpoint: 'https://api.tokenfactory.nebius.com/v1', model, key }),
 };
 
-// POST `body` to `url` as JSON: the reply, or an error that says what failed and where to change it.
+// Failures where the server most likely did no work, sent once more: busy
+// or overloaded, or the connection refused or reset before any answer.
+const BUSY = [429, 503, 529];
+const DROPPED = ['ECONNREFUSED', 'ECONNRESET', 'UND_ERR_SOCKET'];
+
+// POST `body` to `url` as JSON: the reply, or an error that says what failed
+// and where to change it. A busy server or a dropped connection gets the same
+// body once more, after its retry-after (at most 60 s) or 5 s; a request has
+// no effect but its answer, so a repeat costs only tokens.
 async function post(url, headers, body) {
-  const response = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify(body) }).catch((error) => {
-    throw new Error(`Cannot reach ${url} (${error.cause?.code ?? error.message}).\n${SETTINGS}`);
-  });
-  if (!response.ok) throw new Error([`${url}: ${response.status} ${await response.text()}`, HINTS[response.status], SETTINGS].filter(Boolean).join('\n'));
-  return response.json();
+  const request = { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify(body) };
+  for (let again = true; ; again = false) {
+    const response = await fetch(url, request).catch((error) => error);
+    const failed = response instanceof Error;
+    if (again && (failed ? DROPPED.includes(response.cause?.code) : BUSY.includes(response.status))) {
+      const after = failed ? NaN : Number(response.headers.get('retry-after') ?? NaN);
+      await new Promise((resolve) => setTimeout(resolve, (Number.isFinite(after) ? Math.min(after, 60) : 5) * 1000));
+      continue;
+    }
+    if (failed) throw new Error(`Cannot reach ${url} (${response.cause?.code ?? response.message}).\n${SETTINGS}`);
+    if (!response.ok) throw new Error([`${url}: ${response.status} ${await response.text()}`, HINTS[response.status], SETTINGS].filter(Boolean).join('\n'));
+    return response.json();
+  }
 }
 

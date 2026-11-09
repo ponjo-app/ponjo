@@ -18,9 +18,10 @@ laptop runs (an 8B model tried) claim edits they did not make.
    no network but the model's API. Text a teammate wrote can at worst make an undoable proposal.
 3. **Stateless.** A turn remembers nothing after. Within it, all state is
    the messages, and its trace replays it.
-4. **The model asks for context.** The first message is small: the prompt
-   and the project's file names, as a person sees them in the sidebar; the
-   model reads what it needs.
+4. **The doc comes with the prompt; the model asks for the rest.** Nearly
+   every turn needs the doc, so it is sent, not read: a step saved. The
+   project's file names come too, as a person sees them in the sidebar;
+   the model reads what else it needs.
 5. **Read by line number, write by quote.** Never count characters.
 
 ## Interfaces
@@ -67,14 +68,24 @@ call's result), and each `infer` translates them:
 
 | `provider` | API | Its own |
 | --- | --- | --- |
-| `anthropic` | Messages (`/v1/messages`) | `output_config.effort`, the model thinking as it needs; its messages sent back as they came, thinking included; prompt caching of the tools and the prompt; a refusal or a cut-off answer fails the turn |
-| `openai` | Chat Completions at `endpoint` (OpenAI, OpenRouter and others) | `reasoning_effort` |
+| `anthropic` | Messages (`/v1/messages`) | `output_config.effort`, the model thinking as it needs; its messages sent back as they came, thinking included; prompt caching up to the last message, moved each step, so a step pays in full only for what is new; a refusal or a cut-off answer fails the turn |
+| `openai` | Chat Completions at `endpoint` (OpenAI, OpenRouter and others) | `reasoning_effort`; caching is the API's own |
 | `nebius` | Chat Completions at Nebius Token Factory, for NVIDIA's Nemotron models | no effort |
 
 All send `tool_choice: "auto"`, the same for every model: current Claude
 models refuse a forced tool call, and Nemotron, forced, answered a question
 with `comment`. A step without one is the model's answer, as for any agent:
 its `text` is the reply.
+
+A request that failed where the server most likely did no work is sent once
+more, the same body, after its `retry-after` (at most 60 seconds) or 5
+seconds: a 429, 503 or 529, or a connection refused or reset before any
+answer. A repeat is safe: a request has no effect but its answer, a step is
+added to the messages only once its answer arrives, and nothing touches the
+copies before a valid `propose`; a duplicate costs only tokens. Anything
+else fails the turn: a 500 may fail the same way again, a name that does not
+resolve is a wrong endpoint, and a timeout has already waited (Node's
+`fetch` gives up on a reply that takes five minutes to start).
 
 **`read({ path, lines? })`** returns the text with line numbers, from line
 `lines[0]` to `lines[1]`. A file over 20,000 characters without `lines`
@@ -104,13 +115,19 @@ by the program and added with the proposal. Their own tools, as a member's
 own actions, and not fields of `propose`: a model writing those lines
 itself got the path, the JSON or the thread's id wrong, and one filling a
 `resolve` field of its last call resolved each thread it had done what was
-asked in. A comment's text that the edits then change puts it on the whole
-doc, as the app does with any quote it cannot find.
+asked in. A comment's text is found as the app finds it: as quoted, else
+with any run of whitespace standing for another, and only once. The app
+looks for it in the doc as the edits leave it, so `propose` checks it there
+too: one the edits change or repeat would quietly be on the whole doc, so it
+is taken back and the proposal sent back, saying to comment again.
 
 **`propose({ edits: [{ old, new }], reply })`** ends the turn. The edits
 change the doc only: `old` must be found in it exactly once. One bad edit
 sends the whole proposal back, saying what to fix. `reply` is printed, and
-may be empty.
+may be empty. It runs after the other calls of its step, so a comment sent
+with it is in. In a step that also reads, or with another `propose`, it is
+not run, and says so: it was written before the model saw what the reads
+return.
 
 ## The loop
 
@@ -118,7 +135,8 @@ may be empty.
 step(messages, budget):
   calls = infer(messages, tools)
   if there are none: return the comments, and its text as the reply
-  run each call in order; at a valid propose: return it, with the comments
+  run each call in order, a propose last, and only one in a step with no
+    read, find or grep; a valid one: return it, with the comments
   if budget is 0: fail
   return step(messages + calls + their results, budget - 1)
 ```
@@ -126,7 +144,9 @@ step(messages, budget):
 The first message is the prompt, as is: its rules are every agent's. Then,
 in a project, its files as the sidebar shows them (no sidecar of a file
 there), so the model knows which docs a comment can mean: every path up to
-200, else the top folder's entries, saying to find the rest. The
+200, else the top folder's entries, saying to find the rest. Then the doc
+as `read` gives it: with line numbers, or its outline when it is over
+20,000 characters. The
 tools match the contract it describes: `propose` edits the doc, `comment`
 and `resolve` are its tools to comment and resolve, and the reply is what
 the prompt says to print. Twenty steps, and the turn fails.
@@ -156,7 +176,10 @@ flowchart LR
 | `effort` | choice: low, medium, high | `low`: scoped edits; higher thinks longer before it answers |
 
 - **Tests** call `turn` with a fake `infer`, and each `infer` on a fake
-  server of its API.
+  server of its API. The program's check of a comment's text and the
+  app's (`src/core/comments.js`) run on one table of cases, so they
+  cannot drift apart: the program runs from the config folder and cannot
+  import it.
 - **The benchmark** (`npm run bench:agent`, on your own key, not in CI)
   runs each case of `scripts/bench-cases.js` a few times on a real model,
   under the contract, and checks what it left: a doc and a thread asking
