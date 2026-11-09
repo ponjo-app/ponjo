@@ -128,7 +128,13 @@ the plain view as source.
   (Plain text for none). A click on it opens a list that finds a language
   by name, the common ones first: picking one types it after the fence,
   Enter with none found types what was typed, Escape cancels.
-- **Images** in the file show; the view does not insert them. One on the web
+- **Images** pasted (one with no text, as a screenshot is) or dropped in
+  are written beside the doc, in its folder's `assets/` under their own
+  name made safe (`image.png` for none, `-2` on for a name taken), never
+  over a file, and linked at the caret or where dropped: `![](assets/…)`.
+  Only the owner's page adds them, up to 5 MB each; a teammate's leaves
+  them out, as it adds no file to the owner's folder.
+  Images in the file show. One on the web
   (`https:`) loads from there; one at a path comes from the doc host
   (`image`, as a link resolves, only what the project shows), up to 5 MB.
 - **Find and replace** (Mod+F; Mod+Alt+F with Replace), as in every view: a
@@ -178,7 +184,7 @@ in one can be seen.
 
 ### Not here
 
-A slash menu, inserting images, and who typed which characters.
+A slash menu, and who typed which characters.
 
 ## Architecture
 

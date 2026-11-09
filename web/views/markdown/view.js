@@ -58,6 +58,7 @@ const PREFIXES = /^(\s*(#{1,6} |> ?|[-*+] \[[ xX]\] |[-*+] |\d+[.)] ))*/;
  * @param {{ stage: HTMLElement, text: string, editable?: boolean, onChange?: () => void, onEdit?: () => void,
  *           onMarkClick?: (id: string) => void, onLayout?: () => void,
  *           toolbar?: HTMLElement, onComment?: () => void, image?: (src: string) => Promise<string | null>,
+           saveImage?: ((image: { name: string, type: string, data: string }) => Promise<string>) | null,
  *           files?: () => { paths: string[], current: string } | null,
  *           settings?: object, saveSettings?: (patch: object) => void }} options
  */
@@ -71,11 +72,13 @@ const PREFIXES = /^(\s*(#{1,6} |> ?|[-*+] \[[ xX]\] |[-*+] |\d+[.)] ))*/;
 // follows the view's `settings` (web/views/markdown/index.js) and changes
 // them through `saveSettings` (the focus mode shortcut).
 // An image at a path, not on the web, shows what `image` gives for its `src`
-// as written: a URL the page may show, or null for none. `files` says the
+// as written: a URL the page may show, or null for none. `saveImage(image)`,
+// given, writes an image pasted or dropped in ({ name, type, data }, data
+// base64) beside the doc and gives the path to link it by. `files` says the
 // project's files and the doc's path in it, for the link popover to offer.
 export async function createMarkdownView({
   stage, text, editable = true, onChange, onEdit, onMarkClick, onLayout, toolbar = null, onComment = () => {},
-  image = async () => null, files = () => null,
+  image = async () => null, saveImage = null, files = () => null,
   settings = null, saveSettings = () => {},
 }) {
   const host = stage.querySelector('.pj-editor');
@@ -112,7 +115,7 @@ export async function createMarkdownView({
       EditorView.editorAttributes.of({ class: 'pj-md' }),
       EditorView.contentAttributes.of({ spellcheck: String(editable) }), // prose; not its code (preview.js)
       livePreview({ image, diagrams: editable, pickLanguage: (at, where) => chrome?.pickLanguage(at, where) }),
-      paste(),
+      paste(saveImage),
       pairs(),
     ],
     onUpdate: () => chrome?.update(),

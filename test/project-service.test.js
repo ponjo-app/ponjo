@@ -9,7 +9,7 @@ import { createRequire, syncBuiltinESMExports } from 'node:module';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { MAX_TEXT_BYTES } from '../src/store/files.js';
-import { projectService, resolve } from '../src/host/project-service.js';
+import { projectService, resolve, saveImage } from '../src/host/project-service.js';
 
 const fsp = createRequire(import.meta.url)('node:fs/promises');
 const childProcess = createRequire(import.meta.url)('node:child_process');
@@ -262,4 +262,19 @@ test('list: once git is found not installed, it is not run again, and nothing is
   }
   await writeFile(join(root, 'more.log'), '');
   assert.deepEqual(await gitRuns(() => service.list('')), [], 'not looked for again');
+});
+
+test('saveImage writes an image in assets/ beside the doc under a name of its own, never over a file', async () => {
+  const dir = await realpath(await mkdtemp(join(tmpdir(), 'ponjo-images-')));
+  try {
+    const png = Buffer.from([137, 80, 78, 71]).toString('base64');
+    assert.equal(await saveImage(dir, { name: 'My shot (1).png', type: 'image/png', data: png }), 'assets/My-shot-1.png');
+    assert.equal(await saveImage(dir, { name: 'My shot (1).png', type: 'image/png', data: png }), 'assets/My-shot-1-2.png');
+    assert.equal(await saveImage(dir, { name: '', type: 'image/jpeg', data: png }), 'assets/image.jpg');
+    assert.deepEqual([...await fsp.readFile(join(dir, 'assets', 'My-shot-1.png'))], [137, 80, 78, 71]);
+    await assert.rejects(saveImage(dir, { name: 'x.exe', type: 'application/octet-stream', data: png }), { code: 'bad_input' });
+    await assert.rejects(saveImage(dir, { name: 'big.png', type: 'image/png', data: Buffer.alloc(5 * 1024 * 1024 + 1).toString('base64') }), { code: 'bad_input' });
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 });

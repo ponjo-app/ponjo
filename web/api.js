@@ -74,6 +74,8 @@ export const api = {
   saveSettings: async (patch) => (await call('saveSettings', patch)).settings,
   /** What the project's folder `path` ('' for the top) holds: [{ name, folder }], subfolders first. */
   list: (path) => call('list', { path }),
+  /** Write an image pasted or dropped into the doc ({ name, type, data }, data base64) beside it: the path to write in the doc. */
+  saveImage: async (image) => (await call('saveImage', image)).src,
   /** The project's file `path` to show read only: { text } or { problem: 'large' | 'binary' }. */
   read: (path) => call('read', { path }),
   /**

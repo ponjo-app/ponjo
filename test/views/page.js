@@ -18,6 +18,7 @@ const contract = {
   edits: [], // getText at each onEdit
   changes: 0, // how many times onChange fired
   images: {}, // what the view's `image` gives, by src
+  savedImages: [], // what the view's `saveImage` was given
   // `toolbar: true` gives a Markdown view its toolbar, with that view's settings.
   async make(name, text, { toolbar = false, ...options } = {}) {
     await view?.destroy();
@@ -33,7 +34,7 @@ const contract = {
     const settings = viewSettings({ views: {} }, toolbar ? markdown : plain);
     // A view calls onLayout once it is made: the page lays its margin out by it (web/main.js).
     const onLayout = () => { if (!view) contract.early = true; };
-    view = await VIEWS[name]({ stage, text, settings, toolbar: bar, image: async (src) => contract.images[src] ?? null, onLayout, ...options, onMarkClick: (id) => contract.clicked.push(id), onEdit: () => contract.edits.push(view.getText()), onChange: () => contract.changes++, saveSettings: (patch) => contract.saved.push(patch) });
+    view = await VIEWS[name]({ stage, text, settings, toolbar: bar, image: async (src) => contract.images[src] ?? null, saveImage: async (image) => (contract.savedImages.push(image), `assets/${image.name}`), onLayout, ...options, onMarkClick: (id) => contract.clicked.push(id), onEdit: () => contract.edits.push(view.getText()), onChange: () => contract.changes++, saveSettings: (patch) => contract.saved.push(patch) });
     window.view = view;
   },
   // Press toolbar button `command`, as a click does.

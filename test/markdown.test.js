@@ -475,6 +475,33 @@ test('grid: Cmd+Z in a cell takes back its typing; a header with no text shows w
   assert.equal(await text(), 'a\n\n| | |\n|---|---|\n| 1 | 2 |\n');
 });
 
+test('images: one pasted with no text, or dropped, is saved beside the doc and linked; a read-only page adds none', async () => {
+  const send = (kind, where) => run(`(() => {
+    const data = new DataTransfer();
+    data.items.add(new File([new Uint8Array([137, 80, 78, 71])], 'shot.png', { type: 'image/png' }));
+    const content = document.querySelector('.cm-content');
+    const box = content.querySelector('.cm-line').getBoundingClientRect();
+    content.dispatchEvent(${JSON.stringify(kind)} === 'paste'
+      ? new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true })
+      : new DragEvent('drop', { dataTransfer: data, clientX: box.left + ${where}, clientY: box.top + box.height / 2, bubbles: true, cancelable: true }));
+  })()`);
+  await at('a ‸b\n');
+  await run('contract.savedImages = []');
+  await send('paste', 0);
+  await waitFor(() => run('view.getText()').then((t) => t.includes('![')), 2000, 'the image linked');
+  assert.equal(await marked(), 'a ![](assets/shot.png)‸b\n');
+  assert.deepEqual(await run('contract.savedImages.map((i) => [i.name, i.type, i.data])'), [['shot.png', 'image/png', 'iVBORw==']]);
+  await at('ab\n');
+  await send('drop', 1);
+  await waitFor(() => run('view.getText()').then((t) => t.includes('![')), 2000, 'the image linked');
+  assert.match(await run('view.getText()'), /^a?!\[\]\(assets\/shot\.png\)b?/);
+  await at('ab\n', { editable: false, toolbar: false });
+  await run('contract.savedImages = []');
+  await send('paste', 0);
+  await new Promise((done) => setTimeout(done, 100));
+  assert.deepEqual(await run('contract.savedImages'), []);
+});
+
 test('language: a code block\'s label picks its language, as found or as typed', async () => {
   const pick = async (typed) => {
     await run(`document.querySelector('.pj-md-lang').dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }))`);

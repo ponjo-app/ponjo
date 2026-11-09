@@ -4,6 +4,9 @@
 // `blob:`), whose bytes would land in the file, are left out. Plain text goes
 // in as it is, so pasted Markdown formats; Mod+Shift+V pastes any clipboard's
 // plain text. A single URL pasted over selected text links the text.
+// An image pasted with no text (a screenshot), or dropped in, is written
+// beside the doc by `saveImage`, given (the owner's page), and linked at the
+// caret or where it was dropped; with no `saveImage`, it is left out.
 
 import { EditorView } from '@codemirror/view';
 import TurndownService from 'turndown';
@@ -45,9 +48,49 @@ export function htmlToMarkdown(html) {
   return turndown.turndown(html).replace(/\n{3,}/g, '\n\n');
 }
 
-export const paste = () => {
+// The image files of a clipboard or a drop.
+const imagesOf = (data) => [...(data?.files ?? [])].filter((file) => file.type.startsWith('image/'));
+
+const base64 = (file) => new Promise((done, fail) => {
+  const reader = new FileReader();
+  reader.onload = () => done(String(reader.result).split(',')[1] ?? '');
+  reader.onerror = () => fail(reader.error);
+  reader.readAsDataURL(file);
+});
+
+// Write `files` and link them at the caret, one after another.
+async function insertImages(view, files, saveImage) {
+  for (const file of files) {
+    let src;
+    try {
+      src = await saveImage({ name: file.name, type: file.type, data: await base64(file) });
+    } catch (error) {
+      console.warn(`The image was not added: ${error.message}`);
+      continue;
+    }
+    view.dispatch(view.state.replaceSelection(`![](${src})`), { userEvent: 'input.paste', scrollIntoView: true });
+  }
+}
+
+export const paste = (saveImage = null) => {
   let asText = false; // the last key pressed was Mod+Shift+V
   return EditorView.domEventHandlers({
+    dragover(event) {
+      if (imagesOf(event.dataTransfer).length > 0 || event.dataTransfer?.types.includes('Files')) event.preventDefault(); // a drop, not the page opening the file
+      return false;
+    },
+    drop(event, view) {
+      const files = imagesOf(event.dataTransfer);
+      if (files.length === 0 || view.state.readOnly) return false;
+      event.preventDefault();
+      const at = view.posAtCoords({ x: event.clientX, y: event.clientY });
+      if (saveImage && at !== null) {
+        view.dispatch({ selection: { anchor: at } });
+        view.focus();
+        insertImages(view, files, saveImage);
+      }
+      return true;
+    },
     keydown(event) {
       asText = event.shiftKey && event.code === 'KeyV';
       return false;
@@ -59,6 +102,12 @@ export const paste = () => {
       if (!data || view.state.readOnly) return false;
       const text = data.getData('text/plain');
       const html = data.getData('text/html');
+      const images = text ? [] : imagesOf(data);
+      if (images.length > 0 && (saveImage || !html)) {
+        event.preventDefault();
+        if (saveImage) insertImages(view, images, saveImage);
+        return true;
+      }
       const { from, to, empty } = view.state.selection.main;
       let insert;
       if (!empty && URL_ONLY.test(text.trim())) insert = `[${view.state.sliceDoc(from, to)}](${text.trim()})`;

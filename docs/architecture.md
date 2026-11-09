@@ -283,7 +283,7 @@ window's port is, so no call names a doc.
 | --- | --- |
 | `state`, `history`, `version`, `cursor`, `image`; ProjectService's `list`, `read`, `open` | read |
 | `submit`, `undo`, `comment` (resolving and reopening too) | write |
-| everything else: `move`, settings, AI buddies, agent scripts, Room's own calls | owner |
+| everything else: `move`, settings, AI buddies, agent scripts, `saveImage` (an image pasted into the doc, written beside it), Room's own calls | owner |
 
 The owner's level is owner. An AI buddy's turn acts with the level of
 whoever asked it, at most write, as a Unix program runs as the user who

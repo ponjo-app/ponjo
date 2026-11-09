@@ -27,7 +27,7 @@ import { firstBuddies, projectBuddiesDir, readBuddies, removeBuddy, userBuddiesD
 import { secretTails } from '../store/secrets.js';
 import { watchDoc, watchFolder } from '../store/watch.js';
 import { agentsDir, installAgents, listAgents, pickedAgent, SHIPPED_AGENTS } from '../store/agents.js';
-import { linkURL, projectService } from './project-service.js';
+import { linkURL, projectService, saveImage } from './project-service.js';
 import { Runner, testAgent } from './runner.js';
 import { RoomError } from './room.js';
 
@@ -855,6 +855,8 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
         return { agents: await listAgents(settingsDir) };
       },
       testAgent: async () => testAgent(await pickAgent()),
+      // An image pasted or dropped into the doc: written beside it, the path to write in it.
+      saveImage: async (body) => ({ src: await saveImage(dirname(docPath), body) }),
       runs: async () => ({ runs: await tracedRuns(settingsDir, docPath) }),
       async trace(body) {
         const trace = await readTrace(settingsDir, body?.run);
