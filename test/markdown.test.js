@@ -11,6 +11,7 @@ import { waitFor } from '../scripts/devtools.js';
 import { openViews } from './views/harness.js';
 
 const MOD = process.platform === 'darwin' ? 4 : 2; // Meta : Ctrl
+const ALT = 1;
 const SHIFT = 8;
 
 let app;
@@ -40,6 +41,11 @@ async function press(key, modifiers = 0) {
   await page.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key, code: key.length === 1 ? `Key${key.toUpperCase()}` : key, windowsVirtualKeyCode: code, modifiers });
   if (text && !modifiers) await page.send('Input.dispatchKeyEvent', { type: 'char', key, text, unmodifiedText: text });
   await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key, code: key.length === 1 ? `Key${key.toUpperCase()}` : key, windowsVirtualKeyCode: code, modifiers });
+}
+// A key with modifiers as a keyboard sends it: `key` what it types (`&` for
+// Shift+7), `keyCode` the key's own.
+async function chord(key, keyCode, modifiers) {
+  for (const type of ['rawKeyDown', 'keyUp']) await page.send('Input.dispatchKeyEvent', { type, key, windowsVirtualKeyCode: keyCode, modifiers });
 }
 const tool = (command) => run(`contract.tool(${JSON.stringify(command)})`);
 // What the lines show, a line a string: [classes] {style} text.
@@ -189,6 +195,26 @@ const EDITS = [
   ['nothing makes front matter a heading', '---\nti‸tle: x\n---\n', ['tool', 'h1'], '---\nti‸tle: x\n---\n'],
   ['typing a closing ** makes bold', 'a **b‸', '**', 'a **b**‸'],
 ];
+
+// [name, before, [key, keyCode, modifiers], after]: the block styles' keys.
+const KEYS = [
+  ['Mod+Alt+1 makes a heading 1', 'a‸', ['1', 49, MOD | ALT], '# a‸'],
+  ['Mod+Alt+3 makes a heading 3', 'a‸', ['3', 51, MOD | ALT], '### a‸'],
+  ['Mod+Alt+0 makes normal text', '## a‸', ['0', 48, MOD | ALT], 'a‸'],
+  ['Mod+Alt+Q makes a quote', 'a‸', ['q', 81, MOD | ALT], '> a‸'],
+  ['Mod+Alt+C makes a code block', 'a‸', ['c', 67, MOD | ALT], '```\na‸\n```'],
+  ['Mod+Shift+7 makes a numbered list', 'a‸', ['&', 55, MOD | SHIFT], '1. a‸'],
+  ['Mod+Shift+8 makes a bulleted list', 'a‸', ['*', 56, MOD | SHIFT], '- a‸'],
+  ['Mod+Shift+9 makes a task list', 'a‸', ['(', 57, MOD | SHIFT], '- [ ] a‸'],
+];
+
+for (const [name, before, keys, after] of KEYS) {
+  test(`key: ${name}`, async () => {
+    await at(before);
+    await chord(...keys);
+    assert.equal(await marked(), after);
+  });
+}
 
 for (const [name, before, what, after] of EDITS) {
   test(`edit: ${name}`, async () => {

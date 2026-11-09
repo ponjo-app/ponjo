@@ -72,7 +72,10 @@ the plain view as source.
   block fences them, a table puts in two columns and a row, a footnote puts
   `[^n]` at the caret and its note at the doc's end, with the caret there.
   The standard keys do the same: Mod+B bold, Mod+I italic, Mod+E inline
-  code, Mod+Shift+X strikethrough, Mod+K a link. The Task and Footnote icons
+  code, Mod+Shift+X strikethrough, Mod+K a link; and for the block styles,
+  as Google Docs keys them (Mod+digit is a browser's tabs): Mod+Alt+0 Normal
+  text, Mod+Alt+1–3 Heading 1–3, Mod+Alt+Q Quote, Mod+Alt+C Code block,
+  Mod+Shift+7 Numbered, Mod+Shift+8 Bulleted, Mod+Shift+9 Task. The Task and Footnote icons
   are new to the design system (`site/design.html`, `web/icons.js`).
 - **Paste.** Formatted text (from a web page, a doc, another editor) is
   turned into Markdown once, as it is pasted, so what shows is what is

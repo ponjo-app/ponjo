@@ -11,7 +11,7 @@ import { hydrateIcons, icon } from './icons.js';
 import { agentSettings, viewSettings } from '../src/core/settings.js';
 
 const SHORTCUTS = [
-  ['Text', [['Bold', 'Mod+B'], ['Italic', 'Mod+I'], ['Inline code', 'Mod+E'], ['Strikethrough', 'Mod+Shift+X'], ['Link', 'Mod+K'], ['Find', 'Mod+F'], ['Find and replace', 'Mod+Alt+F'], ['Next match', 'Mod+G'], ['Previous match', 'Mod+Shift+G']]],
+  ['Text', [['Bold', 'Mod+B'], ['Italic', 'Mod+I'], ['Inline code', 'Mod+E'], ['Strikethrough', 'Mod+Shift+X'], ['Link', 'Mod+K'], ['Normal text', 'Mod+Alt+0'], ['Heading 1–3', 'Mod+Alt+1–3'], ['Quote', 'Mod+Alt+Q'], ['Code block', 'Mod+Alt+C'], ['Numbered list', 'Mod+Shift+7'], ['Bulleted list', 'Mod+Shift+8'], ['Task list', 'Mod+Shift+9'], ['Find', 'Mod+F'], ['Find and replace', 'Mod+Alt+F'], ['Next match', 'Mod+G'], ['Previous match', 'Mod+Shift+G']]],
   ['Comments', [['Comment on the selection', 'Mod+Alt+M'], ['Post comment or reply', 'Enter'], ['New line in a comment', 'Shift+Enter'], ['Cancel', 'Esc']]],
   ['Code (plain view)', [['Comment out lines', 'Mod+/'], ['Indent lines', 'Mod+]'], ['Outdent lines', 'Mod+['], ['Move line up', 'Alt+↑'], ['Move line down', 'Alt+↓'], ['Delete line', 'Mod+Shift+K']]],
   ['App', [['Undo', 'Mod+Z'], ['Redo', 'Mod+Shift+Z'], ['Focus mode', 'Mod+Shift+.'], ['Plain text view', 'Mod+Shift+T'], ['Find a file', 'Mod+P'], ['Search in files', 'Mod+Shift+F'], ['Settings', 'Mod+,'], ['Keyboard shortcuts', 'Mod+/']]],

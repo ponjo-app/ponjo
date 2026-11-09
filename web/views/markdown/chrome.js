@@ -17,12 +17,12 @@ const TOOLS = `
       <span class="pj-block-label">Normal text</span>
     </button>
     <ul class="pj-block-menu" role="listbox" aria-label="Text style" hidden>
-      <li role="option" data-command="paragraph" data-block="paragraph"><span class="pj-sample-p">Normal text</span></li>
-      <li role="option" data-command="h1" data-block="h1"><span class="pj-sample-h1">Heading 1</span><kbd>#</kbd></li>
-      <li role="option" data-command="h2" data-block="h2"><span class="pj-sample-h2">Heading 2</span><kbd>##</kbd></li>
-      <li role="option" data-command="h3" data-block="h3"><span class="pj-sample-h3">Heading 3</span><kbd>###</kbd></li>
-      <li role="option" data-command="quote" data-block="quote"><span class="pj-sample-quote">Quote</span><kbd>&gt;</kbd></li>
-      <li role="option" data-command="codeBlock" data-block="codeBlock"><span class="pj-sample-code">Code block</span><kbd>\`\`\`</kbd></li>
+      <li role="option" data-command="paragraph" data-block="paragraph" data-tip="Normal text" data-keys="Mod+Alt+0"><span class="pj-sample-p">Normal text</span></li>
+      <li role="option" data-command="h1" data-block="h1" data-tip="Heading 1" data-keys="Mod+Alt+1"><span class="pj-sample-h1">Heading 1</span><kbd>#</kbd></li>
+      <li role="option" data-command="h2" data-block="h2" data-tip="Heading 2" data-keys="Mod+Alt+2"><span class="pj-sample-h2">Heading 2</span><kbd>##</kbd></li>
+      <li role="option" data-command="h3" data-block="h3" data-tip="Heading 3" data-keys="Mod+Alt+3"><span class="pj-sample-h3">Heading 3</span><kbd>###</kbd></li>
+      <li role="option" data-command="quote" data-block="quote" data-tip="Quote" data-keys="Mod+Alt+Q"><span class="pj-sample-quote">Quote</span><kbd>&gt;</kbd></li>
+      <li role="option" data-command="codeBlock" data-block="codeBlock" data-tip="Code block" data-keys="Mod+Alt+C"><span class="pj-sample-code">Code block</span><kbd>\`\`\`</kbd></li>
     </ul>
   </div>
   <span class="pj-sep"></span>
@@ -35,9 +35,9 @@ const TOOLS = `
   </div>
   <span class="pj-sep"></span>
   <div class="pj-tool-group">
-    <button type="button" data-command="bullets" data-icon="bullets" data-tip="Bulleted list" aria-label="Bulleted list"></button>
-    <button type="button" data-command="numbers" data-icon="numbers" data-tip="Numbered list" aria-label="Numbered list"></button>
-    <button type="button" data-command="tasks" data-icon="tasks" data-tip="Task list" aria-label="Task list"></button>
+    <button type="button" data-command="bullets" data-icon="bullets" data-tip="Bulleted list" data-keys="Mod+Shift+8" aria-label="Bulleted list"></button>
+    <button type="button" data-command="numbers" data-icon="numbers" data-tip="Numbered list" data-keys="Mod+Shift+7" aria-label="Numbered list"></button>
+    <button type="button" data-command="tasks" data-icon="tasks" data-tip="Task list" data-keys="Mod+Shift+9" aria-label="Task list"></button>
   </div>
   <span class="pj-sep"></span>
   <div class="pj-block-picker">

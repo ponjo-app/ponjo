@@ -237,7 +237,7 @@ works, or what went wrong.
   file's own text drawn formatted, its syntax shown only on the lines the
   selection touches. All of CommonMark and GFM, and footnotes, are drawn
   (#358). Typed Markdown formats as it is typed; the toolbar types it too,
-  and so do the standard keys (Mod+B, Mod+I, Mod+E, Mod+Shift+X, Mod+K).
+  and so do the standard keys (Mod+B, Mod+I, Mod+E, Mod+Shift+X, Mod+K, and Mod+Alt+0–3, Mod+Alt+Q, Mod+Alt+C, Mod+Shift+7–9 for the block styles).
   Its toolbar, outline and focus mode (Ctrl+Shift+.) are part of it.
   Pasted formatted text is turned into Markdown as it is pasted; plain text
   goes in as it is. To see the whole file as source, switch the view off

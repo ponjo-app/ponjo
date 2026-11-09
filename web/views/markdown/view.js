@@ -87,6 +87,16 @@ export async function createMarkdownView({
     { key: 'Mod-e', run: () => run('code') },
     { key: 'Mod-Shift-x', run: () => run('strike') },
     { key: 'Mod-k', run: () => Boolean(chrome?.link()) },
+    // The block styles, as Google Docs keys them (Mod+digit is the browser's tabs).
+    { key: 'Mod-Alt-0', run: () => run('paragraph') },
+    { key: 'Mod-Alt-1', run: () => run('h1') },
+    { key: 'Mod-Alt-2', run: () => run('h2') },
+    { key: 'Mod-Alt-3', run: () => run('h3') },
+    { key: 'Mod-Alt-q', run: () => run('quote') },
+    { key: 'Mod-Alt-c', run: () => run('codeBlock') },
+    { key: 'Mod-Shift-7', run: () => run('numbers') },
+    { key: 'Mod-Shift-8', run: () => run('bullets') },
+    { key: 'Mod-Shift-9', run: () => run('tasks') },
     { key: 'Tab', run: () => tab(1) },
     { key: 'Shift-Tab', run: () => tab(-1) },
   ];
