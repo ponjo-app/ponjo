@@ -344,7 +344,16 @@ function wholeLines(doc, node) {
   return { from: first.from, to: doc.lineAt(node.to).to };
 }
 
-// Tables, and diagrams if `diagrams`, drawn in place of their lines while the selection is not on them.
+// A line ending in a hard break: a backslash (not escaped), or two spaces or more.
+const HARD_BREAK = /((^|[^\\])(\\\\)*\\| {2,})$/;
+const softBreak = new Text(' ', '');
+
+// Tables, and diagrams if `diagrams`, drawn in place of their lines while
+// the selection is not on them; and a paragraph wrapped by hand, as one
+// flowing paragraph: each soft break (a line break that is not a hard
+// one) drawn as the space it reads as, the line's trailing space and the
+// next one's indent or `>` with it. Spanning line breaks, these must be
+// the state field's.
 function blocks(state, diagrams) {
   const tree = syntaxTree(state);
   const active = editing(state).lines;
@@ -357,6 +366,18 @@ function blocks(state, diagrams) {
   tree.iterate({
     enter(node) {
       if (CONTAINERS.has(node.name)) return undefined;
+      if (node.name === 'Paragraph') {
+        const last = doc.lineAt(node.to).number;
+        if (on(node)) return false;
+        for (let n = doc.lineAt(node.from).number; n < last; n++) {
+          const line = doc.line(n);
+          const next = doc.line(n + 1);
+          if (HARD_BREAK.test(line.text)) continue;
+          const from = line.to - /[ \t]*$/.exec(line.text)[0].length;
+          ranges.push(Decoration.replace({ widget: softBreak }).range(from, next.from + /^[ \t]*(>[ \t]?)*[ \t]*/.exec(next.text)[0].length));
+        }
+        return false;
+      }
       const lines = (node.name === 'Table' || node.name === 'FencedCode') && wholeLines(doc, node);
       if (!lines || on(lines)) return false;
       if (node.name === 'Table') {
