@@ -28,20 +28,21 @@ laptop runs (an 8B model tried) claim edits they did not make.
 
 | Interface | Called by |
 | --- | --- |
-| `turn({ prompt, doc, sidecar, thread }, { infer, readFile, resolve }) → { edits, reply }` | the program's `main`; the preview's buddies (`preview/doc-stub.js`) |
+| `turn({ prompt, doc, sidecar, thread }, { infer, readFile, resolve }) → { doc, sidecar, reply }` | the program's `main`; the preview's buddies (`preview/doc-stub.js`) |
 | `infer(messages, tools) → { calls: [{ id, name, args }], text, sent, usage }` | `turn`, for each step |
 | `read`, `find`, `grep`, `comment`, `resolve`, `propose` | the model, as tools |
 
 **`main`** is all the I/O, and all of the contract: it reads the prompt on
 stdin, the paths in `PONJO_DOC`, `PONJO_COMMENTS` and `PONJO_PROJECT`,
-the thread in `PONJO_THREAD` and its settings in `PONJO_SETTING_*`, calls `turn`, applies the edits to
-the copies, prints the reply and exits 0. A run without a key fails at once,
+the thread in `PONJO_THREAD` and its settings in `PONJO_SETTING_*`, calls `turn`, writes the texts it
+gives back to the copies, prints the reply and exits 0. A run without a key fails at once,
 saying where to set it.
 
 **`turn`** is one buddy answering one thread, with no I/O of its own: it
 thinks, and checks what it proposes. `prompt` is stdin as is; `doc` and
 `sidecar` are the copies' paths in the project, and `resolve` puts a path
-the model wrote in that form. It throws when the turn fails. It
+the model wrote in that form. It gives back the copies' new texts and the
+reply, checked once, and throws when the turn fails. It
 and each `infer` are in `ponjo-core.mjs`, which imports nothing, so a
 browser runs them too; `main` and `readFile` are in `ponjo.mjs`.
 
@@ -108,7 +109,7 @@ with `readFile`, and give at most 100 paths or lines, then how many more,
 saying to narrow the pattern or the path.
 
 **`comment({ on, body })`** starts a thread on `on`, quoted from the doc
-and found there once, or `""` for the whole doc; **`resolve()`** resolves
+as the edits leave it and found there once, or `""` for the whole doc; **`resolve()`** resolves
 the thread the turn answers. Each says at once whether it took, and its
 line of the sidecar ([agent config](agent-config.md#comments)) is written
 by the program and added with the proposal. Their own tools, as a member's
@@ -116,10 +117,12 @@ own actions, and not fields of `propose`: a model writing those lines
 itself got the path, the JSON or the thread's id wrong, and one filling a
 `resolve` field of its last call resolved each thread it had done what was
 asked in. A comment's text is found as the app finds it: as quoted, else
-with any run of whitespace standing for another, and only once. The app
-looks for it in the doc as the edits leave it, so `propose` checks it there
-too: one the edits change or repeat would quietly be on the whole doc, so it
-is taken back and the proposal sent back, saying to comment again.
+with any run of whitespace standing for another, and only once, in the doc
+as the edits leave it. So a comment may quote text the edits write: one not
+in the doc yet says so, and one found more than once is not added. When the
+turn ends its texts are checked again: one the edits change, repeat or never
+write would quietly be on the whole doc, so it is taken back and the turn
+sent back, saying to comment again.
 
 **`propose({ edits: [{ old, new }], reply })`** ends the turn. The edits
 change the doc only: `old` must be found in it exactly once. One bad edit
@@ -134,9 +137,10 @@ return.
 ```
 step(messages, budget):
   calls = infer(messages, tools)
-  if there are none: return the comments, and its text as the reply
+  if there are none: return the texts with the comments, and its text as
+    the reply
   run each call in order, a propose last, and only one in a step with no
-    read, find or grep; a valid one: return it, with the comments
+    read, find or grep; a valid one: return the texts, and its reply
   if budget is 0: fail
   return step(messages + calls + their results, budget - 1)
 ```

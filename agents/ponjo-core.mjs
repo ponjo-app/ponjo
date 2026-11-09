@@ -54,11 +54,11 @@ const TOOLS = [
   },
   {
     name: 'comment',
-    description: 'Start a new thread in the doc, as a member does, for a member to decide something: never a mark in the doc itself. It is added when your turn ends, with your edits, and its text must still be in the doc as they leave it.',
+    description: 'Start a new thread in the doc, as a member does, for a member to decide something: never a mark in the doc itself. It is added when your turn ends, with your edits.',
     parameters: {
       type: 'object',
       properties: {
-        on: { type: 'string', description: 'The text it is about, quoted exactly from the doc and found there once; "" for the whole doc.' },
+        on: { type: 'string', description: 'The text it is about, quoted exactly from the doc as your edits leave it, text they write included, and found there once; "" for the whole doc.' },
         body: { type: 'string', description: 'What the member must decide.' },
       },
       required: ['on', 'body'],
@@ -92,9 +92,9 @@ const TOOLS = [
  * counts them; `readFile(path)` to a file's text, a folder's entries (a
  * subfolder's ending in /) or null;
  * `resolve(path)` a path the model wrote as the copies' paths are written
- * (ponjo.mjs's inProject). Resolves to the checked { edits, reply }, `edits`
- * the doc's and the sidecar's lines from comment and resolve, as `apply`
- * takes them, and throws when the turn fails.
+ * (ponjo.mjs's inProject). Resolves to the checked { doc, sidecar, reply }:
+ * the copies' new texts, with the edits and the lines comment and resolve
+ * add, and the reply. Throws when the turn fails.
  *
  * The messages are in one form for every provider: { role: 'user', content },
  * { role: 'assistant', calls, sent }, and { role: 'tool', id, content }, a
@@ -104,12 +104,33 @@ export async function turn({ prompt, doc, sidecar, thread }, { infer, readFile, 
   // Nearly every turn needs the doc, so it comes with the prompt, as read gives it: a step saved.
   const opening = [prompt, await listing(readFile, [doc, sidecar]), `The doc, ${doc}, as read gives it:\n\n${await read({ path: doc }, readFile, doc)}`];
   const messages = [{ role: 'user', content: opening.filter(Boolean).join('\n\n') }];
-  const comments = []; // the sidecar's lines from comment and resolve, as objects, added with the proposal
-  const added = () => (comments.length ? [{ path: sidecar, old: '', new: comments.map((c) => JSON.stringify(c)).join('\n') }] : []);
+  const comments = []; // the sidecar's lines from comment and resolve, as objects, added when the turn ends
+  // The copies' texts with `edits` (the doc's) and the comments, and the
+  // reply; or, as text, what to fix. The app finds a comment's text in the
+  // doc as the edits leave it: one they change or repeat, or never write,
+  // would be on the whole doc, so it is taken back.
+  const finish = async (edits, reply) => {
+    const lines = comments.length ? [{ path: sidecar, old: '', new: comments.map((c) => JSON.stringify(c)).join('\n') }] : [];
+    let texts;
+    try {
+      texts = apply([...edits, ...lines], { doc, sidecar }, { doc: await readFile(doc), sidecar: await readFile(sidecar) }, resolve);
+    } catch (error) {
+      return `Nothing was changed. ${error.message}`;
+    }
+    const lost = comments.filter((c) => c.anchor && quoted(texts.doc, c.anchor.exact).count !== 1);
+    if (!lost.length) return { ...texts, reply };
+    comments.splice(0, comments.length, ...comments.filter((c) => !lost.includes(c)));
+    return `Nothing was changed. As your edits leave the doc, the text of ${lost.length > 1 ? 'comments' : 'a comment'} on ${lost.map((c) => JSON.stringify(c.anchor.exact)).join(', ')} is not in it once, so ${lost.length > 1 ? 'they were' : 'it was'} taken back: comment again on text that is, or on the whole doc, then end your turn again.`;
+  };
   for (let step = 0; step < STEPS; step++) {
     const { calls, text, sent } = await infer(messages, TOOLS);
     messages.push({ role: 'assistant', calls, sent });
-    if (!calls.length) return { edits: added(), reply: text.trim() }; // an answer without a call, as any agent's
+    if (!calls.length) { // an answer without a call, as any agent's
+      const done = await finish([], text.trim());
+      if (typeof done !== 'string') return done;
+      messages.push({ role: 'user', content: done });
+      continue;
+    }
     // A propose ends the turn: it runs after the step's other calls, and only
     // alone and in a step that reads nothing, since it was written before
     // the model saw what the reads return.
@@ -117,7 +138,7 @@ export async function turn({ prompt, doc, sidecar, thread }, { infer, readFile, 
     const runs = ends.length === 1 && !calls.some((call) => READS.includes(call.name));
     const results = new Map();
     for (const call of [...calls.filter((c) => !ends.includes(c)), ...ends]) {
-      const result = ends.includes(call) && !runs ? NOT_RUN : await use(call, { doc, sidecar, thread, comments, added, readFile, resolve });
+      const result = ends.includes(call) && !runs ? NOT_RUN : await use(call, { doc, thread, comments, finish, readFile, resolve });
       if (typeof result !== 'string') return result;
       results.set(call, result);
     }
@@ -126,8 +147,8 @@ export async function turn({ prompt, doc, sidecar, thread }, { infer, readFile, 
   throw new Error(`No proposal in ${STEPS} steps.`);
 }
 
-// What a tool call gives back to the model, or a valid proposal's { edits, reply }.
-async function use({ name, args: json }, { doc, sidecar, thread, comments, added, readFile, resolve }) {
+// What a tool call gives back to the model, or a valid proposal's { doc, sidecar, reply }.
+async function use({ name, args: json }, { doc, thread, comments, finish, readFile, resolve }) {
   let args;
   try {
     args = JSON.parse(json);
@@ -144,9 +165,9 @@ async function use({ name, args: json }, { doc, sidecar, thread, comments, added
       return 'Added when your turn ends, on the whole doc.';
     }
     const { count, line } = quoted(await readFile(doc), on);
-    if (count !== 1) return `Not added: on is ${count ? 'in the doc more than once: quote more of it' : 'not in the doc: quote it exactly'}, or give "" for the whole doc.`;
+    if (count > 1) return 'Not added: on is in the doc more than once: quote more of it, or give "" for the whole doc.';
     comments.push({ anchor: { exact: on }, body });
-    return `Added when your turn ends, on line ${line}.`;
+    return count ? `Added when your turn ends, on line ${line}.` : 'Added when your turn ends, if your edits write on once: it is not in the doc now.';
   }
   if (name === 'resolve') {
     if (!comments.some((c) => c.resolved)) comments.push({ thread, resolved: true });
@@ -157,20 +178,7 @@ async function use({ name, args: json }, { doc, sidecar, thread, comments, added
   if (!Array.isArray(edits) || typeof reply !== 'string') return 'propose takes { edits: [{ old, new }], reply }.';
   const off = edits.find((edit) => edit?.path !== undefined && resolve(edit.path) !== doc);
   if (off) return `Nothing was changed. ${off.path} cannot change: edits change only ${doc}, and comments are the comment tool's.`;
-  const all = [...edits.map((edit) => ({ ...edit, path: doc })), ...added()];
-  let texts;
-  try {
-    texts = apply(all, { doc, sidecar }, { doc: await readFile(doc), sidecar: await readFile(sidecar) }, resolve);
-  } catch (error) {
-    return `Nothing was changed. ${error.message}`;
-  }
-  // The app finds a comment's text in the doc as the edits leave it: one they change or repeat would be on the whole doc.
-  const lost = comments.filter((c) => c.anchor && quoted(texts.doc, c.anchor.exact).count !== 1);
-  if (lost.length) {
-    comments.splice(0, comments.length, ...comments.filter((c) => !lost.includes(c)));
-    return `Nothing was changed. Your edits leave the text of ${lost.length > 1 ? 'comments' : 'a comment'} on ${lost.map((c) => JSON.stringify(c.anchor.exact)).join(', ')} not in the doc once, so ${lost.length > 1 ? 'they were' : 'it was'} taken back: comment again on text the edits keep, or on the whole doc, then propose.`;
-  }
-  return { edits: all, reply };
+  return finish(edits.map((edit) => ({ ...edit, path: doc })), reply);
 }
 
 /**
@@ -299,7 +307,7 @@ const isComment = (line) => {
  * The copies' texts { doc, sidecar } after `edits`, all or none: throws what
  * to fix. `paths` are the copies' paths, `resolve` as for `turn`.
  */
-export function apply(edits, paths, texts, resolve = (path) => path) {
+function apply(edits, paths, texts, resolve = (path) => path) {
   // read shows a CRLF doc's lines without their \r: a quote and its edit get them back.
   const eol = (text) => (texts.doc.includes('\r\n') ? text.replace(/\r?\n/g, '\r\n') : text);
   const spans = [];
