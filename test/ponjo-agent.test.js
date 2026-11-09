@@ -330,7 +330,7 @@ async function fakeApi(answers) {
   return { requests, url: `http://127.0.0.1:${server.address().port}/v1`, close: () => new Promise((r) => server.close(r)) };
 }
 
-test('Anthropic: the Messages API, the tools and the prompt cached, the model\'s content sent back as it came, a refusal fails', async () => {
+test('Anthropic: the Messages API, cached up to the last message, the model\'s content sent back as it came, a refusal fails', async () => {
   const { doc, sidecar } = await copies();
   const thinking = { type: 'thinking', thinking: '', signature: 'sig' }; // must go back as it came
   const api = await fakeApi([
@@ -345,16 +345,17 @@ test('Anthropic: the Messages API, the tools and the prompt cached, the model\'s
     const [first, second] = api.requests;
     assert.equal(first.url, '/v1/messages');
     assert.equal(first.body.messages.length, 1, 'the first step is the prompt alone');
+    assert.deepEqual(first.body.messages[0].content[0].cache_control, { type: 'ephemeral' }, 'cached up to it');
     assert.equal(first.headers['x-api-key'], 'sk-ant-test');
     assert.equal(first.headers['anthropic-version'], '2023-06-01');
     const { tools, messages, ...rest } = second.body;
     assert.deepEqual(rest, { model: 'claude-opus-5-5', max_tokens: 16_000, output_config: { effort: 'low' }, tool_choice: { type: 'auto' } }, 'no thinking setting: the model thinks as it needs');
-    assert.deepEqual(tools.map((t) => [t.name, Object.keys(t.input_schema.properties).join(), t.cache_control]), [['read', 'path,lines', undefined], ['find', 'pattern,path', undefined], ['grep', 'pattern,path', undefined], ['comment', 'on,body', undefined], ['resolve', '', undefined], ['propose', 'edits,reply', { type: 'ephemeral' }]]);
+    assert.deepEqual(tools.map((t) => [t.name, Object.keys(t.input_schema.properties).join(), t.cache_control]), [['read', 'path,lines', undefined], ['find', 'pattern,path', undefined], ['grep', 'pattern,path', undefined], ['comment', 'on,body', undefined], ['resolve', '', undefined], ['propose', 'edits,reply', undefined]]);
     assert.deepEqual(messages, [
-      { role: 'user', content: [{ type: 'text', text: opening(doc, 'the prompt'), cache_control: { type: 'ephemeral' } }] },
+      { role: 'user', content: [{ type: 'text', text: opening(doc, 'the prompt') }] },
       { role: 'assistant', content: [thinking, { type: 'tool_use', id: 'toolu_1', name: 'read', input: { path: doc, lines: [1, 1] } }] },
-      { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_1', content: '1\t# Q4 Launch Plan' }] },
-    ]);
+      { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_1', content: '1\t# Q4 Launch Plan', cache_control: { type: 'ephemeral' } }] },
+    ], 'the one cache mark moved to the last message');
     await assert.rejects(infer(messages, []), /^Error: The model refused: Not this\.$/);
     assert.equal((await infer(messages, [])).text, 'Fine as is.', 'an answer without a call: its text blocks');
   } finally {

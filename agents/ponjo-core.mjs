@@ -352,19 +352,21 @@ const CACHED = { type: 'ephemeral' };
  */
 export const INFER = {
   // Anthropic's Messages API. The model thinks as it needs, at `effort`; its
-  // messages go back as they came, thinking included. The tools and the
-  // prompt are cached for the turn's later steps.
+  // messages go back as they came, thinking included. Everything up to the
+  // last message is cached, the mark moved each step, so a step pays in
+  // full only for what is new.
   anthropic: ({ model, key, effort }, url = 'https://api.anthropic.com/v1') => async (messages, tools) => {
     const reply = await post(`${url}/messages`, { 'x-api-key': key, 'anthropic-version': '2023-06-01' }, {
       model,
       max_tokens: 16_000,
       output_config: { effort },
       tool_choice: { type: 'auto' },
-      tools: tools.map(({ name, description, parameters }, i) => ({ name, description, input_schema: parameters, ...(i === tools.length - 1 && { cache_control: CACHED }) })),
+      tools: tools.map(({ name, description, parameters }) => ({ name, description, input_schema: parameters })),
       messages: messages.map((m, i) => {
+        const last = i === messages.length - 1 && { cache_control: CACHED };
         if (m.role === 'assistant') return { role: 'assistant', content: m.sent };
-        if (m.role === 'tool') return { role: 'user', content: [{ type: 'tool_result', tool_use_id: m.id, content: m.content }] };
-        return { role: 'user', content: [{ type: 'text', text: m.content, ...(i === 0 && { cache_control: CACHED }) }] };
+        if (m.role === 'tool') return { role: 'user', content: [{ type: 'tool_result', tool_use_id: m.id, content: m.content, ...last }] };
+        return { role: 'user', content: [{ type: 'text', text: m.content, ...last }] };
       }),
     });
     if (reply.stop_reason === 'refusal') throw new Error(`The model refused: ${reply.stop_details?.explanation ?? 'no reason given.'}`);

@@ -68,8 +68,8 @@ call's result), and each `infer` translates them:
 
 | `provider` | API | Its own |
 | --- | --- | --- |
-| `anthropic` | Messages (`/v1/messages`) | `output_config.effort`, the model thinking as it needs; its messages sent back as they came, thinking included; prompt caching of the tools and the prompt; a refusal or a cut-off answer fails the turn |
-| `openai` | Chat Completions at `endpoint` (OpenAI, OpenRouter and others) | `reasoning_effort` |
+| `anthropic` | Messages (`/v1/messages`) | `output_config.effort`, the model thinking as it needs; its messages sent back as they came, thinking included; prompt caching up to the last message, moved each step, so a step pays in full only for what is new; a refusal or a cut-off answer fails the turn |
+| `openai` | Chat Completions at `endpoint` (OpenAI, OpenRouter and others) | `reasoning_effort`; caching is the API's own |
 | `nebius` | Chat Completions at Nebius Token Factory, for NVIDIA's Nemotron models | no effort |
 
 All send `tool_choice: "auto"`, the same for every model: current Claude
