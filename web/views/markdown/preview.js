@@ -298,8 +298,11 @@ function tableDom(state, table) {
   const dom = Object.assign(document.createElement('table'), { className: 'pj-md-table' });
   for (let row = table.firstChild; row; row = row.nextSibling) {
     if (row.name !== 'TableHeader' && row.name !== 'TableRow') continue;
+    const cells = rowCells(row);
+    // A header with no text (`| | |`), as tables of terms have, is not drawn.
+    if (row.name === 'TableHeader' && cells.every((cell) => !cell || !state.sliceDoc(cell.from, cell.to).trim())) continue;
     const tr = dom.insertRow();
-    rowCells(row).forEach((cell, k) => {
+    cells.forEach((cell, k) => {
       const td = document.createElement(row.name === 'TableHeader' ? 'th' : 'td');
       if (cell) inlineInto(state, cell, cell.from, cell.to, td);
       td.style.textAlign = align[k] ?? 'left';

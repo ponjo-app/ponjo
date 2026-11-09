@@ -47,7 +47,7 @@ the plain view as source.
   | Code block, fenced or indented | monospace on a tint, coloured by its language; its fences hidden, their lines its padding | its fences, faded |
   | Rule (`---`, `***`, `___`) | a line | the source |
   | Image, inline or by reference | the image | the source |
-  | Table | the table, drawn, with its cells' formatting and alignment | the source, monospace, pipes faded |
+  | Table | the table, drawn, with its cells' formatting and alignment; a header with no text left out | the source, monospace, pipes faded |
   | Mermaid block | its diagram | the source |
   | Footnote (`[^1]`, `[^1]: …`) | a superscript number, in the order of first use; the note small, with its number | the source |
   | Hard break (a line ending in `\` or two spaces) | the break; `\` hidden | `\` shows |

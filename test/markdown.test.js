@@ -83,6 +83,7 @@ const DRAWN = [
   ['a table', '| a | b |\n|---|:-:|\n| `x` |  |\n| y\\|z | **w** |\n', ['[block] [table a|b / x| / y|z|w]', ''], 2,
     ['[table-src] ‹|› a ‹|› b ‹|›', '[table-src] ‹|---|:-:|›', '[table-src] ‹|› <c>‹`›x‹`›</c> ‹|›  ‹|›', '[table-src] ‹|› y\\|z ‹|› <b>‹**›w‹**›</b> ‹|›', '']],
   ['a table without outer pipes', 'a | b\n--|--\n1 | 2\n', ['[block] [table a|b / 1|2]', ''], null, null],
+  ['a table with an empty header row', '| | |\n|---|---|\n| 1 | 2 |\n', ['[block] [table 1|2]', ''], null, null],
   ['front matter', '---\ntitle: x\n---\n\n# H\n', ['[frontmatter] ---', '[frontmatter] title: x', '[frontmatter] ---', '', '[h h1] H', ''], null, null],
   ['footnotes, numbered by first use', 'a[^n] b[^m]\n\n[^m]: M\n[^n]: N\n', ['a⟨1⟩ b⟨2⟩', '', '[footnote] ⟨2.⟩M', '[footnote] ⟨1.⟩N', ''], 0, ['a‹[^n]› b‹[^m]›', '', '[footnote] ⟨2.⟩M', '[footnote] ⟨1.⟩N', '']],
   ['hard breaks', 'a\\\nb  \nc\n', ['a', 'b  ', 'c', ''], 0, ['a\\', 'b  ', 'c', '']],
