@@ -326,7 +326,8 @@ test('the first message lists the project\'s files as the sidebar does, its top 
 });
 
 /**
- * A fake API on 127.0.0.1: `answers` are [status, body, headers?] in turn; `requests`
+ * A fake API on 127.0.0.1: `answers` are [status, body, headers?] in turn,
+ * status 0 dropping the connection without an answer; `requests`
  * what it was sent, { url, headers, body }. `url` is its address.
  */
 async function fakeApi(answers) {
@@ -334,6 +335,7 @@ async function fakeApi(answers) {
   const server = createServer(async (req, res) => {
     requests.push({ url: req.url, headers: req.headers, body: JSON.parse(await text(req)) });
     const [status, body, headers] = answers.shift() ?? [500, { error: 'no answer queued' }];
+    if (!status) return req.socket.destroy();
     res.writeHead(status, { 'content-type': 'application/json', ...headers }).end(JSON.stringify(body));
   });
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
@@ -376,7 +378,7 @@ test('Anthropic: the Messages API, cached up to the last message, the model\'s c
 test('a busy API is asked once more, the same request, after its retry-after; any other failure, never', async () => {
   const done = { stop_reason: 'end_turn', content: [{ type: 'text', text: 'ok' }] };
   const busy = (status) => [status, { error: 'busy' }, { 'retry-after': '0' }];
-  const api = await fakeApi([busy(529), [200, done], busy(429), busy(429), [500, { error: 'broken' }]]);
+  const api = await fakeApi([busy(529), [200, done], busy(429), busy(429), [500, { error: 'broken' }], [0], [200, done]]);
   try {
     const infer = INFER.anthropic({ model: 'claude-opus-5-5', key: 'k', effort: 'low' }, api.url);
     const messages = [{ role: 'user', content: 'p' }];
@@ -387,6 +389,8 @@ test('a busy API is asked once more, the same request, after its retry-after; an
     assert.equal(api.requests.length, 4);
     await assert.rejects(infer(messages, []), /: 500 \{"error":"broken"\}/, 'a 500 is not retried');
     assert.equal(api.requests.length, 5);
+    assert.equal((await infer(messages, [])).text, 'ok', 'a connection dropped before any answer is retried, after 5 s');
+    assert.equal(api.requests.length, 7);
   } finally {
     await api.close();
   }
