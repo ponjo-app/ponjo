@@ -101,8 +101,9 @@ const TOOLS = [
  * call's result. Each call of a step runs, in order, but a propose last.
  */
 export async function turn({ prompt, doc, sidecar, thread }, { infer, readFile, resolve = (path) => path }) {
-  const files = await listing(readFile, [doc, sidecar]);
-  const messages = [{ role: 'user', content: files ? `${prompt}\n\n${files}` : prompt }];
+  // Nearly every turn needs the doc, so it comes with the prompt, as read gives it: a step saved.
+  const opening = [prompt, await listing(readFile, [doc, sidecar]), `The doc, ${doc}, as read gives it:\n\n${await read({ path: doc }, readFile, doc)}`];
+  const messages = [{ role: 'user', content: opening.filter(Boolean).join('\n\n') }];
   const comments = []; // the sidecar's lines from comment and resolve, as objects, added with the proposal
   const added = () => (comments.length ? [{ path: sidecar, old: '', new: comments.map((c) => JSON.stringify(c)).join('\n') }] : []);
   for (let step = 0; step < STEPS; step++) {

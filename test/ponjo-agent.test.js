@@ -55,6 +55,9 @@ function fake(...replies) {
 
 const results = (messages) => messages.filter((m) => m.role === 'tool').map((m) => m.content);
 
+/** The first message: `parts` (the prompt, the project's files), then the doc `doc` holding SAMPLE, as read gives it. */
+const opening = (doc, ...parts) => [...parts, `The doc, ${doc}, as read gives it:`, SAMPLE.trimEnd().split('\n').map((line, i) => `${i + 1}\t${line}`).join('\n')].join('\n\n');
+
 test('a turn reads the doc by line number, comments, resolves and proposes an edit, the calls of a step in order', async () => {
   const { doc, sidecar } = await copies();
   const infer = fake(
@@ -66,7 +69,7 @@ test('a turn reads the doc by line number, comments, resolves and proposes an ed
     edits: [{ old: 'extra load', new: 'extra peak load', path: doc }, { path: sidecar, old: '', new: '{"body":"Is week one too soon?"}\n{"anchor":{"exact":"cannot handle"},"body":"Measured?"}\n{"thread":"c_asked","resolved":true}' }],
     reply: 'Peak load is the risk.',
   }, 'the program writes the sidecar\'s lines, the thread resolved once');
-  assert.deepEqual(infer.messages[0], { role: 'user', content: 'the prompt' }, 'the first message is the prompt as is');
+  assert.deepEqual(infer.messages[0], { role: 'user', content: opening(doc, 'the prompt') }, 'the first message is the prompt as is, then the doc');
   assert.deepEqual(infer.tools.map((t) => t.name), ['read', 'find', 'grep', 'comment', 'resolve', 'propose']);
   assert.deepEqual([infer.messages[1].role, infer.messages[1].sent], ['assistant', 'as the API sent it'], 'the model\'s message, kept as its API sent it');
   assert.deepEqual(infer.messages[2], { role: 'tool', id: infer.messages[1].calls[0].id, content: '8\tThe main risk is that the `sync` service cannot handle the extra load.' });
@@ -173,6 +176,7 @@ test('a long file reads as its outline, and in parts by line number', async () =
   const infer = fake(calling(['read', { path: doc }]), calling(['read', { path: doc, lines: [3, 4] }]), calling(['read', { path: 'nowhere.md' }]), calling(['propose', { edits: [], reply: '' }]));
   await turn({ prompt: 'p', doc, sidecar }, { infer, readFile: seen({ doc, sidecar }) });
   const [outline, part, missing] = results(infer.messages);
+  assert.ok(infer.messages[0].content.endsWith(`The doc, ${doc}, as read gives it:\n\n${outline}`), 'the first message has the outline');
   assert.deepEqual(outline.split('\n').slice(0, 5), [`${doc} has 98 lines, too many to read at once: read it in parts.`, 'Its headings, with their lines:', '1-2\t# Plan', '3-10\t## One', '11-14\t## S0']);
   assert.equal(part, `3\t## One\n4\t`);
   assert.equal(missing, 'nowhere.md: no such file, or not one you can read.');
@@ -305,10 +309,10 @@ test('the first message lists the project\'s files as the sidebar does, its top 
     await turn({ prompt: 'p', doc, sidecar }, { infer, readFile, resolve: inProject });
     return infer.messages[0].content;
   };
-  assert.equal(await first(seen({ doc, sidecar }, root)), 'p\n\nThe project\'s files:\n\nbig.log\nlinked\nnode_modules/pkg/index.js\nnotes/a.md\npic.png', 'no sidecar of a file there, nothing hidden');
-  assert.equal(await first(seen({ doc, sidecar })), 'p', 'only the copies: no list');
+  assert.equal(await first(seen({ doc, sidecar }, root)), opening(doc, 'p', 'The project\'s files:\n\nbig.log\nlinked\nnode_modules/pkg/index.js\nnotes/a.md\npic.png'), 'no sidecar of a file there, nothing hidden');
+  assert.equal(await first(seen({ doc, sidecar })), opening(doc, 'p'), 'only the copies: no list');
   for (let i = 0; i < 200; i++) await writeFile(join(root, 'notes', `n${i}.txt`), '');
-  assert.equal(await first(seen({ doc, sidecar }, root)), 'p\n\nThe project has more than 200 files: find them with find. Its top folder:\n\nbig.log\nlinked\nnode_modules/\nnotes/\npic.png');
+  assert.equal(await first(seen({ doc, sidecar }, root)), opening(doc, 'p', 'The project has more than 200 files: find them with find. Its top folder:\n\nbig.log\nlinked\nnode_modules/\nnotes/\npic.png'));
 });
 
 /**
@@ -347,7 +351,7 @@ test('Anthropic: the Messages API, the tools and the prompt cached, the model\'s
     assert.deepEqual(rest, { model: 'claude-opus-5-5', max_tokens: 16_000, output_config: { effort: 'low' }, tool_choice: { type: 'auto' } }, 'no thinking setting: the model thinks as it needs');
     assert.deepEqual(tools.map((t) => [t.name, Object.keys(t.input_schema.properties).join(), t.cache_control]), [['read', 'path,lines', undefined], ['find', 'pattern,path', undefined], ['grep', 'pattern,path', undefined], ['comment', 'on,body', undefined], ['resolve', '', undefined], ['propose', 'edits,reply', { type: 'ephemeral' }]]);
     assert.deepEqual(messages, [
-      { role: 'user', content: [{ type: 'text', text: 'the prompt', cache_control: { type: 'ephemeral' } }] },
+      { role: 'user', content: [{ type: 'text', text: opening(doc, 'the prompt'), cache_control: { type: 'ephemeral' } }] },
       { role: 'assistant', content: [thinking, { type: 'tool_use', id: 'toolu_1', name: 'read', input: { path: doc, lines: [1, 1] } }] },
       { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_1', content: '1\t# Q4 Launch Plan' }] },
     ]);
@@ -391,7 +395,7 @@ test('OpenAI-compatible: Chat Completions at the endpoint, with the key and the 
     assert.equal(headers.authorization, 'Bearer sk-test');
     assert.deepEqual([body.model, body.reasoning_effort, body.tool_choice], ['gpt-5', 'medium', 'auto']);
     assert.deepEqual(body.tools.map((t) => [t.type, t.function.name]), [['function', 'read'], ['function', 'find'], ['function', 'grep'], ['function', 'comment'], ['function', 'resolve'], ['function', 'propose']]);
-    assert.deepEqual(body.messages, [{ role: 'user', content: 'the prompt' }, read, { role: 'tool', tool_call_id: 'call_a', content: '1\t# Q4 Launch Plan' }]);
+    assert.deepEqual(body.messages, [{ role: 'user', content: opening(doc, 'the prompt') }, read, { role: 'tool', tool_call_id: 'call_a', content: '1\t# Q4 Launch Plan' }]);
     assert.equal((await infer(body.messages, [])).text, 'Fine as is.', 'an answer without a call: its content');
   } finally {
     await api.close();
