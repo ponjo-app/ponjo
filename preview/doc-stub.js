@@ -21,7 +21,7 @@ import { appendedComments, askedOf, movedAnchor, newComment, newId, parseSidecar
 import { diffEdits, merge3 } from '../src/core/diff.js';
 import { buildPrompt } from '../src/core/prompt.js';
 import { matches, searchPattern } from '../src/core/search.js';
-import { INFER, apply as applyProposal, turn } from '../agents/ponjo-core.mjs';
+import { INFER, turn } from '../agents/ponjo-core.mjs';
 import { buddiesHere, checkBuddyPatch, parseBuddy } from '../src/core/buddies.js';
 import { sameName } from '../src/core/mentions.js';
 import { DEFAULT_SETTINGS, checkSettingsPatch, mergeSettings } from '../src/core/settings.js';
@@ -183,8 +183,8 @@ async function run(id, thread) {
   let failed = false;
   try {
     const prompt = buildPrompt({ buddy, buddies: buddies(), docName: doc, sidecarName: sidecar, thread, project: inFolder, human: { name: s.settings.name, about: s.settings.about.trim() } });
-    const { edits, reply } = await turn({ prompt, doc, sidecar, thread: thread.id }, { infer, readFile: (path) => read(plain(path), copies), resolve: plain });
-    texts = applyProposal(edits, { doc, sidecar }, { doc: copies[doc], sidecar: copies[sidecar] }, plain);
+    const { reply, ...proposed } = await turn({ prompt, doc, sidecar, thread: thread.id }, { infer, readFile: (path) => read(plain(path), copies), resolve: plain });
+    texts = proposed;
     body = reply.trim();
   } catch (error) {
     body = error.message.split('\n')[0];

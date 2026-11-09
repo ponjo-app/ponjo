@@ -11,7 +11,7 @@ import { realpathSync } from 'node:fs';
 import { isAbsolute, join, relative, sep } from 'node:path';
 import { text } from 'node:stream/consumers';
 import { fileURLToPath } from 'node:url';
-import { INFER, apply, turn } from './ponjo-core.mjs';
+import { INFER, turn } from './ponjo-core.mjs';
 
 const MAX_TEXT_BYTES = 20 * 1024 * 1024; // the largest text file the app opens (src/store/files.js)
 
@@ -89,11 +89,10 @@ async function main() {
       noted += 1; // the answer, which turn adds next
       return answer;
     };
-    const { edits, reply } = await turn({ prompt: await text(process.stdin), doc, sidecar, thread }, { infer: step, readFile: readable, resolve: inProject });
-    const texts = apply(edits, { doc, sidecar }, { doc: await readable(doc), sidecar: await readable(sidecar) }, inProject);
+    const texts = await turn({ prompt: await text(process.stdin), doc, sidecar, thread }, { infer: step, readFile: readable, resolve: inProject });
     await writeFile(docCopy, texts.doc);
     await writeFile(sidecarCopy, texts.sidecar);
-    process.stdout.write(reply);
+    process.stdout.write(texts.reply);
   } catch (failure) {
     await note(messages.slice(noted)); // the last step's results
     process.stderr.write(`${failure.message}\n`);

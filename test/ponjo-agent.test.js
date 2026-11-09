@@ -55,6 +55,9 @@ function fake(...replies) {
 
 const results = (messages) => messages.filter((m) => m.role === 'tool').map((m) => m.content);
 
+/** What a turn gives back: the doc's text, the sidecar's with `lines` appended, and the reply. */
+const left = (doc, lines, reply) => ({ doc, sidecar: HEADER + lines.map((line) => `${JSON.stringify(line)}\n`).join(''), reply });
+
 /** The first message: `parts` (the prompt, the project's files), then the doc `doc` holding SAMPLE, as read gives it. */
 const opening = (doc, ...parts) => [...parts, `The doc, ${doc}, as read gives it:`, SAMPLE.trimEnd().split('\n').map((line, i) => `${i + 1}\t${line}`).join('\n')].join('\n\n');
 
@@ -65,10 +68,11 @@ test('a turn reads the doc by line number, comments, resolves and proposes an ed
     calling(['comment', { on: '', body: 'Is week one too soon?' }], ['comment', { on: 'cannot handle', body: 'Measured?' }], ['resolve', {}], ['resolve', {}]),
     calling(['propose', { edits: [{ old: 'extra load', new: 'extra peak load' }], reply: 'Peak load is the risk.' }]),
   );
-  assert.deepEqual(await turn({ prompt: 'the prompt', doc, sidecar, thread: 'c_asked' }, { infer, readFile: seen({ doc, sidecar }) }), {
-    edits: [{ old: 'extra load', new: 'extra peak load', path: doc }, { path: sidecar, old: '', new: '{"body":"Is week one too soon?"}\n{"anchor":{"exact":"cannot handle"},"body":"Measured?"}\n{"thread":"c_asked","resolved":true}' }],
-    reply: 'Peak load is the risk.',
-  }, 'the program writes the sidecar\'s lines, the thread resolved once');
+  assert.deepEqual(
+    await turn({ prompt: 'the prompt', doc, sidecar, thread: 'c_asked' }, { infer, readFile: seen({ doc, sidecar }) }),
+    left(SAMPLE.replace('extra load', 'extra peak load'), [{ body: 'Is week one too soon?' }, { anchor: { exact: 'cannot handle' }, body: 'Measured?' }, { thread: 'c_asked', resolved: true }], 'Peak load is the risk.'),
+    'the copies\' new texts: the program writes the sidecar\'s lines, the thread resolved once',
+  );
   assert.deepEqual(infer.messages[0], { role: 'user', content: opening(doc, 'the prompt') }, 'the first message is the prompt as is, then the doc');
   assert.deepEqual(infer.tools.map((t) => t.name), ['read', 'find', 'grep', 'comment', 'resolve', 'propose']);
   assert.deepEqual([infer.messages[1].role, infer.messages[1].sent], ['assistant', 'as the API sent it'], 'the model\'s message, kept as its API sent it');
@@ -86,28 +90,37 @@ test('a bad comment or proposal goes back saying what to fix', async () => {
     ['propose', { edits: [{ path: sidecar, old: '', new: '{"body":"no"}' }], reply: '' }, /^Nothing was changed\. plan\.md\.comments\.jsonl cannot change: edits change only plan\.md, and comments are the comment tool's/],
     ['propose', { edits: [{ path: 'other.md', old: 'week one', new: 'x' }], reply: '' }, /other\.md cannot change/],
     ['comment', { on: 'the', body: 'Which?' }, /^Not added: on is in the doc more than once/],
-    ['comment', { on: 'week nine', body: 'Which?' }, /^Not added: on is not in the doc: quote it exactly, or give "" for the whole doc/],
     ['comment', { on: '', body: ' ' }, /^Not added: comment takes \{ on, body \}, body not empty/],
     ['comment', { body: 'No on.' }, /^Not added: comment takes/],
   ];
   const good = { edits: [{ path: doc, old: 'week one', new: 'week two' }], reply: '' };
   const infer = fake(...bad.map(([name, args]) => calling([name, args])), calling(['propose', good]));
-  assert.deepEqual(await turn({ prompt: 'p', doc, sidecar, thread: 'c_asked' }, { infer, readFile: seen({ doc, sidecar }), resolve: inProject }), good, 'an edit may name the doc; no comment was added');
+  assert.deepEqual(await turn({ prompt: 'p', doc, sidecar, thread: 'c_asked' }, { infer, readFile: seen({ doc, sidecar }), resolve: inProject }), left(SAMPLE.replace('week one', 'week two'), [], ''), 'an edit may name the doc; no comment was added');
   const said = results(infer.messages);
   bad.forEach(([, , why], i) => assert.match(said[i], why));
 });
 
 test('a comment\'s text is checked as the app finds it, in the doc as the edits leave it', async () => {
   const { doc, sidecar } = await copies();
-  const infer = fake(
-    calling(['comment', { on: 'the  `sync` service\ncannot', body: 'Which service?' }], ['comment', { on: 'extra load', body: 'Measured?' }], ['propose', { edits: [{ old: 'extra load', new: 'extra peak load' }], reply: '' }]),
-    calling(['comment', { on: '', body: 'Measured?' }], ['propose', { edits: [{ old: 'extra load', new: 'extra peak load' }], reply: 'Done.' }]),
-  );
-  const { edits } = await turn({ prompt: 'p', doc, sidecar, thread: 'c_asked' }, { infer, readFile: seen({ doc, sidecar }) });
-  const said = results(infer.messages);
-  assert.equal(said[0], 'Added when your turn ends, on line 8.', 'a run of whitespace stands for another');
-  assert.equal(said[2], 'Nothing was changed. Your edits leave the text of a comment on "extra load" not in the doc once, so it was taken back: comment again on text the edits keep, or on the whole doc, then propose.');
-  assert.equal(edits.at(-1).new, '{"anchor":{"exact":"the  `sync` service\\ncannot"},"body":"Which service?"}\n{"body":"Measured?"}', 'the one taken back is gone');
+  const edit = { edits: [{ old: 'extra load', new: 'extra peak load' }], reply: 'Done.' };
+  const uses = [['comment', { on: 'the  `sync` service\ncannot', body: 'Which service?' }], ['comment', { on: 'extra load', body: 'Measured?' }], ['comment', { on: 'peak load', body: 'Peak?' }]];
+  const infer = fake(calling(...uses, ['propose', edit]), calling(['propose', edit]));
+  const done = await turn({ prompt: 'p', doc, sidecar, thread: 'c_asked' }, { infer, readFile: seen({ doc, sidecar }) });
+  assert.deepEqual(results(infer.messages), [
+    'Added when your turn ends, on line 8.',
+    'Added when your turn ends, on line 8.',
+    'Added when your turn ends, if your edits write on once: it is not in the doc now.',
+    'Nothing was changed. As your edits leave the doc, the text of a comment on "extra load" is not in it once, so it was taken back: comment again on text that is, or on the whole doc, then end your turn again.',
+  ], 'a run of whitespace stands for another; the text the edits change is taken back');
+  assert.deepEqual(done, left(SAMPLE.replace('extra load', 'extra peak load'), [{ anchor: { exact: 'the  `sync` service\ncannot' }, body: 'Which service?' }, { anchor: { exact: 'peak load' }, body: 'Peak?' }], 'Done.'), 'a comment on text the edits write is in');
+});
+
+test('an answer without a call also sends back a comment on text not in the doc', async () => {
+  const { doc, sidecar } = await copies();
+  const answer = { calls: [], text: 'Asked.', sent: 'as the API sent it' };
+  const infer = fake(calling(['comment', { on: 'week nine', body: 'Which?' }]), answer, answer);
+  assert.deepEqual(await turn({ prompt: 'p', doc, sidecar }, { infer, readFile: seen({ doc, sidecar }) }), left(SAMPLE, [], 'Asked.'));
+  assert.deepEqual(infer.messages.at(-2), { role: 'user', content: 'Nothing was changed. As your edits leave the doc, the text of a comment on "week nine" is not in it once, so it was taken back: comment again on text that is, or on the whole doc, then end your turn again.' });
 });
 
 // A comment's text in a doc: whether the app anchors it, and so the program takes it.
@@ -141,10 +154,7 @@ test('a propose runs after the other calls of its step, and not with a read or a
     calling(['propose', edit], ['propose', edit]),
     calling(['propose', edit], ['comment', { on: '', body: 'Two weeks?' }], ['resolve', {}]),
   );
-  assert.deepEqual(await turn({ prompt: 'p', doc, sidecar, thread: 'c_asked' }, { infer, readFile: seen({ doc, sidecar }) }), {
-    edits: [{ ...edit.edits[0], path: doc }, { path: sidecar, old: '', new: '{"body":"Two weeks?"}\n{"thread":"c_asked","resolved":true}' }],
-    reply: 'Moved it.',
-  }, 'the comment and resolve after it are in');
+  assert.deepEqual(await turn({ prompt: 'p', doc, sidecar, thread: 'c_asked' }, { infer, readFile: seen({ doc, sidecar }) }), left(SAMPLE.replace('week one', 'week two'), [{ body: 'Two weeks?' }, { thread: 'c_asked', resolved: true }], 'Moved it.'), 'the comment and resolve after it are in');
   const notRun = 'Not run: propose once, in a step with no read, find or grep: it ends your turn, so it comes after what you read.';
   assert.deepEqual(results(infer.messages), ['1\t# Q4 Launch Plan', notRun, notRun, notRun], 'the read runs; each result in the order of its call');
   assert.equal(infer.steps, 3);
@@ -153,7 +163,7 @@ test('a propose runs after the other calls of its step, and not with a read or a
 test('an answer without a tool call is the reply, with no edits', async () => {
   const { doc, sidecar } = await copies();
   const infer = fake(calling(['read', { path: doc, lines: [1, 1] }]), { calls: [], text: '\nTry "co-authoring".', sent: 'as the API sent it' });
-  assert.deepEqual(await turn({ prompt: 'p', doc, sidecar }, { infer, readFile: seen({ doc, sidecar }) }), { edits: [], reply: 'Try "co-authoring".' });
+  assert.deepEqual(await turn({ prompt: 'p', doc, sidecar }, { infer, readFile: seen({ doc, sidecar }) }), left(SAMPLE, [], 'Try "co-authoring".'));
   assert.equal(infer.steps, 2);
 });
 
@@ -316,7 +326,8 @@ test('the first message lists the project\'s files as the sidebar does, its top 
 });
 
 /**
- * A fake API on 127.0.0.1: `answers` are [status, body, headers?] in turn; `requests`
+ * A fake API on 127.0.0.1: `answers` are [status, body, headers?] in turn,
+ * status 0 dropping the connection without an answer; `requests`
  * what it was sent, { url, headers, body }. `url` is its address.
  */
 async function fakeApi(answers) {
@@ -324,6 +335,7 @@ async function fakeApi(answers) {
   const server = createServer(async (req, res) => {
     requests.push({ url: req.url, headers: req.headers, body: JSON.parse(await text(req)) });
     const [status, body, headers] = answers.shift() ?? [500, { error: 'no answer queued' }];
+    if (!status) return req.socket.destroy();
     res.writeHead(status, { 'content-type': 'application/json', ...headers }).end(JSON.stringify(body));
   });
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
@@ -341,7 +353,7 @@ test('Anthropic: the Messages API, cached up to the last message, the model\'s c
   ]);
   try {
     const infer = INFER.anthropic({ model: 'claude-opus-5-5', key: 'sk-ant-test', effort: 'low' }, api.url);
-    assert.deepEqual(await turn({ prompt: 'the prompt', doc, sidecar }, { infer, readFile: seen({ doc, sidecar }) }), { edits: [], reply: 'Fine as is.' });
+    assert.deepEqual(await turn({ prompt: 'the prompt', doc, sidecar }, { infer, readFile: seen({ doc, sidecar }) }), left(SAMPLE, [], 'Fine as is.'));
     const [first, second] = api.requests;
     assert.equal(first.url, '/v1/messages');
     assert.equal(first.body.messages.length, 1, 'the first step is the prompt alone');
@@ -366,7 +378,7 @@ test('Anthropic: the Messages API, cached up to the last message, the model\'s c
 test('a busy API is asked once more, the same request, after its retry-after; any other failure, never', async () => {
   const done = { stop_reason: 'end_turn', content: [{ type: 'text', text: 'ok' }] };
   const busy = (status) => [status, { error: 'busy' }, { 'retry-after': '0' }];
-  const api = await fakeApi([busy(529), [200, done], busy(429), busy(429), [500, { error: 'broken' }]]);
+  const api = await fakeApi([busy(529), [200, done], busy(429), busy(429), [500, { error: 'broken' }], [0], [200, done]]);
   try {
     const infer = INFER.anthropic({ model: 'claude-opus-5-5', key: 'k', effort: 'low' }, api.url);
     const messages = [{ role: 'user', content: 'p' }];
@@ -377,6 +389,8 @@ test('a busy API is asked once more, the same request, after its retry-after; an
     assert.equal(api.requests.length, 4);
     await assert.rejects(infer(messages, []), /: 500 \{"error":"broken"\}/, 'a 500 is not retried');
     assert.equal(api.requests.length, 5);
+    assert.equal((await infer(messages, [])).text, 'ok', 'a connection dropped before any answer is retried, after 5 s');
+    assert.equal(api.requests.length, 7);
   } finally {
     await api.close();
   }
@@ -390,7 +404,7 @@ test('OpenAI-compatible: Chat Completions at the endpoint, with the key and the 
   const api = await fakeApi([[200, { choices: [{ message: read }] }], [200, { choices: [{ message: propose }] }], [200, { choices: [{ message: answer }] }]]);
   try {
     const infer = INFER.openai({ endpoint: `${api.url}/`, model: 'gpt-5', key: 'sk-test', effort: 'medium' });
-    assert.deepEqual(await turn({ prompt: 'the prompt', doc, sidecar }, { infer, readFile: seen({ doc, sidecar }) }), { edits: [], reply: 'ok' });
+    assert.deepEqual(await turn({ prompt: 'the prompt', doc, sidecar }, { infer, readFile: seen({ doc, sidecar }) }), left(SAMPLE, [], 'ok'));
     const [, { url, headers, body }] = api.requests;
     assert.equal(url, '/v1/chat/completions');
     assert.equal(headers.authorization, 'Bearer sk-test');
