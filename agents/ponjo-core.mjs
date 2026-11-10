@@ -351,10 +351,15 @@ const HINTS = { 401: 'Check the API key.', 404: 'Check the endpoint and the mode
 
 const CACHED = { type: 'ephemeral' };
 
+// Anthropic's web fetch (INFER.anthropic), and how many times a step that
+// pauses while fetching is asked to go on before the turn fails.
+const WEB_FETCH = { type: 'web_fetch_20260209', name: 'web_fetch' };
+const MAX_PAUSES = 4;
+
 /**
  * One step of the model, by provider: `INFER[provider](settings, url)` is
  * `infer` for `turn`, over that provider's API at `url`. `settings` are the
- * agent's: { endpoint, model, key, effort }. Each sends `tool_choice: auto`:
+ * agent's: { endpoint, model, key, effort, web }. Each sends `tool_choice: auto`:
  * current Claude models refuse a forced tool call, and an answer without one
  * is the reply.
  */
@@ -362,26 +367,40 @@ export const INFER = {
   // Anthropic's Messages API. The model thinks as it needs, at `effort`; its
   // messages go back as they came, thinking included. Everything up to the
   // last message is cached, the mark moved each step, so a step pays in
-  // full only for what is new.
-  anthropic: ({ model, key, effort }, url = 'https://api.anthropic.com/v1') => async (messages, tools) => {
-    const reply = await post(`${url}/messages`, { 'x-api-key': key, 'anthropic-version': '2023-06-01' }, {
+  // full only for what is new. With `web` it may read web pages by
+  // Anthropic's web fetch, which runs at Anthropic and opens only a URL
+  // already in the messages: one in the thread or the doc, or on a page it
+  // read. A step it pauses, fetching, is asked to go on, as one answer.
+  anthropic: ({ model, key, effort, web = false }, url = 'https://api.anthropic.com/v1') => async (messages, tools) => {
+    const request = (sent) => post(`${url}/messages`, { 'x-api-key': key, 'anthropic-version': '2023-06-01' }, {
       model,
       max_tokens: 16_000,
       output_config: { effort },
       tool_choice: { type: 'auto' },
-      tools: tools.map(({ name, description, parameters }) => ({ name, description, input_schema: parameters })),
-      messages: messages.map((m, i) => {
+      tools: [...tools.map(({ name, description, parameters }) => ({ name, description, input_schema: parameters })), ...(web ? [WEB_FETCH] : [])],
+      messages: [...messages.map((m, i) => {
         const last = i === messages.length - 1 && { cache_control: CACHED };
         if (m.role === 'assistant') return { role: 'assistant', content: m.sent };
         if (m.role === 'tool') return { role: 'user', content: [{ type: 'tool_result', tool_use_id: m.id, content: m.content, ...last }] };
         return { role: 'user', content: [{ type: 'text', text: m.content, ...last }] };
-      }),
+      }), ...(sent.length ? [{ role: 'assistant', content: sent }] : [])],
     });
-    if (reply.stop_reason === 'refusal') throw new Error(`The model refused: ${reply.stop_details?.explanation ?? 'no reason given.'}`);
-    if (reply.stop_reason === 'max_tokens') throw new Error('The model\'s answer was cut off at 16,000 tokens.');
-    const calls = reply.content.filter((block) => block.type === 'tool_use').map(({ id, name, input }) => ({ id, name, args: JSON.stringify(input) }));
-    const text = reply.content.filter((block) => block.type === 'text').map((block) => block.text).join('');
-    return { calls, text, sent: reply.content, usage: reply.usage };
+    let sent = [];
+    let usage;
+    for (let paused = 0; ; paused++) {
+      const reply = await request(sent);
+      sent = [...sent, ...reply.content];
+      usage = usage ? Object.fromEntries(Object.entries(reply.usage ?? {}).map(([k, v]) => [k, typeof v === 'number' ? v + (usage[k] ?? 0) : v])) : reply.usage;
+      if (reply.stop_reason === 'refusal') throw new Error(`The model refused: ${reply.stop_details?.explanation ?? 'no reason given.'}`);
+      if (reply.stop_reason === 'max_tokens') throw new Error('The model\'s answer was cut off at 16,000 tokens.');
+      if (reply.stop_reason !== 'pause_turn') break;
+      if (paused === MAX_PAUSES) throw new Error(`The model was still reading web pages after ${MAX_PAUSES + 1} requests.`);
+    }
+    const calls = sent.filter((block) => block.type === 'tool_use').map(({ id, name, input }) => ({ id, name, args: JSON.stringify(input) }));
+    // The text after the last page it read: what it wrote before is on its way there.
+    const after = sent.slice(sent.findLastIndex((block) => block.type.endsWith('_tool_result')) + 1);
+    const text = after.filter((block) => block.type === 'text').map((block) => block.text).join('');
+    return { calls, text, sent, usage };
   },
   // The Chat Completions API, which OpenAI, OpenRouter and others speak.
   openai: ({ endpoint, model, key, effort }, url = endpoint.replace(/\/+$/, '')) => async (messages, tools) => {
