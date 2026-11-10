@@ -129,20 +129,24 @@ a { color: var(--accent); }
 .arch-merge-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; margin-bottom: 8px; }
 .arch-merge-head b { font-size: 16px; font-weight: 600; }
 .arch-merge-head span { color: var(--text-faint); font-size: 13px; }
-.arch-line { margin: 24px 0 16px; }
-.arch-lanes { display: flex; flex-direction: column; gap: 8px; }
-.arch-lane { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-.arch-op { padding: 2px 8px; border-radius: 6px; background: var(--bg-soft); color: var(--text-soft); font-size: 12px; }
-.arch-op + .arch-op::before { content: '→ '; color: var(--text-faint); }
-.arch-op-done { color: var(--text); font-weight: 500; }
-.arch-case { margin: 4px 0 12px; }
-.arch-scroll { overflow-x: auto; }
-.arch-3way { width: 100%; min-width: 560px; border-collapse: separate; border-spacing: 6px; margin: 0 -6px; font-size: 13px; }
-.arch-3way th { color: var(--text-faint); font-size: 12px; font-weight: 500; text-align: left; }
-.arch-3way td { padding: 6px 8px; border-radius: 6px; background: var(--bg-soft); color: var(--text-soft); vertical-align: top; }
-.arch-3way td:last-child { color: var(--text); }
-.arch-3way .arch-changed { color: var(--text); box-shadow: inset 2px 0 0 var(--text-faint); }
-.arch-kept::after { content: "people's line kept"; display: block; color: var(--text-faint); font-size: 11px; }
+.arch-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 12px 0; }
+.arch-pages, .arch-sides { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.arch-sides { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.arch-pages label, .arch-sides label { display: flex; flex-direction: column; gap: 6px; }
+.arch-who { display: flex; align-items: center; gap: 6px; color: var(--text-soft); font-size: 12px; }
+.arch-page .arch-text { display: block; width: 100%; box-sizing: border-box; height: auto; padding: 8px; resize: vertical; font: 14px/1.6 var(--ui-font); }
+.arch-file { display: flex; flex-direction: column; gap: 6px; margin-top: 16px; }
+.arch-file .ds-prose { padding: 8px 12px; border-radius: 6px; background: var(--bg-soft); white-space: pre-wrap; }
+.arch-same { color: var(--text); }
+.ds-page .arch-log { margin: 12px 0 0; padding: 0; list-style: none; color: var(--text-soft); font-size: 12px; }
+.ds-page .arch-log li { margin: 2px 0; }
+.arch-moved { color: var(--text); font-weight: 500; }
+.arch-ask { flex: 1; min-width: 200px; }
+.arch-status { display: flex; align-items: center; gap: 8px; color: var(--text-soft); font-size: 13px; }
+.arch-reply { margin: 12px 0 0; font-size: 14px; }
+@media (max-width: 720px) {
+  .arch-pages, .arch-sides { grid-template-columns: 1fr; }
+}
 .arch-verdict { margin: 12px 0 0; font-size: 13px; }
 
 /* a turn, step by step */
