@@ -125,7 +125,8 @@ What an agent reads can land in a doc teammates read. The Ponjo agent
 reads only what the project shows to everyone on it (ProjectService: no
 name starting with `.`, no link out of the project), and only text files
 of 20 MB or less: its tools are the boundary ([Ponjo
-agent](ponjo-agent.md)). Claude Code and Codex read with their own tools,
+agent](ponjo-agent.md)), but for the MCP tools the user names, which read
+what the user's token reaches. Claude Code and Codex read with their own tools,
 which Ponjo does not limit: Claude Code reads its working folder and the
 `--add-dir` it is given, hidden files included, and Codex's
 `workspace-write` sandbox reads the whole disk. Running a buddy on them is

@@ -67,6 +67,7 @@ export function files({ doc, sidecar, project }) {
 async function main() {
   const { PONJO_DOC: docCopy, PONJO_COMMENTS: sidecarCopy, PONJO_PROJECT: project, PONJO_THREAD: thread, PONJO_TRACE: trace } = process.env;
   const { PONJO_SETTING_PROVIDER: provider, PONJO_SETTING_ENDPOINT: endpoint, PONJO_SETTING_EFFORT: effort, PONJO_SETTING_WEB: web } = process.env;
+  const { PONJO_SETTING_MCP_URL: mcpUrl, PONJO_SETTING_MCP_TOKEN: mcpToken, PONJO_SETTING_MCP_TOOLS: mcpTools = '' } = process.env;
   // Each provider has its own model and key, kept when another is picked.
   const { [`PONJO_SETTING_${provider.toUpperCase()}_MODEL`]: model, [`PONJO_SETTING_${provider.toUpperCase()}_KEY`]: key } = process.env;
   const note = (lines) => trace && appendFile(trace, lines.map((line) => `${JSON.stringify(line)}\n`).join(''));
@@ -79,7 +80,10 @@ async function main() {
     const here = await realpath('.');
     const [doc, sidecar] = await Promise.all([docCopy, sidecarCopy].map(async (copy) => relative(here, await realpath(copy)).split(sep).join('/')));
     const readable = files({ doc, sidecar, project: project || '.' });
-    const infer = INFER[provider]({ endpoint, model, key, effort, web: web === 'true' });
+    // An MCP server only with tools to call: its URL and the tools' names, set in Settings.
+    const named = mcpTools.split(/[\s,]+/).filter(Boolean);
+    const mcp = mcpUrl && named.length ? { url: mcpUrl, token: mcpToken, tools: named } : null;
+    const infer = INFER[provider]({ endpoint, model, key, effort, web: web === 'true', mcp });
     const step = async (sent, tools) => {
       await note((messages = sent).slice(noted));
       noted = messages.length;

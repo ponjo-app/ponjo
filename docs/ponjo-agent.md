@@ -15,8 +15,8 @@ laptop runs (an 8B model tried) claim edits they did not make.
 1. **Read and propose, never write.** The model's only effect is a
    proposal; the program checks it and applies it to the copies.
 2. **The tools are the permissions.** `read`, `find`, `grep`, `comment`, `resolve` and `propose` only, and
-   with Anthropic, its web fetch: no shell, no network but the model's API. Text a teammate wrote can at
-   worst make an undoable proposal.
+   with Anthropic, its web fetch and the MCP tools the user names: no shell, no network but the model's
+   API. Text a teammate wrote can at worst make an undoable proposal, or call those MCP tools.
 3. **Stateless.** A turn remembers nothing after. Within it, all state is
    the messages, and its trace replays it.
 4. **The doc comes with the prompt; the model asks for the rest.** Nearly
@@ -70,7 +70,7 @@ call's result), and each `infer` translates them:
 
 | `provider` | API | Its own |
 | --- | --- | --- |
-| `anthropic` | Messages (`/v1/messages`) | `output_config.effort`, the model thinking as it needs; its messages sent back as they came, thinking included; prompt caching up to the last message, moved each step, so a step pays in full only for what is new; web fetch, with `web`; a refusal or a cut-off answer fails the turn |
+| `anthropic` | Messages (`/v1/messages`) | `output_config.effort`, the model thinking as it needs; its messages sent back as they came, thinking included; prompt caching up to the last message, moved each step, so a step pays in full only for what is new; web fetch, with `web`; an MCP server's tools, with `mcp_url` and `mcp_tools`; a refusal or a cut-off answer fails the turn |
 | `openai` | Chat Completions at `endpoint` (OpenAI, OpenRouter and others) | `reasoning_effort`; caching is the API's own |
 | `nebius` | Chat Completions at Nebius Token Factory, for NVIDIA's Nemotron models | no effort |
 
@@ -135,6 +135,18 @@ own tool, not one of `turn`'s: a step that fetches comes back with the page
 read, and its reply is the text after the last page. A step Anthropic pauses
 while fetching is asked to go on, as one answer, at most five requests.
 
+**MCP tools**, with Anthropic, `mcp_url` and `mcp_tools` set: the tools
+named in `mcp_tools`, and only those, of the remote MCP server at
+`mcp_url`, called by Anthropic's MCP connector (beta
+`mcp-client-2025-11-20`) with `mcp_token`, which goes to Anthropic with
+each request. Like web fetch, the API's own tools: a step comes back with
+their results, its reply the text after the last, and goes on when paused.
+One server, reached from Anthropic, so only one on the internet; with a
+token of the user's, as the connector has no sign-in. Ponjo cannot tell
+which tools only read: the user names them, so names only those. They act
+with the user's token for whoever asked, a teammate who can edit too, and
+what they read can land in a doc teammates read.
+
 **`propose({ edits: [{ old, new }], reply })`** ends the turn. The edits
 change the doc only: `old` must be found in it exactly once. One bad edit
 sends the whole proposal back, saying what to fix. `reply` is printed, and
@@ -189,6 +201,7 @@ flowchart LR
 | `<provider>_model` | text, one for each provider | Anthropic `claude-opus-5-5`, OpenAI-compatible none, Nebius `nvidia/nemotron-3-super-120b-a12b` |
 | `<provider>_key` | secret, one for each provider | none: a run without the picked provider's fails, saying where to set it |
 | `web` | switch, for Anthropic only | on: the model reads web pages (see Web pages) |
+| `mcp_url`, `mcp_token`, `mcp_tools` | text, secret, text, for Anthropic only | none: no MCP tools (see MCP tools); `mcp_tools` the tools' names, comma-separated |
 | `effort` | choice: low, medium, high | `low`: scoped edits; higher thinks longer before it answers |
 
 - **Tests** call `turn` with a fake `infer`, and each `infer` on a fake
@@ -222,3 +235,6 @@ flowchart LR
 - Later: web pages with the other providers, by a fetch of our own that
   keeps, as Anthropic's does, to the links in the messages and off the
   user's network.
+- MCP tools only in a turn the owner asked for: a teammate can now use the
+  owner's token. Also: more than one server, a server that needs a sign-in
+  (OAuth), and the other providers.

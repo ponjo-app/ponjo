@@ -387,8 +387,27 @@ test('Anthropic with web: its web fetch is offered, a step paused while fetching
     const [first, second] = api.requests;
     assert.deepEqual(first.body.tools, [{ type: 'web_fetch_20260209', name: 'web_fetch' }]);
     assert.deepEqual(second.body.messages, [{ role: 'user', content: [{ type: 'text', text: 'p', cache_control: { type: 'ephemeral' } }] }, { role: 'assistant', content: fetching }], 'asked to go on: what it wrote so far, as it came');
-    await assert.rejects(infer(messages, []), /^Error: The model was still reading web pages after 5 requests\.$/);
+    await assert.rejects(infer(messages, []), /^Error: The model was still using web pages or MCP tools after 5 requests\.$/);
     assert.equal(api.requests.length, 7);
+  } finally {
+    await api.close();
+  }
+});
+
+test('Anthropic with an MCP server: its connector calls only the tools named, with the token, and the reply is the text after the last result', async () => {
+  const used = [{ type: 'mcp_tool_use', id: 'mcptoolu_1', name: 'search', server_name: 'mcp', input: { q: 'launch' } }, { type: 'mcp_tool_result', tool_use_id: 'mcptoolu_1', is_error: false, content: [{ type: 'text', text: 'Q4' }] }, { type: 'text', text: 'It is Q4.' }];
+  const api = await fakeApi([[200, { stop_reason: 'end_turn', content: [{ type: 'text', text: 'Let me look.' }, ...used] }], [200, { stop_reason: 'end_turn', content: [{ type: 'text', text: 'ok' }] }]]);
+  try {
+    const settings = { model: 'claude-opus-5-5', key: 'k', effort: 'low' };
+    const messages = [{ role: 'user', content: 'p' }];
+    const answer = await INFER.anthropic({ ...settings, mcp: { url: 'https://mcp.example.com/mcp', token: 'tok', tools: ['search', 'fetch'] } }, api.url)(messages, []);
+    assert.deepEqual([answer.calls, answer.text], [[], 'It is Q4.'], 'the connector\'s calls are not the turn\'s');
+    const [{ headers, body }] = api.requests;
+    assert.equal(headers['anthropic-beta'], 'mcp-client-2025-11-20');
+    assert.deepEqual(body.mcp_servers, [{ type: 'url', url: 'https://mcp.example.com/mcp', name: 'mcp', authorization_token: 'tok' }]);
+    assert.deepEqual(body.tools, [{ type: 'mcp_toolset', mcp_server_name: 'mcp', default_config: { enabled: false }, configs: { search: { enabled: true }, fetch: { enabled: true } } }], 'only the tools named');
+    await INFER.anthropic(settings, api.url)(messages, []);
+    assert.deepEqual([api.requests[1].headers['anthropic-beta'], api.requests[1].body.mcp_servers, api.requests[1].body.tools], [undefined, undefined, []], 'without, none of it');
   } finally {
     await api.close();
   }

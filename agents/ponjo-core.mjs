@@ -351,15 +351,17 @@ const HINTS = { 401: 'Check the API key.', 404: 'Check the endpoint and the mode
 
 const CACHED = { type: 'ephemeral' };
 
-// Anthropic's web fetch (INFER.anthropic), and how many times a step that
-// pauses while fetching is asked to go on before the turn fails.
+// Anthropic's web fetch and MCP connector (INFER.anthropic), and how many
+// times a step that pauses while using them is asked to go on before the
+// turn fails.
 const WEB_FETCH = { type: 'web_fetch_20260209', name: 'web_fetch' };
+const MCP_BETA = 'mcp-client-2025-11-20';
 const MAX_PAUSES = 4;
 
 /**
  * One step of the model, by provider: `INFER[provider](settings, url)` is
  * `infer` for `turn`, over that provider's API at `url`. `settings` are the
- * agent's: { endpoint, model, key, effort, web }. Each sends `tool_choice: auto`:
+ * agent's: { endpoint, model, key, effort, web, mcp }. Each sends `tool_choice: auto`:
  * current Claude models refuse a forced tool call, and an answer without one
  * is the reply.
  */
@@ -370,14 +372,22 @@ export const INFER = {
   // full only for what is new. With `web` it may read web pages by
   // Anthropic's web fetch, which runs at Anthropic and opens only a URL
   // already in the messages: one in the thread or the doc, or on a page it
-  // read. A step it pauses, fetching, is asked to go on, as one answer.
-  anthropic: ({ model, key, effort, web = false }, url = 'https://api.anthropic.com/v1') => async (messages, tools) => {
-    const request = (sent) => post(`${url}/messages`, { 'x-api-key': key, 'anthropic-version': '2023-06-01' }, {
+  // read. With `mcp` { url, token, tools }, it may call those tools, by
+  // name, of the remote MCP server at `url`, which Anthropic's MCP connector
+  // calls with `token`; the server's other tools are off. A step it pauses,
+  // using these, is asked to go on, as one answer.
+  anthropic: ({ model, key, effort, web = false, mcp = null }, url = 'https://api.anthropic.com/v1') => async (messages, tools) => {
+    const request = (sent) => post(`${url}/messages`, { 'x-api-key': key, 'anthropic-version': '2023-06-01', ...(mcp && { 'anthropic-beta': MCP_BETA }) }, {
       model,
       max_tokens: 16_000,
       output_config: { effort },
       tool_choice: { type: 'auto' },
-      tools: [...tools.map(({ name, description, parameters }) => ({ name, description, input_schema: parameters })), ...(web ? [WEB_FETCH] : [])],
+      ...(mcp && { mcp_servers: [{ type: 'url', url: mcp.url, name: 'mcp', ...(mcp.token && { authorization_token: mcp.token }) }] }),
+      tools: [
+        ...tools.map(({ name, description, parameters }) => ({ name, description, input_schema: parameters })),
+        ...(web ? [WEB_FETCH] : []),
+        ...(mcp ? [{ type: 'mcp_toolset', mcp_server_name: 'mcp', default_config: { enabled: false }, configs: Object.fromEntries(mcp.tools.map((name) => [name, { enabled: true }])) }] : []),
+      ],
       messages: [...messages.map((m, i) => {
         const last = i === messages.length - 1 && { cache_control: CACHED };
         if (m.role === 'assistant') return { role: 'assistant', content: m.sent };
@@ -394,10 +404,10 @@ export const INFER = {
       if (reply.stop_reason === 'refusal') throw new Error(`The model refused: ${reply.stop_details?.explanation ?? 'no reason given.'}`);
       if (reply.stop_reason === 'max_tokens') throw new Error('The model\'s answer was cut off at 16,000 tokens.');
       if (reply.stop_reason !== 'pause_turn') break;
-      if (paused === MAX_PAUSES) throw new Error(`The model was still reading web pages after ${MAX_PAUSES + 1} requests.`);
+      if (paused === MAX_PAUSES) throw new Error(`The model was still using web pages or MCP tools after ${MAX_PAUSES + 1} requests.`);
     }
     const calls = sent.filter((block) => block.type === 'tool_use').map(({ id, name, input }) => ({ id, name, args: JSON.stringify(input) }));
-    // The text after the last page it read: what it wrote before is on its way there.
+    // The text after the last page it read or MCP tool it called: what it wrote before is on its way there.
     const after = sent.slice(sent.findLastIndex((block) => block.type.endsWith('_tool_result')) + 1);
     const text = after.filter((block) => block.type === 'text').map((block) => block.text).join('');
     return { calls, text, sent, usage };
