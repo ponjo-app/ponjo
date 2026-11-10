@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How Ponjo is built</title>
+<meta name="description" content="Ponjo's architecture at a glance: one host on your machine, two merges, and agents that are filters.">
+<link rel="icon" href="../build/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../dist/web/app.css">
+<link rel="stylesheet" href="site.css">
+</head>
+<body>
+<header class="site-header">
+  <a class="site-brand" href="index.html">Ponjo</a>
+  <nav class="site-nav" aria-label="Pages">
+    <a href="index.html">Download</a>
+    <a href="introduction.html">Introduction</a>
+    <details class="site-drop" name="site-menu">
+      <summary aria-current="true">Development<svg class="pj-icon" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></summary>
+      <div class="pj-block-menu site-menu">
+        <a href="architecture.html" aria-current="page">Architecture</a>
+        <a href="design.html">Design system</a>
+        <a href="avatars.html">Avatar design</a>
+      </div>
+    </details>
+    <details class="site-drop" name="site-menu">
+      <summary>Preview<svg class="pj-icon" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></summary>
+      <div class="pj-block-menu site-menu">
+        <a href="../dist/preview/">Doc mode</a>
+        <a href="../dist/preview/?folder">Folder mode</a>
+      </div>
+    </details>
+  </nav>
+  <span class="pj-spacer"></span>
+  <a class="pj-icon-btn" href="https://github.com/ponjo-app/ponjo" aria-label="GitHub" title="GitHub"><svg class="pj-icon" viewBox="0 0 24 24"><path fill="currentColor" stroke="none" d="M12 2C6.48 2 2 6.58 2 12.23c0 4.52 2.87 8.35 6.84 9.7.5.1.68-.22.68-.49l-.01-1.7c-2.78.62-3.37-1.38-3.37-1.38-.46-1.18-1.11-1.5-1.11-1.5-.91-.64.07-.62.07-.62 1 .07 1.53 1.06 1.53 1.06.9 1.57 2.35 1.12 2.92.86.09-.67.35-1.12.64-1.38-2.22-.26-4.56-1.14-4.56-5.07 0-1.12.39-2.04 1.03-2.76-.1-.26-.45-1.3.1-2.71 0 0 .84-.28 2.75 1.05A9.36 9.36 0 0 1 12 6.98c.85 0 1.71.12 2.51.34 1.91-1.33 2.75-1.05 2.75-1.05.55 1.41.2 2.45.1 2.71.64.72 1.03 1.64 1.03 2.76 0 3.94-2.34 4.81-4.57 5.06.36.32.68.94.68 1.9l-.01 2.81c0 .27.18.6.69.49A10.1 10.1 0 0 0 22 12.23C22 6.58 17.52 2 12 2z"/></svg></a>
+  <button class="pj-icon-btn site-theme" type="button" aria-label="Switch theme" title="Switch theme"><svg class="pj-icon site-moon" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"/></svg><svg class="pj-icon site-sun" viewBox="0 0 24 24"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg></button>
+</header>
+<!-- A picture of docs/architecture.md and docs/ponjo-agent.md, drawn with the app's own
+     classes and faces. Those docs are the truth; change this page when they change. -->
+<main class="ds-page arch-page">
+
+  <h1>How Ponjo is built</h1>
+  <p class="ds-lead">One host on your machine orders every edit. You, teammates in a browser, AI buddies and other programs are all writers through the same door, and the files stay plain text.</p>
+
+  <h2>What is new</h2>
+  <div class="arch-ideas">
+    <div class="arch-idea"><b>One team, not turns</b><span>People and AI buddies write the same file at once. An @mention starts a buddy; no one waits for the doc to be handed back.</span></div>
+    <div class="arch-idea"><b>No one resolves a conflict</b><span>Two merges, by the path an edit takes: people's typing by character, everything else by line, where people's lines win.</span></div>
+    <div class="arch-idea"><b>An agent is a filter</b><span>Any command-line agent: a prompt in, a copy to edit, a reply out. It knows nothing of Ponjo and never touches the real file.</span></div>
+    <div class="arch-idea"><b>Every AI edit can be undone</b><span>Undo is one more merge: a turn's change taken back, while everything written since stays.</span></div>
+    <div class="arch-idea"><b>Files are the truth</b><span>A doc and its comments sidecar, on your disk. Teammates join from a link; the relay between you stores nothing.</span></div>
+  </div>
+
+  <h2>The map</h2>
+  <p>Who a writer is is known only at the door. Behind it, one component orders and writes; nothing checks again.</p>
+  <div class="arch-map">
+    <div class="arch-col">
+      <h3>Writers</h3>
+      <div class="arch-node"><span data-face="Fan" data-person></span><span><b>You</b><small>app window · message port</small></span></div>
+      <div class="arch-node"><span data-face="Noor" data-person></span><span><b>Teammates</b><small>browser · relay, stores nothing</small></span></div>
+      <div class="arch-node"><span data-face="Clippy"></span><span><b>AI buddies</b><small>an agent on a copy · Runner</small></span></div>
+      <div class="arch-node"><span class="arch-glyph"><svg class="pj-icon" viewBox="0 0 24 24"><path d="M6 3v12M18 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM6 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM18 9a9 9 0 0 1-9 9"/></svg></span><span><b>Outside programs</b><small>git pull, other editors · file watch</small></span></div>
+    </div>
+    <div class="arch-arrow" aria-hidden="true"><svg class="pj-icon" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></div>
+    <div class="arch-col">
+      <h3>Doc host</h3>
+      <div class="arch-node arch-key"><span><b>The door</b><small><code>call(type, arg, who)</code><br><code>can(who, level)</code>: read &lt; write &lt; owner</small></span></div>
+      <div class="arch-node arch-key"><span><b>DocService</b><small>orders every edit to a doc, one at a time, and writes it</small></span></div>
+      <div class="arch-node"><span><b>Runner</b><small>starts a turn for each ask in the comments</small></span></div>
+      <div class="arch-node"><span><b>Room</b><small>who is in, who reads, who edits</small></span></div>
+    </div>
+    <div class="arch-arrow" aria-hidden="true"><svg class="pj-icon" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></div>
+    <div class="arch-col">
+      <h3>Your disk</h3>
+      <div class="arch-node arch-file"><span><b>plan.md</b><small>the doc, plain text</small></span></div>
+      <div class="arch-node arch-file"><span><b>plan.md.comments.jsonl</b><small>threads, anchored on the text</small></span></div>
+      <div class="arch-node arch-file"><span><b>history/</b><small>a version before and after every change</small></span></div>
+    </div>
+  </div>
+
+  <h2>Writing together: two merges</h2>
+  <p>Every edit is operations on the revision it started from. How it merges depends on its path, never on who wrote it.</p>
+
+  <div class="arch-merge">
+    <div class="arch-merge-head"><b>By character</b><span>People's typing, live</span></div>
+    <p>Two people type into the same line at once. The host takes Noor's edit as rev 8, then moves Alice's, made on rev 7, over it. Nothing typed is dropped, and every page converges on the file.</p>
+    <div class="ds-prose arch-line">We ship <span data-cursor="Noor">the beta </span>in March<span data-cursor="Alice"> 2027</span>.</div>
+    <div class="arch-lanes">
+      <div class="arch-lane"><span data-face="Noor" data-person></span><span class="arch-op">insert “the beta ” on rev 7</span><span class="arch-op arch-op-done">lands as rev 8</span></div>
+      <div class="arch-lane"><span data-face="Alice" data-person></span><span class="arch-op">insert “ 2027” on rev 7</span><span class="arch-op">moved over rev 8</span><span class="arch-op arch-op-done">lands as rev 9</span></div>
+    </div>
+  </div>
+
+  <div class="arch-merge">
+    <div class="arch-merge-head"><b>By line</b><span>AI buddies' turns, outside changes and undo</span></div>
+    <p>A turn works on a copy for seconds or minutes while people go on typing. When it ends, the host merges three texts: the copy as it started, the doc as it is now, and the copy as the buddy left it.</p>
+    <div class="pj-segmented arch-case" role="radiogroup" aria-label="Case">
+      <button type="button" role="radio" aria-checked="true" data-case="apart">Different lines</button>
+      <button type="button" role="radio" aria-checked="false" data-case="collide">Same line</button>
+    </div>
+    <div class="arch-scroll">
+      <table class="arch-3way">
+        <thead><tr><th>Copy as it started</th><th>Doc now (people)</th><th>Clippy's copy</th><th>Lands</th></tr></thead>
+        <tbody>
+          <tr><td>We ship in March.</td><td class="arch-changed">We ship the beta in March.</td><td data-buddy="Clippy" data-collide='<span class="pj-buddy-edit">We ship on March 3.</span>' data-collide-class="arch-changed">We ship in March.</td><td data-collide="We ship the beta in March." data-collide-class="arch-kept">We ship the beta in March.</td></tr>
+          <tr><td>Then open the waitlist.</td><td>Then open the waitlist.</td><td class="arch-changed" data-buddy="Clippy"><span class="pj-buddy-edit">Then invite fifty design partners.</span></td><td data-buddy="Clippy"><span class="pj-buddy-edit">Then invite fifty design partners.</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="arch-verdict" data-case-text="apart">They changed different lines: both land, as one edit at the current revision.</p>
+    <p class="arch-verdict" data-case-text="collide" hidden>They changed the same line. Nothing lands yet: the turn runs once more on the doc as it is, told what people did. If it collides again it lands with people's line kept, and its version says <code>conflict</code>. Clippy's line is in history; ask again or restore it.</p>
+  </div>
+
+  <div class="arch-flow" aria-label="How a turn's edits land">
+    <span class="arch-step">Turn ends</span><span class="arch-to">→</span>
+    <span class="arch-step">merge3 with the doc now</span><span class="arch-to">→</span>
+    <span class="arch-step">Same lines as people?<small>no: lands · yes: run once more</small></span><span class="arch-to">→</span>
+    <span class="arch-step">Still? People's lines stay<small>marked <code>conflict</code>, undo or ask again</small></span>
+  </div>
+
+  <h2>A buddy's turn: the agent runtime</h2>
+  <p>A turn is one AI buddy answering one thread. The Runner keeps the running turns equal to the asks in the comments: many run at once, their merges land one at a time.</p>
+  <ol class="arch-steps">
+    <li><b>Ask</b><span>A person's comment @mentions <span class="pj-at pj-at-agent" data-buddy="Clippy">@Clippy</span>. Only a person's comment starts a turn, never a buddy's or a file's.</span></li>
+    <li><b>Copy</b><span>The doc and its comments are copied into a new private folder.</span></li>
+    <li><b>Run</b><span>The agent program starts there, the project open to read only.</span></li>
+    <li><b>Merge</b><span>On exit 0 the copy merges back by line; its comments and reply post as the buddy, with the asker's level.</span></li>
+    <li><b>Show</b><span>Its edits glow in its colour; under its reply, how many places it changed, and Undo.</span></li>
+  </ol>
+
+  <h3>The contract: an agent is a filter</h3>
+  <div class="arch-contract">
+    <ul class="arch-io">
+      <li><code>stdin</code> the prompt: who the buddy is, the thread, the rules</li>
+      <li><code>PONJO_DOC</code>, <code>PONJO_COMMENTS</code> the copies</li>
+      <li><code>PONJO_PROJECT</code> the project, to read</li>
+      <li><code>PONJO_SETTING_*</code> its settings</li>
+    </ul>
+    <div class="arch-arrow" aria-hidden="true"><svg class="pj-icon" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></div>
+    <div class="arch-node arch-key arch-agent"><span><b>Any agent</b><small>Claude Code · Codex · the Ponjo agent · your own script</small></span></div>
+    <div class="arch-arrow" aria-hidden="true"><svg class="pj-icon" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></div>
+    <ul class="arch-io">
+      <li>the doc copy, edited</li>
+      <li>comment lines, appended</li>
+      <li><code>stdout</code> the reply</li>
+      <li><code>exit 0</code> or failed</li>
+    </ul>
+  </div>
+  <p>Agents live in your config folder, never in a project: a shared folder cannot decide what runs on your machine.</p>
+
+  <h3>The Ponjo agent: the model proposes, the program applies</h3>
+  <p>Our own agent for only what co-writing needs. Its tools are its permissions: no shell, and no network but the model's API.</p>
+  <div class="arch-loop">
+    <div class="arch-node"><span><b>Prompt</b><small>the doc with line numbers, the project's file names</small></span></div>
+    <div class="arch-arrow" aria-hidden="true"><svg class="pj-icon" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></div>
+    <div class="arch-node arch-key"><span><b>infer</b><small>Anthropic · OpenAI-compatible · Nebius</small></span></div>
+    <div class="arch-arrow" aria-hidden="true"><svg class="pj-icon" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></div>
+    <div class="arch-tools">
+      <span class="arch-tool">read</span><span class="arch-tool">find</span><span class="arch-tool">grep</span><span class="arch-tool">web fetch</span>
+      <span class="arch-tool">comment</span><span class="arch-tool">resolve</span><span class="arch-tool arch-tool-end">propose</span>
+      <small>results go back to infer, up to 20 steps</small>
+    </div>
+  </div>
+  <ul>
+    <li><strong>Read by line number, write by quote.</strong> <code>propose</code> edits as <code>{ old, new }</code>; each <code>old</code> must be found once, or the whole proposal is sent back to fix.</li>
+    <li><strong>Stateless.</strong> A turn remembers nothing after it; its messages are its state, and its trace replays it.</li>
+    <li><strong>Runs anywhere.</strong> The turn imports nothing, so the online preview runs the same one in the browser.</li>
+  </ul>
+
+  <h2>More</h2>
+  <p>The full design: <a href="https://github.com/ponjo-app/ponjo/blob/main/docs/architecture.md">Architecture</a>, <a href="https://github.com/ponjo-app/ponjo/blob/main/docs/agent-config.md">Agent config</a>, <a href="https://github.com/ponjo-app/ponjo/blob/main/docs/ponjo-agent.md">the Ponjo agent</a> and <a href="https://github.com/ponjo-app/ponjo/blob/main/spec/SPEC.md">the comment format</a>.</p>
+</main>
+<script type="module">
+  import { agentFace, personFace, buddyColor, setBuddies, setOwner } from '../dist/web/faces.js';
+
+  setBuddies([{ id: 'Clippy', name: 'Clippy' }]);
+  setOwner('Fan');
+  const tint = (node, name) => { node.style.cssText = `--buddy: ${buddyColor(name)}; --buddy-ink: #1f1d24`; };
+
+  for (const slot of document.querySelectorAll('[data-face]')) {
+    const name = slot.dataset.face;
+    slot.className = `pj-avatar${slot.hasAttribute('data-person') ? '' : ' pj-avatar-agent'}`;
+    slot.style.setProperty('--size', '24px');
+    slot.append(slot.hasAttribute('data-person') ? personFace(name) : agentFace(name));
+  }
+  for (const node of document.querySelectorAll('[data-buddy]')) tint(node, node.dataset.buddy);
+  // A teammate's typing shows only by their cursor, named.
+  for (const typed of document.querySelectorAll('[data-cursor]')) {
+    const cursor = document.createElement('span');
+    cursor.className = 'pj-cursor pj-cursor-working';
+    tint(cursor, typed.dataset.cursor);
+    const name = document.createElement('span');
+    name.className = 'pj-cursor-name';
+    name.textContent = typed.dataset.cursor;
+    cursor.append(name);
+    typed.after(cursor);
+  }
+
+  // The three-way merge in two cases: a cell with data-collide holds the second case's text.
+  const cells = [...document.querySelectorAll('[data-collide]')].map((cell) => ({ cell, apart: cell.innerHTML }));
+  const show = (which) => {
+    for (const button of document.querySelectorAll('[data-case]')) button.setAttribute('aria-checked', button.dataset.case === which);
+    for (const text of document.querySelectorAll('[data-case-text]')) text.hidden = text.dataset.caseText !== which;
+    for (const { cell, apart } of cells) {
+      cell.innerHTML = which === 'collide' ? cell.dataset.collide : apart;
+      cell.classList.toggle(cell.dataset.collideClass, which === 'collide');
+    }
+  };
+  for (const button of document.querySelectorAll('[data-case]')) button.addEventListener('click', () => show(button.dataset.case));
+</script>
+<script type="module" src="site.js"></script>
+</body>
+</html>
