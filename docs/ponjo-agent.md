@@ -14,8 +14,9 @@ laptop runs (an 8B model tried) claim edits they did not make.
 
 1. **Read and propose, never write.** The model's only effect is a
    proposal; the program checks it and applies it to the copies.
-2. **The tools are the permissions.** `read`, `find`, `grep`, `comment`, `resolve` and `propose` only: no shell,
-   no network but the model's API. Text a teammate wrote can at worst make an undoable proposal.
+2. **The tools are the permissions.** `read`, `find`, `grep`, `comment`, `resolve` and `propose` only, and
+   with Anthropic, its web fetch: no shell, no network but the model's API. Text a teammate wrote can at
+   worst make an undoable proposal.
 3. **Stateless.** A turn remembers nothing after. Within it, all state is
    the messages, and its trace replays it.
 4. **The doc comes with the prompt; the model asks for the rest.** Nearly
@@ -69,7 +70,7 @@ call's result), and each `infer` translates them:
 
 | `provider` | API | Its own |
 | --- | --- | --- |
-| `anthropic` | Messages (`/v1/messages`) | `output_config.effort`, the model thinking as it needs; its messages sent back as they came, thinking included; prompt caching up to the last message, moved each step, so a step pays in full only for what is new; a refusal or a cut-off answer fails the turn |
+| `anthropic` | Messages (`/v1/messages`) | `output_config.effort`, the model thinking as it needs; its messages sent back as they came, thinking included; prompt caching up to the last message, moved each step, so a step pays in full only for what is new; web fetch, with `web`; a refusal or a cut-off answer fails the turn |
 | `openai` | Chat Completions at `endpoint` (OpenAI, OpenRouter and others) | `reasoning_effort`; caching is the API's own |
 | `nebius` | Chat Completions at Nebius Token Factory, for NVIDIA's Nemotron models | no effort |
 
@@ -124,6 +125,16 @@ turn ends its texts are checked again: one the edits change, repeat or never
 write would quietly be on the whole doc, so it is taken back and the turn
 sent back, saying to comment again.
 
+**Web pages**, with Anthropic and `web` on: Anthropic's web fetch
+(`web_fetch_20260209`), which runs at Anthropic, not on this computer, so it
+cannot reach the user's own network. It opens only a URL already in the
+messages: one in the thread or the doc, or on a page it read. So it can send
+nothing out of the doc but which of those links it follows, and a page's
+text, like a doc's, can at worst make an undoable proposal. It is the API's
+own tool, not one of `turn`'s: a step that fetches comes back with the page
+read, and its reply is the text after the last page. A step Anthropic pauses
+while fetching is asked to go on, as one answer, at most five requests.
+
 **`propose({ edits: [{ old, new }], reply })`** ends the turn. The edits
 change the doc only: `old` must be found in it exactly once. One bad edit
 sends the whole proposal back, saying what to fix. `reply` is printed, and
@@ -177,6 +188,7 @@ flowchart LR
 | `endpoint` | text, for OpenAI-compatible only | `https://api.openai.com/v1` |
 | `<provider>_model` | text, one for each provider | Anthropic `claude-opus-5-5`, OpenAI-compatible none, Nebius `nvidia/nemotron-3-super-120b-a12b` |
 | `<provider>_key` | secret, one for each provider | none: a run without the picked provider's fails, saying where to set it |
+| `web` | switch, for Anthropic only | on: the model reads web pages (see Web pages) |
 | `effort` | choice: low, medium, high | `low`: scoped edits; higher thinks longer before it answers |
 
 - **Tests** call `turn` with a fake `infer`, and each `infer` on a fake
@@ -207,4 +219,6 @@ flowchart LR
   minutes to start, which a high effort could reach.
 - No fallback model when Anthropic's safeguards refuse: the turn fails,
   saying so.
-- Later: web access, off by default, the one tool that could send a doc out.
+- Later: web pages with the other providers, by a fetch of our own that
+  keeps, as Anthropic's does, to the links in the messages and off the
+  user's network.

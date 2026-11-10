@@ -6,6 +6,7 @@
     { "key": "endpoint", "type": "text", "label": "Endpoint", "hint": "The API's address: OpenAI's, OpenRouter's or another.", "default": "https://api.openai.com/v1", "when": { "provider": "openai" } },
     { "key": "anthropic_model", "type": "text", "label": "Model", "default": "claude-opus-5-5", "when": { "provider": "anthropic" } },
     { "key": "anthropic_key", "type": "secret", "label": "API key", "hint": "Kept encrypted by your system keychain.", "when": { "provider": "anthropic" } },
+    { "key": "web", "type": "switch", "label": "Read web pages", "hint": "At a link in the thread or the doc, or on a page it read. Anthropic fetches them, not this computer.", "default": true, "when": { "provider": "anthropic" } },
     { "key": "openai_model", "type": "text", "label": "Model", "hint": "As the endpoint names it.", "default": "", "when": { "provider": "openai" } },
     { "key": "openai_key", "type": "secret", "label": "API key", "hint": "Kept encrypted by your system keychain.", "when": { "provider": "openai" } },
     { "key": "nebius_model", "type": "text", "label": "Model", "default": "nvidia/nemotron-3-super-120b-a12b", "when": { "provider": "nebius" } },

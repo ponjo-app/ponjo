@@ -375,6 +375,25 @@ test('Anthropic: the Messages API, cached up to the last message, the model\'s c
   }
 });
 
+test('Anthropic with web: its web fetch is offered, a step paused while fetching goes on as one answer, and the reply is the text after the last page', async () => {
+  const fetching = [{ type: 'text', text: 'Let me read it.' }, { type: 'server_tool_use', id: 'srvtoolu_1', name: 'web_fetch', input: { url: 'https://example.com' } }];
+  const read = [{ type: 'web_fetch_tool_result', tool_use_id: 'srvtoolu_1', content: { type: 'web_fetch_result', url: 'https://example.com' } }, { type: 'text', text: 'It says hello.' }];
+  const paused = [200, { stop_reason: 'pause_turn', content: fetching, usage: { input_tokens: 100, output_tokens: 10, service_tier: 'standard' } }];
+  const api = await fakeApi([paused, [200, { stop_reason: 'end_turn', content: read, usage: { input_tokens: 50, output_tokens: 5, service_tier: 'standard' } }], ...Array(5).fill(paused)]);
+  try {
+    const infer = INFER.anthropic({ model: 'claude-opus-5-5', key: 'k', effort: 'low', web: true }, api.url);
+    const messages = [{ role: 'user', content: 'p' }];
+    assert.deepEqual(await infer(messages, []), { calls: [], text: 'It says hello.', sent: [...fetching, ...read], usage: { input_tokens: 150, output_tokens: 15, service_tier: 'standard' } });
+    const [first, second] = api.requests;
+    assert.deepEqual(first.body.tools, [{ type: 'web_fetch_20260209', name: 'web_fetch' }]);
+    assert.deepEqual(second.body.messages, [{ role: 'user', content: [{ type: 'text', text: 'p', cache_control: { type: 'ephemeral' } }] }, { role: 'assistant', content: fetching }], 'asked to go on: what it wrote so far, as it came');
+    await assert.rejects(infer(messages, []), /^Error: The model was still reading web pages after 5 requests\.$/);
+    assert.equal(api.requests.length, 7);
+  } finally {
+    await api.close();
+  }
+});
+
 test('a busy API is asked once more, the same request, after its retry-after; any other failure, never', async () => {
   const done = { stop_reason: 'end_turn', content: [{ type: 'text', text: 'ok' }] };
   const busy = (status) => [status, { error: 'busy' }, { 'retry-after': '0' }];
