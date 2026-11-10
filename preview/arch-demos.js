@@ -1,10 +1,10 @@
 // The architecture page's live demos (site/architecture.html), each on the
 // app's own code: two pages' client (web/client.js) in a host's order played
-// here, merge3 (src/core/diff.js), and a buddy's turn by the Ponjo agent
-// (agents/ponjo-core.mjs) on the preview's model, landed as the doc host
-// lands one (src/host/doc-service.js, finishRun). preview/build.js bundles
-// it into dist/preview, which the site serves at /preview/; the model
-// (infer.ponjo.app) answers pages on ponjo.app only.
+// here, merge3 (src/core/diff.js), and a turn of the Ponjo agent
+// (agents/ponjo-core.mjs) on the preview's model, each step traced, landed
+// as the doc host lands one (src/host/doc-service.js, finishRun).
+// preview/build.js bundles it into dist/preview, which the site serves at
+// /preview/; the model (infer.ponjo.app) answers pages on ponjo.app only.
 
 /* global document */
 
@@ -201,6 +201,19 @@ const CLIPPY = { id: 'clippy', name: 'Clippy', about: '' };
 const YOU = { id: 'you', name: 'You', kind: 'human' };
 const infer = INFER.openai({ endpoint: 'https://infer.ponjo.app/infer', model: 'nemotron', key: 'preview' });
 
+// A tool call as a trace shows it: its name and what it was given.
+function called({ name, args }) {
+  let a = {};
+  try {
+    a = JSON.parse(args);
+  } catch {} // shown by name alone; the turn says what was wrong
+  if (name === 'read') return `read ${a.path ?? ''}${a.lines ? ` ${a.lines.join('–')}` : ''}`;
+  if (name === 'find' || name === 'grep') return `${name} ${a.pattern ?? ''}`;
+  if (name === 'comment') return `comment on “${(a.on ?? '').slice(0, 24)}”`;
+  if (name === 'propose') return `propose ${a.edits?.length ?? 0} ${a.edits?.length === 1 ? 'edit' : 'edits'}`;
+  return name;
+}
+
 function buddyTurn(root) {
   const doc = $(root, '[data-doc]');
   const ask = $(root, '[data-ask]');
@@ -217,10 +230,22 @@ function buddyTurn(root) {
     const first = { id: newId('c'), by: YOU, at: new Date().toISOString(), body: ask.value };
     const thread = threadsOf([first], [CLIPPY])[0];
     let redo = null;
-    let steps = 0;
-    const counted = (messages, tools) => {
-      status(`${redo ? 'Running once more, told what you changed' : 'Clippy is working on a copy'} · step ${++steps}. Keep editing the doc.`);
-      return infer(messages, tools);
+    let steps = 0; // of this run: a run once more has its own 20
+    const trace = $(root, '[data-trace]');
+    trace.replaceChildren();
+    // Each step of the loop as it runs: what the model called and how long it
+    // took; and a proposal the program sent back, as its next messages say.
+    const traced = async (messages, tools) => {
+      const results = messages.slice(messages.findLastIndex((m) => m.role === 'assistant') + 1);
+      const back = results.find((m) => m.role === 'tool' && m.content.startsWith('Nothing was changed.'));
+      if (back) trace.lastChild.append(el('span', 'arch-back', `sent back: ${back.content.replace('Nothing was changed. ', '').split('. ')[0]}`));
+      status(`${redo ? 'Running once more, told what you changed' : 'Clippy is working on a copy'}. Keep editing the doc.`);
+      const started = Date.now();
+      const step = await infer(messages, tools);
+      const row = el('li', '', `${++steps}.`);
+      row.append(...(step.calls.length ? step.calls.map(called) : ['answer']).map((text) => el('span', 'arch-tool', text)), `${((Date.now() - started) / 1000).toFixed(1)} s`);
+      trace.append(row);
+      return step;
     };
     try {
       for (;;) {
@@ -228,11 +253,13 @@ function buddyTurn(root) {
         const copies = { [DOC]: base, [SIDECAR]: serializeSidecar([{ comment: first }]) };
         const prompt = buildPrompt({ buddy: CLIPPY, buddies: [CLIPPY], docName: DOC, sidecarName: SIDECAR, thread, human: { name: YOU.name, about: '' }, redo });
         const readFile = (path) => copies[path] ?? (['', '.'].includes(path) ? Object.keys(copies) : null);
-        const { doc: edited, reply } = await turn({ prompt, doc: DOC, sidecar: SIDECAR, thread: thread.id }, { infer: counted, readFile });
+        const { doc: edited, reply } = await turn({ prompt, doc: DOC, sidecar: SIDECAR, thread: thread.id }, { infer: traced, readFile });
         const now = doc.value;
         const merged = merge3(base, now, edited);
         if (merged.conflicts > 0 && !redo) { // as the doc host does: once more, on the doc as it is now
           redo = { mine: lineChanges(base, edited), theirs: lineChanges(base, now) };
+          trace.append(el('li', '', 'Its edit collided with yours: the turn runs once more, told what you changed.'));
+          steps = 0;
           continue;
         }
         show(doc, merged.text, diffOps(now, merged.text));
@@ -260,6 +287,7 @@ function buddyTurn(root) {
   reset.onclick = () => {
     doc.value = PLAN;
     $(root, '[data-landed]').hidden = true;
+    $(root, '[data-trace]').replaceChildren();
   };
 }
 

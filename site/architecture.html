@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>How Ponjo is built</title>
-<meta name="description" content="How Ponjo merges edits from people and AI buddies, and how a buddy's turn runs.">
+<meta name="description" content="How Ponjo merges edits from people and AI buddies, and how its own agent runs.">
 <link rel="icon" href="../build/icon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="../dist/web/app.css">
 <link rel="stylesheet" href="site.css">
@@ -35,12 +35,13 @@
   <a class="pj-icon-btn" href="https://github.com/ponjo-app/ponjo" aria-label="GitHub" title="GitHub"><svg class="pj-icon" viewBox="0 0 24 24"><path fill="currentColor" stroke="none" d="M12 2C6.48 2 2 6.58 2 12.23c0 4.52 2.87 8.35 6.84 9.7.5.1.68-.22.68-.49l-.01-1.7c-2.78.62-3.37-1.38-3.37-1.38-.46-1.18-1.11-1.5-1.11-1.5-.91-.64.07-.62.07-.62 1 .07 1.53 1.06 1.53 1.06.9 1.57 2.35 1.12 2.92.86.09-.67.35-1.12.64-1.38-2.22-.26-4.56-1.14-4.56-5.07 0-1.12.39-2.04 1.03-2.76-.1-.26-.45-1.3.1-2.71 0 0 .84-.28 2.75 1.05A9.36 9.36 0 0 1 12 6.98c.85 0 1.71.12 2.51.34 1.91-1.33 2.75-1.05 2.75-1.05.55 1.41.2 2.45.1 2.71.64.72 1.03 1.64 1.03 2.76 0 3.94-2.34 4.81-4.57 5.06.36.32.68.94.68 1.9l-.01 2.81c0 .27.18.6.69.49A10.1 10.1 0 0 0 22 12.23C22 6.58 17.52 2 12 2z"/></svg></a>
   <button class="pj-icon-btn site-theme" type="button" aria-label="Switch theme" title="Switch theme"><svg class="pj-icon site-moon" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"/></svg><svg class="pj-icon site-sun" viewBox="0 0 24 24"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg></button>
 </header>
-<!-- How edits merge and how a buddy's turn runs (docs/architecture.md), with live demos
-     on the app's own code (preview/arch-demos.js). The doc is the truth; change this page with it. -->
+<!-- How edits merge (docs/architecture.md) and how the Ponjo agent runs (docs/ponjo-agent.md),
+     with live demos on the app's own code (preview/arch-demos.js). The docs are the truth;
+     change this page with them. -->
 <main class="ds-page arch-page">
 
   <h1>How Ponjo is built</h1>
-  <p class="ds-lead">People and AI buddies edit the same file at once. One host on your machine orders every edit, and no one resolves a conflict by hand.</p>
+  <p class="ds-lead">People and AI buddies edit the same file at once. One host on your machine orders every edit, no one resolves a conflict by hand, and our own agent proposes edits the program checks.</p>
 
   <h2>Merge strategy</h2>
   <p>Every edit is made on a revision. How it merges depends on its path: people's typing by character, everything else by line, where people's lines win.</p>
@@ -82,19 +83,24 @@
     <p class="arch-verdict" data-verdict></p>
   </div>
 
-  <h2>A buddy's turn</h2>
-  <p>One AI buddy answering one thread. Many turns run at once; their merges land one at a time.</p>
-  <ol class="arch-steps">
-    <li><b>Ask</b><span>A person @mentions <span class="pj-at pj-at-agent" data-buddy="Clippy">@Clippy</span> in a comment. Only a person's comment starts a turn.</span></li>
-    <li><b>Copy</b><span>The doc and its comments are copied into a new private folder.</span></li>
-    <li><b>Run</b><span>The agent runs on the copy, the project open to read only.</span></li>
-    <li><b>Merge</b><span>The copy merges back by line, as above; its comments and reply post as the buddy.</span></li>
-    <li><b>Undo</b><span>A version before and after: its edits glow in its colour, undone in one click.</span></li>
-  </ol>
+  <h2>The Ponjo agent</h2>
+  <p>Our own agent, for only what co-writing needs: read, comment, edit. The model reads and proposes; the program checks and applies. Its loop, <code>turn()</code>, is one file that imports nothing, so this page runs it too.</p>
+  <div class="arch-loop">
+    <div class="arch-node"><span><b>Prompt</b><small>the thread and the rules, the doc with line numbers, the project's file names</small></span></div>
+    <div class="arch-arrow" aria-hidden="true"><svg class="pj-icon" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></div>
+    <div class="arch-node arch-key"><span><b>infer</b><small>one step of the model: Anthropic, OpenAI-compatible or Nebius</small></span></div>
+    <div class="arch-arrow" aria-hidden="true"><svg class="pj-icon" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></div>
+    <div class="arch-node"><span><b>Tools</b><span class="arch-tools"><span class="arch-tool">read</span><span class="arch-tool">find</span><span class="arch-tool">grep</span><span class="arch-tool">comment</span><span class="arch-tool">resolve</span><span class="arch-tool arch-tool-end">propose</span></span><small>results go back to infer, until <code>propose</code> ends the turn; at most 20 steps</small></span></div>
+  </div>
+  <div class="arch-ideas">
+    <div class="arch-idea"><b>The tools are the permissions</b><span>No shell, and no network but the model's API. It reads only its copies and the project's visible files, so text in a doc can at worst make an undoable proposal.</span></div>
+    <div class="arch-idea"><b>Read by line number, write by quote</b><span><code>propose</code> edits as <code>{ old, new }</code>, each <code>old</code> found in the doc exactly once, or the whole proposal goes back to fix. It never counts characters.</span></div>
+    <div class="arch-idea"><b>Stateless</b><span>A turn remembers nothing after. Its messages are its state, and its trace replays it. It lands as any turn does: its copy merged by line, as above.</span></div>
+  </div>
 
   <div class="arch-merge" data-demo="turn" data-buddy="Clippy">
-    <div class="arch-merge-head"><b>Try a real turn</b><span>The Ponjo agent, on NVIDIA Nemotron</span></div>
-    <p>Ask Clippy, then keep editing while it works on its copy. Change the paragraph it is changing to see a collision.</p>
+    <div class="arch-merge-head"><b>Try a real turn</b><span>On NVIDIA Nemotron</span></div>
+    <p>Ask Clippy and watch its steps. Keep editing while it works on its copy; change the paragraph it is changing to see a collision.</p>
     <textarea class="pj-input arch-text" data-doc rows="7" spellcheck="false" aria-label="plan.md"></textarea>
     <div class="arch-controls">
       <input class="pj-input arch-ask" data-ask value="@Clippy make the paragraph about the beta half as long" aria-label="Comment">
@@ -102,6 +108,7 @@
       <button class="pj-link-button" type="button" data-reset>Reset</button>
     </div>
     <div class="arch-status" data-status hidden><span class="pj-agent-face" data-presence="working"><span data-face="Clippy"></span></span><span data-status-text></span></div>
+    <ol class="arch-trace" data-trace></ol>
     <div class="arch-landed" data-landed hidden>
       <p class="arch-reply"><b>Clippy</b> <span data-reply></span></p>
       <div class="arch-file"><span class="arch-who">Lands, as a revision of the doc</span><div class="ds-prose" data-result></div></div>
@@ -109,27 +116,7 @@
     </div>
   </div>
 
-  <h3>An agent is a filter</h3>
-  <div class="arch-contract">
-    <ul class="arch-io">
-      <li><code>stdin</code> the prompt: who the buddy is, the thread, the rules</li>
-      <li><code>PONJO_DOC</code>, <code>PONJO_COMMENTS</code> the copies</li>
-      <li><code>PONJO_PROJECT</code> the project, to read</li>
-      <li><code>PONJO_SETTING_*</code> its settings</li>
-    </ul>
-    <div class="arch-arrow" aria-hidden="true"><svg class="pj-icon" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></div>
-    <div class="arch-node arch-key arch-agent"><span><b>Any agent</b><small>Claude Code · Codex · the Ponjo agent · your own script</small></span></div>
-    <div class="arch-arrow" aria-hidden="true"><svg class="pj-icon" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></div>
-    <ul class="arch-io">
-      <li>the doc copy, edited</li>
-      <li>comment lines, appended</li>
-      <li><code>stdout</code> the reply</li>
-      <li><code>exit 0</code> or failed</li>
-    </ul>
-  </div>
-  <p>Any command-line agent fits: it knows nothing of Ponjo and never touches the real file. Agents live in your config folder, never in a project, so a shared folder cannot decide what runs on your machine.</p>
-
-  <p>More in <a href="https://github.com/ponjo-app/ponjo/blob/main/docs/architecture.md">the architecture doc</a>.</p>
+  <p>More in <a href="https://github.com/ponjo-app/ponjo/blob/main/docs/architecture.md">the architecture doc</a> and <a href="https://github.com/ponjo-app/ponjo/blob/main/docs/ponjo-agent.md">the Ponjo agent's</a>.</p>
 </main>
 <script type="module">
   import { agentFace, personFace, buddyColor, setBuddies } from '../dist/web/faces.js';
