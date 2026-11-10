@@ -4,8 +4,9 @@
 //
 // A card is where everyone is changed: on a buddy's, a click on its name
 // edits it in place, and who it is is a field right under it; your own
-// card edits your name the same way; on a player's, the owner sets Read
-// or Edit, or kicks them. Faces are drawn from names.
+// card edits your name the same way; the owner deletes a buddy from its
+// card; on a player's, the owner sets Read or Edit, or kicks them. Faces
+// are drawn from names.
 //
 // A buddy answers when @mentioned. The Team panel (the button after the
 // faces) has you, in a project its room (Open room; once open its link,
@@ -420,13 +421,17 @@ export function createPeople({ root, invite, panel, me, getName, getId = () => n
       remove.dataset.tip = `Delete ${status.name}`;
       remove.setAttribute('aria-label', `Delete ${status.name}`);
       remove.append(icon('trash'));
-      remove.addEventListener('click', async () => {
-        if (!window.confirm(`Delete ${status.name}?\n\nIts file is deleted and it stops answering${status.where === 'user' ? ' in all your docs' : ''}. Its comments stay.`)) return;
-        take(await api.deleteBuddy(status.id).catch(() => ({}))); // gone already: nothing to do
-      });
+      remove.addEventListener('click', () => deleteBuddy(status));
       row.append(remove);
     }
     return row;
+  }
+
+  // Once confirmed. Whether it was deleted.
+  async function deleteBuddy(status) {
+    if (!window.confirm(`Delete ${status.name}?\n\nIts file is deleted and it stops answering${status.where === 'user' ? ' in all your docs' : ''}. Its comments stay.`)) return false;
+    take(await api.deleteBuddy(status.id).catch(() => ({}))); // gone already: nothing to do
+    return true;
   }
 
   // A click makes a buddy with the next free name and opens its card, where
@@ -455,12 +460,20 @@ export function createPeople({ root, invite, panel, me, getName, getId = () => n
     return [row, error];
   }
 
-  // A buddy's card: who it is. A name in the doc that is no buddy here says
-  // it does not answer here.
+  // A buddy's card: who it is, and for the owner Delete. A name in the doc
+  // that is no buddy here says it does not answer here.
   function agentCard(name) {
     const status = statusOf(name);
     const parts = [cardHead(name)];
     if (status && !viewOnly) parts.push(aboutField(status));
+    if (status && !viewOnly && owner()) {
+      const remove = el('button', 'pj-secondary pj-danger', 'Delete');
+      remove.type = 'button';
+      remove.addEventListener('click', async () => { if (await deleteBuddy(status)) close(); });
+      const row = el('div', 'pj-teammate-row');
+      row.append(remove);
+      parts.push(row);
+    }
     if (!status) {
       const problem = el('div', 'pj-profile-problem');
       problem.append(el('div', 'pj-profile-problem-text', `None of your buddies is called ${name}, so it does not answer here.`));
