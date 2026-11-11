@@ -123,14 +123,17 @@ a { color: var(--accent); }
 .arch-arrow { display: flex; justify-content: center; color: var(--text-faint); }
 .arch-arrow .pj-icon { width: 20px; height: 20px; }
 
-/* three ways to write with an AI: a strip of panels, appearing one by one */
-.arch-strip { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
-.arch-panel, .arch-marks li { animation: pj-rise 0.5s ease-out calc(var(--i) * 1.4s) both; }
-.arch-panel { display: flex; flex-direction: column; gap: 12px; margin: 0; padding: 12px; border-radius: 10px; background: var(--bg-soft); }
-.arch-panel figcaption { color: var(--text-soft); font-size: 12px; line-height: 1.5; }
+/* three ways to write with an AI: one story played on a stage */
+.arch-stage { display: flex; flex-direction: column; gap: 12px; padding: 16px; border-radius: 10px; background: var(--bg-soft); }
+.ds-page .arch-caption { min-height: 1.6em; margin: 0; color: var(--text); font-size: 14px; font-weight: 500; }
+.arch-docs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; min-height: 132px; }
+.arch-docs > :first-child:has(+ [hidden]) { grid-column: 1 / -1; }
+.arch-copy[hidden] { display: none; }
+.arch-marks li { animation: pj-rise 0.4s ease-out both; }
+.arch-choices .arch-pressed { background: var(--active); }
 .arch-cast { display: flex; flex-wrap: wrap; gap: 8px 16px; }
 .arch-actor { display: flex; align-items: center; gap: 6px; }
-.arch-say { position: relative; padding: 2px 8px; border-radius: 10px; background: var(--bg); box-shadow: var(--shadow); font-size: 12px; }
+.arch-say { padding: 2px 8px; border-radius: 10px; background: var(--bg); box-shadow: var(--shadow); font-size: 12px; }
 .arch-mini { padding: 24px 12px 12px; border-radius: 6px; background: var(--canvas); box-shadow: var(--shadow); font-size: 13px; line-height: 1.6; white-space: pre-wrap; }
 .arch-copy { display: flex; flex-direction: column; gap: 4px; padding-top: 8px; color: var(--text-soft); box-shadow: inset 0 0 0 1px var(--border-strong); background: none; }
 .arch-copy .arch-who { padding-bottom: 12px; }
@@ -142,9 +145,9 @@ a { color: var(--accent); }
 .arch-marks .pj-icon { width: 16px; height: 16px; }
 .ds-page .arch-marks .arch-good { color: var(--text); }
 .arch-eg { color: var(--text-faint); font-size: 12px; line-height: 1.5; }
-@media (prefers-reduced-motion: reduce) { .arch-panel, .arch-marks li { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .arch-marks li { animation: none; } }
 @media (max-width: 720px) {
-  .arch-strip { grid-template-columns: 1fr; }
+  .arch-docs { grid-template-columns: 1fr; }
   [data-demo="ways"] .pj-segmented button { padding: 4px 8px; }
 }
 

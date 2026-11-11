@@ -294,29 +294,47 @@ function buddyTurn(root) {
   };
 }
 
-// ---- Three ways to write with an AI: one story, a strip of panels each ----
+// ---- Three ways to write with an AI: one story, played on one stage ----
 
 // Noor asks Clippy to shorten the first line, then fixes its typo while
 // Clippy works. What each way ends on is the app's own code at work:
 // transform for edits merged by character, merge3 for a copy merged by line.
 const BASE = 'Teh beta ships in March to fifty design partners, who each get a private call and early access.\nThen we open the waitlist.\n';
 const fix = (text) => text.replace('Teh', 'The');
-const writeOn = (text) => text.replace('waitlist.', 'waitlist, in the order people joined it.');
-const shorten = (text) => `Fifty design partners get the beta in March.${text.slice(text.indexOf('\n'))}`;
+const SHORT = 'Fifty design partners get the beta in March.';
+const shorten = (text) => `${SHORT}${text.slice(text.indexOf('\n'))}`;
+const MORE = ', in the order people joined it';
+const STOPPED = Symbol('stopped');
 
 // Text with marks at offsets: [{ at, node }], in order.
 function marked(text, marks = []) {
   const out = [];
   let from = 0;
-  for (const { at, node } of marks) {
+  for (const { at, node } of [...marks].sort((a, b) => a.at - b.at)) {
     out.push(text.slice(from, at), node);
     from = at;
   }
   return [...out, text.slice(from)];
 }
 
-// Edits merged by character, as live typing merges: Clippy's rewrite and
-// Noor's fix, made at once on one text; Noor's inserts in the end text marked.
+// Clippy's rewrite of the first line streamed in, as an agent types: each
+// step one operation on the text, its cursor after what it wrote.
+function* stream(text) {
+  const old = text.indexOf('\n');
+  for (let k = 1; k <= SHORT.length; k++) {
+    const op = { from: k - 1, to: k - 1 + (k <= old ? 1 : 0), insert: SHORT[k - 1] };
+    text = apply(text, [op]);
+    yield { text, op, at: k };
+  }
+  while (text.indexOf('\n') > SHORT.length) {
+    const op = { from: SHORT.length, to: Math.min(SHORT.length + 4, text.indexOf('\n')), insert: '' };
+    text = apply(text, [op]);
+    yield { text, op, at: SHORT.length };
+  }
+}
+
+// Noor's fix made on BASE, landed after Clippy's rewrite by character:
+// the text, and Noor's inserts in it marked.
 function spliced() {
   const clippy = diffOps(BASE, shorten(BASE));
   const noor = transform(diffOps(BASE, fix(BASE)), clippy);
@@ -334,130 +352,165 @@ function spliced() {
   return [...out, text.slice(from)];
 }
 
-function receiptOf(changes) {
+function receipt() {
   const box = el('div', 'pj-receipt');
-  box.append(icon('pencil'), el('span', '', `${changes} ${changes === 1 ? 'edit' : 'edits'}`), el('span', 'pj-spacer'));
   const undo = el('span', 'pj-icon-btn');
   undo.append(icon('undo'));
-  box.append(undo);
+  box.append(icon('pencil'), el('span', '', '1 edit'), el('span', 'pj-spacer'), undo);
   return box;
 }
 
-const WAYS = {
-  turns: {
-    panels: [
-      { caption: 'Noor asks, then waits.',
-        noor: ['away', '…'], clippy: ['working', 'On it.'],
-        doc: () => marked(BASE, [{ at: 0, node: cursorNode({ by: 'Clippy', working: true }) }]) },
-      { caption: 'Noor reviews the change.',
-        noor: [null, 'Accept? Reject?'], clippy: [null, 'Done.'],
-        doc: (node) => {
-          revision(node, BASE, shorten(BASE));
-          const choices = el('div', 'arch-choices');
-          choices.append(...['Accept', 'Reject'].map((label) => el('span', 'pj-secondary', label)));
-          return [...node.childNodes, choices];
-        } },
-      { caption: 'Only then writes on.',
-        noor: ['working', 'Finally.'], clippy: [null, ''],
-        doc: () => {
-          const text = writeOn(shorten(BASE));
-          return marked(text, [{ at: text.lastIndexOf('.'), node: cursorNode({ by: 'Noor' }) }]);
-        } },
-    ],
-    verdict: [false, false, true],
-  },
-  live: {
-    panels: [
-      { caption: 'Both type in one line.',
-        noor: ['working', 'teh → the'], clippy: ['working', 'Rewriting…'],
-        doc: () => marked(BASE, [{ at: 1, node: cursorNode({ by: 'Noor' }) }, { at: 3, node: cursorNode({ by: 'Clippy', working: true }) }]) },
-      { caption: 'The text moves under Noor.',
-        noor: ['working', 'Hey, my caret!'], clippy: ['working', '…'],
-        doc: () => {
-          const streamed = 'Fifty design partners';
-          return marked(`${streamed}${BASE.slice(3)}`, [{ at: streamed.length, node: cursorNode({ by: 'Clippy', working: true }) }, { at: streamed.length + 1, node: cursorNode({ by: 'Noor' }) }]);
-        } },
-      { caption: 'The edits splice, silently.',
-        noor: [null, 'Wait, what?'], clippy: [null, 'Done!'],
-        doc: spliced },
-    ],
-    verdict: [true, false, false],
-  },
-  merge: {
-    panels: [
-      { caption: 'Clippy works on a copy.',
-        noor: ['working', 'Writing on.'], clippy: ['working', 'On my copy.'],
-        doc: () => {
-          const text = writeOn(BASE);
-          return marked(text, [{ at: text.lastIndexOf('.'), node: cursorNode({ by: 'Noor' }) }]);
-        },
-        copy: () => marked(BASE, [{ at: 0, node: cursorNode({ by: 'Clippy', working: true }) }]) },
-      { caption: 'Same line changed: Clippy redoes it.',
-        noor: ['working', 'teh → the'], clippy: ['working', 'Redoing.'],
-        doc: () => {
-          const text = fix(writeOn(BASE));
-          return marked(text, [{ at: 3, node: cursorNode({ by: 'Noor' }) }]);
-        },
-        copy: () => {
-          const { conflicts } = merge3(BASE, fix(writeOn(BASE)), shorten(BASE));
-          return [`${conflicts} line collides → redo`];
-        } },
-      { caption: 'One change lands, with Undo.',
-        noor: [null, 'Nice.'], clippy: [null, 'Shortened.'],
-        doc: (node) => {
-          const now = fix(writeOn(BASE));
-          revision(node, now, merge3(now, now, shorten(now)).text);
-          for (const edit of node.querySelectorAll('.pj-buddy-edit, .pj-buddy-del')) edit.classList.add('pj-replay');
-          return [...node.childNodes, receiptOf(1)];
-        } },
-    ],
-    verdict: [true, true, true],
-  },
-};
-
 function ways(root) {
   setBuddies([{ id: 'Clippy', name: 'Clippy' }]);
-  const strip = $(root, '[data-strip]');
-  const verdict = $(root, '[data-marks]');
-  const who = (name, person, [state, say]) => {
+  const still = globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  const caption = $(root, '[data-caption]');
+  const doc = $(root, '[data-doc]');
+  const copy = $(root, '[data-copy]');
+  const marks = $(root, '[data-marks]');
+  const actor = (name, person) => {
     const face = el('span', 'pj-agent-face');
-    if (state) face.dataset.presence = state;
     const avatar = el('span', `pj-avatar${person ? '' : ' pj-avatar-agent'}`);
     avatar.style.setProperty('--size', '28px');
     avatar.append(person ? personFace(name) : agentFace(name));
     face.append(avatar);
+    const say = el('span', 'arch-say');
     const row = el('div', 'arch-actor');
-    row.append(face, say ? el('span', 'arch-say', say) : '');
-    return row;
+    row.append(face, say);
+    $(root, '[data-cast]').append(row);
+    return (state, text) => {
+      if (state) face.dataset.presence = state;
+      else delete face.dataset.presence;
+      say.textContent = text;
+      say.hidden = !text;
+    };
   };
-  function play(way) {
+  const noor = actor('Noor', true);
+  const clippy = actor('Clippy', false);
+  const caret = (by) => cursorNode({ by, working: by !== 'Noor' });
+  let playing = 0;
+
+  async function play(way) {
+    const id = ++playing;
     pick(root, 'data-way', way);
-    const { panels, verdict: marks } = WAYS[way];
-    strip.replaceChildren(...panels.map((panel, i) => {
-      const box = el('figure', 'arch-panel');
-      box.style.setProperty('--i', i);
-      const cast = el('div', 'arch-cast');
-      cast.append(who('Noor', true, panel.noor), who('Clippy', false, panel.clippy));
-      const doc = el('div', 'arch-mini');
-      doc.append(...panel.doc(el('div')));
-      box.append(el('figcaption', '', `${i + 1}. ${panel.caption}`), cast, doc);
-      if (panel.copy) {
-        const copy = el('div', 'arch-mini arch-copy');
-        copy.append(el('span', 'arch-who', 'Clippy’s copy'), ...panel.copy());
-        box.append(copy);
+    const wait = (ms) => new Promise((done, stop) => setTimeout(() => (id === playing ? done() : stop(STOPPED)), ms));
+    // Draws each frame in turn; with reduced motion, only the last.
+    const frames = async (list, ms, draw) => {
+      const all = [...list];
+      for (const [i, frame] of all.entries()) {
+        if (still && i < all.length - 1) continue;
+        draw(frame);
+        await wait(ms);
       }
-      return box;
-    }));
-    verdict.replaceChildren(...marks.map((good, i) => {
-      const item = el('li', good ? 'arch-good' : '');
-      item.style.setProperty('--i', panels.length);
-      item.append(icon(good ? 'check' : 'close'), ['Natural', 'Focused', 'In control'][i]);
-      return item;
-    }));
+    };
+    const paint = (node, text, at = []) => node.replaceChildren(...marked(text, at));
+    const say = (n, text) => {
+      caption.textContent = `${n}. ${text}`;
+    };
+    const typeIn = (node, text, at, insert, by) => frames(
+      [...insert].map((_, k) => ({ text: text.slice(0, at) + insert.slice(0, k + 1) + text.slice(at), caret: at + k + 1 })),
+      70, (f) => paint(node, f.text, [{ at: f.caret, node: caret(by) }]),
+    );
+    const end = (good) => {
+      marks.replaceChildren(...good.map((ok, i) => {
+        const item = el('li', ok ? 'arch-good' : '');
+        item.append(icon(ok ? 'check' : 'close'), ['Natural', 'Focused', 'In control'][i]);
+        return item;
+      }));
+    };
+    marks.replaceChildren();
+    copy.hidden = true;
+    noor(null, '');
+    clippy(null, '');
+    paint(doc, BASE);
+    try {
+      await wait(400);
+      if (way === 'turns') {
+        say(1, 'Noor asks, then waits.');
+        noor(null, '@Clippy shorter');
+        await wait(900);
+        noor('away', '…');
+        clippy('working', 'On it.');
+        await frames(stream(BASE), 40, (f) => paint(doc, f.text, [{ at: f.at, node: caret('Clippy') }]));
+        say(2, 'Noor reviews the change.');
+        noor(null, 'Accept? Reject?');
+        clippy(null, 'Done.');
+        revision(doc, BASE, shorten(BASE));
+        const choices = el('div', 'arch-choices');
+        const accept = el('span', 'pj-secondary', 'Accept');
+        choices.append(accept, el('span', 'pj-secondary', 'Reject'));
+        doc.append(choices);
+        await wait(1400);
+        accept.classList.add('arch-pressed');
+        await wait(500);
+        say(3, 'Only then writes on.');
+        clippy(null, '');
+        noor('working', 'Finally.');
+        const text = shorten(BASE);
+        await typeIn(doc, text, text.lastIndexOf('.'), MORE, 'Noor');
+        noor(null, '');
+        end([false, false, true]);
+      } else if (way === 'live') {
+        say(1, 'Both type in one line.');
+        noor('working', 'teh → the');
+        clippy('working', 'Rewriting…');
+        let at = 1; // Noor's caret, moved by each of Clippy's operations
+        paint(doc, BASE, [{ at, node: caret('Noor') }]);
+        await wait(900);
+        say(2, 'The text moves under Noor.');
+        noor('working', 'Hey, my caret!');
+        await frames(stream(BASE), 40, (f) => {
+          at = mapOffset(at, [f.op]);
+          paint(doc, f.text, [{ at: f.at, node: caret('Clippy') }, { at, node: caret('Noor') }]);
+        });
+        await wait(500);
+        say(3, 'The edits splice, silently.');
+        doc.replaceChildren(...spliced());
+        noor(null, 'Wait, what?');
+        clippy(null, 'Done!');
+        end([true, false, false]);
+      } else {
+        say(1, 'Clippy works on a copy.');
+        noor(null, '@Clippy shorter');
+        await wait(900);
+        copy.hidden = false;
+        const label = el('span', 'arch-who', 'Clippy’s copy');
+        const text = el('div');
+        copy.replaceChildren(label, text);
+        noor('working', 'Writing on.');
+        clippy('working', 'On my copy.');
+        const more = BASE.lastIndexOf('.');
+        await Promise.all([
+          frames(stream(BASE), 60, (f) => paint(text, f.text, [{ at: f.at, node: caret('Clippy') }])),
+          typeIn(doc, BASE, more, MORE, 'Noor').then(async () => {
+            const now = BASE.slice(0, more) + MORE + BASE.slice(more);
+            noor('working', 'teh → the');
+            await frames([{ t: `T${now.slice(3)}`, c: 1 }, { t: `Th${now.slice(3)}`, c: 2 }, { t: fix(now), c: 3 }], 200,
+              (f) => paint(doc, f.t, [{ at: f.c, node: caret('Noor') }]));
+          }),
+        ]);
+        const now = fix(BASE.slice(0, more) + MORE + BASE.slice(more));
+        const { conflicts } = merge3(BASE, now, shorten(BASE));
+        say(2, 'Same line changed: Clippy redoes it.');
+        noor(null, '');
+        clippy('working', 'Redoing.');
+        label.textContent = `Clippy’s copy · ${conflicts} line collides → redo`;
+        await frames(stream(now), 25, (f) => paint(text, f.text, [{ at: f.at, node: caret('Clippy') }]));
+        say(3, 'One change lands, with Undo.');
+        copy.hidden = true;
+        revision(doc, now, merge3(now, now, shorten(now)).text);
+        for (const edit of doc.querySelectorAll('.pj-buddy-edit, .pj-buddy-del')) edit.classList.add('pj-replay');
+        doc.append(receipt());
+        noor(null, 'Nice.');
+        clippy(null, 'Shortened.');
+        end([true, true, true]);
+      }
+    } catch (error) {
+      if (error !== STOPPED) throw error;
+    }
   }
   for (const button of root.querySelectorAll('[data-way]')) button.onclick = () => play(button.dataset.way);
   $(root, '[data-play]').onclick = () => play($(root, '[data-way][aria-checked="true"]').dataset.way);
-  // Played first when it comes into view, so its panels are seen appearing.
+  // Played first when it comes into view.
   new IntersectionObserver((seen, watch) => {
     if (!seen.some((entry) => entry.isIntersecting)) return;
     watch.disconnect();
