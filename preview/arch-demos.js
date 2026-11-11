@@ -14,7 +14,7 @@ import { lineChanges, merge3 } from '../src/core/diff.js';
 import { newId, serializeSidecar, threadsOf } from '../src/core/comments.js';
 import { buildPrompt } from '../src/core/prompt.js';
 import { INFER, turn } from '../agents/ponjo-core.mjs';
-import { agentFace, personFace, setBuddies } from '../web/faces.js';
+import { agentFace, buddyColor, personFace, setBuddies, setPeople } from '../web/faces.js';
 import { cursorNode } from '../web/marks.js';
 import { icon } from '../web/icons.js';
 
@@ -294,62 +294,46 @@ function buddyTurn(root) {
   };
 }
 
-// ---- Three ways to write with an AI: one story, played on one stage ----
+// ---- Who waits for whom: three ways, one story, one clock ----
 
-// Noor asks Clippy to shorten the first line, then fixes its typo while
-// Clippy works. What each way ends on is the app's own code at work:
-// transform for edits merged by character, merge3 for a copy merged by line.
-const BASE = 'Teh beta ships in March to fifty design partners, who each get a private call and early access.\nThen we open the waitlist.\n';
-const fix = (text) => text.replace('Teh', 'The');
+// Noor asks Clippy to shorten line 1 and Max to lengthen line 2, and has
+// line 3 to write. Each way is a script on one clock, in seconds: what each
+// writer does when (drawn as lanes on one scale, so the ways compare), and
+// its window at any moment, a function of the time. Ponjo's landings are
+// merge3, the app's own merge.
+const LINES = ['The beta ships in March to fifty design partners, who each get a private call and early access.', 'Then we open the waitlist.'];
 const SHORT = 'Fifty design partners get the beta in March.';
-const shorten = (text) => `${SHORT}${text.slice(text.indexOf('\n'))}`;
-const MORE = ', in the order people joined it';
-const STOPPED = Symbol('stopped');
+const LONG = 'Then we open the waitlist, in the order people joined it.';
+const MINE = 'Pricing comes after the beta.';
+const SCALE = 11; // seconds on every timeline
+const still = globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+const span = (t, from, to) => Math.min(1, Math.max(0, (t - from) / (to - from)));
+const typed = (text, x) => text.slice(0, Math.round(text.length * x));
+
+// `old` overwritten by `next` as an agent streams it: the text, and its cursor.
+function overwrite(old, next, x) {
+  const k = Math.round(x * Math.max(old.length, next.length));
+  return { text: next.slice(0, Math.min(k, next.length)) + old.slice(k), at: Math.min(k, next.length) };
+}
 
 // Text with marks at offsets: [{ at, node }], in order.
 function marked(text, marks = []) {
   const out = [];
   let from = 0;
-  for (const { at, node } of [...marks].sort((a, b) => a.at - b.at)) {
+  for (const { at, node } of marks) {
     out.push(text.slice(from, at), node);
     from = at;
   }
   return [...out, text.slice(from)];
 }
 
-// Clippy's rewrite of the first line streamed in, as an agent types: each
-// step one operation on the text, its cursor after what it wrote.
-function* stream(text) {
-  const old = text.indexOf('\n');
-  for (let k = 1; k <= SHORT.length; k++) {
-    const op = { from: k - 1, to: k - 1 + (k <= old ? 1 : 0), insert: SHORT[k - 1] };
-    text = apply(text, [op]);
-    yield { text, op, at: k };
-  }
-  while (text.indexOf('\n') > SHORT.length) {
-    const op = { from: SHORT.length, to: Math.min(SHORT.length + 4, text.indexOf('\n')), insert: '' };
-    text = apply(text, [op]);
-    yield { text, op, at: SHORT.length };
-  }
-}
-
-// Noor's fix made on BASE, landed after Clippy's rewrite by character:
-// the text, and Noor's inserts in it marked.
-function spliced() {
-  const clippy = diffOps(BASE, shorten(BASE));
-  const noor = transform(diffOps(BASE, fix(BASE)), clippy);
-  const text = apply(apply(BASE, clippy), noor);
-  const out = [];
-  let from = 0;
-  let shift = 0;
-  for (const op of noor) {
-    const at = op.from + shift;
-    shift += op.insert.length - (op.to - op.from);
-    if (!op.insert) continue;
-    out.push(text.slice(from, at), el('span', 'arch-splice', op.insert));
-    from = at + op.insert.length;
-  }
-  return [...out, text.slice(from)];
+function face(name, person, size = 20) {
+  const avatar = el('span', `pj-avatar${person ? '' : ' pj-avatar-agent'}`);
+  avatar.style.setProperty('--size', `${size}px`);
+  avatar.append(person ? personFace(name) : agentFace(name));
+  const box = el('span', 'pj-agent-face');
+  box.append(avatar);
+  return box;
 }
 
 function receipt() {
@@ -360,165 +344,261 @@ function receipt() {
   return box;
 }
 
-function ways(root) {
-  setBuddies([{ id: 'Clippy', name: 'Clippy' }]);
-  const still = globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-  const caption = $(root, '[data-caption]');
-  const doc = $(root, '[data-doc]');
-  const copy = $(root, '[data-copy]');
-  const marks = $(root, '[data-marks]');
-  const actor = (name, person) => {
-    const face = el('span', 'pj-agent-face');
-    const avatar = el('span', `pj-avatar${person ? '' : ' pj-avatar-agent'}`);
-    avatar.style.setProperty('--size', '28px');
-    avatar.append(person ? personFace(name) : agentFace(name));
-    face.append(avatar);
-    const say = el('span', 'arch-say');
-    const row = el('div', 'arch-actor');
-    row.append(face, say);
-    $(root, '[data-cast]').append(row);
-    return (state, text) => {
-      if (state) face.dataset.presence = state;
-      else delete face.dataset.presence;
-      say.textContent = text;
-      say.hidden = !text;
-    };
-  };
-  const noor = actor('Noor', true);
-  const clippy = actor('Clippy', false);
-  const caret = (by) => cursorNode({ by, working: by !== 'Noor' });
-  let playing = 0;
-
-  async function play(way) {
-    const id = ++playing;
-    pick(root, 'data-way', way);
-    const wait = (ms) => new Promise((done, stop) => setTimeout(() => (id === playing ? done() : stop(STOPPED)), ms));
-    // Draws each frame in turn; with reduced motion, only the last.
-    const frames = async (list, ms, draw) => {
-      const all = [...list];
-      for (const [i, frame] of all.entries()) {
-        if (still && i < all.length - 1) continue;
-        draw(frame);
-        await wait(ms);
-      }
-    };
-    const paint = (node, text, at = []) => node.replaceChildren(...marked(text, at));
-    const say = (n, text) => {
-      caption.textContent = `${n}. ${text}`;
-    };
-    const typeIn = (node, text, at, insert, by) => frames(
-      [...insert].map((_, k) => ({ text: text.slice(0, at) + insert.slice(0, k + 1) + text.slice(at), caret: at + k + 1 })),
-      70, (f) => paint(node, f.text, [{ at: f.caret, node: caret(by) }]),
-    );
-    const end = (good) => {
-      marks.replaceChildren(...good.map((ok, i) => {
-        const item = el('li', ok ? 'arch-good' : '');
-        item.append(icon(ok ? 'check' : 'close'), ['Natural', 'Focused', 'In control'][i]);
-        return item;
-      }));
-    };
-    marks.replaceChildren();
-    copy.hidden = true;
-    noor(null, '');
-    clippy(null, '');
-    paint(doc, BASE);
-    try {
-      await wait(400);
-      if (way === 'turns') {
-        say(1, 'Noor asks, then waits.');
-        noor(null, '@Clippy shorter');
-        await wait(900);
-        noor('away', '…');
-        clippy('working', 'On it.');
-        await frames(stream(BASE), 40, (f) => paint(doc, f.text, [{ at: f.at, node: caret('Clippy') }]));
-        say(2, 'Noor reviews the change.');
-        noor(null, 'Accept? Reject?');
-        clippy(null, 'Done.');
-        revision(doc, BASE, shorten(BASE));
-        const choices = el('div', 'arch-choices');
-        const accept = el('span', 'pj-secondary', 'Accept');
-        choices.append(accept, el('span', 'pj-secondary', 'Reject'));
-        doc.append(choices);
-        await wait(1400);
-        accept.classList.add('arch-pressed');
-        await wait(500);
-        say(3, 'Only then writes on.');
-        clippy(null, '');
-        noor('working', 'Finally.');
-        const text = shorten(BASE);
-        await typeIn(doc, text, text.lastIndexOf('.'), MORE, 'Noor');
-        noor(null, '');
-        end([false, false, true]);
-      } else if (way === 'live') {
-        say(1, 'Both type in one line.');
-        noor('working', 'teh → the');
-        clippy('working', 'Rewriting…');
-        let at = 1; // Noor's caret, moved by each of Clippy's operations
-        paint(doc, BASE, [{ at, node: caret('Noor') }]);
-        await wait(900);
-        say(2, 'The text moves under Noor.');
-        noor('working', 'Hey, my caret!');
-        await frames(stream(BASE), 40, (f) => {
-          at = mapOffset(at, [f.op]);
-          paint(doc, f.text, [{ at: f.at, node: caret('Clippy') }, { at, node: caret('Noor') }]);
-        });
-        await wait(500);
-        say(3, 'The edits splice, silently.');
-        doc.replaceChildren(...spliced());
-        noor(null, 'Wait, what?');
-        clippy(null, 'Done!');
-        end([true, false, false]);
-      } else {
-        say(1, 'Clippy works on a copy.');
-        noor(null, '@Clippy shorter');
-        await wait(900);
-        copy.hidden = false;
-        const label = el('span', 'arch-who', 'Clippy’s copy');
-        const text = el('div');
-        copy.replaceChildren(label, text);
-        noor('working', 'Writing on.');
-        clippy('working', 'On my copy.');
-        const more = BASE.lastIndexOf('.');
-        await Promise.all([
-          frames(stream(BASE), 60, (f) => paint(text, f.text, [{ at: f.at, node: caret('Clippy') }])),
-          typeIn(doc, BASE, more, MORE, 'Noor').then(async () => {
-            const now = BASE.slice(0, more) + MORE + BASE.slice(more);
-            noor('working', 'teh → the');
-            await frames([{ t: `T${now.slice(3)}`, c: 1 }, { t: `Th${now.slice(3)}`, c: 2 }, { t: fix(now), c: 3 }], 200,
-              (f) => paint(doc, f.t, [{ at: f.c, node: caret('Noor') }]));
-          }),
-        ]);
-        const now = fix(BASE.slice(0, more) + MORE + BASE.slice(more));
-        const { conflicts } = merge3(BASE, now, shorten(BASE));
-        say(2, 'Same line changed: Clippy redoes it.');
-        noor(null, '');
-        clippy('working', 'Redoing.');
-        label.textContent = `Clippy’s copy · ${conflicts} line collides → redo`;
-        await frames(stream(now), 25, (f) => paint(text, f.text, [{ at: f.at, node: caret('Clippy') }]));
-        say(3, 'One change lands, with Undo.');
-        copy.hidden = true;
-        revision(doc, now, merge3(now, now, shorten(now)).text);
-        for (const edit of doc.querySelectorAll('.pj-buddy-edit, .pj-buddy-del')) edit.classList.add('pj-replay');
-        doc.append(receipt());
-        noor(null, 'Nice.');
-        clippy(null, 'Shortened.');
-        end([true, true, true]);
-      }
-    } catch (error) {
-      if (error !== STOPPED) throw error;
-    }
-  }
-  for (const button of root.querySelectorAll('[data-way]')) button.onclick = () => play(button.dataset.way);
-  $(root, '[data-play]').onclick = () => play($(root, '[data-way][aria-checked="true"]').dataset.way);
-  // Played first when it comes into view.
-  new IntersectionObserver((seen, watch) => {
-    if (!seen.some((entry) => entry.isIntersecting)) return;
-    watch.disconnect();
-    play('turns');
-  }, { threshold: 0.3 }).observe(root);
+// Lines of a doc, each { text, caret?, hl?, by?, old? }: a caret ({ at, by,
+// working }), commented (hl), landed in `by`'s colour, or under review: `old`
+// struck through, `text` in `by`'s colour.
+function drawLines(node, lines) {
+  node.replaceChildren(...lines.map((line) => {
+    const row = el('div', 'arch-line');
+    const parts = line.caret ? marked(line.text, [{ at: line.caret.at, node: cursorNode(line.caret) }]) : [line.text];
+    const wrap = line.by ? el('span', 'pj-buddy-edit') : line.hl ? el('span', 'pj-hl') : null;
+    if (line.by) wrap.style.setProperty('--buddy', buddyColor(line.by));
+    if (line.old !== undefined) row.append(el('del', 'pj-buddy-del', line.old));
+    if (wrap) wrap.append(...parts);
+    row.append(...(wrap ? [wrap] : parts));
+    return row;
+  }));
 }
 
-ways($(document, '[data-demo="ways"]'));
+// 1. A chat beside the file: ask, wait, review, ask again.
+function chatWindow(win) {
+  win.classList.add('arch-win-chat');
+  const log = el('div', 'arch-log');
+  const prompt = el('div', 'pj-input arch-prompt');
+  const chat = el('div', 'arch-pane');
+  chat.append(el('span', 'arch-who', 'Chat'), log, prompt);
+  const body = el('div', 'arch-lines');
+  const review = el('div', 'arch-choices');
+  const accept = el('span', 'pj-secondary', 'Accept');
+  review.append(accept, el('span', 'pj-secondary', 'Reject'));
+  const file = el('div', 'arch-pane');
+  file.append(el('span', 'arch-who', 'plan.md'), body, review);
+  win.append(chat, file);
+  let said = '';
+  const agent = (t, line, next, by, from) => {
+    if (t < from) return { text: line };
+    if (t < from + 2.5) {
+      const now = overwrite(line, next, span(t, from, from + 2.5));
+      return { text: now.text, caret: { at: now.at, by, working: true } };
+    }
+    return t < from + 3.5 ? { text: next, old: line, by } : { text: next };
+  };
+  return (t) => {
+    const messages = [[1, 'Noor', 'Clippy, shorten line 1.'], [1, 'Clippy', t < 3.5 ? 'Working…' : 'Done. Review it.'],
+      [5.5, 'Noor', 'Max, lengthen line 2.'], [5.5, 'Max', t < 8 ? 'Working…' : 'Done. Review it.']].filter(([at]) => t >= at);
+    const now = messages.map(([, , text]) => text).join('|');
+    if (now !== said) {
+      said = now;
+      log.replaceChildren(...messages.map(([, who, text]) => {
+        const row = el('div', 'arch-actor');
+        row.append(face(who, who === 'Noor'), el('span', 'arch-say', text));
+        return row;
+      }));
+    }
+    prompt.textContent = t < 1 ? typed('Clippy, shorten line 1.', span(t, 0, 1)) : t >= 4.5 && t < 5.5 ? typed('Max, lengthen line 2.', span(t, 4.5, 5.5)) : '';
+    const lines = [agent(t, LINES[0], SHORT, 'Clippy', 1), agent(t, LINES[1], LONG, 'Max', 5.5)];
+    if (t >= 9) {
+      const text = typed(MINE, span(t, 9, 11));
+      lines.push({ text, caret: { at: text.length, by: 'Noor' } });
+    }
+    drawLines(body, lines);
+    review.hidden = !((t >= 3.5 && t < 4.5) || (t >= 8 && t < 9));
+    accept.classList.toggle('arch-pressed', (t >= 4.2 && t < 4.5) || (t >= 8.7 && t < 9));
+  };
+}
+
+// 2. One queue, and 3. Ponjo: a doc with its threads in the margin. In the
+// queue, each ask waits for the one before and edits the doc as it goes; in
+// Ponjo each works on its own copy at once, merged (merge3) when it ends.
+const ASKS = {
+  queue: { Clippy: [0, 0.8, 0.8, 3.3], Max: [0.8, 1.6, 3.3, 5.8] }, // asked from, to; works from, to
+  ponjo: { Clippy: [0, 0.8, 0.8, 3.3], Max: [0.8, 1.6, 1.6, 4.1] },
+};
+
+function docWindow(win, way) {
+  const body = el('div', 'arch-lines');
+  const doc = el('div', 'arch-pane');
+  doc.append(el('span', 'arch-who', 'plan.md'), body);
+  const margin = el('div', 'arch-margin');
+  win.append(doc, margin);
+  const ponjo = way === 'ponjo';
+  const cards = Object.entries(ASKS[way]).map(([buddy, [from, to, start, end]]) => {
+    const card = el('div', 'pj-card arch-card');
+    card.style.setProperty('--buddy', buddyColor(buddy));
+    const head = el('div', 'arch-actor');
+    head.append(face('Noor', true), 'Noor');
+    const ask = el('div', 'arch-ask');
+    const who = face(buddy, false);
+    const said = el('span', '');
+    const status = el('div', 'arch-actor arch-status');
+    status.append(who, said);
+    const done = receipt();
+    card.append(head, ask, status, done);
+    margin.append(card);
+    return (t) => {
+      const working = t >= start && t < end;
+      card.hidden = t < from;
+      ask.textContent = typed(`@${buddy} ${buddy === 'Clippy' ? 'shorten this' : 'lengthen this'}`, span(t, from, to));
+      card.classList.toggle('pj-card-working', working);
+      if (working) who.dataset.presence = 'working';
+      else if (t >= to && t < start) who.dataset.presence = 'away';
+      else delete who.dataset.presence;
+      said.textContent = t < start ? 'Queued' : working ? (ponjo ? 'Working on its copy' : 'Working…') : 'Done';
+      status.hidden = t < to || (ponjo && t >= end);
+      done.hidden = !(ponjo && t >= end);
+    };
+  });
+  const [clippy, max] = Object.values(ASKS[way]);
+  return (t) => {
+    for (const card of cards) card(t);
+    const mine = typed(MINE, span(t, 1.6, 4));
+    let lines;
+    if (ponjo) {
+      const base = `${LINES.join('\n')}\n`;
+      let text = base + mine;
+      if (t >= clippy[3]) text = merge3(base, text, `${SHORT}\n${LINES[1]}\n`).text;
+      if (t >= max[3]) text = merge3(base, text, `${LINES[0]}\n${LONG}\n`).text;
+      const [one, two] = text.split('\n');
+      lines = [
+        t >= clippy[3] ? { text: one, by: 'Clippy' } : { text: one, hl: true, caret: t >= clippy[2] ? { at: 0, by: 'Clippy', working: true } : null },
+        t >= max[3] ? { text: two, by: 'Max' } : { text: two, hl: t >= max[0], caret: t >= max[2] ? { at: 0, by: 'Max', working: true } : null },
+      ];
+    } else {
+      const edit = (line, next, by, [from, , start, end]) => {
+        if (t >= end) return { text: next };
+        if (t < start) return { text: line, hl: t >= from };
+        const now = overwrite(line, next, span(t, start, end));
+        return { text: now.text, caret: { at: now.at, by, working: true } };
+      };
+      lines = [edit(LINES[0], SHORT, 'Clippy', clippy), edit(LINES[1], LONG, 'Max', max)];
+    }
+    if (t >= 1.6) lines.push({ text: mine, caret: { at: mine.length, by: 'Noor' } });
+    drawLines(body, lines);
+  };
+}
+
+const WRITES = [[0, 1.6, 'comments'], [1.6, 4, 'writes']];
+const MODES = {
+  chat: {
+    end: 11,
+    window: chatWindow,
+    lanes: {
+      Noor: [[0, 1, 'asks'], [1, 3.5, 'waits', true], [3.5, 4.5, 'reviews'], [4.5, 5.5, 'asks'], [5.5, 8, 'waits', true], [8, 9, 'reviews'], [9, 11, 'writes']],
+      Clippy: [[1, 3.5, 'edits'], [3.5, 4.5, 'waits', true]],
+      Max: [[5.5, 8, 'edits'], [8, 9, 'waits', true]],
+    },
+  },
+  queue: {
+    end: 5.8,
+    window: (win) => docWindow(win, 'queue'),
+    lanes: { Noor: WRITES, Clippy: [[0.8, 3.3, 'edits']], Max: [[1.6, 3.3, 'queued', true], [3.3, 5.8, 'edits']] },
+  },
+  ponjo: {
+    end: 4.1,
+    window: (win) => docWindow(win, 'ponjo'),
+    lanes: { Noor: WRITES, Clippy: [[0.8, 3.3, 'edits its copy']], Max: [[1.6, 4.1, 'edits its copy']] },
+  },
+};
+
+// Who did what when, on one scale for every way: a bar grows as it happens.
+function drawLanes(node, lanes, end) {
+  const bars = [];
+  const heads = [];
+  const at = (s) => `${(s / SCALE) * 100}%`;
+  const rows = Object.entries(lanes).map(([who, list]) => {
+    const track = el('div', 'arch-track');
+    track.style.setProperty('--buddy', buddyColor(who));
+    for (const [from, to, label, waiting] of list) {
+      const bar = el('span', waiting ? 'arch-bar arch-wait' : 'arch-bar', label);
+      bar.style.left = at(from);
+      track.append(bar);
+      bars.push({ bar, from, to });
+    }
+    const head = el('span', 'arch-head');
+    heads.push(head);
+    track.append(head);
+    const name = el('span', 'arch-actor');
+    name.append(face(who, who === 'Noor'), who);
+    const row = el('div', 'arch-lane');
+    row.append(name, track);
+    return row;
+  });
+  const axis = el('div', 'arch-axis');
+  for (let s = 0; s < SCALE - 2; s += 2) { // the last, where `done` says when it ended
+    const tick = el('span', 'arch-tick', `${s} s`);
+    tick.style.left = at(s);
+    axis.append(tick);
+  }
+  const done = el('span', 'arch-done');
+  axis.append(done);
+  const foot = el('div', 'arch-lane');
+  foot.append(el('span'), axis);
+  node.replaceChildren(...rows, foot);
+  return (t) => {
+    for (const { bar, from, to } of bars) bar.style.width = at(Math.max(0, Math.min(t, to) - from));
+    for (const head of heads) head.style.left = at(t);
+    done.textContent = t >= end ? `Done at ${end} s` : '';
+  };
+}
+
+function mode(root) {
+  const { end, window: build, lanes } = MODES[root.dataset.mode];
+  const win = el('div', 'arch-win');
+  const track = el('div', 'arch-lanes');
+  const again = el('button', 'pj-link-button', 'Play again');
+  again.type = 'button';
+  const controls = el('div', 'arch-controls');
+  controls.append(again);
+  root.append(win, track, controls);
+  let timer = null;
+  function play() {
+    clearInterval(timer);
+    win.className = 'arch-win';
+    win.replaceChildren();
+    const scene = build(win);
+    const lanesAt = drawLanes(track, lanes, end);
+    const draw = (t) => {
+      scene(t);
+      lanesAt(t);
+    };
+    if (still) return draw(end);
+    const start = Date.now();
+    draw(0);
+    timer = setInterval(() => {
+      const t = Math.min((Date.now() - start) / 1000, end);
+      draw(t);
+      if (t >= end) clearInterval(timer);
+    }, 50);
+  }
+  again.onclick = play;
+  // Played each time its slide comes into view, as a slide's animation is.
+  new IntersectionObserver(([seen]) => {
+    if (seen.isIntersecting) play();
+    else clearInterval(timer);
+  }, { threshold: 0.6 }).observe(root);
+}
+
+// The page as slides: a dot per slide, the current one marked; a click goes there.
+function deck() {
+  const slides = [...document.querySelectorAll('.arch-slide')];
+  const dots = slides.map((slide, i) => {
+    const dot = el('button', 'arch-dot');
+    dot.type = 'button';
+    dot.setAttribute('aria-label', `Slide ${i + 1}: ${$(slide, 'h1, h2, .arch-merge-head b').textContent}`);
+    dot.onclick = () => slide.scrollIntoView({ behavior: still ? 'auto' : 'smooth' });
+    return dot;
+  });
+  $(document, '[data-dots]').replaceChildren(...dots);
+  const watch = new IntersectionObserver((seen) => {
+    for (const entry of seen) if (entry.isIntersecting) dots.forEach((dot, i) => dot.toggleAttribute('aria-current', slides[i] === entry.target));
+  }, { rootMargin: '-50% 0px -50% 0px' });
+  for (const slide of slides) watch.observe(slide);
+}
+
+setBuddies([{ id: 'Clippy', name: 'Clippy' }, { id: 'Max', name: 'Max' }]);
+setPeople(['Noor']);
+deck();
+for (const root of document.querySelectorAll('[data-demo="mode"]')) mode(root);
 typing($(document, '[data-demo="typing"]'));
 lines($(document, '[data-demo="lines"]'));
 buddyTurn($(document, '[data-demo="turn"]'));
