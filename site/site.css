@@ -158,6 +158,14 @@ a { color: var(--accent); }
 .arch-ok { color: var(--green); }
 .arch-back { color: var(--red); }
 
+/* what blocks, beside what Ponjo does instead */
+.arch-block { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: 16px; padding: 12px 0; border-top: 1px solid var(--border); font-size: 14px; }
+.arch-block.arch-who { padding-top: 0; border-top: 0; }
+.arch-blocks { color: var(--text-soft); }
+.arch-design { color: var(--text); font-weight: 500; }
+.arch-caret { display: inline-block; height: 1.1em; margin-left: 1px; border-left: 2px solid var(--text); vertical-align: text-bottom; }
+.arch-gone { opacity: 0.45; transition: opacity 0.3s; }
+
 /* who waits: a way's name, and its lanes on one clock */
 .arch-way { display: flex; flex-direction: column; gap: 6px; margin-top: 16px; }
 .arch-way-name { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; font-size: 13px; font-weight: 600; }
@@ -199,6 +207,6 @@ a { color: var(--accent); }
 .arch-page .arch-slide > p:last-child { margin-top: 32px; }
 
 @media (max-width: 720px) {
-  .arch-two, .arch-three { grid-template-columns: minmax(0, 1fr); }
+  .arch-two, .arch-three, .arch-block { grid-template-columns: minmax(0, 1fr); }
   .arch-merge { padding: 16px; }
 }

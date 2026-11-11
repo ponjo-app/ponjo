@@ -1,18 +1,19 @@
-// The architecture page's live demos (site/architecture.html), each on the
-// app's own code: the three ways as scripts on one clock, Ponjo's turns
-// landed and undone by merge3 (src/core/diff.js); one turn's path, drawn; the
-// open asks as the Runner reads them (threadsOf, askedOf); a turn of the
-// Ponjo agent's own loop (agents/ponjo-core.mjs) with its model scripted;
-// merge3 to edit; and a real turn on the preview's model, landed as the doc
-// host lands one (src/host/doc-service.js, finishRun). preview/build.js
-// bundles it into dist/preview, which the site serves at /preview/; the model
+// The architecture page's live demos (site/architecture.html), each played
+// step by step with a caption: who waits, the same work three ways on one
+// clock; what blocks and the three designs that remove it; asking in a
+// comment while you type on; agents working at once on copies, one stopped
+// with nothing to undo; the app merging copies in (merge3, src/core/diff.js);
+// one request through a drawing; and a real turn of the Ponjo agent
+// (agents/ponjo-core.mjs) on the preview's model, landed as the doc host lands
+// one (src/host/doc-service.js, finishRun). preview/build.js bundles it into
+// dist/preview, which the site serves at /preview/; the model
 // (infer.ponjo.app) answers pages on ponjo.app only.
 
 /* global document, IntersectionObserver */
 
 import { diffOps, mapOffset } from '../src/core/ot.js';
 import { lineChanges, merge3 } from '../src/core/diff.js';
-import { askedOf, newId, serializeSidecar, threadsOf } from '../src/core/comments.js';
+import { newId, serializeSidecar, threadsOf } from '../src/core/comments.js';
 import { buildPrompt } from '../src/core/prompt.js';
 import { INFER, turn } from '../agents/ponjo-core.mjs';
 import { agentFace, buddyColor, personFace, setBuddies, setPeople } from '../web/faces.js';
@@ -200,8 +201,9 @@ function face(name, person, size = 20) {
   return box;
 }
 
-// A doc's lines, each { text, by?, old?, mine? }: by an agent, in its colour;
-// `old` struck through before it; `mine`, a line you changed.
+// A doc's lines, each { text, by?, old?, mine?, caret? }: by an agent, in its
+// colour; `old` struck through before it; `mine`, a line you changed; `caret`,
+// where you type.
 function drawLines(node, lines) {
   node.replaceChildren(...lines.map((line) => {
     const row = el('div', 'arch-line');
@@ -209,6 +211,7 @@ function drawLines(node, lines) {
     const words = el('span', line.by ? 'pj-buddy-edit' : line.mine ? 'arch-mine' : '', line.text);
     if (line.by) words.style.setProperty('--buddy', buddyColor(line.by));
     row.append(words);
+    if (line.caret) row.append(el('span', 'arch-caret'));
     return row;
   }));
 }
@@ -334,208 +337,171 @@ function howItWorks(root) {
   root.append(caption, drawing);
   const focus = (part, say) => ({ say, run: async () => flow(drawing, part) });
   stepper(root, caption, [
-    focus('you', 'You @mention an agent in a comment, and keep writing.'),
-    focus('start', 'The app starts an agent for every @mention, all at once.'),
-    focus('agents', 'Each agent works on its own copy of the doc, so it is never in your way.'),
-    focus('merge', 'When an agent is done, the app merges its copy into the doc, line by line.'),
-    { ...focus(null, 'So nobody waits: not you, and not the other agents.'), hold: 5000 },
+    focus('you', '1 · You @mention an agent in a comment, and keep writing.'),
+    focus('start', '2 · The app starts an agent for every @mention, all at once.'),
+    focus('agents', '2 · Each works on its own copy, changing nothing else until it is done.'),
+    focus('merge', '3 · The app, the only writer, merges each copy into the doc.'),
+    { ...focus(null, 'So nobody waits: not you, not the other people, not the other agents.'), hold: 5000 },
   ], () => flow(drawing, null));
 }
 
-// ---- An agent for every @mention ----
+// ---- Three things block; three designs remove them ----
 
-// The @mentions not yet answered are the app's own reading of the comments
-// (threadsOf, askedOf). The app keeps one agent at work for each, and no
-// more: none for an @mention resolved or answered, and after a restart, one
-// again for each still unanswered.
-const BUDDIES = [{ id: 'Clippy', name: 'Clippy' }, { id: 'Max', name: 'Max' }];
-const NOOR = { id: 'noor', name: 'You', kind: 'human' };
-const WORK = 14; // seconds an agent works: still at work when the app restarts
+const BLOCKS = [
+  ['You wait while an agent works', '1 · You ask in a comment, and the agent works in the background'],
+  ['Agents wait for each other', '2 · Every agent works on its own copy, changing nothing else until it is done'],
+  ['Someone has to resolve conflicts', '3 · Only the app writes the file, and it merges every change'],
+];
 
-function agents(root) {
+function blockers(root) {
   const caption = el('p', 'arch-caption');
-  const asked = el('div', 'arch-list');
-  const working = el('div', 'arch-list');
-  const pane = (title, list) => {
-    const box = el('div', 'arch-pane');
-    box.append(el('span', 'arch-who', title), list);
-    return box;
-  };
-  const panes = el('div', 'arch-two');
-  panes.append(pane('@mentions not yet answered', asked), pane('Agents at work', working));
-  root.append(caption, panes);
-  let comments = [];
-  let running = new Map(); // comment id + agent → { id, n, left }
-  let up = true;
-  let seq = Date.now();
-  const now = () => new Date(++seq).toISOString();
-  const add = (comment) => {
-    comments = [...comments, { id: newId('c'), at: now(), by: NOOR, ...comment }];
-    settle();
-  };
-
-  // One agent for each @mention not yet answered: start the missing, stop the rest.
-  function settle() {
-    const threads = threadsOf(comments, BUDDIES);
-    const wanted = new Map();
-    threads.forEach((thread, i) => {
-      for (const id of askedOf(thread, [NOOR.id])) wanted.set(`${thread.id} ${id}`, { thread: thread.id, n: i + 1, id });
-    });
-    running = new Map([...wanted].filter(([key]) => running.has(key) || up).map(([key, want]) => [key, running.get(key) ?? { ...want, left: WORK }]));
-    asked.replaceChildren(...[...wanted.values()].map(({ id, n }) => {
-      const row = el('div', 'arch-actor arch-row');
-      row.append(face(id, false), `@${id} in comment ${n}`);
-      return row;
-    }));
-    if (!wanted.size) asked.append(el('span', 'arch-quiet', 'None'));
-    draw();
-  }
-
-  const bars = new Map(); // an agent's run → its bar
-  function draw() {
-    bars.clear();
-    working.replaceChildren(...[...running.values()].map((run) => {
-      const row = el('div', 'arch-row arch-job');
-      row.style.setProperty('--buddy', buddyColor(run.id));
-      const who = face(run.id, false);
-      who.dataset.presence = 'working';
-      const name = el('div', 'arch-actor');
-      name.append(who, `${run.id}, comment ${run.n}`);
-      const bar = el('span', 'arch-bar');
-      bars.set(run, bar);
-      grow(run);
-      const track = el('div', 'arch-track');
-      track.append(bar);
-      row.append(name, track);
-      return row;
-    }));
-    if (!running.size) working.append(el('span', 'arch-quiet', up ? 'None' : 'The app is restarting'));
-  }
-  const grow = (run) => {
-    const bar = bars.get(run);
-    if (bar) bar.style.width = `${(1 - run.left / WORK) * 100}%`;
-  };
-
-  // Time passes: each agent's work goes on; one that is done answers its comment.
-  setInterval(() => {
-    let answered = false;
-    for (const run of running.values()) {
-      run.left -= 0.1;
-      if (run.left <= 0) {
-        comments = [...comments, { id: newId('c'), thread: run.thread, at: now(), by: { id: run.id, name: run.id, kind: 'ai' }, body: 'Done.' }];
-        answered = true;
-      } else grow(run);
-    }
-    if (answered) settle();
-  }, 100);
-
-  let first = null;
-  stepper(root, caption, [
-    { say: 'You @mention Clippy and Max. The app starts both at once.', run: async () => {
-      first = { anchor: null, body: '@Clippy shorten this' };
-      add(first);
-      add({ anchor: null, body: '@Max check the dates' });
-    } },
-    { say: 'You resolve the first comment. Its agent stops right away.', run: async () => {
-      add({ thread: comments.find((c) => c.body === first.body).id, body: '', resolved: true });
-    } },
-    { say: 'The app restarts. Max’s work so far is lost, but its @mention is still unanswered…', run: async (wait) => {
-      running = new Map();
-      up = false;
-      draw();
-      await wait(2000);
-    }, hold: 0 },
-    { say: '…so the app starts Max again. Nothing to recover: the comments say what is left to do.', run: async () => {
-      up = true;
-      settle();
-    }, hold: 7000 },
-  ], () => {
-    comments = [];
-    running = new Map();
-    up = true;
-    settle();
+  const head = el('div', 'arch-block arch-who');
+  head.append(el('span', '', 'What blocks'), el('span', '', 'What Ponjo does instead'));
+  const rows = BLOCKS.map(([blocks, design]) => {
+    const row = el('div', 'arch-block');
+    row.append(el('span', 'arch-blocks', blocks), el('span', 'arch-design', design));
+    return row;
+  });
+  root.append(caption, head, ...rows);
+  stepper(root, caption, rows.map((row) => ({
+    say: 'Many people and many agents edit one file. Three things usually make someone wait.',
+    run: async () => {
+      row.hidden = false;
+    },
+    hold: 3000,
+  })), () => {
+    for (const row of rows) row.hidden = true;
   });
 }
 
-// ---- Agents suggest, the app checks: a real run of the Ponjo agent ----
+// ---- Design 1: asking an agent never stops you ----
 
-// The Ponjo agent's own loop (turn) on a copy of a doc, its model scripted:
-// it reads, suggests an edit quoting text the doc does not have, which the
-// app sends back, then quotes it right, and the edit lands on the copy.
-const PLAN_LINES = ['The beta ships in March to fifty design partners, who each get a private call and early access.', 'Then we open the waitlist.'];
-const SHORT = 'Fifty design partners get the beta in March.';
-const SCRIPTED = [
-  [['read', { path: 'plan.md' }]],
-  [['propose', { edits: [{ old: 'fifty design partner,', new: 'fifty partners,' }], reply: '' }]],
-  [['propose', { edits: [{ old: PLAN_LINES[0], new: SHORT }], reply: 'Shortened the first line.' }]],
-];
+// You ask Clippy in a comment and type on; Clippy's edit, made on its copy,
+// lands when it is done (merge3), beside what you typed.
+const DOC_LINES = ['# Launch', 'We ship in March.', 'Then we open the waitlist.'];
+const TYPED = ', in the order people joined it';
+const typed = (text, x) => text.slice(0, Math.round(text.length * x));
+const docText = (lines) => `${lines.join('\n')}\n`;
 
-function suggest(root) {
+function background(root) {
   const caption = el('p', 'arch-caption');
-  const copy = el('div', 'arch-lines');
+  const doc = el('div', 'arch-lines');
   const left = el('div', 'arch-pane');
-  left.append(el('span', 'arch-who', 'Clippy’s copy of the doc'), copy);
-  const quote = el('div', 'arch-quote');
-  const verdict = el('div', 'arch-verdict');
+  left.append(el('span', 'arch-who', 'Your doc'), doc);
+  const ask = el('div', 'arch-row');
+  const who = face('Clippy', false);
+  const state = el('span', 'arch-quiet');
+  const status = el('div', 'arch-actor arch-row');
+  status.append(who, state);
   const right = el('div', 'arch-pane');
-  right.append(el('span', 'arch-who', 'Clippy’s suggested edit'), quote, verdict);
+  right.append(el('span', 'arch-who', 'A comment'), ask, status);
   const panes = el('div', 'arch-two');
   panes.append(left, right);
   root.append(caption, panes);
-  const doc = `${PLAN_LINES.join('\n')}\n`;
+  const mine = (x) => [DOC_LINES[0], DOC_LINES[1], DOC_LINES[2].replace('.', `${typed(TYPED, x)}.`)];
   const reset = () => {
-    drawLines(copy, PLAN_LINES.map((text) => ({ text })));
-    quote.replaceChildren(el('span', 'arch-quiet', 'None yet'));
-    verdict.textContent = '';
-    verdict.className = 'arch-verdict';
+    drawLines(doc, DOC_LINES.map((text) => ({ text })));
+    ask.textContent = '';
+    state.textContent = '';
+    delete who.dataset.presence;
+    status.hidden = true;
   };
-  const show = (call) => {
-    const { edits: [{ old, new: by }] } = JSON.parse(call.args);
-    quote.replaceChildren(el('div', '', 'Replace'), el('del', 'pj-buddy-del', `“${old}”`), el('div', '', 'with'), el('div', '', `“${by}”`));
-    verdict.textContent = 'Checking…';
-    verdict.className = 'arch-verdict';
+  stepper(root, caption, [
+    { say: 'You @mention Clippy in a comment. That is all: no chat to switch to, nothing to wait for.', run: async (wait) => {
+      const words = '@Clippy make line 2 precise';
+      for (let i = 1; i <= words.length; i++) {
+        ask.textContent = words.slice(0, i);
+        await wait(40);
+      }
+      status.hidden = false;
+      who.dataset.presence = 'working';
+      state.textContent = 'working in the background';
+    } },
+    { say: 'Clippy works in the background, and you keep typing.', run: async (wait) => {
+      for (let x = 0; x <= 1; x += 0.05) {
+        drawLines(doc, mine(x).map((text, i) => ({ text, mine: i === 2 && x > 0, caret: i === 2 })));
+        await wait(120);
+      }
+    } },
+    { say: 'When Clippy is done, its edit lands in your doc, beside what you typed.', run: async () => {
+      const copy = [DOC_LINES[0], 'We ship the beta on March 3.', DOC_LINES[2]];
+      const now = merge3(docText(DOC_LINES), docText(mine(1)), docText(copy)).text.trimEnd().split('\n');
+      drawLines(doc, now.map((text, i) => ({ text, by: i === 1 ? 'Clippy' : undefined, mine: i === 2 })));
+      delete who.dataset.presence;
+      state.textContent = 'done: 1 edit';
+    }, hold: 5000 },
+  ], reset);
+}
+
+// ---- Design 2: agents always run in parallel ----
+
+// Clippy and Max each work on a copy of the doc at once. Until one is done
+// it changes nothing but its copy, so stopping it leaves nothing to undo;
+// the one that finishes is merged in (merge3).
+const EDITS = {
+  Clippy: [1, 'We ship the beta on March 3.'],
+  Max: [2, 'Then we invite fifty design partners.'],
+};
+
+function parallel(root) {
+  const caption = el('p', 'arch-caption');
+  const doc = el('div', 'arch-lines');
+  const yours = el('div', 'arch-pane');
+  yours.append(el('span', 'arch-who', 'Your doc'), doc);
+  const copies = Object.entries(EDITS).map(([name, [line, text]]) => {
+    const who = face(name, false);
+    const title = el('span', 'arch-who');
+    title.append(who, `${name}’s copy`);
+    const lines = el('div', 'arch-lines');
+    const state = el('div', 'arch-quiet');
+    const box = el('div', 'arch-pane');
+    box.append(title, lines, state);
+    return { name, line, text, who, lines, state, box };
+  });
+  const row = el('div', 'arch-two');
+  row.append(...copies.map(({ box }) => box));
+  root.append(caption, yours, row);
+  const [clippy, max] = copies;
+  const edit = (copy, x) => DOC_LINES.map((text, i) => (i === copy.line
+    ? { text: typed(copy.text, x) + text.slice(Math.round(copy.text.length * x)), by: x > 0 ? copy.name : undefined }
+    : { text }));
+  const reset = () => {
+    drawLines(doc, DOC_LINES.map((text) => ({ text })));
+    for (const copy of copies) {
+      drawLines(copy.lines, DOC_LINES.map((text) => ({ text })));
+      copy.state.textContent = '';
+      copy.box.classList.remove('arch-gone');
+      delete copy.who.dataset.presence;
+      copy.box.hidden = true;
+    }
   };
-  // The model's answers, one a step: each says what the step is about first.
-  const SAY = [
-    'Clippy reads the doc. It can read, comment and suggest edits, nothing else: no commands, no web.',
-    'It suggests an edit, quoting the text to replace.',
-    'It quotes the text exactly this time.',
-  ];
-  stepper(root, caption, [{
-    say: SAY[0],
-    run: async (wait) => {
-      const copies = { 'plan.md': doc, 'plan.md.comments.jsonl': '' };
-      const readFile = (path) => copies[path] ?? (['', '.'].includes(path) ? Object.keys(copies) : null);
-      let step = 0;
-      let last = null;
-      const model = async (messages) => {
-        const answer = messages.at(-1);
-        if (last?.name === 'propose' && answer.role === 'tool' && answer.content.startsWith('Nothing was changed.')) {
-          caption.textContent = 'The quote is not in the doc, so the app sends the edit back. Nothing changes.';
-          verdict.textContent = 'Sent back: that text is not in the doc';
-          verdict.className = 'arch-verdict arch-back';
-          await wait(4500);
-        }
-        await wait(step ? 1500 : 3500);
-        const calls = (SCRIPTED[step] ?? []).map(([name, args], i) => ({ id: `${step}.${i}`, name, args: JSON.stringify(args) }));
-        last = calls[0];
-        if (step > 0) {
-          caption.textContent = SAY[step];
-          show(last);
-          await wait(3500);
-        }
-        step += 1;
-        return { calls, text: '', sent: null };
-      };
-      const done = await turn({ prompt: 'Clippy, shorten the first line.', doc: 'plan.md', sidecar: 'plan.md.comments.jsonl', thread: 't1' }, { infer: model, readFile });
-      caption.textContent = 'The app applies it, to Clippy’s copy only. Your doc changes when the copy is merged in.';
-      verdict.textContent = 'Applied to the copy';
-      verdict.className = 'arch-verdict arch-ok';
-      const [one, two] = done.doc.split('\n');
-      drawLines(copy, [{ text: one, old: PLAN_LINES[0], by: 'Clippy' }, { text: two }]);
-    },
-    hold: 7000,
-  }], reset);
+  stepper(root, caption, [
+    { say: 'You @mention Clippy and Max. Each gets its own copy of the doc, and both start at once.', run: async () => {
+      for (const copy of copies) {
+        copy.box.hidden = false;
+        copy.who.dataset.presence = 'working';
+        copy.state.textContent = 'working';
+      }
+    } },
+    { say: 'Each edits only its copy. Your doc does not change, and neither copy touches the other.', run: async (wait) => {
+      for (let x = 0; x <= 1; x += 0.05) {
+        drawLines(clippy.lines, edit(clippy, x));
+        drawLines(max.lines, edit(max, Math.min(1, x * 0.8)));
+        await wait(120);
+      }
+    } },
+    { say: 'You resolve Max’s comment. Max just stops: it changed nothing outside its copy, so there is nothing to undo.', run: async () => {
+      max.box.classList.add('arch-gone');
+      delete max.who.dataset.presence;
+      max.state.textContent = 'stopped, its copy thrown away';
+    }, hold: 4500 },
+    { say: 'Clippy is done. Only now does your doc change: the app merges Clippy’s copy in.', run: async () => {
+      const now = merge3(docText(DOC_LINES), docText(DOC_LINES), docText(DOC_LINES.map((t, i) => (i === clippy.line ? clippy.text : t)))).text.trimEnd().split('\n');
+      drawLines(doc, now.map((text, i) => ({ text, by: i === clippy.line ? 'Clippy' : undefined })));
+      delete clippy.who.dataset.presence;
+      clippy.state.textContent = 'done, merged in';
+    }, hold: 5000 },
+  ], reset);
 }
 
 // ---- Merging back, line by line ----
@@ -570,7 +536,7 @@ function merging(root) {
     result.box.hidden = false;
   };
   stepper(root, caption, [
-    { say: 'Clippy starts from the doc as it is, and works on its own copy.', run: async () => {
+    { say: 'Only the app writes the file. Clippy started from this version, on its own copy.', run: async () => {
       drawLines(start.lines, START.map((t) => ({ text: t })));
       start.box.hidden = false;
     } },
@@ -580,7 +546,7 @@ function merging(root) {
       yours.box.hidden = theirs.box.hidden = false;
     } },
     { say: 'Different lines: the app keeps both changes.', run: async () => merge(THEIRS), hold: 4500 },
-    { say: 'Same line: your line stays, and Clippy redoes its edit on your version.', run: async () => {
+    { say: 'Same line: your line stays, and Clippy redoes its edit on your version. Nobody resolves anything.', run: async () => {
       drawLines(theirs.lines, marked(CLASH, START, 'by'));
       merge(CLASH);
     }, hold: 6000 },
@@ -611,8 +577,9 @@ setBuddies(['Clippy', 'Max', 'Claude'].map((name) => ({ id: name, name })));
 setPeople(['You']);
 deck();
 whoWaits($(document, '[data-demo="who"]'));
-howItWorks($(document, '[data-demo="how"]'));
-agents($(document, '[data-demo="agents"]'));
-suggest($(document, '[data-demo="suggest"]'));
+blockers($(document, '[data-demo="blocks"]'));
+background($(document, '[data-demo="background"]'));
+parallel($(document, '[data-demo="parallel"]'));
 merging($(document, '[data-demo="merge"]'));
+howItWorks($(document, '[data-demo="how"]'));
 buddyTurn($(document, '[data-demo="turn"]'));
