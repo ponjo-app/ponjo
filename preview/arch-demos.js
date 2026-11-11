@@ -16,8 +16,6 @@ import { askedOf, newId, serializeSidecar, threadsOf } from '../src/core/comment
 import { buildPrompt } from '../src/core/prompt.js';
 import { INFER, turn } from '../agents/ponjo-core.mjs';
 import { agentFace, buddyColor, personFace, setBuddies, setPeople } from '../web/faces.js';
-import { cursorNode } from '../web/marks.js';
-import { icon } from '../web/icons.js';
 
 const $ = (root, selector) => root.querySelector(selector);
 const el = (tag, className, text = '') => Object.assign(document.createElement(tag), { className, textContent: text });
@@ -51,41 +49,6 @@ function revision(node, before, after) {
     at = run.to;
   }
   node.append(before.slice(at));
-}
-
-function pick(root, attribute, value) {
-  for (const button of root.querySelectorAll(`[${attribute}]`)) button.setAttribute('aria-checked', button.getAttribute(attribute) === value);
-}
-
-// ---- By line: merge3 of the copy, the doc now and the buddy's copy ----
-
-const SIDES = {
-  base: '# Launch\nWe ship in March.\nTen teams try it first.\nThen open the waitlist.\n',
-  ours: '# Launch\nWe ship the beta in March.\nTen teams try it first.\nThen open the waitlist.\n',
-  apart: '# Launch\nWe ship in March.\nTen teams try it first.\nThen invite fifty design partners.\n',
-  collide: '# Launch\nWe ship on March 3.\nTen teams try it first.\nThen invite fifty design partners.\n',
-};
-
-function lines(root) {
-  const side = (name) => $(root, `[data-side="${name}"]`);
-  function paint() {
-    const ours = side('ours').value;
-    const { text, conflicts } = merge3(side('base').value, ours, side('theirs').value);
-    revision($(root, '[data-result]'), ours, text);
-    $(root, '[data-verdict]').textContent = conflicts
-      ? 'Same line: the doc’s line stays, and the turn runs once more on it.'
-      : 'Different lines: Clippy’s lands beside yours.';
-  }
-  function preset(name) {
-    pick(root, 'data-preset', name);
-    side('base').value = SIDES.base;
-    side('ours').value = SIDES.ours;
-    side('theirs').value = SIDES[name];
-    paint();
-  }
-  for (const area of root.querySelectorAll('[data-side]')) area.oninput = paint;
-  for (const button of root.querySelectorAll('[data-preset]')) button.onclick = () => preset(button.dataset.preset);
-  preset('apart');
 }
 
 // ---- A real turn: Clippy on a copy, landed as the doc host lands it ----
@@ -192,37 +155,40 @@ function buddyTurn(root) {
   };
 }
 
-// ---- Who waits for whom: three ways, one story, one clock ----
+// ---- Shared: steps played with a caption each, faces, a doc's lines ----
 
-// Noor asks Clippy to shorten line 1 and Max to lengthen line 2, and has
-// line 3 to write. Each way is a script on one clock, in seconds: what each
-// writer does when (drawn as lanes on one scale, so the ways compare), and
-// its window at any moment, a function of the time. Ponjo's landings are
-// merge3, the app's own merge.
-const LINES = ['The beta ships in March to fifty design partners, who each get a private call and early access.', 'Then we open the waitlist.'];
-const SHORT = 'Fifty design partners get the beta in March.';
-const LONG = 'Then we open the waitlist, in the order people joined it.';
-const MINE = 'Pricing comes after the beta.';
-const SCALE = 11; // seconds on every timeline
 const still = globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-const span = (t, from, to) => Math.min(1, Math.max(0, (t - from) / (to - from)));
-const typed = (text, x) => text.slice(0, Math.round(text.length * x));
+const STOPPED = Symbol('stopped');
 
-// `old` overwritten by `next` as an agent streams it: the text, and its cursor.
-function overwrite(old, next, x) {
-  const k = Math.round(x * Math.max(old.length, next.length));
-  return { text: next.slice(0, Math.min(k, next.length)) + old.slice(k), at: Math.min(k, next.length) };
-}
-
-// Text with marks at offsets: [{ at, node }], in order.
-function marked(text, marks = []) {
-  const out = [];
-  let from = 0;
-  for (const { at, node } of marks) {
-    out.push(text.slice(from, at), node);
-    from = at;
+// Plays `steps` in order each time `root` comes into view: each shows its
+// caption, runs, then holds. `reset` puts the demo back at its start; a
+// Replay button plays it again. With reduced motion, nothing waits.
+function stepper(root, caption, steps, reset) {
+  const again = el('button', 'pj-link-button', 'Replay');
+  again.type = 'button';
+  const controls = el('div', 'arch-controls');
+  controls.append(again);
+  root.append(controls);
+  let playing = 0;
+  async function play() {
+    const id = ++playing;
+    const wait = (ms) => new Promise((done, stop) => setTimeout(() => (id === playing ? done() : stop(STOPPED)), still ? 0 : ms));
+    reset();
+    try {
+      for (const step of steps) {
+        caption.textContent = step.say;
+        await step.run(wait);
+        await wait(step.hold ?? 3500);
+      }
+    } catch (error) {
+      if (error !== STOPPED) throw error;
+    }
   }
-  return [...out, text.slice(from)];
+  again.onclick = play;
+  new IntersectionObserver(([seen]) => {
+    if (seen.isIntersecting) play();
+    else playing += 1; // stops it at its next wait
+  }, { threshold: 0.5 }).observe(root);
 }
 
 function face(name, person, size = 20) {
@@ -234,279 +200,397 @@ function face(name, person, size = 20) {
   return box;
 }
 
-// Lines of a doc, each { text, caret?, hl?, by?, old? }: a caret ({ at, by,
-// working }), commented (hl), landed in `by`'s colour, or under review: `old`
-// struck through, `text` in `by`'s colour.
+// A doc's lines, each { text, by?, old?, mine? }: by an agent, in its colour;
+// `old` struck through before it; `mine`, a line you changed.
 function drawLines(node, lines) {
   node.replaceChildren(...lines.map((line) => {
     const row = el('div', 'arch-line');
-    const parts = line.caret ? marked(line.text, [{ at: line.caret.at, node: cursorNode(line.caret) }]) : [line.text];
-    const wrap = line.by ? el('span', 'pj-buddy-edit') : line.hl ? el('span', 'pj-hl') : null;
-    if (line.by) wrap.style.setProperty('--buddy', buddyColor(line.by));
     if (line.old !== undefined) row.append(el('del', 'pj-buddy-del', line.old));
-    if (wrap) wrap.append(...parts);
-    row.append(...(wrap ? [wrap] : parts));
+    const words = el('span', line.by ? 'pj-buddy-edit' : line.mine ? 'arch-mine' : '', line.text);
+    if (line.by) words.style.setProperty('--buddy', buddyColor(line.by));
+    row.append(words);
     return row;
   }));
 }
 
-// 1. A chat with one agent beside the file: ask, wait, review, ask again.
-function chatWindow(win) {
-  win.classList.add('arch-win-chat');
-  const log = el('div', 'arch-log');
-  const prompt = el('div', 'pj-input arch-prompt');
-  const chat = el('div', 'arch-pane');
-  chat.append(el('span', 'arch-who', 'Chat'), log, prompt);
-  const body = el('div', 'arch-lines');
-  const review = el('div', 'arch-choices');
-  const accept = el('span', 'pj-secondary', 'Accept');
-  review.append(accept, el('span', 'pj-secondary', 'Reject'));
-  const file = el('div', 'arch-pane');
-  file.append(el('span', 'arch-who', 'plan.md'), body, review);
-  win.append(chat, file);
-  let said = '';
-  const agent = (t, line, next, by, from) => {
-    if (t < from) return { text: line };
-    if (t < from + 2.5) {
-      const now = overwrite(line, next, span(t, from, from + 2.5));
-      return { text: now.text, caret: { at: now.at, by, working: true } };
-    }
-    return t < from + 3.5 ? { text: next, old: line, by } : { text: next };
-  };
-  return (t) => {
-    const messages = [[1, 'Noor', 'Shorten line 1.'], [1, 'Claude', t < 3.5 ? 'Working…' : 'Done. Review it.'],
-      [5.5, 'Noor', 'Now lengthen line 2.'], [5.5, 'Claude', t < 8 ? 'Working…' : 'Done. Review it.']].filter(([at]) => t >= at);
-    const now = messages.map(([, , text]) => text).join('|');
-    if (now !== said) {
-      said = now;
-      log.replaceChildren(...messages.map(([, who, text]) => {
-        const row = el('div', 'arch-actor');
-        row.append(face(who, who === 'Noor'), el('span', 'arch-say', text));
-        return row;
-      }));
-    }
-    prompt.textContent = t < 1 ? typed('Shorten line 1.', span(t, 0, 1)) : t >= 4.5 && t < 5.5 ? typed('Now lengthen line 2.', span(t, 4.5, 5.5)) : '';
-    const lines = [agent(t, LINES[0], SHORT, 'Claude', 1), agent(t, LINES[1], LONG, 'Claude', 5.5)];
-    if (t >= 9) {
-      const text = typed(MINE, span(t, 9, 11));
-      lines.push({ text, caret: { at: text.length, by: 'Noor' } });
-    }
-    drawLines(body, lines);
-    review.hidden = !((t >= 3.5 && t < 4.5) || (t >= 8 && t < 9));
-    accept.classList.toggle('arch-pressed', (t >= 4.2 && t < 4.5) || (t >= 8.7 && t < 9));
-  };
-}
+// ---- Who waits: the same work three ways, on one clock ----
 
-// 2. One queue, and 3. Ponjo: a doc with its threads in the margin. In the
-// queue, one agent answers the asks in turn and edits the doc as it goes; in
-// Ponjo each ask is its own turn on its own copy, merged (merge3) when it ends.
-const ASKS = { // [who answers, the ask, asked from, to, works from, to]
-  queue: [['Claude', 'shorten this', 0, 0.8, 0.8, 3.3], ['Claude', 'lengthen this', 0.8, 1.6, 3.3, 5.8]],
-  ponjo: [['Clippy', 'shorten this', 0, 0.8, 0.8, 3.3], ['Max', 'lengthen this', 0.8, 1.6, 1.6, 4.1]],
-};
-
-function docWindow(win, way) {
-  const body = el('div', 'arch-lines');
-  const doc = el('div', 'arch-pane');
-  doc.append(el('span', 'arch-who', 'plan.md'), body);
-  const margin = el('div', 'arch-margin');
-  win.append(doc, margin);
-  const ponjo = way === 'ponjo';
-  const undone = new Set(); // Ponjo's turns undone from their reply, by index
-  let shown = null; // the turn whose change shows as a revision
-  let last = 0; // the time last drawn
-  const cards = ASKS[way].map(([buddy, words, from, to, start, end], i) => {
-    const card = el('div', 'pj-card arch-card');
-    card.style.setProperty('--buddy', buddyColor(buddy));
-    const head = el('div', 'arch-actor');
-    head.append(face('Noor', true), 'Noor');
-    const quote = el('div', 'arch-quote');
-    const who = face(buddy, false);
-    const said = el('span', '');
-    const state = el('div', 'arch-actor arch-state');
-    state.append(who, said);
-    // Its reply's receipt, in Ponjo: the count shows the turn's change, the icon undoes it.
-    const done = el('div', 'pj-receipt');
-    const count = el('button', 'pj-receipt-show');
-    count.type = 'button';
-    const undo = el('button', 'pj-icon-btn pj-receipt-undo');
-    undo.type = 'button';
-    undo.title = 'Undo this edit';
-    undo.setAttribute('aria-label', undo.title);
-    undo.append(icon('undo'));
-    done.append(count, undo);
-    count.onclick = () => {
-      shown = shown === i ? null : i;
-      update(last);
-    };
-    undo.onclick = () => {
-      undone.add(i);
-      shown = null;
-      update(last);
-    };
-    card.append(head, quote, state, done);
-    margin.append(card);
-    return (t) => {
-      const working = t >= start && t < end;
-      card.hidden = t < from;
-      quote.textContent = typed(`@${buddy} ${words}`, span(t, from, to));
-      card.classList.toggle('pj-card-working', working);
-      if (working) who.dataset.presence = 'working';
-      else if (t >= to && t < start) who.dataset.presence = 'away';
-      else delete who.dataset.presence;
-      said.textContent = t < start ? 'Queued' : working ? (ponjo ? 'Working on its copy' : 'Working…') : 'Done';
-      state.hidden = t < to || (ponjo && t >= end);
-      done.hidden = !(ponjo && t >= end);
-      done.classList.toggle('pj-receipt-undone', undone.has(i));
-      count.disabled = undone.has(i);
-      count.setAttribute('aria-pressed', String(shown === i));
-      count.replaceChildren(icon('pencil'), el('span', '', undone.has(i) ? 'Edit undone' : '1 edit'));
-      undo.hidden = undone.has(i);
-    };
-  });
-  const [first, second] = ASKS[way].map(([by, , from, , start, end]) => ({ by, from, start, end }));
-  const update = (t) => {
-    last = t;
-    for (const card of cards) card(t);
-    const mine = typed(MINE, span(t, 1.6, 4));
-    let lines;
-    if (ponjo) {
-      const base = `${LINES.join('\n')}\n`;
-      const copies = [`${SHORT}\n${LINES[1]}\n`, `${LINES[0]}\n${LONG}\n`];
-      let text = base + mine;
-      const landed = [first, second].map((turn, i) => {
-        if (t < turn.end) return null;
-        const before = text;
-        text = merge3(base, text, copies[i]).text;
-        return { before, after: text };
-      });
-      // An undo is the turn's change taken back, merged with all written since.
-      for (const i of undone) text = merge3(landed[i].after, text, landed[i].before).text;
-      const [one, two] = text.split('\n');
-      const line = (words, { by, from, start, end }, i, old) => {
-        if (t < end) return { text: words, hl: t >= from, caret: t >= start ? { at: 0, by, working: true } : null };
-        if (undone.has(i)) return { text: words };
-        return shown === i ? { text: words, old, by } : { text: words, by };
-      };
-      lines = [line(one, first, 0, LINES[0]), line(two, second, 1, LINES[1])];
-    } else {
-      const edit = (line, next, { by, from, start, end }) => {
-        if (t >= end) return { text: next };
-        if (t < start) return { text: line, hl: t >= from };
-        const now = overwrite(line, next, span(t, start, end));
-        return { text: now.text, caret: { at: now.at, by, working: true } };
-      };
-      lines = [edit(LINES[0], SHORT, first), edit(LINES[1], LONG, second)];
-    }
-    if (t >= 1.6) lines.push({ text: mine, caret: { at: mine.length, by: 'Noor' } });
-    drawLines(body, lines);
-  };
-  return update;
-}
-
-// Lanes: Noor's, then one per run of an agent, named by its agent and its line.
-const WRITES = ['Noor', '', [[0, 1.6, 'comments'], [1.6, 4, 'writes']]];
-const MODES = {
-  chat: {
-    end: 11,
-    window: chatWindow,
+// You ask an agent for two edits and write a line of your own. Each way is
+// what each of you does when, in seconds, drawn as lanes on one scale; grey
+// is waiting. Played at twice the speed.
+const SCALE = 11;
+const WAYS = [
+  {
+    name: 'A chat beside the file', eg: 'e.g. Claude Code desktop, Cursor', end: 11,
+    say: 'A chat beside the file: you wait while the agent works, then review its edit, twice.',
     lanes: [
-      ['Noor', '', [[0, 1, 'asks'], [1, 3.5, 'waits', true], [3.5, 4.5, 'reviews'], [4.5, 5.5, 'asks'], [5.5, 8, 'waits', true], [8, 9, 'reviews'], [9, 11, 'writes']]],
-      ['Claude', 'line 1', [[1, 3.5, 'edits'], [3.5, 4.5, 'waits', true]]],
-      ['Claude', 'line 2', [[5.5, 8, 'edits'], [8, 9, 'waits', true]]],
+      ['You', true, 'You', [[0, 1, 'asks'], [1, 3.5, 'waits', true], [3.5, 4.5, 'reviews'], [4.5, 5.5, 'asks'], [5.5, 8, 'waits', true], [8, 9, 'reviews'], [9, 11, 'writes']]],
+      ['Claude', false, 'Agent, edit 1', [[1, 3.5, 'edits'], [3.5, 4.5, 'waits', true]]],
+      ['Claude', false, 'Agent, edit 2', [[5.5, 8, 'edits'], [8, 9, 'waits', true]]],
     ],
   },
-  queue: {
-    end: 5.8,
-    window: (win) => docWindow(win, 'queue'),
-    lanes: [WRITES, ['Claude', 'line 1', [[0.8, 3.3, 'edits']]], ['Claude', 'line 2', [[1.6, 3.3, 'queued', true], [3.3, 5.8, 'edits']]]],
+  {
+    name: 'One agent answering comments', eg: 'e.g. Claude Docs, as we saw it', end: 5.8,
+    say: 'One agent answering comments: you keep writing, but your second request waits for the first.',
+    lanes: [
+      ['You', true, 'You', [[0, 1.6, 'comments'], [1.6, 4, 'writes']]],
+      ['Claude', false, 'Agent, edit 1', [[0.8, 3.3, 'edits']]],
+      ['Claude', false, 'Agent, edit 2', [[1.6, 3.3, 'waits', true], [3.3, 5.8, 'edits']]],
+    ],
   },
-  ponjo: {
-    end: 4.1,
-    window: (win) => docWindow(win, 'ponjo'),
-    lanes: [WRITES, ['Clippy', 'line 1', [[0.8, 3.3, 'edits its copy']]], ['Max', 'line 2', [[1.6, 4.1, 'edits its copy']]]],
+  {
+    name: 'Ponjo', eg: '', end: 4.1,
+    say: 'Ponjo: you keep writing, and both edits are worked on at once.',
+    lanes: [
+      ['You', true, 'You', [[0, 1.6, 'comments'], [1.6, 4, 'writes']]],
+      ['Clippy', false, 'Clippy, edit 1', [[0.8, 3.3, 'edits a copy']]],
+      ['Max', false, 'Max, edit 2', [[1.6, 4.1, 'edits a copy']]],
+    ],
   },
-};
+];
 
-// Who did what when, on one scale for every way: a bar grows as it happens.
+// Lanes on one scale; the bars grow as the time `t` they are drawn at.
 function drawLanes(node, lanes, end) {
   const bars = [];
-  const heads = [];
   const at = (s) => `${(s / SCALE) * 100}%`;
-  const rows = lanes.map(([who, run, list]) => {
+  const rows = lanes.map(([who, person, label, list]) => {
     const track = el('div', 'arch-track');
     track.style.setProperty('--buddy', buddyColor(who));
-    for (const [from, to, label, waiting] of list) {
-      const bar = el('span', waiting ? 'arch-bar arch-wait' : 'arch-bar', label);
+    for (const [from, to, words, waiting] of list) {
+      const bar = el('span', waiting ? 'arch-bar arch-wait' : 'arch-bar', words);
       bar.style.left = at(from);
       track.append(bar);
       bars.push({ bar, from, to });
     }
-    const head = el('span', 'arch-head');
-    heads.push(head);
-    track.append(head);
     const name = el('span', 'arch-actor');
-    name.append(face(who, who === 'Noor'), run ? `${who} · ${run}` : who);
+    name.append(face(who, person), label);
     const row = el('div', 'arch-lane');
     row.append(name, track);
     return row;
   });
-  const axis = el('div', 'arch-axis');
-  for (let s = 0; s < SCALE - 2; s += 2) { // the last, where `done` says when it ended
-    const tick = el('span', 'arch-tick', `${s} s`);
-    tick.style.left = at(s);
-    axis.append(tick);
-  }
   const done = el('span', 'arch-done');
-  axis.append(done);
   const foot = el('div', 'arch-lane');
+  const axis = el('div', 'arch-axis');
+  axis.append(done);
   foot.append(el('span'), axis);
   node.replaceChildren(...rows, foot);
   return (t) => {
     for (const { bar, from, to } of bars) bar.style.width = at(Math.max(0, Math.min(t, to) - from));
-    for (const head of heads) head.style.left = at(t);
-    done.textContent = t >= end ? `Done at ${end} s` : '';
+    done.textContent = t >= end ? `done in ${end} s` : '';
   };
 }
 
-function mode(root) {
-  const { end, window: build, lanes } = MODES[root.dataset.mode];
-  const win = el('div', 'arch-win');
-  const track = el('div', 'arch-lanes');
-  const again = el('button', 'pj-link-button', 'Play again');
-  again.type = 'button';
-  const controls = el('div', 'arch-controls');
-  controls.append(again);
-  root.append(win, track, controls);
-  let timer = null;
-  function play() {
-    clearInterval(timer);
-    win.className = 'arch-win';
-    win.replaceChildren();
-    const scene = build(win);
-    const lanesAt = drawLanes(track, lanes, end);
-    const draw = (t) => {
-      scene(t);
-      lanesAt(t);
-    };
-    if (still) return draw(end);
-    const start = Date.now();
-    draw(0);
-    timer = setInterval(() => {
-      const t = Math.min((Date.now() - start) / 1000, end);
-      draw(t);
-      if (t >= end) clearInterval(timer);
-    }, 50);
-  }
-  again.onclick = play;
-  // Played each time its slide comes into view, as a slide's animation is.
-  new IntersectionObserver(([seen]) => {
-    if (seen.isIntersecting) play();
-    else clearInterval(timer);
-  }, { threshold: 0.6 }).observe(root);
+function whoWaits(root) {
+  const caption = el('p', 'arch-caption');
+  const ways = WAYS.map((way) => {
+    const box = el('div', 'arch-way');
+    const name = el('div', 'arch-way-name', way.name);
+    if (way.eg) name.append(el('span', '', way.eg));
+    const lanes = el('div', 'arch-lanes');
+    box.append(name, lanes);
+    return { box, lanes, way };
+  });
+  root.append(caption, ...ways.map(({ box }) => box));
+  stepper(root, caption, ways.map(({ box, lanes, way }) => ({
+    say: way.say,
+    run: async (wait) => {
+      box.hidden = false;
+      const draw = drawLanes(lanes, way.lanes, way.end);
+      for (let t = 0; t < way.end; t += 0.1) {
+        draw(t);
+        await wait(50);
+      }
+      draw(way.end);
+    },
+    hold: 2500,
+  })), () => {
+    for (const { box } of ways) box.hidden = true;
+  });
 }
 
-// The page as slides: a dot per slide, the current one marked; a click goes there.
+// ---- How it works: one request, end to end ----
+
+// You, the doc, the part that starts agents, and the agents at work, as
+// boxes; `part` (you, doc, start, agents, merge) in focus, the rest dimmed.
+function flow(node, part) {
+  const on = (...names) => (names.includes(part) ? ' class="on"' : '');
+  node.toggleAttribute('data-focus', Boolean(part));
+  node.innerHTML = `<svg viewBox="0 0 760 214" role="img" aria-label="You @mention an agent in a comment; the app starts an agent for each @mention; each works on its own copy of the doc; the app merges the copy into the doc">
+<defs><marker id="arch-tip" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arch-tip" d="M0 0L10 5L0 10z"/></marker></defs>
+<g${on('you')}><rect x="20" y="20" width="160" height="56" rx="10"/><text x="100" y="44">You</text><text class="sub" x="100" y="62">write and comment</text></g>
+<g${on('you')}><path d="M180 48H294" marker-end="url(#arch-tip)"/><text class="sub" x="238" y="38">@mention</text></g>
+<g${on('doc', 'merge')}><rect x="300" y="20" width="160" height="56" rx="10"/><text x="380" y="44">The doc</text><text class="sub" x="380" y="62">file, comments, history</text></g>
+<g${on('start')}><path d="M460 48H574" marker-end="url(#arch-tip)"/><text class="sub" x="518" y="38">@mentions</text></g>
+<g${on('start')}><rect x="580" y="20" width="160" height="56" rx="10"/><text x="660" y="44">Starts agents</text><text class="sub" x="660" y="62">one per @mention</text></g>
+<g${on('start')}><path d="M660 76V124" marker-end="url(#arch-tip)"/></g>
+<g${on('agents')}><rect x="420" y="130" width="320" height="70" rx="10"/><text class="sub start" x="436" y="150">Agents at work, at once</text><rect class="chip" x="436" y="158" width="140" height="30" rx="6"/><text x="506" y="178">Clippy · own copy</text><rect class="chip" x="588" y="158" width="140" height="30" rx="6"/><text x="658" y="178">Max · own copy</text></g>
+<g${on('merge')}><path d="M420 165H380V82" marker-end="url(#arch-tip)"/><text class="sub end" x="372" y="130">merged in</text></g>
+</svg>`;
+}
+
+function howItWorks(root) {
+  const caption = el('p', 'arch-caption');
+  const drawing = el('div', 'arch-flow');
+  root.append(caption, drawing);
+  const focus = (part, say) => ({ say, run: async () => flow(drawing, part) });
+  stepper(root, caption, [
+    focus('you', 'You @mention an agent in a comment, and keep writing.'),
+    focus('start', 'The app starts an agent for every @mention, all at once.'),
+    focus('agents', 'Each agent works on its own copy of the doc, so it is never in your way.'),
+    focus('merge', 'When an agent is done, the app merges its copy into the doc, line by line.'),
+    { ...focus(null, 'So nobody waits: not you, and not the other agents.'), hold: 5000 },
+  ], () => flow(drawing, null));
+}
+
+// ---- An agent for every @mention ----
+
+// The @mentions not yet answered are the app's own reading of the comments
+// (threadsOf, askedOf). The app keeps one agent at work for each, and no
+// more: none for an @mention resolved or answered, and after a restart, one
+// again for each still unanswered.
+const BUDDIES = [{ id: 'Clippy', name: 'Clippy' }, { id: 'Max', name: 'Max' }];
+const NOOR = { id: 'noor', name: 'You', kind: 'human' };
+const WORK = 14; // seconds an agent works: still at work when the app restarts
+
+function agents(root) {
+  const caption = el('p', 'arch-caption');
+  const asked = el('div', 'arch-list');
+  const working = el('div', 'arch-list');
+  const pane = (title, list) => {
+    const box = el('div', 'arch-pane');
+    box.append(el('span', 'arch-who', title), list);
+    return box;
+  };
+  const panes = el('div', 'arch-two');
+  panes.append(pane('@mentions not yet answered', asked), pane('Agents at work', working));
+  root.append(caption, panes);
+  let comments = [];
+  let running = new Map(); // comment id + agent → { id, n, left }
+  let up = true;
+  let seq = Date.now();
+  const now = () => new Date(++seq).toISOString();
+  const add = (comment) => {
+    comments = [...comments, { id: newId('c'), at: now(), by: NOOR, ...comment }];
+    settle();
+  };
+
+  // One agent for each @mention not yet answered: start the missing, stop the rest.
+  function settle() {
+    const threads = threadsOf(comments, BUDDIES);
+    const wanted = new Map();
+    threads.forEach((thread, i) => {
+      for (const id of askedOf(thread, [NOOR.id])) wanted.set(`${thread.id} ${id}`, { thread: thread.id, n: i + 1, id });
+    });
+    running = new Map([...wanted].filter(([key]) => running.has(key) || up).map(([key, want]) => [key, running.get(key) ?? { ...want, left: WORK }]));
+    asked.replaceChildren(...[...wanted.values()].map(({ id, n }) => {
+      const row = el('div', 'arch-actor arch-row');
+      row.append(face(id, false), `@${id} in comment ${n}`);
+      return row;
+    }));
+    if (!wanted.size) asked.append(el('span', 'arch-quiet', 'None'));
+    draw();
+  }
+
+  const bars = new Map(); // an agent's run → its bar
+  function draw() {
+    bars.clear();
+    working.replaceChildren(...[...running.values()].map((run) => {
+      const row = el('div', 'arch-row arch-job');
+      row.style.setProperty('--buddy', buddyColor(run.id));
+      const who = face(run.id, false);
+      who.dataset.presence = 'working';
+      const name = el('div', 'arch-actor');
+      name.append(who, `${run.id}, comment ${run.n}`);
+      const bar = el('span', 'arch-bar');
+      bars.set(run, bar);
+      grow(run);
+      const track = el('div', 'arch-track');
+      track.append(bar);
+      row.append(name, track);
+      return row;
+    }));
+    if (!running.size) working.append(el('span', 'arch-quiet', up ? 'None' : 'The app is restarting'));
+  }
+  const grow = (run) => {
+    const bar = bars.get(run);
+    if (bar) bar.style.width = `${(1 - run.left / WORK) * 100}%`;
+  };
+
+  // Time passes: each agent's work goes on; one that is done answers its comment.
+  setInterval(() => {
+    let answered = false;
+    for (const run of running.values()) {
+      run.left -= 0.1;
+      if (run.left <= 0) {
+        comments = [...comments, { id: newId('c'), thread: run.thread, at: now(), by: { id: run.id, name: run.id, kind: 'ai' }, body: 'Done.' }];
+        answered = true;
+      } else grow(run);
+    }
+    if (answered) settle();
+  }, 100);
+
+  let first = null;
+  stepper(root, caption, [
+    { say: 'You @mention Clippy and Max. The app starts both at once.', run: async () => {
+      first = { anchor: null, body: '@Clippy shorten this' };
+      add(first);
+      add({ anchor: null, body: '@Max check the dates' });
+    } },
+    { say: 'You resolve the first comment. Its agent stops right away.', run: async () => {
+      add({ thread: comments.find((c) => c.body === first.body).id, body: '', resolved: true });
+    } },
+    { say: 'The app restarts. Max’s work so far is lost, but its @mention is still unanswered…', run: async (wait) => {
+      running = new Map();
+      up = false;
+      draw();
+      await wait(2000);
+    }, hold: 0 },
+    { say: '…so the app starts Max again. Nothing to recover: the comments say what is left to do.', run: async () => {
+      up = true;
+      settle();
+    }, hold: 7000 },
+  ], () => {
+    comments = [];
+    running = new Map();
+    up = true;
+    settle();
+  });
+}
+
+// ---- Agents suggest, the app checks: a real run of the Ponjo agent ----
+
+// The Ponjo agent's own loop (turn) on a copy of a doc, its model scripted:
+// it reads, suggests an edit quoting text the doc does not have, which the
+// app sends back, then quotes it right, and the edit lands on the copy.
+const PLAN_LINES = ['The beta ships in March to fifty design partners, who each get a private call and early access.', 'Then we open the waitlist.'];
+const SHORT = 'Fifty design partners get the beta in March.';
+const SCRIPTED = [
+  [['read', { path: 'plan.md' }]],
+  [['propose', { edits: [{ old: 'fifty design partner,', new: 'fifty partners,' }], reply: '' }]],
+  [['propose', { edits: [{ old: PLAN_LINES[0], new: SHORT }], reply: 'Shortened the first line.' }]],
+];
+
+function suggest(root) {
+  const caption = el('p', 'arch-caption');
+  const copy = el('div', 'arch-lines');
+  const left = el('div', 'arch-pane');
+  left.append(el('span', 'arch-who', 'Clippy’s copy of the doc'), copy);
+  const quote = el('div', 'arch-quote');
+  const verdict = el('div', 'arch-verdict');
+  const right = el('div', 'arch-pane');
+  right.append(el('span', 'arch-who', 'Clippy’s suggested edit'), quote, verdict);
+  const panes = el('div', 'arch-two');
+  panes.append(left, right);
+  root.append(caption, panes);
+  const doc = `${PLAN_LINES.join('\n')}\n`;
+  const reset = () => {
+    drawLines(copy, PLAN_LINES.map((text) => ({ text })));
+    quote.replaceChildren(el('span', 'arch-quiet', 'None yet'));
+    verdict.textContent = '';
+    verdict.className = 'arch-verdict';
+  };
+  const show = (call) => {
+    const { edits: [{ old, new: by }] } = JSON.parse(call.args);
+    quote.replaceChildren(el('div', '', 'Replace'), el('del', 'pj-buddy-del', `“${old}”`), el('div', '', 'with'), el('div', '', `“${by}”`));
+    verdict.textContent = 'Checking…';
+    verdict.className = 'arch-verdict';
+  };
+  // The model's answers, one a step: each says what the step is about first.
+  const SAY = [
+    'Clippy reads the doc. It can read, comment and suggest edits, nothing else: no commands, no web.',
+    'It suggests an edit, quoting the text to replace.',
+    'It quotes the text exactly this time.',
+  ];
+  stepper(root, caption, [{
+    say: SAY[0],
+    run: async (wait) => {
+      const copies = { 'plan.md': doc, 'plan.md.comments.jsonl': '' };
+      const readFile = (path) => copies[path] ?? (['', '.'].includes(path) ? Object.keys(copies) : null);
+      let step = 0;
+      let last = null;
+      const model = async (messages) => {
+        const answer = messages.at(-1);
+        if (last?.name === 'propose' && answer.role === 'tool' && answer.content.startsWith('Nothing was changed.')) {
+          caption.textContent = 'The quote is not in the doc, so the app sends the edit back. Nothing changes.';
+          verdict.textContent = 'Sent back: that text is not in the doc';
+          verdict.className = 'arch-verdict arch-back';
+          await wait(4500);
+        }
+        await wait(step ? 1500 : 3500);
+        const calls = (SCRIPTED[step] ?? []).map(([name, args], i) => ({ id: `${step}.${i}`, name, args: JSON.stringify(args) }));
+        last = calls[0];
+        if (step > 0) {
+          caption.textContent = SAY[step];
+          show(last);
+          await wait(3500);
+        }
+        step += 1;
+        return { calls, text: '', sent: null };
+      };
+      const done = await turn({ prompt: 'Clippy, shorten the first line.', doc: 'plan.md', sidecar: 'plan.md.comments.jsonl', thread: 't1' }, { infer: model, readFile });
+      caption.textContent = 'The app applies it, to Clippy’s copy only. Your doc changes when the copy is merged in.';
+      verdict.textContent = 'Applied to the copy';
+      verdict.className = 'arch-verdict arch-ok';
+      const [one, two] = done.doc.split('\n');
+      drawLines(copy, [{ text: one, old: PLAN_LINES[0], by: 'Clippy' }, { text: two }]);
+    },
+    hold: 7000,
+  }], reset);
+}
+
+// ---- Merging back, line by line ----
+
+// A short doc as the agent started from it, your version, the agent's copy,
+// and merge3's result; then the same with both changing one line.
+const START = ['# Launch', 'We ship in March.', 'Ten teams try it first.', 'Then we open the waitlist.'];
+const YOURS = ['# Launch', 'We ship the beta in March.', 'Ten teams try it first.', 'Then we open the waitlist.'];
+const THEIRS = ['# Launch', 'We ship in March.', 'Ten teams try it first.', 'Then we invite fifty design partners.'];
+const CLASH = ['# Launch', 'We ship on March 3.', 'Ten teams try it first.', 'Then we open the waitlist.'];
+
+function merging(root) {
+  const caption = el('p', 'arch-caption');
+  const col = (title) => {
+    const lines = el('div', 'arch-lines');
+    const box = el('div', 'arch-pane');
+    box.append(el('span', 'arch-who', title), lines);
+    return { box, lines };
+  };
+  const start = col('When Clippy started');
+  const yours = col('Your doc, meanwhile');
+  const theirs = col('Clippy’s copy');
+  const result = col('Your doc after the merge');
+  const cols = el('div', 'arch-three');
+  cols.append(start.box, yours.box, theirs.box);
+  root.append(caption, cols, result.box);
+  const text = (lines) => `${lines.join('\n')}\n`;
+  const marked = (lines, from, kind) => lines.map((line, i) => ({ text: line, [kind]: line !== from[i] ? (kind === 'by' ? 'Clippy' : true) : undefined }));
+  const merge = (agent) => {
+    const merged = merge3(text(START), text(YOURS), text(agent)).text.trimEnd().split('\n');
+    drawLines(result.lines, merged.map((line, i) => ({ text: line, mine: (line === YOURS[i] && line !== START[i]) || undefined, by: line === agent[i] && line !== START[i] && line !== YOURS[i] ? 'Clippy' : undefined })));
+    result.box.hidden = false;
+  };
+  stepper(root, caption, [
+    { say: 'Clippy starts from the doc as it is, and works on its own copy.', run: async () => {
+      drawLines(start.lines, START.map((t) => ({ text: t })));
+      start.box.hidden = false;
+    } },
+    { say: 'Meanwhile you change line 2, and Clippy changes line 4 on its copy.', run: async () => {
+      drawLines(yours.lines, marked(YOURS, START, 'mine'));
+      drawLines(theirs.lines, marked(THEIRS, START, 'by'));
+      yours.box.hidden = theirs.box.hidden = false;
+    } },
+    { say: 'Different lines: the app keeps both changes.', run: async () => merge(THEIRS), hold: 4500 },
+    { say: 'Same line: your line stays, and Clippy redoes its edit on your version.', run: async () => {
+      drawLines(theirs.lines, marked(CLASH, START, 'by'));
+      merge(CLASH);
+    }, hold: 6000 },
+  ], () => {
+    for (const { box } of [start, yours, theirs, result]) box.hidden = true;
+  });
+}
+
+// ---- The page as slides: a dot per slide, the current one marked ----
+
 function deck() {
   const slides = [...document.querySelectorAll('.arch-slide')];
   const dots = slides.map((slide, i) => {
@@ -523,293 +607,12 @@ function deck() {
   for (const slide of slides) watch.observe(slide);
 }
 
-// One turn, end to end: people, the doc host, the runner and its turns as
-// boxes. `part` (people, host, runner, turns, merge) is the one in focus,
-// the rest dimmed; 'all' shows the whole.
-function flow(node, part) {
-  const on = (...names) => (names.includes(part) ? ' class="on"' : '');
-  const tip = `arch-tip-${part}`;
-  node.innerHTML = `<svg viewBox="0 0 760 214" role="img" aria-label="People comment in the doc host; the runner starts a turn for each ask; each turn works on its own copy; the host merges it with merge3">
-<defs><marker id="${tip}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arch-tip" d="M0 0L10 5L0 10z"/></marker></defs>
-<g${on('people')}><rect x="20" y="20" width="160" height="56" rx="10"/><text x="100" y="44">People</text><text class="sub" x="100" y="62">type and comment</text></g>
-<g${on('people')}><path d="M180 48H294" marker-end="url(#${tip})"/><text class="sub" x="238" y="38">@mention</text></g>
-<g${on('host', 'merge')}><rect x="300" y="20" width="160" height="56" rx="10"/><text x="380" y="44">Doc host</text><text class="sub" x="380" y="62">doc, comments, versions</text></g>
-<g${on('runner')}><path d="M460 48H574" marker-end="url(#${tip})"/><text class="sub" x="518" y="38">open asks</text></g>
-<g${on('runner')}><rect x="580" y="20" width="160" height="56" rx="10"/><text x="660" y="44">Runner</text><text class="sub" x="660" y="62">a turn per ask</text></g>
-<g${on('runner')}><path d="M660 76V124" marker-end="url(#${tip})"/><text class="sub start" x="668" y="104">start</text></g>
-<g${on('turns')}><rect x="420" y="130" width="320" height="70" rx="10"/><text class="sub start" x="436" y="150">Turns, at once</text><rect class="chip" x="436" y="158" width="140" height="30" rx="6"/><text x="506" y="178">Clippy · its copy</text><rect class="chip" x="588" y="158" width="140" height="30" rx="6"/><text x="658" y="178">Max · its copy</text></g>
-<g${on('merge')}><path d="M420 165H380V82" marker-end="url(#${tip})"/><text class="sub end" x="372" y="130">merge3</text></g>
-</svg>`;
-}
-
-// ---- The agent as a member: a turn of the real loop (turn), its model scripted ----
-
-// Clippy's turn on a copy of plan.md, its model's steps scripted: each the
-// calls of one answer. The third quotes text the doc does not have, so the
-// program sends the proposal back; the fourth quotes it right and ends the turn.
-const PLAN_COPY = `${LINES.join('\n')}\n`;
-const SCRIPTED = [
-  [['read', { path: 'plan.md' }]],
-  [['comment', { on: 'the waitlist', body: 'Open it by invite first?' }]],
-  [['propose', { edits: [{ old: 'fifty design partner,', new: 'fifty partners,' }], reply: 'Shortened.' }]],
-  [['resolve', {}], ['propose', { edits: [{ old: LINES[0], new: SHORT }], reply: 'Shortened the first line.' }]],
-];
-const ACTIONS = [ // what a member does in Ponjo, and the agent's tools that do it
-  [['read', 'find', 'grep'], 'Reads the doc and the files in the sidebar', 'read · find · grep'],
-  [['comment'], 'Comments on a passage', 'comment'],
-  [['propose'], 'Edits by quote, and replies', 'propose'],
-  [['resolve'], 'Resolves the thread', 'resolve'],
-];
-const STOPPED = Symbol('stopped');
-
-function member(root) {
-  const copy = el('div', 'arch-lines');
-  const pane = el('div', 'arch-pane');
-  pane.append(el('span', 'arch-who', 'Clippy’s copy of plan.md'), copy);
-  const head = el('div', 'arch-action arch-who');
-  head.append(el('span', '', 'A member'), el('span', '', 'The agent’s tool'));
-  const rows = ACTIONS.map(([, does, tool]) => {
-    const row = el('div', 'arch-action');
-    row.append(el('span', '', does), el('span', 'arch-tool', tool));
-    return row;
-  });
-  const actions = el('div', 'arch-pane arch-actions');
-  actions.append(head, ...rows);
-  const win = el('div', 'arch-win arch-member');
-  win.append(pane, actions);
-  const steps = el('ol', 'arch-trace');
-  const verdict = el('p', 'arch-verdict');
-  const again = el('button', 'pj-link-button', 'Play again');
-  again.type = 'button';
-  const controls = el('div', 'arch-controls');
-  controls.append(again);
-  root.append(win, steps, verdict, controls);
-  let playing = 0;
-
-  async function play() {
-    const id = ++playing;
-    const wait = (ms) => new Promise((done, stop) => setTimeout(() => (id === playing ? done() : stop(STOPPED)), still ? 0 : ms));
-    const lit = (names) => rows.forEach((row, i) => row.toggleAttribute('data-on', ACTIONS[i][0].some((tool) => names.includes(tool))));
-    drawLines(copy, LINES.map((text) => ({ text })));
-    steps.replaceChildren();
-    verdict.textContent = '';
-    const copies = { 'plan.md': PLAN_COPY, 'plan.md.comments.jsonl': '' };
-    const readFile = (path) => copies[path] ?? (['', '.'].includes(path) ? Object.keys(copies) : null);
-    let made = []; // the last step's rows, one per call, for the program's answers
-    let step = 0;
-    // The model: the next scripted step, after a pause; first, the program's
-    // answers to the last step's calls go on their rows.
-    const model = async (messages) => {
-      const answers = messages.slice(messages.findLastIndex((m) => m.role === 'assistant') + 1).filter((m) => m.role === 'tool');
-      for (const [i, { content }] of answers.entries()) {
-        const back = content.startsWith('Nothing was changed.');
-        made[i].append(el('span', back ? 'arch-back' : '', made[i].dataset.tool === 'read' ? '→ the doc, with line numbers'
-          : `→ ${back ? `sent back: ${content.replace('Nothing was changed. ', '')}` : content}`));
-      }
-      await wait(1400);
-      const calls = (SCRIPTED[step] ?? []).map(([name, args], i) => ({ id: `${step}.${i}`, name, args: JSON.stringify(args) }));
-      step += 1;
-      made = calls.map((call) => {
-        const row = el('li', '', `${step}.`);
-        row.dataset.tool = call.name;
-        row.append(el('span', 'arch-tool', called(call)));
-        return row;
-      });
-      steps.append(...made);
-      lit(calls.map((call) => call.name));
-      return { calls, text: '', sent: null };
-    };
-    try {
-      await wait(600);
-      const done = await turn({ prompt: 'Clippy, shorten the first line.', doc: 'plan.md', sidecar: 'plan.md.comments.jsonl', thread: 't1' }, { infer: model, readFile });
-      for (const row of made) row.append(el('span', '', row.dataset.tool === 'propose' ? '→ checked, applied to the copy' : '→ resolved when the turn ends'));
-      await wait(800);
-      lit([]);
-      const added = done.sidecar.split('\n').filter(Boolean).map((line) => JSON.parse(line)).find((c) => c.anchor);
-      const [one, two] = done.doc.split('\n');
-      const at = two.indexOf(added.anchor.exact);
-      drawLines(copy, [{ text: one, old: LINES[0], by: 'Clippy' }, { text: two }]);
-      const commented = el('span', 'pj-hl', added.anchor.exact);
-      copy.lastChild.replaceChildren(two.slice(0, at), commented, two.slice(at + added.anchor.exact.length));
-      verdict.textContent = `Reply: “${done.reply}”`;
-    } catch (error) {
-      if (error !== STOPPED) throw error;
-    }
-  }
-  again.onclick = play;
-  new IntersectionObserver(([seen]) => {
-    if (seen.isIntersecting) play();
-    else playing += 1; // stops the turn at its next pause
-  }, { threshold: 0.6 }).observe(root);
-}
-
-// ---- The runner: the running turns made equal to the open asks ----
-
-// The open asks are the app's own reading of the comments (threadsOf,
-// askedOf), as the Runner reads them. A turn here is a bar of four seconds,
-// then its reply, which answers its ask.
-const BUDDIES = [{ id: 'Clippy', name: 'Clippy' }, { id: 'Max', name: 'Max' }];
-const NOOR = { id: 'noor', name: 'Noor', kind: 'human' };
-const TURN = 4; // seconds
-const WORDS = { Clippy: 'shorten this', Max: 'lengthen this', both: 'tighten this' };
-
-function runner(root) {
-  const asks = el('div', 'arch-margin');
-  const asksPane = el('div', 'arch-pane');
-  asksPane.append(el('span', 'arch-who', 'Comments'), asks);
-  const turns = el('div', 'arch-margin');
-  const turnsPane = el('div', 'arch-pane');
-  turnsPane.append(el('span', 'arch-who', 'Running turns'), turns);
-  const win = el('div', 'arch-win arch-runner');
-  win.append(asksPane, el('span', 'arch-reconcile', 'reconcile()'), turnsPane);
-  const controls = el('div', 'arch-controls');
-  const button = (label, onclick, kind = 'pj-secondary') => {
-    const b = el('button', kind, label);
-    b.type = 'button';
-    b.onclick = onclick;
-    return b;
-  };
-  const log = el('ol', 'arch-trace');
-  root.append(controls, win, log);
-  let comments = [];
-  const running = new Map(); // thread id + buddy id → { thread, n, id, left }
-  let up = true;
-  let seq = Date.now();
-  const now = () => new Date(++seq).toISOString();
-  const say = (text, back = false) => {
-    const line = el('li');
-    line.append(el('span', back ? 'arch-back' : '', text));
-    log.prepend(line);
-    while (log.children.length > 4) log.lastChild.remove();
-  };
-  const ask = (who) => {
-    const names = who === 'both' ? ['Clippy', 'Max'] : [who];
-    comments = [...comments, { id: newId('c'), anchor: null, by: NOOR, at: now(), body: `${names.map((n) => `@${n}`).join(' ')} ${WORDS[who]}` }];
-    reconcile();
-  };
-  const bars = new Map();
-
-  // The Runner's one job: start a turn for each open ask without one, stop
-  // each turn whose ask is gone. Nothing else holds what is running.
-  function reconcile() {
-    const threads = threadsOf(comments, BUDDIES);
-    const want = new Map();
-    threads.forEach((thread, i) => {
-      for (const id of askedOf(thread, [NOOR.id])) want.set(`${thread.id} ${id}`, { thread: thread.id, n: i + 1, id });
-    });
-    for (const [key, run] of running) {
-      if (want.has(key)) continue;
-      running.delete(key);
-      say(`stop ${run.id} on thread ${run.n}: its ask is gone`, true);
-    }
-    if (up) {
-      for (const [key, want1] of want) {
-        if (running.has(key)) continue;
-        running.set(key, { ...want1, left: TURN });
-        say(`start ${want1.id} on thread ${want1.n}`);
-      }
-    }
-    drawAsks(threads);
-    drawTurns();
-  }
-
-  function drawAsks(threads) {
-    asks.replaceChildren(...threads.map((thread, i) => {
-      const card = el('div', 'pj-card arch-card');
-      const head = el('div', 'arch-actor');
-      head.append(face('Noor', true), `Thread ${i + 1}`);
-      card.append(head, el('div', 'arch-quote', thread.comments[0].body));
-      for (const reply of thread.comments.slice(1).filter((c) => c.body)) {
-        const row = el('div', 'arch-actor arch-state');
-        row.append(face(reply.by.id, false), reply.body);
-        card.append(row);
-      }
-      const waiting = askedOf(thread, [NOOR.id]);
-      const foot = el('div', 'arch-actor arch-state');
-      foot.append(thread.resolved ? 'Resolved' : waiting.length ? `Asks ${waiting.join(' and ')}` : 'Answered');
-      if (!thread.resolved) {
-        foot.append(button('Resolve', () => {
-          comments = [...comments, { id: newId('c'), thread: thread.id, by: NOOR, at: now(), body: '', resolved: true }];
-          reconcile();
-        }, 'pj-link-button'));
-      }
-      card.append(foot);
-      return card;
-    }));
-    if (!threads.length) asks.append(el('span', 'arch-state', 'No comments yet. Ask a buddy above.'));
-  }
-
-  function drawTurns() {
-    bars.clear();
-    turns.replaceChildren(...[...running].map(([key, run]) => {
-      const row = el('div', 'arch-turn');
-      row.style.setProperty('--buddy', buddyColor(run.id));
-      const who = face(run.id, false);
-      who.dataset.presence = 'working';
-      const name = el('div', 'arch-actor arch-state');
-      name.append(who, `${run.id} on thread ${run.n}, on its copy`);
-      const bar = el('span', 'arch-bar');
-      const track = el('div', 'arch-track');
-      track.append(bar);
-      bars.set(key, bar);
-      row.append(name, track);
-      return row;
-    }));
-    if (!running.size) turns.append(el('span', 'arch-state', up ? 'No turn is running.' : 'The app is restarting: no turn runs.'));
-    tick(0);
-  }
-
-  // Time passes: each turn's bar grows; one that is done posts its reply.
-  function tick(seconds) {
-    let answered = false;
-    for (const [key, run] of running) {
-      run.left -= seconds;
-      if (run.left <= 0) {
-        running.delete(key);
-        comments = [...comments, { id: newId('c'), thread: run.thread, by: { id: run.id, name: run.id, kind: 'ai' }, at: now(), body: `Done: ${WORDS[run.id].replace(' this', 'ed it')}.` }];
-        say(`${run.id} answered thread ${run.n}`);
-        answered = true;
-      } else {
-        const bar = bars.get(key);
-        if (bar) bar.style.width = `${(1 - run.left / TURN) * 100}%`;
-      }
-    }
-    if (answered) reconcile();
-  }
-
-  controls.append(
-    button('@Clippy', () => ask('Clippy')),
-    button('@Max', () => ask('Max')),
-    button('@Clippy @Max', () => ask('both')),
-    button('Restart the app', () => {
-      if (!up) return;
-      say(`restart: ${running.size} running ${running.size === 1 ? 'turn' : 'turns'} lost`, true);
-      running.clear();
-      up = false;
-      drawTurns();
-      setTimeout(() => {
-        up = true;
-        say('the app is back: reconcile');
-        reconcile();
-      }, 1500);
-    }),
-  );
-  reconcile();
-  setInterval(() => tick(0.1), 100);
-  // Asked once, as it first comes into view.
-  new IntersectionObserver(([seen], watch) => {
-    if (!seen.isIntersecting) return;
-    watch.disconnect();
-    ask('both');
-  }, { threshold: 0.6 }).observe(root);
-}
-
 setBuddies(['Clippy', 'Max', 'Claude'].map((name) => ({ id: name, name })));
-setPeople(['Noor']);
+setPeople(['You']);
 deck();
-for (const node of document.querySelectorAll('[data-flow]')) flow(node, node.dataset.flow);
-for (const root of document.querySelectorAll('[data-demo="mode"]')) mode(root);
-member($(document, '[data-demo="member"]'));
-runner($(document, '[data-demo="runner"]'));
-lines($(document, '[data-demo="lines"]'));
+whoWaits($(document, '[data-demo="who"]'));
+howItWorks($(document, '[data-demo="how"]'));
+agents($(document, '[data-demo="agents"]'));
+suggest($(document, '[data-demo="suggest"]'));
+merging($(document, '[data-demo="merge"]'));
 buddyTurn($(document, '[data-demo="turn"]'));

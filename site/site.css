@@ -112,14 +112,14 @@ a { color: var(--accent); }
 .intro-page .intro-cta { margin-top: 32px; }
 .intro-page .intro-cta a { height: 40px; padding: 0 16px; font-size: 14px; text-decoration: none; }
 
-/* ---- architecture page: slides on the Ponjo agent's runtime, each with its demo ---- */
+/* ---- architecture page: slides on how Ponjo's agents work, each a demo played step by step ---- */
 
 .arch-page small { display: block; color: var(--text-soft); font-size: 12px; line-height: 1.5; }
 
 /* the page as slides: a screen each, snapped on wide screens, a dot each at the right */
 .arch-deck { padding-top: 0; padding-bottom: 0; }
 .arch-slide { display: flex; flex-direction: column; justify-content: center; padding: 48px 0; }
-.ds-page .arch-slide > h2 { margin-top: 0; }
+.ds-page .arch-slide > h2 { margin-top: 0; font-size: 24px; }
 .arch-cover h1 { max-width: 720px; font-size: 36px; text-wrap: balance; }
 .arch-hint { color: var(--text-faint); font-size: 13px; }
 .arch-dots { display: none; }
@@ -131,55 +131,47 @@ a { color: var(--accent); }
   .arch-dots { position: fixed; top: 50%; right: 16px; z-index: 5; display: flex; flex-direction: column; gap: 8px; transform: translateY(-50%); }
 }
 
-/* a demo's frame, its head and its controls */
+/* a demo: its frame, the caption of its step, its parts */
 .arch-merge { margin-top: 16px; padding: 24px; border-radius: 10px; background: var(--canvas); box-shadow: var(--shadow); }
 .arch-merge-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; margin-bottom: 8px; }
 .arch-merge-head b { font-size: 16px; font-weight: 600; }
 .arch-merge-head span { color: var(--text-faint); font-size: 13px; }
-.arch-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 12px 0; }
-.arch-eg { color: var(--text-faint); font-size: 12px; line-height: 1.5; }
+.ds-page .arch-caption { min-height: 3.2em; max-width: none; margin: 0 0 16px; color: var(--text); font-size: 16px; line-height: 1.6; }
+.arch-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 12px 0 0; }
 .arch-who { display: flex; align-items: center; gap: 6px; color: var(--text-soft); font-size: 12px; }
 .arch-actor { display: flex; align-items: center; gap: 6px; }
-.arch-verdict { margin: 12px 0 0; font-size: 13px; }
-
-/* a window of a way: panes, a doc's lines, threads in the margin */
-.arch-win { display: grid; grid-template-columns: minmax(0, 1fr) 240px; gap: 12px; min-height: 216px; padding: 12px; border-radius: 10px; background: var(--bg-soft); }
-.arch-win-chat { grid-template-columns: 240px minmax(0, 1fr); }
-.arch-pane { display: flex; flex-direction: column; gap: 8px; min-width: 0; padding: 12px; border-radius: 6px; background: var(--canvas); box-shadow: var(--shadow); }
-.arch-pane > [hidden], .arch-card [hidden] { display: none; }
-.arch-lines { padding-top: 16px; font-size: 13px; line-height: 1.6; }
+.arch-quiet { color: var(--text-faint); font-size: 13px; }
+.arch-pane { display: flex; flex-direction: column; gap: 8px; min-width: 0; padding: 12px; border-radius: 6px; background: var(--bg-soft); }
+.arch-two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.arch-three { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 12px; }
+.arch-lines { font-size: 13px; line-height: 1.6; }
 .arch-line { min-height: 1.6em; white-space: pre-wrap; }
-.arch-line + .arch-line { margin-top: 16px; }
-.arch-log { display: flex; flex: 1; flex-direction: column; gap: 6px; }
-.arch-prompt { display: flex; align-items: center; height: 28px; font-size: 13px; }
-.arch-margin { display: flex; flex-direction: column; gap: 8px; }
-.arch-win .pj-card { position: static; display: flex; flex-direction: column; gap: 6px; padding: 8px 12px; cursor: default; }
-.arch-win .pj-receipt { margin-top: 0; }
-.arch-card > .arch-actor { color: var(--text-soft); font-size: 12px; }
-.arch-quote { min-height: 1.5em; font-size: 13px; }
-.arch-state { color: var(--text-soft); font-size: 12px; }
-.arch-say { padding: 2px 8px; border-radius: 10px; background: var(--bg-soft); font-size: 12px; }
-.arch-choices { display: flex; gap: 6px; }
-.arch-choices .pj-secondary { height: 24px; padding: 0 8px; font-size: 12px; }
-.arch-choices .arch-pressed { background: var(--active); }
+.arch-mine { background: var(--active); }
+.arch-list { display: flex; flex-direction: column; gap: 8px; min-height: 64px; }
+.arch-row { font-size: 13px; }
+.arch-job { display: flex; flex-direction: column; gap: 6px; }
+.arch-job .arch-track { height: 6px; }
+.arch-job .arch-bar { background: var(--buddy); }
+.arch-quote { display: flex; flex-direction: column; gap: 2px; font-size: 13px; line-height: 1.6; }
+.arch-quote > div:nth-child(odd) { color: var(--text-soft); font-size: 12px; }
+.arch-verdict { margin: 12px 0 0; font-size: 13px; font-weight: 500; }
+.arch-ok { color: var(--green); }
+.arch-back { color: var(--red); }
 
-/* lanes: who did what when, on one clock */
-.arch-lanes { display: flex; flex-direction: column; gap: 6px; margin-top: 16px; }
+/* who waits: a way's name, and its lanes on one clock */
+.arch-way { display: flex; flex-direction: column; gap: 6px; margin-top: 16px; }
+.arch-way-name { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; font-size: 13px; font-weight: 600; }
+.arch-way-name span { color: var(--text-faint); font-size: 12px; font-weight: 400; }
+.arch-lanes { display: flex; flex-direction: column; gap: 6px; }
 .arch-lane { display: grid; grid-template-columns: 128px minmax(0, 1fr); align-items: center; gap: 8px; color: var(--text-soft); font-size: 12px; }
 .arch-track { position: relative; height: 20px; border-radius: 4px; background: var(--bg-soft); }
 .arch-bar { position: absolute; top: 0; bottom: 0; overflow: hidden; border-radius: 4px; background: color-mix(in oklch, var(--buddy) 45%, transparent); color: var(--text); font-size: 11px; line-height: 20px; text-indent: 6px; white-space: nowrap; }
 .arch-wait { background: repeating-linear-gradient(135deg, var(--active) 0 4px, transparent 4px 8px); color: var(--text-soft); }
-.arch-head { position: absolute; top: -2px; bottom: -2px; border-left: 1px solid var(--text-faint); }
-.arch-axis { position: relative; height: 16px; font-size: 11px; color: var(--text-faint); }
-.arch-tick { position: absolute; top: 0; }
+.arch-axis { position: relative; height: 16px; }
 .arch-done { position: absolute; top: 0; right: 0; color: var(--text); font-size: 12px; font-weight: 500; }
 
-/* one turn, end to end: the parts as boxes; in a small one, the part in focus in ink, the rest dimmed */
-.arch-flow { margin-top: 16px; }
+/* how it works: the parts as boxes; with one in focus, it in ink and the rest dimmed */
 .arch-flow svg { display: block; width: 100%; height: auto; }
-.arch-slide-head { display: grid; grid-template-columns: minmax(0, 1fr) 300px; align-items: center; gap: 24px; }
-.ds-page .arch-slide-head h2 { margin-top: 0; }
-.arch-slide-head .arch-flow { margin-top: 0; }
 .arch-flow rect { fill: var(--canvas); stroke: var(--border-strong); stroke-width: 1.25; }
 .arch-flow .chip { fill: var(--bg-soft); }
 .arch-flow text { fill: var(--text); font: 500 13px var(--ui-font); text-anchor: middle; }
@@ -190,30 +182,13 @@ a { color: var(--accent); }
 .arch-flow .arch-tip { fill: var(--text-faint); stroke: none; }
 .arch-flow .on rect { stroke: var(--text); stroke-width: 2; }
 .arch-flow .on path { stroke: var(--text); stroke-width: 2; }
-.arch-flow-mini g:not(.on) { opacity: 0.35; }
+.arch-flow g { transition: opacity 0.3s; }
+.arch-flow[data-focus] g:not(.on) { opacity: 0.3; }
 
-/* the agent as a member: its copy, a member's actions beside its tools, the program's answers */
-.arch-member { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
-.arch-actions { display: flex; flex-direction: column; gap: 4px; }
-.arch-action { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 8px; min-height: 28px; padding: 4px 8px; border-radius: 6px; font-size: 13px; transition: background 0.2s; }
-.arch-action[data-on] { background: var(--active); }
-
-/* the runner: the open asks, reconciled into running turns */
-.arch-runner { grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: start; }
-.arch-reconcile { align-self: center; color: var(--text-faint); font: 12px var(--mono); }
-.arch-reconcile::after { content: ' →'; }
-.arch-turn { display: flex; flex-direction: column; gap: 6px; }
-.arch-turn .arch-track { height: 6px; }
-.arch-turn .arch-bar { background: var(--buddy); }
-
-/* the merge: the copy as it started, the doc now, the copy as it ended */
-.arch-sides { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
-.arch-sides label { display: flex; flex-direction: column; gap: 6px; }
+/* try it: a real turn, its steps and what landed */
 .arch-page .arch-text { display: block; width: 100%; box-sizing: border-box; height: auto; padding: 8px; resize: vertical; font: 14px/1.6 var(--ui-font); }
 .arch-file { display: flex; flex-direction: column; gap: 6px; margin-top: 16px; }
 .arch-file .ds-prose { padding: 8px 12px; border-radius: 6px; background: var(--bg-soft); white-space: pre-wrap; }
-
-/* a real turn: the ask, its steps, what landed */
 .arch-ask { flex: 1; min-width: 200px; }
 .arch-status { display: flex; align-items: center; gap: 8px; color: var(--text-soft); font-size: 13px; }
 .arch-reply { margin: 12px 0 0; font-size: 14px; }
@@ -224,8 +199,6 @@ a { color: var(--accent); }
 .arch-page .arch-slide > p:last-child { margin-top: 32px; }
 
 @media (max-width: 720px) {
-  .arch-win, .arch-win-chat, .arch-member, .arch-runner, .arch-sides, .arch-slide-head { grid-template-columns: minmax(0, 1fr); }
-  .arch-reconcile { justify-self: center; }
-  .arch-reconcile::after { content: ' ↓'; }
+  .arch-two, .arch-three { grid-template-columns: minmax(0, 1fr); }
   .arch-merge { padding: 16px; }
 }

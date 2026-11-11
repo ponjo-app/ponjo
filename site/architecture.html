@@ -42,80 +42,39 @@
 
 <section class="arch-slide arch-cover">
   <h1>People and AI agents write the same file. No one waits.</h1>
-  <p class="ds-lead">The Ponjo agent's runtime</p>
+  <p class="ds-lead">How Ponjo's agents work</p>
   <p class="arch-hint">Scroll to go on.</p>
 </section>
 
 <section class="arch-slide">
-  <h2>Today: you wait for the agent</h2>
-  <p>Ask, wait, review, ask again.</p>
-  <div class="arch-merge" data-demo="mode" data-mode="chat"></div>
-  <small class="arch-eg">E.g. Claude Code desktop, Cursor, Copilot Edits.</small>
+  <h2>Who waits?</h2>
+  <div class="arch-merge" data-demo="who"></div>
 </section>
 
 <section class="arch-slide">
-  <h2>Today: asks wait in line</h2>
-  <p>One agent answers comments one at a time.</p>
-  <div class="arch-merge" data-demo="mode" data-mode="queue"></div>
-  <small class="arch-eg">E.g. Claude Docs, as we saw it.</small>
+  <h2>How it works</h2>
+  <div class="arch-merge" data-demo="how"></div>
 </section>
 
 <section class="arch-slide">
-  <h2>Ponjo: nobody waits</h2>
-  <p>Every @mention runs at once, on its own copy.</p>
-  <div class="arch-merge" data-demo="mode" data-mode="ponjo"></div>
-  <small class="arch-eg">At the end, click 1 edit to review a turn; Undo takes back that turn alone.</small>
+  <h2>An agent for every @mention</h2>
+  <div class="arch-merge" data-demo="agents"></div>
 </section>
 
 <section class="arch-slide">
-  <h2>One turn, end to end</h2>
-  <p>A comment starts a turn. The turn works on a copy. The host merges it.</p>
-  <div class="arch-flow" data-flow="all"></div>
+  <h2>Agents suggest, the app checks</h2>
+  <div class="arch-merge" data-demo="suggest"></div>
 </section>
 
 <section class="arch-slide">
-  <div class="arch-slide-head">
-    <div><h2>The runner: a turn per open ask</h2><p>No queue. Resolve stops a turn; a restart runs it again.</p></div>
-    <div class="arch-flow arch-flow-mini" data-flow="runner"></div>
-  </div>
-  <div class="arch-merge" data-demo="runner"></div>
-</section>
-
-<section class="arch-slide">
-  <div class="arch-slide-head">
-    <div><h2>The agent: a member, on its own copy</h2><p>Its tools are a member's actions. The program checks every proposal.</p></div>
-    <div class="arch-flow arch-flow-mini" data-flow="turns"></div>
-  </div>
-  <div class="arch-merge" data-demo="member"></div>
-</section>
-
-<section class="arch-slide">
-  <div class="arch-slide-head">
-    <div><h2>The host: merge3 onto the doc as it is now</h2><p>A turn that collides with your edit runs once more.</p></div>
-    <div class="arch-flow arch-flow-mini" data-flow="merge"></div>
-  </div>
-  <div class="arch-merge" data-demo="lines" data-buddy="Clippy">
-    <div class="arch-merge-head"><b>merge3</b><span>Edit any of the three</span></div>
-    <div class="arch-controls">
-      <div class="pj-segmented" role="radiogroup" aria-label="Case">
-        <button type="button" role="radio" aria-checked="true" data-preset="apart">Different lines</button>
-        <button type="button" role="radio" aria-checked="false" data-preset="collide">Same line</button>
-      </div>
-    </div>
-    <div class="arch-sides">
-      <label><span class="arch-who">Copy as it started</span><textarea class="pj-input arch-text" data-side="base" rows="5" spellcheck="false"></textarea></label>
-      <label><span class="arch-who">Doc now</span><textarea class="pj-input arch-text" data-side="ours" rows="5" spellcheck="false"></textarea></label>
-      <label><span class="arch-who">Clippy's copy</span><textarea class="pj-input arch-text" data-side="theirs" rows="5" spellcheck="false"></textarea></label>
-    </div>
-    <div class="arch-file"><span class="arch-who">Lands, as a revision of the doc now</span><div class="ds-prose" data-result></div></div>
-    <p class="arch-verdict" data-verdict></p>
-  </div>
+  <h2>Merging back, line by line</h2>
+  <div class="arch-merge" data-demo="merge"></div>
 </section>
 
 <section class="arch-slide">
   <div class="arch-merge" data-demo="turn" data-buddy="Clippy">
-    <div class="arch-merge-head"><b>Try a real turn</b><span>On NVIDIA Nemotron</span></div>
-    <p>Edit the paragraph while Clippy works to see a collision.</p>
+    <div class="arch-merge-head"><b>Try it: ask Clippy</b><span>A real agent, on NVIDIA Nemotron</span></div>
+    <p>Edit the paragraph while Clippy works on it, and see what happens.</p>
     <textarea class="pj-input arch-text" data-doc rows="7" spellcheck="false" aria-label="plan.md"></textarea>
     <div class="arch-controls">
       <input class="pj-input arch-ask" data-ask value="@Clippy make the paragraph about the beta half as long" aria-label="Comment">
