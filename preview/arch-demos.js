@@ -1,11 +1,11 @@
 // The architecture page's live demos (site/architecture.html), each played
 // step by step with a caption: who waits, the same work three ways on one
-// clock; what blocks and the three designs that remove it; asking in a
-// comment while you type on; agents working at once on copies, one stopped
-// with nothing to undo; the app merging copies in (merge3, src/core/diff.js);
-// one request through a drawing; and a real turn of the Ponjo agent
-// (agents/ponjo-core.mjs) on the preview's model, landed as the doc host lands
-// one (src/host/doc-service.js, finishRun). preview/build.js bundles it into
+// clock; what blocks and the three designs that remove it, each shown in a
+// Ponjo window drawn with the app's own classes, and behind it each buddy's
+// copy, merged in with merge3 (src/core/diff.js); one request through a
+// drawing; and a real turn of the Ponjo agent (agents/ponjo-core.mjs) on the
+// preview's model, landed as the doc host lands one
+// (src/host/doc-service.js, finishRun). preview/build.js bundles it into
 // dist/preview, which the site serves at /preview/; the model
 // (infer.ponjo.app) answers pages on ponjo.app only.
 
@@ -17,6 +17,8 @@ import { newId, serializeSidecar, threadsOf } from '../src/core/comments.js';
 import { buildPrompt } from '../src/core/prompt.js';
 import { INFER, turn } from '../agents/ponjo-core.mjs';
 import { agentFace, buddyColor, personFace, setBuddies, setPeople } from '../web/faces.js';
+import { cursorNode } from '../web/marks.js';
+import { icon } from '../web/icons.js';
 
 const $ = (root, selector) => root.querySelector(selector);
 const el = (tag, className, text = '') => Object.assign(document.createElement(tag), { className, textContent: text });
@@ -374,185 +376,321 @@ function blockers(root) {
   });
 }
 
-// ---- Design 1: asking an agent never stops you ----
+// ---- A Ponjo window, as the app draws it, for the three designs ----
 
-// You ask Clippy in a comment and type on; Clippy's edit, made on its copy,
-// lands when it is done (merge3), beside what you typed.
-const DOC_LINES = ['# Launch', 'We ship in March.', 'Then we open the waitlist.'];
-const TYPED = ', in the order people joined it';
-const typed = (text, x) => text.slice(0, Math.round(text.length * x));
-const docText = (lines) => `${lines.join('\n')}\n`;
+// The app's own classes (web/app.css): its header with the buddies' faces,
+// the doc, and the threads in the margin, with a buddy's cursor, its edit
+// landing with its name, its reply and Undo. A panel below can show what the
+// app does behind the scenes: each buddy's copy of the doc.
+const PARAS = [
+  'We ship the beta in March to fifty design partners, who each get a private call and early access.',
+  'Then we open the waitlist.',
+];
+const TITLE = 'Launch plan';
+const MINE = 'Pricing comes after the beta.';
+const text = (paras) => `# ${TITLE}\n\n${paras.join('\n\n')}\n`;
+const parasOf = (doc) => doc.trimEnd().split('\n\n').slice(1);
 
-function background(root) {
-  const caption = el('p', 'arch-caption');
-  const doc = el('div', 'arch-lines');
-  const left = el('div', 'arch-pane');
-  left.append(el('span', 'arch-who', 'Your doc'), doc);
-  const ask = el('div', 'arch-row');
-  const who = face('Clippy', false);
-  const state = el('span', 'arch-quiet');
-  const status = el('div', 'arch-actor arch-row');
-  status.append(who, state);
-  const right = el('div', 'arch-pane');
-  right.append(el('span', 'arch-who', 'A comment'), ask, status);
-  const panes = el('div', 'arch-two');
-  panes.append(left, right);
-  root.append(caption, panes);
-  const mine = (x) => [DOC_LINES[0], DOC_LINES[1], DOC_LINES[2].replace('.', `${typed(TYPED, x)}.`)];
-  const reset = () => {
-    drawLines(doc, DOC_LINES.map((text) => ({ text })));
-    ask.textContent = '';
-    state.textContent = '';
-    delete who.dataset.presence;
-    status.hidden = true;
+function avatar(name, person, size = 24) {
+  const node = el('span', `pj-avatar${person ? '' : ' pj-avatar-agent'}`);
+  node.style.setProperty('--size', `${size}px`);
+  node.append(person ? personFace(name) : agentFace(name));
+  return node;
+}
+
+function app(root, buddies, { behind = false } = {}) {
+  const head = el('div', 'arch-app-head');
+  head.append(icon('file'), el('span', '', 'plan.md'), el('span', 'pj-spacer'));
+  const faces = {};
+  for (const name of buddies) {
+    const agent = el('span', 'pj-agent');
+    const button = el('span', 'pj-agent-face');
+    button.append(avatar(name, false, 28));
+    agent.append(button);
+    faces[name] = agent;
+    head.append(agent);
+  }
+  head.append(avatar('You', true, 28));
+  const doc = el('div', 'arch-app-doc');
+  const margin = el('div', 'arch-app-margin');
+  const body = el('div', 'arch-app-body');
+  body.append(doc, margin);
+  const frame = el('div', 'arch-app');
+  frame.append(head, body);
+  const controls = $(root, '.arch-controls'); // the Replay button stays under the window
+  root.insertBefore(frame, controls);
+  let copies = null;
+  if (behind) {
+    copies = el('div', 'arch-two');
+    const panel = el('div', 'arch-behind');
+    panel.append(el('span', 'arch-who', 'Behind the scenes: each buddy’s own copy of the doc'), copies);
+    root.insertBefore(panel, controls);
+  }
+  return {
+    faces, margin, copies,
+    // The doc: its paragraphs, each { text, hl?, mine?, by?, cursor?, caret? }.
+    draw(paras) {
+      doc.replaceChildren(el('div', 'arch-app-h1', TITLE), ...paras.map((p) => {
+        const row = el('div', 'arch-para');
+        let words = el('span', p.hl ? 'pj-hl' : p.mine ? 'arch-mine' : '', p.text);
+        if (p.by) {
+          words = el('span', 'pj-buddy-edit pj-replay', p.text);
+          words.style.setProperty('--buddy', buddyColor(p.by));
+          const flag = el('span', 'pj-flag');
+          flag.style.cssText = `--buddy: ${buddyColor(p.by)}; --buddy-ink: var(--on-text)`;
+          flag.append(el('span', 'pj-flag-label', p.by));
+          row.append(flag);
+        }
+        if (p.cursor) row.append(cursorNode({ by: p.cursor, working: true }));
+        row.append(words);
+        if (p.caret) row.append(el('span', 'arch-caret'));
+        return row;
+      }));
+    },
+    working(name, on) {
+      if (on) faces[name].dataset.presence = 'working';
+      else delete faces[name].dataset.presence;
+    },
   };
-  stepper(root, caption, [
-    { say: 'You @mention Clippy in a comment. That is all: no chat to switch to, nothing to wait for.', run: async (wait) => {
-      const words = '@Clippy make line 2 precise';
+}
+
+// A thread in the margin: your comment asking `buddy`; it can show the buddy
+// at work, its reply with Undo, or that you resolved it.
+function thread(margin, buddy, words) {
+  const card = el('article', 'pj-card');
+  card.style.setProperty('--buddy', buddyColor(buddy));
+  const message = (name, person, ...body) => {
+    const msg = el('div', 'pj-msg');
+    const head = el('div', 'pj-msg-head');
+    const who = el('div', 'pj-who');
+    who.append(el('span', 'pj-name', name), el('time', 'pj-time', 'now'));
+    head.append(avatar(name, person), who);
+    const text = el('div', 'pj-body');
+    text.append(...body);
+    msg.append(head, text);
+    return msg;
+  };
+  const chip = el('span', 'pj-at pj-at-agent', `@${buddy}`);
+  chip.style.setProperty('--buddy', buddyColor(buddy));
+  const ask = el('span', '');
+  card.append(message('You', true, chip, ' ', ask));
+  margin.append(card);
+  let busy = null;
+  return {
+    card,
+    async type(wait) {
       for (let i = 1; i <= words.length; i++) {
         ask.textContent = words.slice(0, i);
-        await wait(40);
+        await wait(35);
       }
-      status.hidden = false;
-      who.dataset.presence = 'working';
-      state.textContent = 'working in the background';
+    },
+    working(on) {
+      card.classList.toggle('pj-card-working', on);
+      busy?.remove();
+      busy = null;
+      if (!on) return;
+      busy = el('div', 'pj-typing');
+      const face = el('span', 'pj-agent-face');
+      face.append(avatar(buddy, false));
+      busy.append(face, el('span', '', `${buddy} is working…`));
+      card.append(busy);
+    },
+    reply(words1) {
+      this.working(false);
+      const receipt = el('div', 'pj-receipt');
+      receipt.style.setProperty('--buddy', buddyColor(buddy));
+      const count = el('span', 'pj-receipt-show');
+      count.append(icon('pencil'), el('span', '', '1 edit'));
+      const undo = el('span', 'pj-icon-btn pj-receipt-undo');
+      undo.append(icon('undo'));
+      receipt.append(count, undo);
+      const msg = message(buddy, false, words1);
+      msg.append(receipt);
+      card.append(msg);
+    },
+    resolve() {
+      this.working(false);
+      card.classList.add('pj-card-resolved');
+      const row = el('div', 'pj-resolved-row');
+      row.append(icon('check'), el('span', '', 'Resolved by you'));
+      card.append(row);
+    },
+  };
+}
+
+// A buddy's copy behind the scenes: the paragraph it changes, and a line on what it is doing.
+function copyOf(copies, buddy) {
+  const title = el('span', 'arch-who');
+  title.append(avatar(buddy, false, 18), `${buddy}’s copy`);
+  const lines = el('div', 'arch-lines');
+  const state = el('div', 'arch-quiet');
+  const box = el('div', 'arch-pane');
+  box.append(title, lines, state);
+  copies.append(box);
+  return {
+    box,
+    show(paras, changed, words) {
+      drawLines(lines, [{ text: paras[changed], by: buddy }]);
+      state.textContent = words;
+    },
+  };
+}
+
+// Text `from` turned into `to` a part `x` of the way, as a buddy writes it:
+// the new text typed over the old, then what is left of the old deleted.
+function writing(from, to, x) {
+  const k = Math.round(x * Math.max(from.length, to.length));
+  return to.slice(0, Math.min(k, to.length)) + from.slice(k);
+}
+
+// ---- 1 · Asking an agent never stops you ----
+
+function design1(root) {
+  const caption = el('p', 'arch-caption');
+  root.append(caption);
+  const SHORTER = 'Fifty design partners get the beta in March.';
+  let win;
+  let ask;
+  const reset = () => {
+    root.querySelector('.arch-app')?.remove();
+    win = app(root, ['Clippy']);
+    ask = null;
+    win.draw(PARAS.map((t) => ({ text: t })));
+  };
+  stepper(root, caption, [
+    { say: 'Clippy is an AI buddy: an AI agent with a name and a face. You ask it in a comment, as you would a teammate.', run: async (wait) => {
+      win.draw([{ text: PARAS[0], hl: true }, { text: PARAS[1] }]);
+      ask = thread(win.margin, 'Clippy', 'make this shorter');
+      await ask.type(wait);
     } },
-    { say: 'Clippy works in the background, and you keep typing.', run: async (wait) => {
-      for (let x = 0; x <= 1; x += 0.05) {
-        drawLines(doc, mine(x).map((text, i) => ({ text, mine: i === 2 && x > 0, caret: i === 2 })));
-        await wait(120);
+    { say: 'Clippy gets to work. You do not wait: you keep writing.', run: async (wait) => {
+      win.working('Clippy', true);
+      ask.working(true);
+      for (let i = 0; i <= MINE.length; i += 1) {
+        win.draw([{ text: PARAS[0], hl: true, cursor: 'Clippy' }, { text: PARAS[1] }, { text: MINE.slice(0, i), caret: true }]);
+        await wait(90);
       }
     } },
-    { say: 'When Clippy is done, its edit lands in your doc, beside what you typed.', run: async () => {
-      const copy = [DOC_LINES[0], 'We ship the beta on March 3.', DOC_LINES[2]];
-      const now = merge3(docText(DOC_LINES), docText(mine(1)), docText(copy)).text.trimEnd().split('\n');
-      drawLines(doc, now.map((text, i) => ({ text, by: i === 1 ? 'Clippy' : undefined, mine: i === 2 })));
-      delete who.dataset.presence;
-      state.textContent = 'done: 1 edit';
-    }, hold: 5000 },
+    { say: 'When Clippy is done, its edit lands in your doc with its name on it, and its reply has Undo.', run: async () => {
+      const now = merge3(text(PARAS), text([...PARAS, MINE]), text([SHORTER, PARAS[1]])).text;
+      const [one, two, three] = parasOf(now);
+      win.working('Clippy', false);
+      win.draw([{ text: one, by: 'Clippy' }, { text: two }, { text: three }]);
+      ask.reply('Made it shorter.');
+    }, hold: 6000 },
   ], reset);
 }
 
-// ---- Design 2: agents always run in parallel ----
+// ---- 2 · Agents always run in parallel ----
 
-// Clippy and Max each work on a copy of the doc at once. Until one is done
-// it changes nothing but its copy, so stopping it leaves nothing to undo;
-// the one that finishes is merged in (merge3).
-const EDITS = {
-  Clippy: [1, 'We ship the beta on March 3.'],
-  Max: [2, 'Then we invite fifty design partners.'],
-};
-
-function parallel(root) {
+function design2(root) {
   const caption = el('p', 'arch-caption');
-  const doc = el('div', 'arch-lines');
-  const yours = el('div', 'arch-pane');
-  yours.append(el('span', 'arch-who', 'Your doc'), doc);
-  const copies = Object.entries(EDITS).map(([name, [line, text]]) => {
-    const who = face(name, false);
-    const title = el('span', 'arch-who');
-    title.append(who, `${name}’s copy`);
-    const lines = el('div', 'arch-lines');
-    const state = el('div', 'arch-quiet');
-    const box = el('div', 'arch-pane');
-    box.append(title, lines, state);
-    return { name, line, text, who, lines, state, box };
-  });
-  const row = el('div', 'arch-two');
-  row.append(...copies.map(({ box }) => box));
-  root.append(caption, yours, row);
-  const [clippy, max] = copies;
-  const edit = (copy, x) => DOC_LINES.map((text, i) => (i === copy.line
-    ? { text: typed(copy.text, x) + text.slice(Math.round(copy.text.length * x)), by: x > 0 ? copy.name : undefined }
-    : { text }));
+  root.append(caption);
+  const EDIT = { Clippy: [0, 'Fifty design partners get the beta in March.'], Max: [1, 'Then we invite everyone on the waitlist, oldest first.'] };
+  let win;
+  let threads;
+  let copies;
   const reset = () => {
-    drawLines(doc, DOC_LINES.map((text) => ({ text })));
-    for (const copy of copies) {
-      drawLines(copy.lines, DOC_LINES.map((text) => ({ text })));
-      copy.state.textContent = '';
-      copy.box.classList.remove('arch-gone');
-      delete copy.who.dataset.presence;
-      copy.box.hidden = true;
-    }
+    for (const node of root.querySelectorAll('.arch-app, .arch-behind')) node.remove();
+    win = app(root, ['Clippy', 'Max'], { behind: true });
+    win.draw(PARAS.map((t) => ({ text: t })));
+    threads = {};
+    copies = {};
   };
+  const doc = (marks = {}) => win.draw(PARAS.map((t, i) => ({ text: t, hl: marks.hl?.includes(i), cursor: marks.cursor?.[i] })));
   stepper(root, caption, [
-    { say: 'You @mention Clippy and Max. Each gets its own copy of the doc, and both start at once.', run: async () => {
-      for (const copy of copies) {
-        copy.box.hidden = false;
-        copy.who.dataset.presence = 'working';
-        copy.state.textContent = 'working';
+    { say: 'You ask Clippy and Max, in two comments. Max is another AI buddy.', run: async (wait) => {
+      doc({ hl: [0, 1] });
+      threads.Clippy = thread(win.margin, 'Clippy', 'make this shorter');
+      await threads.Clippy.type(wait);
+      threads.Max = thread(win.margin, 'Max', 'say who comes first');
+      await threads.Max.type(wait);
+    } },
+    { say: 'Both start at once, each on its own copy. Your doc does not change while they work.', run: async (wait) => {
+      for (const name of ['Clippy', 'Max']) {
+        win.working(name, true);
+        threads[name].working(true);
+        copies[name] = copyOf(win.copies, name);
+      }
+      doc({ hl: [0, 1], cursor: { 0: 'Clippy', 1: 'Max' } });
+      for (let x = 0; x <= 1.0001; x += 0.05) {
+        for (const name of ['Clippy', 'Max']) {
+          const [i, to] = EDIT[name];
+          const k = name === 'Max' ? Math.min(1, x * 0.75) : x;
+          copies[name].show(PARAS.map((t, j) => (j === i ? writing(t, to, k) : t)), i, 'working');
+        }
+        await wait(140);
       }
     } },
-    { say: 'Each edits only its copy. Your doc does not change, and neither copy touches the other.', run: async (wait) => {
-      for (let x = 0; x <= 1; x += 0.05) {
-        drawLines(clippy.lines, edit(clippy, x));
-        drawLines(max.lines, edit(max, Math.min(1, x * 0.8)));
-        await wait(120);
-      }
-    } },
-    { say: 'You resolve Max’s comment. Max just stops: it changed nothing outside its copy, so there is nothing to undo.', run: async () => {
-      max.box.classList.add('arch-gone');
-      delete max.who.dataset.presence;
-      max.state.textContent = 'stopped, its copy thrown away';
+    { say: 'You resolve Max’s comment. Max stops at once, and its copy is thrown away: nothing to undo.', run: async () => {
+      threads.Max.resolve();
+      win.working('Max', false);
+      copies.Max.box.classList.add('arch-gone');
+      copies.Max.show(PARAS.map((t, j) => (j === 1 ? EDIT.Max[1] : t)), 1, 'stopped, thrown away');
+      doc({ hl: [0], cursor: { 0: 'Clippy' } });
     }, hold: 4500 },
     { say: 'Clippy is done. Only now does your doc change: the app merges Clippy’s copy in.', run: async () => {
-      const now = merge3(docText(DOC_LINES), docText(DOC_LINES), docText(DOC_LINES.map((t, i) => (i === clippy.line ? clippy.text : t)))).text.trimEnd().split('\n');
-      drawLines(doc, now.map((text, i) => ({ text, by: i === clippy.line ? 'Clippy' : undefined })));
-      delete clippy.who.dataset.presence;
-      clippy.state.textContent = 'done, merged in';
-    }, hold: 5000 },
+      const now = merge3(text(PARAS), text(PARAS), text([EDIT.Clippy[1], PARAS[1]])).text;
+      const [one, two] = parasOf(now);
+      win.working('Clippy', false);
+      win.draw([{ text: one, by: 'Clippy' }, { text: two }]);
+      threads.Max.card.hidden = true; // a resolved thread hides, as in the app
+      threads.Clippy.reply('Made it shorter.');
+      copies.Clippy.show([one, two], 0, 'done, merged in');
+    }, hold: 6000 },
   ], reset);
 }
 
-// ---- Merging back, line by line ----
+// ---- 3 · The app merges. You never resolve. ----
 
-// A short doc as the agent started from it, your version, the agent's copy,
-// and merge3's result; then the same with both changing one line.
-const START = ['# Launch', 'We ship in March.', 'Ten teams try it first.', 'Then we open the waitlist.'];
-const YOURS = ['# Launch', 'We ship the beta in March.', 'Ten teams try it first.', 'Then we open the waitlist.'];
-const THEIRS = ['# Launch', 'We ship in March.', 'Ten teams try it first.', 'Then we invite fifty design partners.'];
-const CLASH = ['# Launch', 'We ship on March 3.', 'Ten teams try it first.', 'Then we open the waitlist.'];
-
-function merging(root) {
+function design3(root) {
   const caption = el('p', 'arch-caption');
-  const col = (title) => {
-    const lines = el('div', 'arch-lines');
-    const box = el('div', 'arch-pane');
-    box.append(el('span', 'arch-who', title), lines);
-    return { box, lines };
-  };
-  const start = col('When Clippy started');
-  const yours = col('Your doc, meanwhile');
-  const theirs = col('Clippy’s copy');
-  const result = col('Your doc after the merge');
-  const cols = el('div', 'arch-three');
-  cols.append(start.box, yours.box, theirs.box);
-  root.append(caption, cols, result.box);
-  const text = (lines) => `${lines.join('\n')}\n`;
-  const marked = (lines, from, kind) => lines.map((line, i) => ({ text: line, [kind]: line !== from[i] ? (kind === 'by' ? 'Clippy' : true) : undefined }));
-  const merge = (agent) => {
-    const merged = merge3(text(START), text(YOURS), text(agent)).text.trimEnd().split('\n');
-    drawLines(result.lines, merged.map((line, i) => ({ text: line, mine: (line === YOURS[i] && line !== START[i]) || undefined, by: line === agent[i] && line !== START[i] && line !== YOURS[i] ? 'Clippy' : undefined })));
-    result.box.hidden = false;
+  root.append(caption);
+  const SHORTER = 'Fifty design partners get the beta in March.';
+  const YOURS = PARAS[0].replace('in March', 'in April');
+  const REDONE = 'Fifty design partners get the beta in April.';
+  let win;
+  let ask;
+  let copy;
+  const reset = () => {
+    for (const node of root.querySelectorAll('.arch-app, .arch-behind')) node.remove();
+    win = app(root, ['Clippy'], { behind: true });
+    win.draw(PARAS.map((t) => ({ text: t })));
   };
   stepper(root, caption, [
-    { say: 'Only the app writes the file. Clippy started from this version, on its own copy.', run: async () => {
-      drawLines(start.lines, START.map((t) => ({ text: t })));
-      start.box.hidden = false;
+    { say: 'You ask Clippy to shorten the first paragraph. It works on its own copy.', run: async (wait) => {
+      win.draw([{ text: PARAS[0], hl: true }, { text: PARAS[1] }]);
+      ask = thread(win.margin, 'Clippy', 'make this shorter');
+      await ask.type(wait);
+      win.working('Clippy', true);
+      ask.working(true);
+      copy = copyOf(win.copies, 'Clippy');
+      for (let x = 0; x <= 1.0001; x += 0.1) {
+        copy.show([writing(PARAS[0], SHORTER, x), PARAS[1]], 0, 'working');
+        await wait(120);
+      }
     } },
-    { say: 'Meanwhile you change line 2, and Clippy changes line 4 on its copy.', run: async () => {
-      drawLines(yours.lines, marked(YOURS, START, 'mine'));
-      drawLines(theirs.lines, marked(THEIRS, START, 'by'));
-      yours.box.hidden = theirs.box.hidden = false;
+    { say: 'Meanwhile you change the same paragraph: the beta moves to April.', run: async () => {
+      win.draw([{ text: YOURS, mine: true, cursor: 'Clippy' }, { text: PARAS[1] }]);
     } },
-    { say: 'Different lines: the app keeps both changes.', run: async () => merge(THEIRS), hold: 4500 },
-    { say: 'Same line: your line stays, and Clippy redoes its edit on your version. Nobody resolves anything.', run: async () => {
-      drawLines(theirs.lines, marked(CLASH, START, 'by'));
-      merge(CLASH);
+    { say: 'Clippy is done, but its copy says March. The app keeps your line, and has Clippy redo its edit on your version.', run: async (wait) => {
+      const { conflicts } = merge3(text(PARAS), text([YOURS, PARAS[1]]), text([SHORTER, PARAS[1]]));
+      copy.show([SHORTER, PARAS[1]], 0, `${conflicts} paragraph changed by you too: redo it on yours`);
+      await wait(2500);
+      for (let x = 0; x <= 1.0001; x += 0.1) {
+        copy.show([writing(YOURS, REDONE, x), PARAS[1]], 0, 'redoing, on your version');
+        await wait(120);
+      }
+    } },
+    { say: 'Clippy’s new edit lands, with your April in it. Nobody had to resolve anything.', run: async () => {
+      const now = merge3(text([YOURS, PARAS[1]]), text([YOURS, PARAS[1]]), text([REDONE, PARAS[1]])).text;
+      const [one, two] = parasOf(now);
+      win.working('Clippy', false);
+      win.draw([{ text: one, by: 'Clippy' }, { text: two }]);
+      ask.reply('Made it shorter.');
+      copy.show([one, two], 0, 'done, merged in');
     }, hold: 6000 },
-  ], () => {
-    for (const { box } of [start, yours, theirs, result]) box.hidden = true;
-  });
+  ], reset);
 }
 
 // ---- The page as slides: a dot per slide, the current one marked ----
@@ -578,8 +716,8 @@ setPeople(['You']);
 deck();
 whoWaits($(document, '[data-demo="who"]'));
 blockers($(document, '[data-demo="blocks"]'));
-background($(document, '[data-demo="background"]'));
-parallel($(document, '[data-demo="parallel"]'));
-merging($(document, '[data-demo="merge"]'));
+design1($(document, '[data-demo="design1"]'));
+design2($(document, '[data-demo="design2"]'));
+design3($(document, '[data-demo="design3"]'));
 howItWorks($(document, '[data-demo="how"]'));
 buddyTurn($(document, '[data-demo="turn"]'));
