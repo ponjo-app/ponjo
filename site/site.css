@@ -169,12 +169,28 @@ a { color: var(--accent); }
 .arch-track { position: relative; height: 20px; border-radius: 4px; background: var(--bg-soft); }
 .arch-bar { position: absolute; top: 0; bottom: 0; overflow: hidden; border-radius: 4px; background: color-mix(in oklch, var(--buddy) 45%, transparent); color: var(--text); font-size: 11px; line-height: 20px; text-indent: 6px; white-space: nowrap; }
 .arch-wait { background: repeating-linear-gradient(135deg, var(--active) 0 4px, transparent 4px 8px); color: var(--text-soft); }
-.arch-plain { background: var(--active); }
-.arch-best { background: var(--text); color: var(--on-text); }
 .arch-head { position: absolute; top: -2px; bottom: -2px; border-left: 1px solid var(--text-faint); }
 .arch-axis { position: relative; height: 16px; font-size: 11px; color: var(--text-faint); }
 .arch-tick { position: absolute; top: 0; }
 .arch-done { position: absolute; top: 0; right: 0; color: var(--text); font-size: 12px; font-weight: 500; }
+
+/* one turn, end to end: the parts as boxes; in a small one, the part in focus in ink, the rest dimmed */
+.arch-flow { margin-top: 16px; }
+.arch-flow svg { display: block; width: 100%; height: auto; }
+.arch-slide-head { display: grid; grid-template-columns: minmax(0, 1fr) 300px; align-items: center; gap: 24px; }
+.ds-page .arch-slide-head h2 { margin-top: 0; }
+.arch-slide-head .arch-flow { margin-top: 0; }
+.arch-flow rect { fill: var(--canvas); stroke: var(--border-strong); stroke-width: 1.25; }
+.arch-flow .chip { fill: var(--bg-soft); }
+.arch-flow text { fill: var(--text); font: 500 13px var(--ui-font); text-anchor: middle; }
+.arch-flow .sub { fill: var(--text-soft); font-size: 11.5px; font-weight: 400; }
+.arch-flow .start { text-anchor: start; }
+.arch-flow .end { text-anchor: end; }
+.arch-flow path { fill: none; stroke: var(--text-faint); stroke-width: 1.25; }
+.arch-flow .arch-tip { fill: var(--text-faint); stroke: none; }
+.arch-flow .on rect { stroke: var(--text); stroke-width: 2; }
+.arch-flow .on path { stroke: var(--text); stroke-width: 2; }
+.arch-flow-mini g:not(.on) { opacity: 0.35; }
 
 /* the agent as a member: its copy, a member's actions beside its tools, the program's answers */
 .arch-member { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
@@ -208,7 +224,7 @@ a { color: var(--accent); }
 .arch-page .arch-slide > p:last-child { margin-top: 32px; }
 
 @media (max-width: 720px) {
-  .arch-win, .arch-win-chat, .arch-member, .arch-runner, .arch-sides { grid-template-columns: minmax(0, 1fr); }
+  .arch-win, .arch-win-chat, .arch-member, .arch-runner, .arch-sides, .arch-slide-head { grid-template-columns: minmax(0, 1fr); }
   .arch-reconcile { justify-self: center; }
   .arch-reconcile::after { content: ' ↓'; }
   .arch-merge { padding: 16px; }

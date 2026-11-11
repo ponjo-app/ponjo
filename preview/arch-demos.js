@@ -1,11 +1,11 @@
 // The architecture page's live demos (site/architecture.html), each on the
 // app's own code: the three ways as scripts on one clock, Ponjo's turns
-// landed and undone by merge3 (src/core/diff.js); a turn of the Ponjo agent's
-// own loop (agents/ponjo-core.mjs) with its model scripted; the open asks as
-// the Runner reads them (threadsOf, askedOf); merge3 to edit; and a real turn
-// on the preview's model, landed as the doc host lands one
-// (src/host/doc-service.js, finishRun). preview/build.js bundles it into
-// dist/preview, which the site serves at /preview/; the model
+// landed and undone by merge3 (src/core/diff.js); one turn's path, drawn; the
+// open asks as the Runner reads them (threadsOf, askedOf); a turn of the
+// Ponjo agent's own loop (agents/ponjo-core.mjs) with its model scripted;
+// merge3 to edit; and a real turn on the preview's model, landed as the doc
+// host lands one (src/host/doc-service.js, finishRun). preview/build.js
+// bundles it into dist/preview, which the site serves at /preview/; the model
 // (infer.ponjo.app) answers pages on ponjo.app only.
 
 /* global document, IntersectionObserver */
@@ -73,8 +73,8 @@ function lines(root) {
     const { text, conflicts } = merge3(side('base').value, ours, side('theirs').value);
     revision($(root, '[data-result]'), ours, text);
     $(root, '[data-verdict]').textContent = conflicts
-      ? `${conflicts} ${conflicts > 1 ? 'conflicts' : 'conflict'}: where both changed the same lines, the doc's lines stay. In the app the turn first runs once more, told what people did; colliding again, it lands like this, its version marked conflict.`
-      : 'No conflict: Clippy\'s lines land among people\'s, as one edit at the current revision.';
+      ? 'Same line: the doc’s line stays, and the turn runs once more on it.'
+      : 'Different lines: Clippy’s lands beside yours.';
   }
   function preset(name) {
     pick(root, 'data-preset', name);
@@ -523,19 +523,23 @@ function deck() {
   for (const slide of slides) watch.observe(slide);
 }
 
-// The cover: how long the same work takes each way, in the demos below.
-function doneChart(root) {
-  const rows = [['chat', 'Chat beside the file'], ['queue', 'One agent queue'], ['ponjo', 'Ponjo']].map(([way, name]) => {
-    const { end } = MODES[way];
-    const bar = el('span', way === 'ponjo' ? 'arch-bar arch-best' : 'arch-bar arch-plain', `${end} s`);
-    bar.style.width = `${(end / SCALE) * 100}%`;
-    const track = el('div', 'arch-track');
-    track.append(bar);
-    const row = el('div', 'arch-lane');
-    row.append(el('span', '', name), track);
-    return row;
-  });
-  root.append(...rows, el('small', 'arch-eg', 'Seconds until the same work is done in the demos that follow: two asks to an agent, and a line Noor writes.'));
+// One turn, end to end: people, the doc host, the runner and its turns as
+// boxes. `part` (people, host, runner, turns, merge) is the one in focus,
+// the rest dimmed; 'all' shows the whole.
+function flow(node, part) {
+  const on = (...names) => (names.includes(part) ? ' class="on"' : '');
+  const tip = `arch-tip-${part}`;
+  node.innerHTML = `<svg viewBox="0 0 760 214" role="img" aria-label="People comment in the doc host; the runner starts a turn for each ask; each turn works on its own copy; the host merges it with merge3">
+<defs><marker id="${tip}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arch-tip" d="M0 0L10 5L0 10z"/></marker></defs>
+<g${on('people')}><rect x="20" y="20" width="160" height="56" rx="10"/><text x="100" y="44">People</text><text class="sub" x="100" y="62">type and comment</text></g>
+<g${on('people')}><path d="M180 48H294" marker-end="url(#${tip})"/><text class="sub" x="238" y="38">@mention</text></g>
+<g${on('host', 'merge')}><rect x="300" y="20" width="160" height="56" rx="10"/><text x="380" y="44">Doc host</text><text class="sub" x="380" y="62">doc, comments, versions</text></g>
+<g${on('runner')}><path d="M460 48H574" marker-end="url(#${tip})"/><text class="sub" x="518" y="38">open asks</text></g>
+<g${on('runner')}><rect x="580" y="20" width="160" height="56" rx="10"/><text x="660" y="44">Runner</text><text class="sub" x="660" y="62">a turn per ask</text></g>
+<g${on('runner')}><path d="M660 76V124" marker-end="url(#${tip})"/><text class="sub start" x="668" y="104">start</text></g>
+<g${on('turns')}><rect x="420" y="130" width="320" height="70" rx="10"/><text class="sub start" x="436" y="150">Turns, at once</text><rect class="chip" x="436" y="158" width="140" height="30" rx="6"/><text x="506" y="178">Clippy · its copy</text><rect class="chip" x="588" y="158" width="140" height="30" rx="6"/><text x="658" y="178">Max · its copy</text></g>
+<g${on('merge')}><path d="M420 165H380V82" marker-end="url(#${tip})"/><text class="sub end" x="372" y="130">merge3</text></g>
+</svg>`;
 }
 
 // ---- The agent as a member: a turn of the real loop (turn), its model scripted ----
@@ -588,7 +592,7 @@ function member(root) {
     const lit = (names) => rows.forEach((row, i) => row.toggleAttribute('data-on', ACTIONS[i][0].some((tool) => names.includes(tool))));
     drawLines(copy, LINES.map((text) => ({ text })));
     steps.replaceChildren();
-    verdict.textContent = 'Until a proposal passes the program’s check, the copy does not change.';
+    verdict.textContent = '';
     const copies = { 'plan.md': PLAN_COPY, 'plan.md.comments.jsonl': '' };
     const readFile = (path) => copies[path] ?? (['', '.'].includes(path) ? Object.keys(copies) : null);
     let made = []; // the last step's rows, one per call, for the program's answers
@@ -627,7 +631,7 @@ function member(root) {
       drawLines(copy, [{ text: one, old: LINES[0], by: 'Clippy' }, { text: two }]);
       const commented = el('span', 'pj-hl', added.anchor.exact);
       copy.lastChild.replaceChildren(two.slice(0, at), commented, two.slice(at + added.anchor.exact.length));
-      verdict.textContent = `Reply: “${done.reply}” The turn changed only its copy, and added a comment and a resolve to land with it.`;
+      verdict.textContent = `Reply: “${done.reply}”`;
     } catch (error) {
       if (error !== STOPPED) throw error;
     }
@@ -652,7 +656,7 @@ const WORDS = { Clippy: 'shorten this', Max: 'lengthen this', both: 'tighten thi
 function runner(root) {
   const asks = el('div', 'arch-margin');
   const asksPane = el('div', 'arch-pane');
-  asksPane.append(el('span', 'arch-who', 'The comments: open asks'), asks);
+  asksPane.append(el('span', 'arch-who', 'Comments'), asks);
   const turns = el('div', 'arch-margin');
   const turnsPane = el('div', 'arch-pane');
   turnsPane.append(el('span', 'arch-who', 'Running turns'), turns);
@@ -803,7 +807,7 @@ function runner(root) {
 setBuddies(['Clippy', 'Max', 'Claude'].map((name) => ({ id: name, name })));
 setPeople(['Noor']);
 deck();
-doneChart($(document, '[data-demo="done"]'));
+for (const node of document.querySelectorAll('[data-flow]')) flow(node, node.dataset.flow);
 for (const root of document.querySelectorAll('[data-demo="mode"]')) mode(root);
 member($(document, '[data-demo="member"]'));
 runner($(document, '[data-demo="runner"]'));

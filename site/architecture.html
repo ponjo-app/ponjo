@@ -41,43 +41,59 @@
 <main class="ds-page arch-page arch-deck">
 
 <section class="arch-slide arch-cover">
-  <h1>People and AI agents write the same file, and no one waits.</h1>
-  <p class="ds-lead">How Ponjo is built: the Ponjo agent's runtime.</p>
-  <div class="arch-lanes" data-demo="done"></div>
+  <h1>People and AI agents write the same file. No one waits.</h1>
+  <p class="ds-lead">The Ponjo agent's runtime</p>
   <p class="arch-hint">Scroll to go on.</p>
 </section>
 
 <section class="arch-slide">
-  <h2>AI writing tools today block</h2>
-  <p>With a chat beside the file, you ask, wait, review, then ask again.</p>
+  <h2>Today: you wait for the agent</h2>
+  <p>Ask, wait, review, ask again.</p>
   <div class="arch-merge" data-demo="mode" data-mode="chat"></div>
   <small class="arch-eg">E.g. Claude Code desktop, Cursor, Copilot Edits.</small>
 </section>
 
 <section class="arch-slide">
-  <h2>Or they queue the agent's turns</h2>
-  <p>When an agent answers comments, its turns run one at a time, in one queue. You keep writing; your second ask waits for the first.</p>
+  <h2>Today: asks wait in line</h2>
+  <p>One agent answers comments one at a time.</p>
   <div class="arch-merge" data-demo="mode" data-mode="queue"></div>
-  <small class="arch-eg">E.g. Claude Docs, as we saw it: comments answered one by one.</small>
+  <small class="arch-eg">E.g. Claude Docs, as we saw it.</small>
 </section>
 
 <section class="arch-slide">
-  <h2>In Ponjo, nobody waits</h2>
-  <p>You keep writing while agents work. Each @mention starts its own turn, and turns run at once. Each turn lands as one change you can review and undo.</p>
+  <h2>Ponjo: nobody waits</h2>
+  <p>Every @mention runs at once, on its own copy.</p>
   <div class="arch-merge" data-demo="mode" data-mode="ponjo"></div>
-  <small class="arch-eg">When it ends, click a turn's edit count to see its change; Undo takes back that turn alone.</small>
+  <small class="arch-eg">At the end, click 1 edit to review a turn; Undo takes back that turn alone.</small>
 </section>
 
 <section class="arch-slide">
-  <h2>The agent acts as a member, on its own copy</h2>
-  <p>Its tools are a member's actions. The model only proposes: the program checks each proposal and applies it to the turn's copy. Below, a real turn of the Ponjo agent's loop, its model scripted.</p>
+  <h2>One turn, end to end</h2>
+  <p>A comment starts a turn. The turn works on a copy. The host merges it.</p>
+  <div class="arch-flow" data-flow="all"></div>
+</section>
+
+<section class="arch-slide">
+  <div class="arch-slide-head">
+    <div><h2>The runner: a turn per open ask</h2><p>No queue. Resolve stops a turn; a restart runs it again.</p></div>
+    <div class="arch-flow arch-flow-mini" data-flow="runner"></div>
+  </div>
+  <div class="arch-merge" data-demo="runner"></div>
+</section>
+
+<section class="arch-slide">
+  <div class="arch-slide-head">
+    <div><h2>The agent: a member, on its own copy</h2><p>Its tools are a member's actions. The program checks every proposal.</p></div>
+    <div class="arch-flow arch-flow-mini" data-flow="turns"></div>
+  </div>
   <div class="arch-merge" data-demo="member"></div>
-  <small class="arch-eg">The tools are the permissions: no shell, and no network but the model's. Text in a doc can at worst make a proposal you undo.</small>
 </section>
 
 <section class="arch-slide">
-  <h2>The copy lands on the doc as it is now</h2>
-  <p>When the turn ends, the doc host merges its copy into the doc by line. Where a person changed the same lines meanwhile, the turn runs once more on the new text.</p>
+  <div class="arch-slide-head">
+    <div><h2>The host: merge3 onto the doc as it is now</h2><p>A turn that collides with your edit runs once more.</p></div>
+    <div class="arch-flow arch-flow-mini" data-flow="merge"></div>
+  </div>
   <div class="arch-merge" data-demo="lines" data-buddy="Clippy">
     <div class="arch-merge-head"><b>merge3</b><span>Edit any of the three</span></div>
     <div class="arch-controls">
@@ -97,15 +113,9 @@
 </section>
 
 <section class="arch-slide">
-  <h2>The runner is a reconciler over stateless turns</h2>
-  <p>The running turns always equal the open asks in the comments. A turn keeps no state and changes nothing before its proposal, so turns run side by side, resolving a thread stops its turn at once, and a turn cut off by a restart simply runs again.</p>
-  <div class="arch-merge" data-demo="runner"></div>
-</section>
-
-<section class="arch-slide">
   <div class="arch-merge" data-demo="turn" data-buddy="Clippy">
     <div class="arch-merge-head"><b>Try a real turn</b><span>On NVIDIA Nemotron</span></div>
-    <p>Ask Clippy and watch its steps. Keep editing while it works on its copy; change the paragraph it is changing to see a collision.</p>
+    <p>Edit the paragraph while Clippy works to see a collision.</p>
     <textarea class="pj-input arch-text" data-doc rows="7" spellcheck="false" aria-label="plan.md"></textarea>
     <div class="arch-controls">
       <input class="pj-input arch-ask" data-ask value="@Clippy make the paragraph about the beta half as long" aria-label="Comment">
