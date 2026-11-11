@@ -47,38 +47,57 @@
 </section>
 
 <section class="arch-slide">
-  <h2>The problem: someone always waits</h2>
+  <p class="arch-eyebrow">The problem</p>
+  <h2>Someone always waits</h2>
   <div class="arch-merge" data-demo="who"></div>
 </section>
 
 <section class="arch-slide">
+  <p class="arch-eyebrow">The answer</p>
   <h2>Three things block. Three designs remove them.</h2>
   <div class="arch-merge" data-demo="blocks"></div>
 </section>
 
 <section class="arch-slide">
-  <h2>1 · Asking an agent never stops you</h2>
+  <p class="arch-eyebrow">Design 1 · What you see</p>
+  <h2>Asking an agent never stops you</h2>
   <div class="arch-merge" data-demo="design1"></div>
 </section>
 
 <section class="arch-slide">
-  <h2>2 · Agents always run in parallel</h2>
+  <p class="arch-eyebrow">Design 1 · Under the hood</p>
+  <h2>Comments are data; agents run in their own process</h2>
+  <div class="arch-merge" data-hood="1"></div>
+</section>
+
+<section class="arch-slide">
+  <p class="arch-eyebrow">Design 2 · What you see</p>
+  <h2>Agents always run in parallel</h2>
   <div class="arch-merge" data-demo="design2"></div>
 </section>
 
 <section class="arch-slide">
-  <h2>3 · The app merges. You never resolve.</h2>
+  <p class="arch-eyebrow">Design 2 · Under the hood</p>
+  <h2>A reconciler over stateless turns, each on a private copy</h2>
+  <div class="arch-merge" data-hood="2"></div>
+</section>
+
+<section class="arch-slide">
+  <p class="arch-eyebrow">Design 3 · What you see</p>
+  <h2>The app merges. You never resolve.</h2>
   <div class="arch-merge" data-demo="design3"></div>
 </section>
 
 <section class="arch-slide">
-  <h2>Putting it together</h2>
-  <div class="arch-merge" data-demo="how"></div>
+  <p class="arch-eyebrow">Design 3 · Under the hood</p>
+  <h2>One writer merges every change</h2>
+  <div class="arch-merge" data-hood="3"></div>
 </section>
 
 <section class="arch-slide">
+  <p class="arch-eyebrow">Try it</p>
   <div class="arch-merge" data-demo="turn" data-buddy="Clippy">
-    <div class="arch-merge-head"><b>Try it: ask Clippy</b><span>A real agent, on NVIDIA Nemotron</span></div>
+    <div class="arch-merge-head"><b>Ask Clippy</b><span>A real agent, on NVIDIA Nemotron</span></div>
     <p>Edit the paragraph while Clippy works on it, and see what happens.</p>
     <textarea class="pj-input arch-text" data-doc rows="7" spellcheck="false" aria-label="plan.md"></textarea>
     <div class="arch-controls">

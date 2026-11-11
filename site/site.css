@@ -120,6 +120,7 @@ a { color: var(--accent); }
 .arch-deck { padding-top: 0; padding-bottom: 0; }
 .arch-slide { display: flex; flex-direction: column; justify-content: center; padding: 24px 0; }
 .ds-page .arch-slide > h2 { margin-top: 0; font-size: 24px; }
+.ds-page .arch-eyebrow { margin: 0 0 4px; color: var(--text-faint); font-size: 13px; font-weight: 600; }
 .arch-cover h1 { max-width: 720px; font-size: 36px; text-wrap: balance; }
 .arch-hint { color: var(--text-faint); font-size: 13px; }
 .arch-dots { display: none; }
@@ -197,6 +198,7 @@ a { color: var(--accent); }
 .arch-flow .chip { fill: var(--bg-soft); }
 .arch-flow text { fill: var(--text); font: 500 13px var(--ui-font); text-anchor: middle; }
 .arch-flow .sub { fill: var(--text-soft); font-size: 11.5px; font-weight: 400; }
+.arch-flow .small { font-size: 12px; }
 .arch-flow .start { text-anchor: start; }
 .arch-flow .end { text-anchor: end; }
 .arch-flow path { fill: none; stroke: var(--text-faint); stroke-width: 1.25; }

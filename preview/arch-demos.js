@@ -1,11 +1,11 @@
 // The architecture page's live demos (site/architecture.html), each played
 // step by step with a caption: who waits, the same work three ways on one
-// clock; what blocks and the three designs that remove it, each shown in a
-// Ponjo window drawn with the app's own classes, and behind it each buddy's
-// copy, merged in with merge3 (src/core/diff.js); one request through a
-// drawing; and a real turn of the Ponjo agent (agents/ponjo-core.mjs) on the
-// preview's model, landed as the doc host lands one
-// (src/host/doc-service.js, finishRun). preview/build.js bundles it into
+// clock; what blocks and the three designs that remove it; for each design,
+// what you see, in a Ponjo window drawn with the app's own classes with each
+// buddy's copy behind it, merged in with merge3 (src/core/diff.js), and the
+// parts under the hood that make it so; and a real turn of the Ponjo agent
+// (agents/ponjo-core.mjs) on the preview's model, landed as the doc host lands
+// one (src/host/doc-service.js, finishRun). preview/build.js bundles it into
 // dist/preview, which the site serves at /preview/; the model
 // (infer.ponjo.app) answers pages on ponjo.app only.
 
@@ -313,39 +313,58 @@ function whoWaits(root) {
   });
 }
 
-// ---- How it works: one request, end to end ----
+// ---- Under the hood: the parts that make each design work ----
 
-// You, the doc, the part that starts agents, and the agents at work, as
-// boxes; `part` (you, doc, start, agents, merge) in focus, the rest dimmed.
-function flow(node, part) {
-  const on = (...names) => (names.includes(part) ? ' class="on"' : '');
-  node.toggleAttribute('data-focus', Boolean(part));
-  node.innerHTML = `<svg viewBox="0 0 760 214" role="img" aria-label="You @mention an agent in a comment; the app starts an agent for each @mention; each works on its own copy of the doc; the app merges the copy into the doc">
+// The window you type in, the doc host (the only writer of the file), the
+// runner, and the turns, each an agent in its own process with its own copy.
+// `parts` are the boxes and lines in focus; the rest are dimmed.
+function machine(node, parts) {
+  const on = (name) => (parts.includes(name) ? ' class="on"' : '');
+  node.toggleAttribute('data-focus', parts.length > 0);
+  node.innerHTML = `<svg viewBox="0 0 760 240" role="img" aria-label="The window sends your typing and comments to the doc host, the only writer of the file; the runner reads the open @mentions and starts a turn for each, an agent in its own process on its own copy; the host merges each copy back with merge3">
 <defs><marker id="arch-tip" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arch-tip" d="M0 0L10 5L0 10z"/></marker></defs>
-<g${on('you')}><rect x="20" y="20" width="160" height="56" rx="10"/><text x="100" y="44">You</text><text class="sub" x="100" y="62">write and comment</text></g>
-<g${on('you')}><path d="M180 48H294" marker-end="url(#arch-tip)"/><text class="sub" x="238" y="38">@mention</text></g>
-<g${on('doc', 'merge')}><rect x="300" y="20" width="160" height="56" rx="10"/><text x="380" y="44">The doc</text><text class="sub" x="380" y="62">file, comments, history</text></g>
-<g${on('start')}><path d="M460 48H574" marker-end="url(#arch-tip)"/><text class="sub" x="518" y="38">@mentions</text></g>
-<g${on('start')}><rect x="580" y="20" width="160" height="56" rx="10"/><text x="660" y="44">Starts agents</text><text class="sub" x="660" y="62">one per @mention</text></g>
-<g${on('start')}><path d="M660 76V124" marker-end="url(#arch-tip)"/></g>
-<g${on('agents')}><rect x="420" y="130" width="320" height="70" rx="10"/><text class="sub start" x="436" y="150">Agents at work, at once</text><rect class="chip" x="436" y="158" width="140" height="30" rx="6"/><text x="506" y="178">Clippy · own copy</text><rect class="chip" x="588" y="158" width="140" height="30" rx="6"/><text x="658" y="178">Max · own copy</text></g>
-<g${on('merge')}><path d="M420 165H380V82" marker-end="url(#arch-tip)"/><text class="sub end" x="372" y="130">merged in</text></g>
+<g${on('window')}><rect x="20" y="20" width="160" height="72" rx="10"/><text x="100" y="50">Window</text><text class="sub" x="100" y="70">you type and comment</text></g>
+<g${on('typing')}><path d="M180 42H294" marker-end="url(#arch-tip)"/><text class="sub" x="238" y="34">your typing</text></g>
+<g${on('comment')}><path d="M180 72H294" marker-end="url(#arch-tip)"/><text class="sub" x="238" y="88">@mention</text></g>
+<g${on('host')}><rect x="300" y="20" width="160" height="72" rx="10"/><text x="380" y="44">Doc host</text><text class="sub" x="380" y="62">the only writer</text><text class="sub" x="380" y="78">file, comments, versions</text></g>
+<g${on('asks')}><path d="M460 56H574" marker-end="url(#arch-tip)"/><text class="sub" x="518" y="48">open @mentions</text></g>
+<g${on('runner')}><rect x="580" y="20" width="160" height="72" rx="10"/><text x="660" y="50">Runner</text><text class="sub" x="660" y="70">turns = open @mentions</text></g>
+<g${on('start')}><path d="M660 92V146" marker-end="url(#arch-tip)"/><text class="sub start" x="668" y="124">start, stop</text></g>
+<g${on('turns')}><rect x="400" y="152" width="340" height="72" rx="10"/><text class="sub start" x="414" y="172">Turns, each a process with a private copy</text><rect class="chip" x="414" y="182" width="154" height="30" rx="6"/><text class="small" x="491" y="202">Clippy · copy + agent</text><rect class="chip" x="574" y="182" width="154" height="30" rx="6"/><text class="small" x="651" y="202">Max · copy + agent</text></g>
+<g${on('merge')}><path d="M400 188H380V98" marker-end="url(#arch-tip)"/><text class="sub end" x="372" y="150">merge3</text></g>
 </svg>`;
 }
 
-function howItWorks(root) {
+// A slide's steps: each a caption and the parts it puts in focus.
+function underTheHood(root, steps) {
   const caption = el('p', 'arch-caption');
   const drawing = el('div', 'arch-flow');
   root.append(caption, drawing);
-  const focus = (part, say) => ({ say, run: async () => flow(drawing, part) });
-  stepper(root, caption, [
-    focus('you', '1 · You @mention an agent in a comment, and keep writing.'),
-    focus('start', '2 · The app starts an agent for every @mention, all at once.'),
-    focus('agents', '2 · Each works on its own copy, changing nothing else until it is done.'),
-    focus('merge', '3 · The app, the only writer, merges each copy into the doc.'),
-    { ...focus(null, 'So nobody waits: not you, not the other people, not the other agents.'), hold: 5000 },
-  ], () => flow(drawing, null));
+  stepper(root, caption, steps.map(([parts, say], i) => ({
+    say,
+    run: async () => machine(drawing, parts),
+    hold: i === steps.length - 1 ? 6000 : 4500,
+  })), () => machine(drawing, []));
 }
+
+const HOODS = {
+  1: [
+    [['window', 'typing', 'host'], 'Your typing goes to the doc host as small edits, merged by character with everyone else’s. It never waits for an agent.'],
+    [['comment', 'host', 'asks', 'runner'], 'An @mention is just a line in the doc’s comments file. The runner reads it…'],
+    [['runner', 'start', 'turns'], '…and starts the agent in a process of its own. Nothing in your window waits on it.'],
+  ],
+  2: [
+    [['asks', 'runner'], 'The runner is a reconciler, not a queue: it keeps one turn running for each open @mention. No line, no limit.'],
+    [['start', 'turns'], 'Each turn gets a private folder with copies of the doc and its comments. The agent keeps no state, and can only write its copies.'],
+    [['runner', 'start', 'turns'], 'So turns share nothing while they run. Resolving a comment stops its turn and deletes its folder; after a restart, the runner starts the unanswered ones again.'],
+  ],
+  3: [
+    [['host'], 'The doc host is the only writer of the file: every edit, typed or merged, goes through it, in order.'],
+    [['turns', 'merge', 'host'], 'When a turn ends, the host merges its copy into the doc as it is now, by line: merge3 of the copy as it started, the doc now, and the copy as it ended.'],
+    [['merge', 'runner', 'start', 'turns'], 'Where you changed the same lines, your lines stay, and the runner runs the turn once more, told what you changed.'],
+    [['host'], 'Each turn lands as one version, with the one before it kept: that is its “1 edit” count, and its Undo.'],
+  ],
+};
 
 // ---- Three things block; three designs remove them ----
 
@@ -719,5 +738,5 @@ blockers($(document, '[data-demo="blocks"]'));
 design1($(document, '[data-demo="design1"]'));
 design2($(document, '[data-demo="design2"]'));
 design3($(document, '[data-demo="design3"]'));
-howItWorks($(document, '[data-demo="how"]'));
+for (const root of document.querySelectorAll('[data-hood]')) underTheHood(root, HOODS[root.dataset.hood]);
 buddyTurn($(document, '[data-demo="turn"]'));
