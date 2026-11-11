@@ -6,8 +6,8 @@
 <title>How Ponjo is built</title>
 <meta name="description" content="How Ponjo merges edits from people and AI buddies, and how its own agent runs.">
 <link rel="icon" href="./build/icon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="./dist/web/app.css?v=d69fda6">
-<link rel="stylesheet" href="site.css?v=d69fda6">
+<link rel="stylesheet" href="./dist/web/app.css?v=1b44196">
+<link rel="stylesheet" href="site.css?v=1b44196">
 </head>
 <body>
 <header class="site-header">
@@ -38,16 +38,50 @@
 <!-- How edits merge (docs/architecture.md) and how the Ponjo agent runs (docs/ponjo-agent.md),
      with live demos on the app's own code (preview/arch-demos.js). The docs are the truth;
      change this page with them. -->
-<main class="ds-page arch-page">
+<main class="ds-page arch-page arch-deck">
 
+<section class="arch-slide arch-cover">
   <h1>How Ponjo is built</h1>
   <p class="ds-lead">People and AI buddies edit the same file at once. One host on your machine orders every edit, no one resolves a conflict by hand, and our own agent proposes edits the program checks.</p>
+  <p class="arch-hint">Scroll to go on.</p>
+</section>
 
+<section class="arch-slide">
+  <h2>Who waits for whom</h2>
+  <p>Three ways to write with AI agents, told apart by two questions: do people wait for the agent, and do its runs wait for each other?</p>
+  <div class="arch-ideas">
+    <div class="arch-idea"><b>1. Chat beside the file</b><span>People wait for Claude, then review it. The next ask waits for the last.</span></div>
+    <div class="arch-idea"><b>2. One agent queue</b><span>People keep writing. Claude's runs wait in line.</span></div>
+    <div class="arch-idea"><b>3. Ponjo</b><span>People keep writing. Every turn runs at once.</span></div>
+  </div>
+</section>
+
+<section class="arch-slide">
+  <h2>1. People and the agent wait for each other</h2>
+  <p>A chat with one agent beside the file. Noor asks Claude, waits, reviews, then asks again, and writes only when Claude is done.</p>
+  <div class="arch-merge" data-demo="mode" data-mode="chat"></div>
+  <small class="arch-eg">E.g. Claude Code desktop, Cursor, Copilot Edits.</small>
+</section>
+
+<section class="arch-slide">
+  <h2>2. The agent's runs wait for each other</h2>
+  <p>Comments in a shared doc, answered by one agent, one at a time. Noor keeps writing; the second ask waits in line behind the first.</p>
+  <div class="arch-merge" data-demo="mode" data-mode="queue"></div>
+  <small class="arch-eg">E.g. Claude Docs, as we saw it: comments answered one by one.</small>
+</section>
+
+<section class="arch-slide">
+  <h2>3. Nobody waits</h2>
+  <p>Ponjo: each @mention is its own turn, on its own copy, merged the moment it ends. Noor keeps writing while Clippy and Max work at once.</p>
+  <div class="arch-merge" data-demo="mode" data-mode="ponjo"></div>
+</section>
+
+<section class="arch-slide">
   <h2>Merge strategy</h2>
-  <p>Every edit is made on a revision. How it merges depends on its path: people's typing by character, everything else by line, where people's lines win.</p>
+  <p>An edit merges by how it comes, not by who made it. Typing and pasting merge by character. A whole text that arrives late (a buddy's turn, an outside change, an undo) merges by line: where both changed a line, the doc as it is wins.</p>
 
   <div class="arch-merge" data-demo="typing">
-    <div class="arch-merge-head"><b>By character</b><span>People's typing, live</span></div>
+    <div class="arch-merge-head"><b>By character</b><span>Typing, pasting</span></div>
     <p>Type in both. Each edit goes to the host on the revision it was made on; one made on an older revision is moved over what landed since. Nothing typed is dropped, and both pages end on the file's text.</p>
     <div class="arch-controls">
       <div class="pj-segmented" role="radiogroup" aria-label="Network delay">
@@ -65,8 +99,11 @@
     <ol class="arch-log" data-log></ol>
   </div>
 
+</section>
+
+<section class="arch-slide">
   <div class="arch-merge" data-demo="lines" data-buddy="Clippy">
-    <div class="arch-merge-head"><b>By line</b><span>AI buddies' turns, outside changes and undo</span></div>
+    <div class="arch-merge-head"><b>By line</b><span>A turn, an outside change, an undo</span></div>
     <p>A turn works on a copy while people go on typing. When it ends, the host merges three texts with <code>merge3</code>. Edit any of them.</p>
     <div class="arch-controls">
       <div class="pj-segmented" role="radiogroup" aria-label="Case">
@@ -76,13 +113,16 @@
     </div>
     <div class="arch-sides">
       <label><span class="arch-who">Copy as it started</span><textarea class="pj-input arch-text" data-side="base" rows="5" spellcheck="false"></textarea></label>
-      <label><span class="arch-who">Doc now (people)</span><textarea class="pj-input arch-text" data-side="ours" rows="5" spellcheck="false"></textarea></label>
+      <label><span class="arch-who">Doc now</span><textarea class="pj-input arch-text" data-side="ours" rows="5" spellcheck="false"></textarea></label>
       <label><span class="arch-who">Clippy's copy</span><textarea class="pj-input arch-text" data-side="theirs" rows="5" spellcheck="false"></textarea></label>
     </div>
     <div class="arch-file"><span class="arch-who">Lands, as a revision of the doc now</span><div class="ds-prose" data-result></div></div>
     <p class="arch-verdict" data-verdict></p>
   </div>
 
+</section>
+
+<section class="arch-slide">
   <h2>The Ponjo agent</h2>
   <p>Our own agent, for only what co-writing needs: read, comment, edit. The model reads and proposes; the program checks and applies. Its loop, <code>turn()</code>, is one file that imports nothing, so this page runs it too.</p>
   <div class="arch-loop">
@@ -98,6 +138,9 @@
     <div class="arch-idea"><b>Stateless</b><span>A turn remembers nothing after. Its messages are its state, and its trace replays it. It lands as any turn does: its copy merged by line, as above.</span></div>
   </div>
 
+</section>
+
+<section class="arch-slide">
   <div class="arch-merge" data-demo="turn" data-buddy="Clippy">
     <div class="arch-merge-head"><b>Try a real turn</b><span>On NVIDIA Nemotron</span></div>
     <p>Ask Clippy and watch its steps. Keep editing while it works on its copy; change the paragraph it is changing to see a collision.</p>
@@ -117,9 +160,11 @@
   </div>
 
   <p>More in <a href="https://github.com/ponjo-app/ponjo/blob/main/docs/architecture.md">the architecture doc</a> and <a href="https://github.com/ponjo-app/ponjo/blob/main/docs/ponjo-agent.md">the Ponjo agent's</a>.</p>
+</section>
 </main>
+<nav class="arch-dots" aria-label="Slides" data-dots></nav>
 <script type="module">
-  import { agentFace, personFace, buddyColor, setBuddies } from './dist/web/faces.js?v=d69fda6';
+  import { agentFace, personFace, buddyColor, setBuddies } from './dist/web/faces.js?v=1b44196';
 
   setBuddies([{ id: 'Clippy', name: 'Clippy' }]);
 
@@ -131,7 +176,7 @@
   }
   for (const node of document.querySelectorAll('[data-buddy]')) node.style.setProperty('--buddy', buddyColor(node.dataset.buddy));
 </script>
-<script type="module" src="preview/arch-demos.js?v=d69fda6"></script>
-<script type="module" src="site.js?v=d69fda6"></script>
+<script type="module" src="preview/arch-demos.js?v=1b44196"></script>
+<script type="module" src="site.js?v=1b44196"></script>
 </body>
 </html>
