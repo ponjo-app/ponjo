@@ -112,22 +112,15 @@ a { color: var(--accent); }
 .intro-page .intro-cta { margin-top: 32px; }
 .intro-page .intro-cta a { height: 40px; padding: 0 16px; font-size: 14px; text-decoration: none; }
 
-/* ---- architecture page: how edits merge and how a turn runs ---- */
+/* ---- architecture page: slides on the Ponjo agent's runtime, each with its demo ---- */
 
 .arch-page small { display: block; color: var(--text-soft); font-size: 12px; line-height: 1.5; }
-
-.arch-node { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 10px; background: var(--canvas); box-shadow: var(--shadow); font-size: 13px; }
-.arch-node b { font-weight: 600; }
-.arch-node code { font-size: 11px; }
-.arch-key { background: var(--bg-soft); box-shadow: inset 0 0 0 1px var(--border-strong); }
-.arch-arrow { display: flex; justify-content: center; color: var(--text-faint); }
-.arch-arrow .pj-icon { width: 20px; height: 20px; }
 
 /* the page as slides: a screen each, snapped on wide screens, a dot each at the right */
 .arch-deck { padding-top: 0; padding-bottom: 0; }
 .arch-slide { display: flex; flex-direction: column; justify-content: center; padding: 48px 0; }
 .ds-page .arch-slide > h2 { margin-top: 0; }
-.arch-cover h1 { font-size: 36px; }
+.arch-cover h1 { max-width: 720px; font-size: 36px; text-wrap: balance; }
 .arch-hint { color: var(--text-faint); font-size: 13px; }
 .arch-dots { display: none; }
 .arch-dot { width: 8px; height: 8px; padding: 0; border: 0; border-radius: 50%; background: var(--border-strong); }
@@ -138,11 +131,22 @@ a { color: var(--accent); }
   .arch-dots { position: fixed; top: 50%; right: 16px; z-index: 5; display: flex; flex-direction: column; gap: 8px; transform: translateY(-50%); }
 }
 
-/* who waits for whom: a window of each way, and its writers' lanes on one clock */
+/* a demo's frame, its head and its controls */
+.arch-merge { margin-top: 16px; padding: 24px; border-radius: 10px; background: var(--canvas); box-shadow: var(--shadow); }
+.arch-merge-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; margin-bottom: 8px; }
+.arch-merge-head b { font-size: 16px; font-weight: 600; }
+.arch-merge-head span { color: var(--text-faint); font-size: 13px; }
+.arch-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 12px 0; }
+.arch-eg { color: var(--text-faint); font-size: 12px; line-height: 1.5; }
+.arch-who { display: flex; align-items: center; gap: 6px; color: var(--text-soft); font-size: 12px; }
+.arch-actor { display: flex; align-items: center; gap: 6px; }
+.arch-verdict { margin: 12px 0 0; font-size: 13px; }
+
+/* a window of a way: panes, a doc's lines, threads in the margin */
 .arch-win { display: grid; grid-template-columns: minmax(0, 1fr) 240px; gap: 12px; min-height: 216px; padding: 12px; border-radius: 10px; background: var(--bg-soft); }
 .arch-win-chat { grid-template-columns: 240px minmax(0, 1fr); }
 .arch-pane { display: flex; flex-direction: column; gap: 8px; min-width: 0; padding: 12px; border-radius: 6px; background: var(--canvas); box-shadow: var(--shadow); }
-.arch-pane > [hidden], .arch-card > [hidden] { display: none; }
+.arch-pane > [hidden], .arch-card [hidden] { display: none; }
 .arch-lines { padding-top: 16px; font-size: 13px; line-height: 1.6; }
 .arch-line { min-height: 1.6em; white-space: pre-wrap; }
 .arch-line + .arch-line { margin-top: 16px; }
@@ -152,68 +156,60 @@ a { color: var(--accent); }
 .arch-win .pj-card { position: static; display: flex; flex-direction: column; gap: 6px; padding: 8px 12px; cursor: default; }
 .arch-win .pj-receipt { margin-top: 0; }
 .arch-card > .arch-actor { color: var(--text-soft); font-size: 12px; }
-.arch-ask { min-height: 1.5em; font-size: 13px; }
-.arch-status { color: var(--text-soft); font-size: 12px; }
-.arch-actor { display: flex; align-items: center; gap: 6px; }
+.arch-quote { min-height: 1.5em; font-size: 13px; }
+.arch-state { color: var(--text-soft); font-size: 12px; }
 .arch-say { padding: 2px 8px; border-radius: 10px; background: var(--bg-soft); font-size: 12px; }
 .arch-choices { display: flex; gap: 6px; }
 .arch-choices .pj-secondary { height: 24px; padding: 0 8px; font-size: 12px; }
 .arch-choices .arch-pressed { background: var(--active); }
+
+/* lanes: who did what when, on one clock */
 .arch-lanes { display: flex; flex-direction: column; gap: 6px; margin-top: 16px; }
 .arch-lane { display: grid; grid-template-columns: 128px minmax(0, 1fr); align-items: center; gap: 8px; color: var(--text-soft); font-size: 12px; }
 .arch-track { position: relative; height: 20px; border-radius: 4px; background: var(--bg-soft); }
 .arch-bar { position: absolute; top: 0; bottom: 0; overflow: hidden; border-radius: 4px; background: color-mix(in oklch, var(--buddy) 45%, transparent); color: var(--text); font-size: 11px; line-height: 20px; text-indent: 6px; white-space: nowrap; }
 .arch-wait { background: repeating-linear-gradient(135deg, var(--active) 0 4px, transparent 4px 8px); color: var(--text-soft); }
+.arch-plain { background: var(--active); }
+.arch-best { background: var(--text); color: var(--on-text); }
 .arch-head { position: absolute; top: -2px; bottom: -2px; border-left: 1px solid var(--text-faint); }
 .arch-axis { position: relative; height: 16px; font-size: 11px; color: var(--text-faint); }
 .arch-tick { position: absolute; top: 0; }
 .arch-done { position: absolute; top: 0; right: 0; color: var(--text); font-size: 12px; font-weight: 500; }
-.arch-eg { color: var(--text-faint); font-size: 12px; line-height: 1.5; }
-@media (max-width: 720px) {
-  .arch-win, .arch-win-chat { grid-template-columns: minmax(0, 1fr); }
-}
 
-/* the two merges */
-.arch-merge { margin-top: 16px; padding: 24px; border-radius: 10px; background: var(--canvas); box-shadow: var(--shadow); }
-.arch-merge-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; margin-bottom: 8px; }
-.arch-merge-head b { font-size: 16px; font-weight: 600; }
-.arch-merge-head span { color: var(--text-faint); font-size: 13px; }
-.arch-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 12px 0; }
-.arch-pages, .arch-sides { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-.arch-sides { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-.arch-pages label, .arch-sides label { display: flex; flex-direction: column; gap: 6px; }
-.arch-who { display: flex; align-items: center; gap: 6px; color: var(--text-soft); font-size: 12px; }
+/* the agent as a member: its copy, a member's actions beside its tools, the program's answers */
+.arch-member { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.arch-actions { display: flex; flex-direction: column; gap: 4px; }
+.arch-action { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 8px; min-height: 28px; padding: 4px 8px; border-radius: 6px; font-size: 13px; transition: background 0.2s; }
+.arch-action[data-on] { background: var(--active); }
+
+/* the runner: the open asks, reconciled into running turns */
+.arch-runner { grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: start; }
+.arch-reconcile { align-self: center; color: var(--text-faint); font: 12px var(--mono); }
+.arch-reconcile::after { content: ' →'; }
+.arch-turn { display: flex; flex-direction: column; gap: 6px; }
+.arch-turn .arch-track { height: 6px; }
+.arch-turn .arch-bar { background: var(--buddy); }
+
+/* the merge: the copy as it started, the doc now, the copy as it ended */
+.arch-sides { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.arch-sides label { display: flex; flex-direction: column; gap: 6px; }
 .arch-page .arch-text { display: block; width: 100%; box-sizing: border-box; height: auto; padding: 8px; resize: vertical; font: 14px/1.6 var(--ui-font); }
 .arch-file { display: flex; flex-direction: column; gap: 6px; margin-top: 16px; }
 .arch-file .ds-prose { padding: 8px 12px; border-radius: 6px; background: var(--bg-soft); white-space: pre-wrap; }
-.arch-same { color: var(--text); }
-.ds-page .arch-log { margin: 12px 0 0; padding: 0; list-style: none; color: var(--text-soft); font-size: 12px; }
-.ds-page .arch-log li { margin: 2px 0; }
-.arch-moved { color: var(--text); font-weight: 500; }
+
+/* a real turn: the ask, its steps, what landed */
 .arch-ask { flex: 1; min-width: 200px; }
 .arch-status { display: flex; align-items: center; gap: 8px; color: var(--text-soft); font-size: 13px; }
 .arch-reply { margin: 12px 0 0; font-size: 14px; }
-.arch-page > p:last-child { margin-top: 32px; }
-@media (max-width: 720px) {
-  .arch-pages, .arch-sides { grid-template-columns: 1fr; }
-}
-.arch-verdict { margin: 12px 0 0; font-size: 13px; }
-
-/* the Ponjo agent: its loop, its rules, a turn's steps */
-.arch-loop { display: grid; grid-template-columns: 1fr auto 1fr auto 1.4fr; align-items: center; gap: 8px; margin: 16px 0 12px; }
-.arch-loop .arch-node { align-self: stretch; }
-.arch-tools { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0; }
 .arch-tool { padding: 0 6px; border-radius: 4px; background: var(--bg-soft); box-shadow: inset 0 0 0 1px var(--border); font: 500 12px/1.6 var(--mono); }
-.arch-tool-end { background: var(--text); color: var(--on-text); box-shadow: none; }
-.arch-ideas { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
-.arch-idea { display: flex; flex-direction: column; gap: 4px; padding: 16px; border-radius: 10px; background: var(--bg-soft); }
-.arch-idea b { font-size: 14px; font-weight: 600; }
-.arch-idea span { color: var(--text-soft); font-size: 13px; line-height: 1.5; }
 .ds-page .arch-trace { margin: 8px 0 0; padding: 0; list-style: none; font-size: 12px; }
 .ds-page .arch-trace li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 4px 0; color: var(--text-soft); }
 .arch-trace .arch-back { color: var(--red); }
+.arch-page .arch-slide > p:last-child { margin-top: 32px; }
+
 @media (max-width: 720px) {
-  .arch-loop, .arch-ideas { grid-template-columns: 1fr; }
-  .arch-arrow .pj-icon { transform: rotate(90deg); }
+  .arch-win, .arch-win-chat, .arch-member, .arch-runner, .arch-sides { grid-template-columns: minmax(0, 1fr); }
+  .arch-reconcile { justify-self: center; }
+  .arch-reconcile::after { content: ' ↓'; }
   .arch-merge { padding: 16px; }
 }

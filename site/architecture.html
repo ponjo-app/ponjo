@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>How Ponjo is built</title>
-<meta name="description" content="How Ponjo merges edits from people and AI buddies, and how its own agent runs.">
+<meta name="description" content="How the Ponjo agent's runtime lets people and AI agents write the same file without waiting for each other.">
 <link rel="icon" href="../build/icon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="../dist/web/app.css">
 <link rel="stylesheet" href="site.css">
@@ -41,70 +41,45 @@
 <main class="ds-page arch-page arch-deck">
 
 <section class="arch-slide arch-cover">
-  <h1>How Ponjo is built</h1>
-  <p class="ds-lead">People and AI buddies edit the same file at once. One host on your machine orders every edit, no one resolves a conflict by hand, and our own agent proposes edits the program checks.</p>
+  <h1>People and AI agents write the same file, and no one waits.</h1>
+  <p class="ds-lead">How Ponjo is built: the Ponjo agent's runtime.</p>
+  <div class="arch-lanes" data-demo="done"></div>
   <p class="arch-hint">Scroll to go on.</p>
 </section>
 
 <section class="arch-slide">
-  <h2>Who waits for whom</h2>
-  <p>Three ways to write with AI agents, told apart by two questions: do people wait for the agent, and do its runs wait for each other?</p>
-  <div class="arch-ideas">
-    <div class="arch-idea"><b>1. Chat beside the file</b><span>People wait for Claude, then review it. The next ask waits for the last.</span></div>
-    <div class="arch-idea"><b>2. One agent queue</b><span>People keep writing. Claude's runs wait in line.</span></div>
-    <div class="arch-idea"><b>3. Ponjo</b><span>People keep writing. Every turn runs at once.</span></div>
-  </div>
-</section>
-
-<section class="arch-slide">
-  <h2>1. People and the agent wait for each other</h2>
-  <p>A chat with one agent beside the file. Noor asks Claude, waits, reviews, then asks again, and writes only when Claude is done.</p>
+  <h2>AI writing tools today block</h2>
+  <p>With a chat beside the file, you ask, wait, review, then ask again.</p>
   <div class="arch-merge" data-demo="mode" data-mode="chat"></div>
   <small class="arch-eg">E.g. Claude Code desktop, Cursor, Copilot Edits.</small>
 </section>
 
 <section class="arch-slide">
-  <h2>2. The agent's runs wait for each other</h2>
-  <p>Comments in a shared doc, answered by one agent, one at a time. Noor keeps writing; the second ask waits in line behind the first.</p>
+  <h2>Or they queue the agent's turns</h2>
+  <p>When an agent answers comments, its turns run one at a time, in one queue. You keep writing; your second ask waits for the first.</p>
   <div class="arch-merge" data-demo="mode" data-mode="queue"></div>
   <small class="arch-eg">E.g. Claude Docs, as we saw it: comments answered one by one.</small>
 </section>
 
 <section class="arch-slide">
-  <h2>3. Nobody waits</h2>
-  <p>Ponjo: each @mention is its own turn, on its own copy, merged the moment it ends. Noor keeps writing while Clippy and Max work at once.</p>
+  <h2>In Ponjo, nobody waits</h2>
+  <p>You keep writing while agents work. Each @mention starts its own turn, and turns run at once. Each turn lands as one change you can review and undo.</p>
   <div class="arch-merge" data-demo="mode" data-mode="ponjo"></div>
+  <small class="arch-eg">When it ends, click a turn's edit count to see its change; Undo takes back that turn alone.</small>
 </section>
 
 <section class="arch-slide">
-  <h2>Merge strategy</h2>
-  <p>An edit merges by how it comes, not by who made it. Typing and pasting merge by character. A whole text that arrives late (a buddy's turn, an outside change, an undo) merges by line: where both changed a line, the doc as it is wins.</p>
-
-  <div class="arch-merge" data-demo="typing">
-    <div class="arch-merge-head"><b>By character</b><span>Typing, pasting</span></div>
-    <p>Type in both. Each edit goes to the host on the revision it was made on; one made on an older revision is moved over what landed since. Nothing typed is dropped, and both pages end on the file's text.</p>
-    <div class="arch-controls">
-      <div class="pj-segmented" role="radiogroup" aria-label="Network delay">
-        <button type="button" role="radio" aria-checked="true" data-delay="0">No delay</button>
-        <button type="button" role="radio" aria-checked="false" data-delay="1500">1.5 s delay</button>
-      </div>
-      <button class="pj-secondary" type="button" data-play>Type at once</button>
-      <button class="pj-link-button" type="button" data-reset>Reset</button>
-    </div>
-    <div class="arch-pages">
-      <label><span class="arch-who"><span data-face="Noor" data-person></span>Noor's page</span><textarea class="pj-input arch-text" data-page="Noor" rows="2" spellcheck="false"></textarea></label>
-      <label><span class="arch-who"><span data-face="Alice" data-person></span>Alice's page</span><textarea class="pj-input arch-text" data-page="Alice" rows="2" spellcheck="false"></textarea></label>
-    </div>
-    <div class="arch-file"><span class="arch-who">The file <span data-rev></span><span class="arch-same" data-converged>· both pages match it</span></span><div class="ds-prose" data-file></div></div>
-    <ol class="arch-log" data-log></ol>
-  </div>
-
+  <h2>The agent acts as a member, on its own copy</h2>
+  <p>Its tools are a member's actions. The model only proposes: the program checks each proposal and applies it to the turn's copy. Below, a real turn of the Ponjo agent's loop, its model scripted.</p>
+  <div class="arch-merge" data-demo="member"></div>
+  <small class="arch-eg">The tools are the permissions: no shell, and no network but the model's. Text in a doc can at worst make a proposal you undo.</small>
 </section>
 
 <section class="arch-slide">
+  <h2>The copy lands on the doc as it is now</h2>
+  <p>When the turn ends, the doc host merges its copy into the doc by line. Where a person changed the same lines meanwhile, the turn runs once more on the new text.</p>
   <div class="arch-merge" data-demo="lines" data-buddy="Clippy">
-    <div class="arch-merge-head"><b>By line</b><span>A turn, an outside change, an undo</span></div>
-    <p>A turn works on a copy while people go on typing. When it ends, the host merges three texts with <code>merge3</code>. Edit any of them.</p>
+    <div class="arch-merge-head"><b>merge3</b><span>Edit any of the three</span></div>
     <div class="arch-controls">
       <div class="pj-segmented" role="radiogroup" aria-label="Case">
         <button type="button" role="radio" aria-checked="true" data-preset="apart">Different lines</button>
@@ -119,25 +94,12 @@
     <div class="arch-file"><span class="arch-who">Lands, as a revision of the doc now</span><div class="ds-prose" data-result></div></div>
     <p class="arch-verdict" data-verdict></p>
   </div>
-
 </section>
 
 <section class="arch-slide">
-  <h2>The Ponjo agent</h2>
-  <p>Our own agent, for only what co-writing needs: read, comment, edit. The model reads and proposes; the program checks and applies. Its loop, <code>turn()</code>, is one file that imports nothing, so this page runs it too.</p>
-  <div class="arch-loop">
-    <div class="arch-node"><span><b>Prompt</b><small>the thread and the rules, the doc with line numbers, the project's file names</small></span></div>
-    <div class="arch-arrow" aria-hidden="true"><svg class="pj-icon" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></div>
-    <div class="arch-node arch-key"><span><b>infer</b><small>one step of the model: Anthropic, OpenAI-compatible or Nebius</small></span></div>
-    <div class="arch-arrow" aria-hidden="true"><svg class="pj-icon" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></div>
-    <div class="arch-node"><span><b>Tools</b><span class="arch-tools"><span class="arch-tool">read</span><span class="arch-tool">find</span><span class="arch-tool">grep</span><span class="arch-tool">comment</span><span class="arch-tool">resolve</span><span class="arch-tool arch-tool-end">propose</span></span><small>results go back to infer, until <code>propose</code> ends the turn; at most 20 steps</small></span></div>
-  </div>
-  <div class="arch-ideas">
-    <div class="arch-idea"><b>The tools are the permissions</b><span>No shell, and no network but the model's API. It reads only its copies and the project's visible files, so text in a doc can at worst make an undoable proposal.</span></div>
-    <div class="arch-idea"><b>Read by line number, write by quote</b><span><code>propose</code> edits as <code>{ old, new }</code>, each <code>old</code> found in the doc exactly once, or the whole proposal goes back to fix. It never counts characters.</span></div>
-    <div class="arch-idea"><b>Stateless</b><span>A turn remembers nothing after. Its messages are its state, and its trace replays it. It lands as any turn does: its copy merged by line, as above.</span></div>
-  </div>
-
+  <h2>The runner is a reconciler over stateless turns</h2>
+  <p>The running turns always equal the open asks in the comments. A turn keeps no state and changes nothing before its proposal, so turns run side by side, resolving a thread stops its turn at once, and a turn cut off by a restart simply runs again.</p>
+  <div class="arch-merge" data-demo="runner"></div>
 </section>
 
 <section class="arch-slide">
@@ -158,7 +120,6 @@
       <p class="arch-verdict" data-verdict></p>
     </div>
   </div>
-
   <p>More in <a href="https://github.com/ponjo-app/ponjo/blob/main/docs/architecture.md">the architecture doc</a> and <a href="https://github.com/ponjo-app/ponjo/blob/main/docs/ponjo-agent.md">the Ponjo agent's</a>.</p>
 </section>
 </main>
