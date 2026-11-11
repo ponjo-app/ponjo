@@ -31,7 +31,7 @@ makes it and opens its card). Click a face anywhere for its card: a name that
 edits in place (yours, or an AI buddy's; a renamed AI buddy
 keeps its comments, face and color), for an AI buddy who it is, a field right
 under it saved when you leave it, then Read or Edit for a teammate. A teammate has **Kick**;
-an AI buddy has a delete button (its file is deleted). In a doc
+an AI buddy has **Delete**, on its card and its row (its file is deleted). In a doc
 opened on its own the panel has only you and your AI buddies, and a new
 one is yours; on a teammate's page, only the owner changes the team and the
 AI buddies.
