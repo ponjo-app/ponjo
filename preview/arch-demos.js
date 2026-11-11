@@ -3,11 +3,12 @@
 // for each part of the solution, what you see, in a Ponjo window drawn with
 // the app's own classes (with what happens behind the scenes beside it,
 // merged in with merge3, src/core/diff.js), and the parts under the hood that
-// make it so; and a real turn of the Ponjo agent (agents/ponjo-core.mjs) on
+// make it so; a real turn of the Ponjo agent (agents/ponjo-core.mjs) on
 // the preview's model, landed as the doc host lands one
 // (src/host/doc-service.js, finishRun). preview/build.js bundles it into
 // dist/preview, which the site serves at /preview/; the model
-// (infer.ponjo.app) answers pages on ponjo.app only.
+// (infer.ponjo.app) answers pages on ponjo.app only. Last, what's next:
+// agents that coordinate through the work they share.
 
 /* global document, IntersectionObserver */
 
@@ -687,6 +688,36 @@ function design3(root) {
   ], reset);
 }
 
+// ---- What's next: agents that coordinate through the work ----
+
+// People and agent runs around one shared piece of work. `parts` (people,
+// work, agents) are in focus; the rest are dimmed.
+function colony(node, parts) {
+  const on = (name) => (parts.includes(name) ? ' class="on"' : '');
+  node.toggleAttribute('data-focus', parts.length > 0);
+  const run = (y) => `<rect x="580" y="${y}" width="160" height="44" rx="10"/><text x="660" y="${y + 20}">Agent run</text><text class="sub" x="660" y="${y + 35}">stateless</text>`;
+  node.innerHTML = `<svg viewBox="0 0 760 236" role="img" aria-label="People and stateless agent runs around one shared piece of work: the runs read it and propose changes, one writer merges them, and people review and undo">
+<defs><marker id="arch-tip2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arch-tip" d="M0 0L10 5L0 10z"/></marker></defs>
+<g${on('people')}><rect x="20" y="40" width="160" height="52" rx="10"/><text x="100" y="62">You</text><text class="sub" x="100" y="80">edit and decide</text><rect x="20" y="144" width="160" height="52" rx="10"/><text x="100" y="166">Your team</text><text class="sub" x="100" y="184">edit and decide</text><path d="M180 66H254" marker-end="url(#arch-tip2)"/><path d="M180 170H254" marker-end="url(#arch-tip2)"/></g>
+<g${on('work')}><rect x="260" y="60" width="240" height="116" rx="10"/><text x="380" y="98">The shared work</text><text class="sub" x="380" y="118">today a doc; next, code, data, designs</text><text class="sub" x="380" y="146">one writer merges every change</text><text class="sub" x="380" y="162">each a version you can undo</text></g>
+<g${on('agents')}>${run(20)}${run(96)}${run(172)}<path d="M506 80L574 44" marker-start="url(#arch-tip2)" marker-end="url(#arch-tip2)"/><path d="M506 118H574" marker-start="url(#arch-tip2)" marker-end="url(#arch-tip2)"/><path d="M506 156L574 192" marker-start="url(#arch-tip2)" marker-end="url(#arch-tip2)"/><text class="sub" x="540" y="108">read, propose</text></g>
+</svg>`;
+}
+
+function whatsNext(root) {
+  const caption = el('p', 'arch-caption');
+  const drawing = el('div', 'arch-flow');
+  root.append(caption, drawing);
+  const focus = (parts, say, hold) => ({ say, run: async () => colony(drawing, parts), hold });
+  stepper(root, caption, [
+    focus(['work'], 'Agents don’t remember. The work does: whatever matters is written into it, for everyone to see.'),
+    focus(['agents'], 'So each agent run is a stateless function of the work: run as many as you like, stop or rerun any, swap in any model.'),
+    focus(['people', 'work'], 'One writer merges every change, and each change is a version people can review and undo. People stay the editors.'),
+    focus([], 'Like ants leaving trails, agents coordinate through what they leave in the work. Unlike ants, there is an editor: you.'),
+    focus(['work'], 'Today the work is a doc. We think the same shape fits any work people share: code, data, designs, research.', 6000),
+  ], () => colony(drawing, []));
+}
+
 // ---- The page as slides: a dot per slide, the current one marked ----
 
 function deck() {
@@ -715,3 +746,4 @@ shared($(document, '[data-demo="shared"]'));
 design3($(document, '[data-demo="design3"]'));
 for (const root of document.querySelectorAll('[data-hood]')) underTheHood(root, HOODS[root.dataset.hood]);
 buddyTurn($(document, '[data-demo="turn"]'));
+whatsNext($(document, '[data-demo="next"]'));
