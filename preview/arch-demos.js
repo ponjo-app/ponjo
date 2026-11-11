@@ -6,7 +6,7 @@
 // preview/build.js bundles it into dist/preview, which the site serves at
 // /preview/; the model (infer.ponjo.app) answers pages on ponjo.app only.
 
-/* global document */
+/* global document, IntersectionObserver */
 
 import { createClient } from '../web/client.js';
 import { apply, diffOps, mapOffset, transform } from '../src/core/ot.js';
@@ -14,6 +14,9 @@ import { lineChanges, merge3 } from '../src/core/diff.js';
 import { newId, serializeSidecar, threadsOf } from '../src/core/comments.js';
 import { buildPrompt } from '../src/core/prompt.js';
 import { INFER, turn } from '../agents/ponjo-core.mjs';
+import { agentFace, buddyColor, personFace, setBuddies, setPeople } from '../web/faces.js';
+import { cursorNode } from '../web/marks.js';
+import { icon } from '../web/icons.js';
 
 const $ = (root, selector) => root.querySelector(selector);
 const el = (tag, className, text = '') => Object.assign(document.createElement(tag), { className, textContent: text });
@@ -172,7 +175,7 @@ function lines(root) {
     const { text, conflicts } = merge3(side('base').value, ours, side('theirs').value);
     revision($(root, '[data-result]'), ours, text);
     $(root, '[data-verdict]').textContent = conflicts
-      ? `${conflicts} ${conflicts > 1 ? 'conflicts' : 'conflict'}: where both changed the same lines, people's lines stay. In the app the turn first runs once more, told what people did; colliding again, it lands like this, its version marked conflict.`
+      ? `${conflicts} ${conflicts > 1 ? 'conflicts' : 'conflict'}: where both changed the same lines, the doc's lines stay. In the app the turn first runs once more, told what people did; colliding again, it lands like this, its version marked conflict.`
       : 'No conflict: Clippy\'s lines land among people\'s, as one edit at the current revision.';
   }
   function preset(name) {
@@ -291,6 +294,311 @@ function buddyTurn(root) {
   };
 }
 
+// ---- Who waits for whom: three ways, one story, one clock ----
+
+// Noor asks Clippy to shorten line 1 and Max to lengthen line 2, and has
+// line 3 to write. Each way is a script on one clock, in seconds: what each
+// writer does when (drawn as lanes on one scale, so the ways compare), and
+// its window at any moment, a function of the time. Ponjo's landings are
+// merge3, the app's own merge.
+const LINES = ['The beta ships in March to fifty design partners, who each get a private call and early access.', 'Then we open the waitlist.'];
+const SHORT = 'Fifty design partners get the beta in March.';
+const LONG = 'Then we open the waitlist, in the order people joined it.';
+const MINE = 'Pricing comes after the beta.';
+const SCALE = 11; // seconds on every timeline
+const still = globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+const span = (t, from, to) => Math.min(1, Math.max(0, (t - from) / (to - from)));
+const typed = (text, x) => text.slice(0, Math.round(text.length * x));
+
+// `old` overwritten by `next` as an agent streams it: the text, and its cursor.
+function overwrite(old, next, x) {
+  const k = Math.round(x * Math.max(old.length, next.length));
+  return { text: next.slice(0, Math.min(k, next.length)) + old.slice(k), at: Math.min(k, next.length) };
+}
+
+// Text with marks at offsets: [{ at, node }], in order.
+function marked(text, marks = []) {
+  const out = [];
+  let from = 0;
+  for (const { at, node } of marks) {
+    out.push(text.slice(from, at), node);
+    from = at;
+  }
+  return [...out, text.slice(from)];
+}
+
+function face(name, person, size = 20) {
+  const avatar = el('span', `pj-avatar${person ? '' : ' pj-avatar-agent'}`);
+  avatar.style.setProperty('--size', `${size}px`);
+  avatar.append(person ? personFace(name) : agentFace(name));
+  const box = el('span', 'pj-agent-face');
+  box.append(avatar);
+  return box;
+}
+
+function receipt() {
+  const box = el('div', 'pj-receipt');
+  const undo = el('span', 'pj-icon-btn');
+  undo.append(icon('undo'));
+  box.append(icon('pencil'), el('span', '', '1 edit'), el('span', 'pj-spacer'), undo);
+  return box;
+}
+
+// Lines of a doc, each { text, caret?, hl?, by?, old? }: a caret ({ at, by,
+// working }), commented (hl), landed in `by`'s colour, or under review: `old`
+// struck through, `text` in `by`'s colour.
+function drawLines(node, lines) {
+  node.replaceChildren(...lines.map((line) => {
+    const row = el('div', 'arch-line');
+    const parts = line.caret ? marked(line.text, [{ at: line.caret.at, node: cursorNode(line.caret) }]) : [line.text];
+    const wrap = line.by ? el('span', 'pj-buddy-edit') : line.hl ? el('span', 'pj-hl') : null;
+    if (line.by) wrap.style.setProperty('--buddy', buddyColor(line.by));
+    if (line.old !== undefined) row.append(el('del', 'pj-buddy-del', line.old));
+    if (wrap) wrap.append(...parts);
+    row.append(...(wrap ? [wrap] : parts));
+    return row;
+  }));
+}
+
+// 1. A chat with one agent beside the file: ask, wait, review, ask again.
+function chatWindow(win) {
+  win.classList.add('arch-win-chat');
+  const log = el('div', 'arch-log');
+  const prompt = el('div', 'pj-input arch-prompt');
+  const chat = el('div', 'arch-pane');
+  chat.append(el('span', 'arch-who', 'Chat'), log, prompt);
+  const body = el('div', 'arch-lines');
+  const review = el('div', 'arch-choices');
+  const accept = el('span', 'pj-secondary', 'Accept');
+  review.append(accept, el('span', 'pj-secondary', 'Reject'));
+  const file = el('div', 'arch-pane');
+  file.append(el('span', 'arch-who', 'plan.md'), body, review);
+  win.append(chat, file);
+  let said = '';
+  const agent = (t, line, next, by, from) => {
+    if (t < from) return { text: line };
+    if (t < from + 2.5) {
+      const now = overwrite(line, next, span(t, from, from + 2.5));
+      return { text: now.text, caret: { at: now.at, by, working: true } };
+    }
+    return t < from + 3.5 ? { text: next, old: line, by } : { text: next };
+  };
+  return (t) => {
+    const messages = [[1, 'Noor', 'Shorten line 1.'], [1, 'Claude', t < 3.5 ? 'Working…' : 'Done. Review it.'],
+      [5.5, 'Noor', 'Now lengthen line 2.'], [5.5, 'Claude', t < 8 ? 'Working…' : 'Done. Review it.']].filter(([at]) => t >= at);
+    const now = messages.map(([, , text]) => text).join('|');
+    if (now !== said) {
+      said = now;
+      log.replaceChildren(...messages.map(([, who, text]) => {
+        const row = el('div', 'arch-actor');
+        row.append(face(who, who === 'Noor'), el('span', 'arch-say', text));
+        return row;
+      }));
+    }
+    prompt.textContent = t < 1 ? typed('Shorten line 1.', span(t, 0, 1)) : t >= 4.5 && t < 5.5 ? typed('Now lengthen line 2.', span(t, 4.5, 5.5)) : '';
+    const lines = [agent(t, LINES[0], SHORT, 'Claude', 1), agent(t, LINES[1], LONG, 'Claude', 5.5)];
+    if (t >= 9) {
+      const text = typed(MINE, span(t, 9, 11));
+      lines.push({ text, caret: { at: text.length, by: 'Noor' } });
+    }
+    drawLines(body, lines);
+    review.hidden = !((t >= 3.5 && t < 4.5) || (t >= 8 && t < 9));
+    accept.classList.toggle('arch-pressed', (t >= 4.2 && t < 4.5) || (t >= 8.7 && t < 9));
+  };
+}
+
+// 2. One queue, and 3. Ponjo: a doc with its threads in the margin. In the
+// queue, one agent answers the asks in turn and edits the doc as it goes; in
+// Ponjo each ask is its own turn on its own copy, merged (merge3) when it ends.
+const ASKS = { // [who answers, the ask, asked from, to, works from, to]
+  queue: [['Claude', 'shorten this', 0, 0.8, 0.8, 3.3], ['Claude', 'lengthen this', 0.8, 1.6, 3.3, 5.8]],
+  ponjo: [['Clippy', 'shorten this', 0, 0.8, 0.8, 3.3], ['Max', 'lengthen this', 0.8, 1.6, 1.6, 4.1]],
+};
+
+function docWindow(win, way) {
+  const body = el('div', 'arch-lines');
+  const doc = el('div', 'arch-pane');
+  doc.append(el('span', 'arch-who', 'plan.md'), body);
+  const margin = el('div', 'arch-margin');
+  win.append(doc, margin);
+  const ponjo = way === 'ponjo';
+  const cards = ASKS[way].map(([buddy, words, from, to, start, end]) => {
+    const card = el('div', 'pj-card arch-card');
+    card.style.setProperty('--buddy', buddyColor(buddy));
+    const head = el('div', 'arch-actor');
+    head.append(face('Noor', true), 'Noor');
+    const ask = el('div', 'arch-ask');
+    const who = face(buddy, false);
+    const said = el('span', '');
+    const status = el('div', 'arch-actor arch-status');
+    status.append(who, said);
+    const done = receipt();
+    card.append(head, ask, status, done);
+    margin.append(card);
+    return (t) => {
+      const working = t >= start && t < end;
+      card.hidden = t < from;
+      ask.textContent = typed(`@${buddy} ${words}`, span(t, from, to));
+      card.classList.toggle('pj-card-working', working);
+      if (working) who.dataset.presence = 'working';
+      else if (t >= to && t < start) who.dataset.presence = 'away';
+      else delete who.dataset.presence;
+      said.textContent = t < start ? 'Queued' : working ? (ponjo ? 'Working on its copy' : 'Working…') : 'Done';
+      status.hidden = t < to || (ponjo && t >= end);
+      done.hidden = !(ponjo && t >= end);
+    };
+  });
+  const [first, second] = ASKS[way].map(([by, , from, , start, end]) => ({ by, from, start, end }));
+  return (t) => {
+    for (const card of cards) card(t);
+    const mine = typed(MINE, span(t, 1.6, 4));
+    let lines;
+    if (ponjo) {
+      const base = `${LINES.join('\n')}\n`;
+      let text = base + mine;
+      if (t >= first.end) text = merge3(base, text, `${SHORT}\n${LINES[1]}\n`).text;
+      if (t >= second.end) text = merge3(base, text, `${LINES[0]}\n${LONG}\n`).text;
+      const [one, two] = text.split('\n');
+      const line = (words, { by, from, start, end }) => (t >= end ? { text: words, by }
+        : { text: words, hl: t >= from, caret: t >= start ? { at: 0, by, working: true } : null });
+      lines = [line(one, first), line(two, second)];
+    } else {
+      const edit = (line, next, { by, from, start, end }) => {
+        if (t >= end) return { text: next };
+        if (t < start) return { text: line, hl: t >= from };
+        const now = overwrite(line, next, span(t, start, end));
+        return { text: now.text, caret: { at: now.at, by, working: true } };
+      };
+      lines = [edit(LINES[0], SHORT, first), edit(LINES[1], LONG, second)];
+    }
+    if (t >= 1.6) lines.push({ text: mine, caret: { at: mine.length, by: 'Noor' } });
+    drawLines(body, lines);
+  };
+}
+
+// Lanes: Noor's, then one per run of an agent, named by its agent and its line.
+const WRITES = ['Noor', '', [[0, 1.6, 'comments'], [1.6, 4, 'writes']]];
+const MODES = {
+  chat: {
+    end: 11,
+    window: chatWindow,
+    lanes: [
+      ['Noor', '', [[0, 1, 'asks'], [1, 3.5, 'waits', true], [3.5, 4.5, 'reviews'], [4.5, 5.5, 'asks'], [5.5, 8, 'waits', true], [8, 9, 'reviews'], [9, 11, 'writes']]],
+      ['Claude', 'line 1', [[1, 3.5, 'edits'], [3.5, 4.5, 'waits', true]]],
+      ['Claude', 'line 2', [[5.5, 8, 'edits'], [8, 9, 'waits', true]]],
+    ],
+  },
+  queue: {
+    end: 5.8,
+    window: (win) => docWindow(win, 'queue'),
+    lanes: [WRITES, ['Claude', 'line 1', [[0.8, 3.3, 'edits']]], ['Claude', 'line 2', [[1.6, 3.3, 'queued', true], [3.3, 5.8, 'edits']]]],
+  },
+  ponjo: {
+    end: 4.1,
+    window: (win) => docWindow(win, 'ponjo'),
+    lanes: [WRITES, ['Clippy', 'line 1', [[0.8, 3.3, 'edits its copy']]], ['Max', 'line 2', [[1.6, 4.1, 'edits its copy']]]],
+  },
+};
+
+// Who did what when, on one scale for every way: a bar grows as it happens.
+function drawLanes(node, lanes, end) {
+  const bars = [];
+  const heads = [];
+  const at = (s) => `${(s / SCALE) * 100}%`;
+  const rows = lanes.map(([who, run, list]) => {
+    const track = el('div', 'arch-track');
+    track.style.setProperty('--buddy', buddyColor(who));
+    for (const [from, to, label, waiting] of list) {
+      const bar = el('span', waiting ? 'arch-bar arch-wait' : 'arch-bar', label);
+      bar.style.left = at(from);
+      track.append(bar);
+      bars.push({ bar, from, to });
+    }
+    const head = el('span', 'arch-head');
+    heads.push(head);
+    track.append(head);
+    const name = el('span', 'arch-actor');
+    name.append(face(who, who === 'Noor'), run ? `${who} · ${run}` : who);
+    const row = el('div', 'arch-lane');
+    row.append(name, track);
+    return row;
+  });
+  const axis = el('div', 'arch-axis');
+  for (let s = 0; s < SCALE - 2; s += 2) { // the last, where `done` says when it ended
+    const tick = el('span', 'arch-tick', `${s} s`);
+    tick.style.left = at(s);
+    axis.append(tick);
+  }
+  const done = el('span', 'arch-done');
+  axis.append(done);
+  const foot = el('div', 'arch-lane');
+  foot.append(el('span'), axis);
+  node.replaceChildren(...rows, foot);
+  return (t) => {
+    for (const { bar, from, to } of bars) bar.style.width = at(Math.max(0, Math.min(t, to) - from));
+    for (const head of heads) head.style.left = at(t);
+    done.textContent = t >= end ? `Done at ${end} s` : '';
+  };
+}
+
+function mode(root) {
+  const { end, window: build, lanes } = MODES[root.dataset.mode];
+  const win = el('div', 'arch-win');
+  const track = el('div', 'arch-lanes');
+  const again = el('button', 'pj-link-button', 'Play again');
+  again.type = 'button';
+  const controls = el('div', 'arch-controls');
+  controls.append(again);
+  root.append(win, track, controls);
+  let timer = null;
+  function play() {
+    clearInterval(timer);
+    win.className = 'arch-win';
+    win.replaceChildren();
+    const scene = build(win);
+    const lanesAt = drawLanes(track, lanes, end);
+    const draw = (t) => {
+      scene(t);
+      lanesAt(t);
+    };
+    if (still) return draw(end);
+    const start = Date.now();
+    draw(0);
+    timer = setInterval(() => {
+      const t = Math.min((Date.now() - start) / 1000, end);
+      draw(t);
+      if (t >= end) clearInterval(timer);
+    }, 50);
+  }
+  again.onclick = play;
+  // Played each time its slide comes into view, as a slide's animation is.
+  new IntersectionObserver(([seen]) => {
+    if (seen.isIntersecting) play();
+    else clearInterval(timer);
+  }, { threshold: 0.6 }).observe(root);
+}
+
+// The page as slides: a dot per slide, the current one marked; a click goes there.
+function deck() {
+  const slides = [...document.querySelectorAll('.arch-slide')];
+  const dots = slides.map((slide, i) => {
+    const dot = el('button', 'arch-dot');
+    dot.type = 'button';
+    dot.setAttribute('aria-label', `Slide ${i + 1}: ${$(slide, 'h1, h2, .arch-merge-head b').textContent}`);
+    dot.onclick = () => slide.scrollIntoView({ behavior: still ? 'auto' : 'smooth' });
+    return dot;
+  });
+  $(document, '[data-dots]').replaceChildren(...dots);
+  const watch = new IntersectionObserver((seen) => {
+    for (const entry of seen) if (entry.isIntersecting) dots.forEach((dot, i) => dot.toggleAttribute('aria-current', slides[i] === entry.target));
+  }, { rootMargin: '-50% 0px -50% 0px' });
+  for (const slide of slides) watch.observe(slide);
+}
+
+setBuddies(['Clippy', 'Max', 'Claude'].map((name) => ({ id: name, name })));
+setPeople(['Noor']);
+deck();
+for (const root of document.querySelectorAll('[data-demo="mode"]')) mode(root);
 typing($(document, '[data-demo="typing"]'));
 lines($(document, '[data-demo="lines"]'));
 buddyTurn($(document, '[data-demo="turn"]'));

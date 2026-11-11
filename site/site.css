@@ -123,6 +123,56 @@ a { color: var(--accent); }
 .arch-arrow { display: flex; justify-content: center; color: var(--text-faint); }
 .arch-arrow .pj-icon { width: 20px; height: 20px; }
 
+/* the page as slides: a screen each, snapped on wide screens, a dot each at the right */
+.arch-deck { padding-top: 0; padding-bottom: 0; }
+.arch-slide { display: flex; flex-direction: column; justify-content: center; padding: 48px 0; }
+.ds-page .arch-slide > h2 { margin-top: 0; }
+.arch-cover h1 { font-size: 36px; }
+.arch-hint { color: var(--text-faint); font-size: 13px; }
+.arch-dots { display: none; }
+.arch-dot { width: 8px; height: 8px; padding: 0; border: 0; border-radius: 50%; background: var(--border-strong); }
+.arch-dot[aria-current] { background: var(--text); }
+@media (min-width: 721px) and (min-height: 560px) {
+  html:has(.arch-deck) { scroll-snap-type: y mandatory; scroll-padding-top: 53px; }
+  .arch-slide { box-sizing: border-box; min-height: calc(100vh - 53px); scroll-snap-align: start; }
+  .arch-dots { position: fixed; top: 50%; right: 16px; z-index: 5; display: flex; flex-direction: column; gap: 8px; transform: translateY(-50%); }
+}
+
+/* who waits for whom: a window of each way, and its writers' lanes on one clock */
+.arch-win { display: grid; grid-template-columns: minmax(0, 1fr) 240px; gap: 12px; min-height: 216px; padding: 12px; border-radius: 10px; background: var(--bg-soft); }
+.arch-win-chat { grid-template-columns: 240px minmax(0, 1fr); }
+.arch-pane { display: flex; flex-direction: column; gap: 8px; min-width: 0; padding: 12px; border-radius: 6px; background: var(--canvas); box-shadow: var(--shadow); }
+.arch-pane > [hidden], .arch-card > [hidden] { display: none; }
+.arch-lines { padding-top: 16px; font-size: 13px; line-height: 1.6; }
+.arch-line { min-height: 1.6em; white-space: pre-wrap; }
+.arch-line + .arch-line { margin-top: 16px; }
+.arch-log { display: flex; flex: 1; flex-direction: column; gap: 6px; }
+.arch-prompt { display: flex; align-items: center; height: 28px; font-size: 13px; }
+.arch-margin { display: flex; flex-direction: column; gap: 8px; }
+.arch-win .pj-card { position: static; display: flex; flex-direction: column; gap: 6px; padding: 8px 12px; cursor: default; }
+.arch-win .pj-receipt { margin-top: 0; }
+.arch-card > .arch-actor { color: var(--text-soft); font-size: 12px; }
+.arch-ask { min-height: 1.5em; font-size: 13px; }
+.arch-status { color: var(--text-soft); font-size: 12px; }
+.arch-actor { display: flex; align-items: center; gap: 6px; }
+.arch-say { padding: 2px 8px; border-radius: 10px; background: var(--bg-soft); font-size: 12px; }
+.arch-choices { display: flex; gap: 6px; }
+.arch-choices .pj-secondary { height: 24px; padding: 0 8px; font-size: 12px; }
+.arch-choices .arch-pressed { background: var(--active); }
+.arch-lanes { display: flex; flex-direction: column; gap: 6px; margin-top: 16px; }
+.arch-lane { display: grid; grid-template-columns: 128px minmax(0, 1fr); align-items: center; gap: 8px; color: var(--text-soft); font-size: 12px; }
+.arch-track { position: relative; height: 20px; border-radius: 4px; background: var(--bg-soft); }
+.arch-bar { position: absolute; top: 0; bottom: 0; overflow: hidden; border-radius: 4px; background: color-mix(in oklch, var(--buddy) 45%, transparent); color: var(--text); font-size: 11px; line-height: 20px; text-indent: 6px; white-space: nowrap; }
+.arch-wait { background: repeating-linear-gradient(135deg, var(--active) 0 4px, transparent 4px 8px); color: var(--text-soft); }
+.arch-head { position: absolute; top: -2px; bottom: -2px; border-left: 1px solid var(--text-faint); }
+.arch-axis { position: relative; height: 16px; font-size: 11px; color: var(--text-faint); }
+.arch-tick { position: absolute; top: 0; }
+.arch-done { position: absolute; top: 0; right: 0; color: var(--text); font-size: 12px; font-weight: 500; }
+.arch-eg { color: var(--text-faint); font-size: 12px; line-height: 1.5; }
+@media (max-width: 720px) {
+  .arch-win, .arch-win-chat { grid-template-columns: minmax(0, 1fr); }
+}
+
 /* the two merges */
 .arch-merge { margin-top: 16px; padding: 24px; border-radius: 10px; background: var(--canvas); box-shadow: var(--shadow); }
 .arch-merge-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; margin-bottom: 8px; }
