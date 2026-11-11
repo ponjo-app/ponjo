@@ -118,8 +118,9 @@ a { color: var(--accent); }
 
 /* the page as slides: a screen each, snapped on wide screens, a dot each at the right */
 .arch-deck { padding-top: 0; padding-bottom: 0; }
-.arch-slide { display: flex; flex-direction: column; justify-content: center; padding: 48px 0; }
+.arch-slide { display: flex; flex-direction: column; justify-content: center; padding: 24px 0; }
 .ds-page .arch-slide > h2 { margin-top: 0; font-size: 24px; }
+.ds-page .arch-eyebrow { margin: 0 0 4px; color: var(--text-faint); font-size: 13px; font-weight: 600; }
 .arch-cover h1 { max-width: 720px; font-size: 36px; text-wrap: balance; }
 .arch-hint { color: var(--text-faint); font-size: 13px; }
 .arch-dots { display: none; }
@@ -143,7 +144,6 @@ a { color: var(--accent); }
 .arch-quiet { color: var(--text-faint); font-size: 13px; }
 .arch-pane { display: flex; flex-direction: column; gap: 8px; min-width: 0; padding: 12px; border-radius: 6px; background: var(--bg-soft); }
 .arch-two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-.arch-three { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 12px; }
 .arch-lines { font-size: 13px; line-height: 1.6; }
 .arch-line { min-height: 1.6em; white-space: pre-wrap; }
 .arch-mine { background: var(--active); }
@@ -166,6 +166,20 @@ a { color: var(--accent); }
 .arch-caret { display: inline-block; height: 1.1em; margin-left: 1px; border-left: 2px solid var(--text); vertical-align: text-bottom; }
 .arch-gone { opacity: 0.45; transition: opacity 0.3s; }
 
+/* a Ponjo window, in the app's own classes: header, doc, threads; and behind it, each buddy's copy */
+.arch-app { overflow: hidden; border-radius: 10px; background: var(--canvas); box-shadow: var(--shadow-raised); }
+.arch-app-head { display: flex; align-items: center; gap: 8px; height: 48px; padding: 0 12px; border-bottom: 1px solid var(--border); font-size: 13px; font-weight: 600; }
+.arch-app-head > .pj-icon { width: 16px; height: 16px; color: var(--text-soft); }
+.arch-app-body { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 24px; min-height: 200px; padding: 16px 20px 16px 32px; }
+.arch-app-doc { display: flex; flex-direction: column; gap: 12px; font-size: 15px; line-height: 1.7; }
+.arch-app-h1 { font-size: 24px; font-weight: 600; line-height: 1.3; }
+.arch-para { min-height: 1.7em; }
+.arch-app-margin { display: flex; flex-direction: column; gap: 8px; }
+.arch-app .pj-card { position: static; cursor: default; }
+.arch-app .pj-receipt { margin-top: 8px; }
+.arch-behind { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; padding: 12px; border-radius: 10px; background: var(--bg-soft); }
+.arch-behind .arch-pane { background: var(--canvas); }
+
 /* who waits: a way's name, and its lanes on one clock */
 .arch-way { display: flex; flex-direction: column; gap: 6px; margin-top: 16px; }
 .arch-way-name { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; font-size: 13px; font-weight: 600; }
@@ -184,6 +198,7 @@ a { color: var(--accent); }
 .arch-flow .chip { fill: var(--bg-soft); }
 .arch-flow text { fill: var(--text); font: 500 13px var(--ui-font); text-anchor: middle; }
 .arch-flow .sub { fill: var(--text-soft); font-size: 11.5px; font-weight: 400; }
+.arch-flow .small { font-size: 12px; }
 .arch-flow .start { text-anchor: start; }
 .arch-flow .end { text-anchor: end; }
 .arch-flow path { fill: none; stroke: var(--text-faint); stroke-width: 1.25; }
@@ -207,6 +222,7 @@ a { color: var(--accent); }
 .arch-page .arch-slide > p:last-child { margin-top: 32px; }
 
 @media (max-width: 720px) {
-  .arch-two, .arch-three, .arch-block { grid-template-columns: minmax(0, 1fr); }
+  .arch-two, .arch-block, .arch-app-body { grid-template-columns: minmax(0, 1fr); }
+  .arch-app-body { padding: 16px; }
   .arch-merge { padding: 16px; }
 }
