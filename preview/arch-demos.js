@@ -172,7 +172,7 @@ function lines(root) {
     const { text, conflicts } = merge3(side('base').value, ours, side('theirs').value);
     revision($(root, '[data-result]'), ours, text);
     $(root, '[data-verdict]').textContent = conflicts
-      ? `${conflicts} ${conflicts > 1 ? 'conflicts' : 'conflict'}: where both changed the same lines, people's lines stay. In the app the turn first runs once more, told what people did; colliding again, it lands like this, its version marked conflict.`
+      ? `${conflicts} ${conflicts > 1 ? 'conflicts' : 'conflict'}: where both changed the same lines, the doc's lines stay. In the app the turn first runs once more, told what people did; colliding again, it lands like this, its version marked conflict.`
       : 'No conflict: Clippy\'s lines land among people\'s, as one edit at the current revision.';
   }
   function preset(name) {

@@ -30,13 +30,14 @@ with a way to fix it.
 3. **An agent is a filter:** prompt on stdin, copies of the doc and its
    comments to edit, reply on stdout. It knows nothing of Ponjo and
    remembers nothing.
-4. **No one resolves a conflict by hand.** Between people, nothing typed is
-   dropped: the host orders their edits and merges them by character. An
-   AI buddy's turn, a change from outside and an undo are merged with the
-   doc by line on the host (`merge3`): where they changed the same lines as
-   people, people's lines stay. A turn that collides is run once more
-   first. What does not land is redone (ask the buddy again) or restored
-   (history).
+4. **No one resolves a conflict by hand.** An edit merges by how it comes,
+   not by who made it ([how edits merge](#how-edits-merge)). An edit made in
+   a window (typing, a paste) is merged by character, and nothing typed is
+   dropped. A whole text that arrives late (an AI buddy's turn, a change
+   from outside, an undo) is merged by line (`merge3`): where it changed
+   the same lines as what landed meanwhile, what landed stays. A turn that
+   collides is run once more first. What does not land is redone (ask the
+   buddy again) or restored (history).
 5. **AI buddies always edit, and every edit can be undone.** See
    [Undoing changes](#undoing-changes).
 6. **Only a person's comment starts a turn:** mine, or a player's who can
@@ -150,8 +151,8 @@ being edited, and nothing but typing changing it. Its toolbar (and the
 standard keys), outline, focus mode and word count are parts of it,
 switched by its settings, not separate extensions.
 
-How edits merge does not depend on the view or the format: people's by
-character, the rest by line (see Interfaces).
+How edits merge does not depend on the view or the format: a window's by
+character, a whole text by line ([how edits merge](#how-edits-merge)).
 
 **To add a view**: a folder in `web/views/` with its declaration, listed in
 `VIEWS`, passing the contract test. Its features are its own settings.
@@ -183,7 +184,7 @@ but the A rules always hold and the person is told.
 | A1 | Converge: once writers stop, every page's text is the host's text is the file. |
 | A2 | Nothing lost: what a person typed and nobody deleted ends up in the file, through crashes, power loss and dropped lines. |
 | A3 | Nothing twice: an edit lands at most once, through resends, restarts and write failures. |
-| A4 | People first: people's edits merge by character, and nothing typed is lost. A buddy's turn, an outside change and an undo merge by line with the doc as it is when they land: where they changed the same lines as people, people's lines stay, and theirs can be found in history. A person's edit on its way when one lands moves over it by character, as over anyone's. |
+| A4 | Typing is never merged away: a window's edits (typing, a paste) merge by character, and nothing typed is lost. A whole text that arrives late (a buddy's turn, an outside change, an undo) merges by line with the doc as it is when it lands: where both changed the same lines, the doc's lines stay, and the late text can be found in history. A window's edit on its way when one lands moves over it by character, as over anyone's. |
 | A5 | Text intact: no split surrogate pair, no U+FFFD; each line's end (LF, CRLF, CR), the BOM and the file's permissions kept; unchanged blocks saved byte for byte. |
 | A6 | Shown is saved: whatever the page shows as saved is in the file; anything not saved is marked, with the reason. |
 
@@ -296,10 +297,10 @@ against what landed since, by character: `transform` (`src/core/ot.js`),
 which loses nothing typed. A buddy's turn, an outside change and an undo
 never go through it: the host merges each by line with the doc as it is
 (`merge3` in `src/core/diff.js`, from the text it started from), where
-people's lines win, and lands the result as one edit at the current
-revision, like anyone's. So one kind of edit goes through the order, and
-a window's edit on its way when one lands moves over it by character, as
-over any. An edit lands on the text in memory, the file is written, and
+the doc's lines win ([how edits merge](#how-edits-merge)), and lands the
+result as one edit at the current revision, like anyone's. So one kind of
+edit goes through the order, and a window's edit on its way when one lands
+moves over it by character, as over any. An edit lands on the text in memory, the file is written, and
 only then does it go to every window as `ops` (`{ epoch, rev, ops, id }`,
 `id` the window's name for its own edit; a buddy's `reply` and `by`): a
 window rebases what it has typed and not yet heard back (`web/client.js`).
@@ -375,6 +376,31 @@ needs edit, as typing it would.
 A **journal** of what happened (history, comments, `runs.jsonl`) is not a
 component: if it is wanted, a view joins the three by `reply` and `thread`
 when read. Nothing stores it.
+
+### How edits merge
+
+An edit merges by how it comes, not by who made it: the component that
+merges never knows the writer (principle 8).
+
+| Edit | Comes as | Merged | Where it collides |
+| --- | --- | --- | --- |
+| A window's: typing, a paste, a cut | operations on the revision the window last heard, milliseconds old | by character (`transform`) | both stay, in the order they reached the host |
+| A whole text: a buddy's turn, an outside change (another editor, `git pull`), an undo | the text it ended on, from a base that may be minutes old | by line (`merge3(base, doc, late)`) | the doc as it is stays; the late text is in history. A turn first runs once more |
+
+Why two ways: an edit from a window says what it does, on text its writer
+saw a moment ago, so it can move over others' edits character by
+character. A whole text says only where it ended: its operations are
+guessed by a diff, against edits it never saw, and merged by character
+they splice two rewrites of one sentence into words neither wrote. By
+line, the collision shows. The doc as it is wins because people have
+seen what landed and keep working on it, while a late text can be made
+again (the turn runs once more) or found in history.
+
+So a person's edit saved in another editor gives way where it collides,
+as a buddy's turn does, and a buddy's turn that landed first holds
+against a later one. A paste is a window's edit, however large: pasting
+back a copy edited elsewhere replaces what is there, teammates' edits
+since included, and those are in history.
 
 ### How files are read and written
 
@@ -464,7 +490,7 @@ the ids of those who may ask. AI buddies run only on docs open in a window.
    the reply as the buddy's comment. Where they did, nothing lands and
    nothing is posted: the ask runs once more, on the doc as it is then,
    and its prompt says what the turn changed and what people did. Run
-   once more and colliding again, it lands with people's lines kept there,
+   once more and colliding again, it lands with the doc's lines kept there,
    and its version says `conflict`. The turn lands as the buddy's.
    The reply and comments are dated just after the last comment the turn
    was given, so a comment the user wrote meanwhile still waits on X.

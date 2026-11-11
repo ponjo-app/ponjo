@@ -44,10 +44,11 @@
   <p class="ds-lead">People and AI buddies edit the same file at once. One host on your machine orders every edit, no one resolves a conflict by hand, and our own agent proposes edits the program checks.</p>
 
   <h2>Merge strategy</h2>
-  <p>Every edit is made on a revision. How it merges depends on its path: people's typing by character, everything else by line, where people's lines win.</p>
+  <p>Every edit is made on a revision, and merges by how it comes, not by who made it. An edit made in a window, typing or a paste, says what it does on text its writer saw a moment ago, so it moves over others' edits by character. A buddy's turn, a change from another program and an undo arrive as a whole text, made from one that may be minutes old: merged by character, they would splice two rewrites of a sentence into words neither wrote. So they merge by line, and where both changed the same lines, the doc as it is wins; the late text is in history, and a turn first runs once more.</p>
+  <p>Who made it does not count: a person's edit saved in another editor gives way as a buddy's turn does, and a buddy's turn that landed first holds against a later one.</p>
 
   <div class="arch-merge" data-demo="typing">
-    <div class="arch-merge-head"><b>By character</b><span>People's typing, live</span></div>
+    <div class="arch-merge-head"><b>By character</b><span>A window's edits: typing, a paste</span></div>
     <p>Type in both. Each edit goes to the host on the revision it was made on; one made on an older revision is moved over what landed since. Nothing typed is dropped, and both pages end on the file's text.</p>
     <div class="arch-controls">
       <div class="pj-segmented" role="radiogroup" aria-label="Network delay">
@@ -66,7 +67,7 @@
   </div>
 
   <div class="arch-merge" data-demo="lines" data-buddy="Clippy">
-    <div class="arch-merge-head"><b>By line</b><span>AI buddies' turns, outside changes and undo</span></div>
+    <div class="arch-merge-head"><b>By line</b><span>A whole text arriving late: a buddy's turn, an outside change, an undo</span></div>
     <p>A turn works on a copy while people go on typing. When it ends, the host merges three texts with <code>merge3</code>. Edit any of them.</p>
     <div class="arch-controls">
       <div class="pj-segmented" role="radiogroup" aria-label="Case">
@@ -76,7 +77,7 @@
     </div>
     <div class="arch-sides">
       <label><span class="arch-who">Copy as it started</span><textarea class="pj-input arch-text" data-side="base" rows="5" spellcheck="false"></textarea></label>
-      <label><span class="arch-who">Doc now (people)</span><textarea class="pj-input arch-text" data-side="ours" rows="5" spellcheck="false"></textarea></label>
+      <label><span class="arch-who">Doc now</span><textarea class="pj-input arch-text" data-side="ours" rows="5" spellcheck="false"></textarea></label>
       <label><span class="arch-who">Clippy's copy</span><textarea class="pj-input arch-text" data-side="theirs" rows="5" spellcheck="false"></textarea></label>
     </div>
     <div class="arch-file"><span class="arch-who">Lands, as a revision of the doc now</span><div class="ds-prose" data-result></div></div>
