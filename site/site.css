@@ -140,9 +140,7 @@ a { color: var(--accent); }
 .ds-page .arch-marks { display: flex; flex-wrap: wrap; gap: 8px 24px; margin: 16px 0 12px; padding: 0; list-style: none; max-width: none; }
 .ds-page .arch-marks li { display: flex; align-items: center; gap: 6px; margin: 0; color: var(--text-faint); font-size: 13px; }
 .arch-marks .pj-icon { width: 16px; height: 16px; }
-.arch-marks b { font-weight: 600; }
 .ds-page .arch-marks .arch-good { color: var(--text); }
-.arch-marks .arch-good span { color: var(--text-soft); }
 .arch-eg { color: var(--text-faint); font-size: 12px; line-height: 1.5; }
 @media (prefers-reduced-motion: reduce) { .arch-panel, .arch-marks li { animation: none; } }
 @media (max-width: 720px) {

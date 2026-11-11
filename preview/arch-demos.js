@@ -346,63 +346,63 @@ function receiptOf(changes) {
 const WAYS = {
   turns: {
     panels: [
-      { caption: 'Noor asks Clippy to shorten the first line, then waits: while Clippy works, the doc is its.',
-        noor: ['away', 'I’ll wait…'], clippy: ['working', 'On it.'],
+      { caption: 'Noor asks, then waits.',
+        noor: ['away', '…'], clippy: ['working', 'On it.'],
         doc: () => marked(BASE, [{ at: 0, node: cursorNode({ by: 'Clippy', working: true }) }]) },
-      { caption: 'Clippy is done. Noor reviews its change before going on.',
-        noor: [null, 'Accept? Reject?'], clippy: [null, 'Your turn.'],
+      { caption: 'Noor reviews the change.',
+        noor: [null, 'Accept? Reject?'], clippy: [null, 'Done.'],
         doc: (node) => {
           revision(node, BASE, shorten(BASE));
           const choices = el('div', 'arch-choices');
           choices.append(...['Accept', 'Reject'].map((label) => el('span', 'pj-secondary', label)));
           return [...node.childNodes, choices];
         } },
-      { caption: 'Then Noor writes on. Two writers, one at a time.',
+      { caption: 'Only then writes on.',
         noor: ['working', 'Finally.'], clippy: [null, ''],
         doc: () => {
           const text = writeOn(shorten(BASE));
           return marked(text, [{ at: text.lastIndexOf('.'), node: cursorNode({ by: 'Noor' }) }]);
         } },
     ],
-    verdict: [[false, 'Natural', 'Noor waits for Clippy'], [false, 'Focused', 'then reviews every change'], [true, 'In control', 'nothing lands unseen']],
+    verdict: [false, false, true],
   },
   live: {
     panels: [
-      { caption: 'Clippy types its rewrite into the doc, word by word, where Noor is fixing a typo.',
-        noor: ['working', 'Fixing “Teh”…'], clippy: ['working', 'Rewriting…'],
+      { caption: 'Both type in one line.',
+        noor: ['working', 'teh → the'], clippy: ['working', 'Rewriting…'],
         doc: () => marked(BASE, [{ at: 1, node: cursorNode({ by: 'Noor' }) }, { at: 3, node: cursorNode({ by: 'Clippy', working: true }) }]) },
-      { caption: 'Noor’s text moves under the caret as Clippy’s words stream in.',
+      { caption: 'The text moves under Noor.',
         noor: ['working', 'Hey, my caret!'], clippy: ['working', '…'],
         doc: () => {
           const streamed = 'Fifty design partners';
           return marked(`${streamed}${BASE.slice(3)}`, [{ at: streamed.length, node: cursorNode({ by: 'Clippy', working: true }) }, { at: streamed.length + 1, node: cursorNode({ by: 'Noor' }) }]);
         } },
-      { caption: 'Merged by character, Noor’s fix lands inside Clippy’s sentence, and nothing says so.',
+      { caption: 'The edits splice, silently.',
         noor: [null, 'Wait, what?'], clippy: [null, 'Done!'],
         doc: spliced },
     ],
-    verdict: [[true, 'Natural', 'no waiting'], [false, 'Focused', 'the text moves under Noor'], [false, 'In control', 'two edits splice, unseen']],
+    verdict: [true, false, false],
   },
   merge: {
     panels: [
-      { caption: 'Clippy works on its own copy. The doc stays Noor’s, and Noor writes on.',
+      { caption: 'Clippy works on a copy.',
         noor: ['working', 'Writing on.'], clippy: ['working', 'On my copy.'],
         doc: () => {
           const text = writeOn(BASE);
           return marked(text, [{ at: text.lastIndexOf('.'), node: cursorNode({ by: 'Noor' }) }]);
         },
         copy: () => marked(BASE, [{ at: 0, node: cursorNode({ by: 'Clippy', working: true }) }]) },
-      { caption: 'Noor fixes the typo in the line Clippy changed, so Clippy redoes its edit on Noor’s version.',
-        noor: ['working', 'Fixing “Teh”.'], clippy: ['working', 'You changed it: redoing.'],
+      { caption: 'Same line changed: Clippy redoes it.',
+        noor: ['working', 'teh → the'], clippy: ['working', 'Redoing.'],
         doc: () => {
           const text = fix(writeOn(BASE));
           return marked(text, [{ at: 3, node: cursorNode({ by: 'Noor' }) }]);
         },
         copy: () => {
           const { conflicts } = merge3(BASE, fix(writeOn(BASE)), shorten(BASE));
-          return [`${conflicts} line changed by both: redone on the doc as it is.`];
+          return [`${conflicts} line collides → redo`];
         } },
-      { caption: 'It lands as one change in Clippy’s colour, with Undo on its reply.',
+      { caption: 'One change lands, with Undo.',
         noor: [null, 'Nice.'], clippy: [null, 'Shortened.'],
         doc: (node) => {
           const now = fix(writeOn(BASE));
@@ -411,7 +411,7 @@ const WAYS = {
           return [...node.childNodes, receiptOf(1)];
         } },
     ],
-    verdict: [[true, 'Natural', 'no waiting, no handing over'], [true, 'Focused', 'only Noor moves Noor’s text'], [true, 'In control', 'one change to see and undo']],
+    verdict: [true, true, true],
   },
 };
 
@@ -448,10 +448,10 @@ function ways(root) {
       }
       return box;
     }));
-    verdict.replaceChildren(...marks.map(([good, name, why]) => {
+    verdict.replaceChildren(...marks.map((good, i) => {
       const item = el('li', good ? 'arch-good' : '');
       item.style.setProperty('--i', panels.length);
-      item.append(icon(good ? 'check' : 'close'), el('b', '', name), el('span', '', why));
+      item.append(icon(good ? 'check' : 'close'), ['Natural', 'Focused', 'In control'][i]);
       return item;
     }));
   }

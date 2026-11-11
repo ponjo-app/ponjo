@@ -44,7 +44,7 @@
   <p class="ds-lead">People and AI buddies edit the same file at once. One host on your machine orders every edit, no one resolves a conflict by hand, and our own agent proposes edits the program checks.</p>
 
   <h2>Three ways to write with an AI</h2>
-  <p>Noor asks Clippy to shorten a line, then fixes a typo in it while Clippy works. The same few seconds, three ways.</p>
+  <p>Noor fixes a typo in the line Clippy is shortening.</p>
 
   <div class="arch-merge" data-demo="ways" data-buddy="Clippy">
     <div class="arch-controls">
@@ -57,15 +57,14 @@
     </div>
     <div class="arch-strip" data-strip></div>
     <ul class="arch-marks" data-marks></ul>
-    <small class="arch-eg">For example, take turns: Cursor, Copilot Edits, Claude Code, the AI in Word and Google Docs. Type live together: Zed's agent. Copy and merge: background agents, merged by hand in a pull request; Ponjo, merged by the host as below.</small>
+    <small class="arch-eg">E.g. take turns: Cursor, Copilot, Claude Code, Word, Google Docs. Live: Zed. Copy and merge: background agents (by hand), Ponjo.</small>
   </div>
 
   <h2>Merge strategy</h2>
-  <p>Every edit is made on a revision, and merges by how it comes, not by who made it. An edit made in a window, typing or a paste, says what it does on text its writer saw a moment ago, so it moves over others' edits by character. A buddy's turn, a change from another program and an undo arrive as a whole text, made from one that may be minutes old: merged by character, they would splice two rewrites of a sentence into words neither wrote. So they merge by line, and where both changed the same lines, the doc as it is wins; the late text is in history, and a turn first runs once more.</p>
-  <p>Who made it does not count: a person's edit saved in another editor gives way as a buddy's turn does, and a buddy's turn that landed first holds against a later one.</p>
+  <p>An edit merges by how it comes, not by who made it. Typing and pasting merge by character. A whole text that arrives late (a buddy's turn, an outside change, an undo) merges by line: where both changed a line, the doc as it is wins.</p>
 
   <div class="arch-merge" data-demo="typing">
-    <div class="arch-merge-head"><b>By character</b><span>A window's edits: typing, a paste</span></div>
+    <div class="arch-merge-head"><b>By character</b><span>Typing, pasting</span></div>
     <p>Type in both. Each edit goes to the host on the revision it was made on; one made on an older revision is moved over what landed since. Nothing typed is dropped, and both pages end on the file's text.</p>
     <div class="arch-controls">
       <div class="pj-segmented" role="radiogroup" aria-label="Network delay">
@@ -84,7 +83,7 @@
   </div>
 
   <div class="arch-merge" data-demo="lines" data-buddy="Clippy">
-    <div class="arch-merge-head"><b>By line</b><span>A whole text arriving late: a buddy's turn, an outside change, an undo</span></div>
+    <div class="arch-merge-head"><b>By line</b><span>A turn, an outside change, an undo</span></div>
     <p>A turn works on a copy while people go on typing. When it ends, the host merges three texts with <code>merge3</code>. Edit any of them.</p>
     <div class="arch-controls">
       <div class="pj-segmented" role="radiogroup" aria-label="Case">
