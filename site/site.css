@@ -160,7 +160,7 @@ a { color: var(--accent); }
 .arch-choices .pj-secondary { height: 24px; padding: 0 8px; font-size: 12px; }
 .arch-choices .arch-pressed { background: var(--active); }
 .arch-lanes { display: flex; flex-direction: column; gap: 6px; margin-top: 16px; }
-.arch-lane { display: grid; grid-template-columns: 88px minmax(0, 1fr); align-items: center; gap: 8px; color: var(--text-soft); font-size: 12px; }
+.arch-lane { display: grid; grid-template-columns: 128px minmax(0, 1fr); align-items: center; gap: 8px; color: var(--text-soft); font-size: 12px; }
 .arch-track { position: relative; height: 20px; border-radius: 4px; background: var(--bg-soft); }
 .arch-bar { position: absolute; top: 0; bottom: 0; overflow: hidden; border-radius: 4px; background: color-mix(in oklch, var(--buddy) 45%, transparent); color: var(--text); font-size: 11px; line-height: 20px; text-indent: 6px; white-space: nowrap; }
 .arch-wait { background: repeating-linear-gradient(135deg, var(--active) 0 4px, transparent 4px 8px); color: var(--text-soft); }

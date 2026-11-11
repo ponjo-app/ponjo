@@ -48,24 +48,24 @@
 
 <section class="arch-slide">
   <h2>Who waits for whom</h2>
-  <p>Three ways to write with AI agents, told apart by two questions: do people wait for an agent, and do agents wait for each other?</p>
+  <p>Three ways to write with AI agents, told apart by two questions: do people wait for the agent, and do its runs wait for each other?</p>
   <div class="arch-ideas">
-    <div class="arch-idea"><b>1. Chat beside the file</b><span>People wait for the agent, then review it. Agents wait their turn.</span></div>
-    <div class="arch-idea"><b>2. One agent queue</b><span>People keep writing. Agents wait in line.</span></div>
-    <div class="arch-idea"><b>3. Ponjo</b><span>People keep writing. Agents never wait.</span></div>
+    <div class="arch-idea"><b>1. Chat beside the file</b><span>People wait for Claude, then review it. The next ask waits for the last.</span></div>
+    <div class="arch-idea"><b>2. One agent queue</b><span>People keep writing. Claude's runs wait in line.</span></div>
+    <div class="arch-idea"><b>3. Ponjo</b><span>People keep writing. Every turn runs at once.</span></div>
   </div>
 </section>
 
 <section class="arch-slide">
-  <h2>1. People and agents wait for each other</h2>
-  <p>A chat beside the file. Noor asks, waits, reviews, then asks again, and writes only when the agents are done.</p>
+  <h2>1. People and the agent wait for each other</h2>
+  <p>A chat with one agent beside the file. Noor asks Claude, waits, reviews, then asks again, and writes only when Claude is done.</p>
   <div class="arch-merge" data-demo="mode" data-mode="chat"></div>
   <small class="arch-eg">E.g. Claude Code desktop, Cursor, Copilot Edits.</small>
 </section>
 
 <section class="arch-slide">
-  <h2>2. Agents wait for each other</h2>
-  <p>Comments in a shared doc, answered one at a time. Noor keeps writing; Max's comment waits in line behind Clippy's.</p>
+  <h2>2. The agent's runs wait for each other</h2>
+  <p>Comments in a shared doc, answered by one agent, one at a time. Noor keeps writing; the second ask waits in line behind the first.</p>
   <div class="arch-merge" data-demo="mode" data-mode="queue"></div>
   <small class="arch-eg">E.g. Claude Docs, as we saw it: comments answered one by one.</small>
 </section>

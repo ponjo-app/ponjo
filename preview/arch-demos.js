@@ -360,7 +360,7 @@ function drawLines(node, lines) {
   }));
 }
 
-// 1. A chat beside the file: ask, wait, review, ask again.
+// 1. A chat with one agent beside the file: ask, wait, review, ask again.
 function chatWindow(win) {
   win.classList.add('arch-win-chat');
   const log = el('div', 'arch-log');
@@ -384,8 +384,8 @@ function chatWindow(win) {
     return t < from + 3.5 ? { text: next, old: line, by } : { text: next };
   };
   return (t) => {
-    const messages = [[1, 'Noor', 'Clippy, shorten line 1.'], [1, 'Clippy', t < 3.5 ? 'Working…' : 'Done. Review it.'],
-      [5.5, 'Noor', 'Max, lengthen line 2.'], [5.5, 'Max', t < 8 ? 'Working…' : 'Done. Review it.']].filter(([at]) => t >= at);
+    const messages = [[1, 'Noor', 'Shorten line 1.'], [1, 'Claude', t < 3.5 ? 'Working…' : 'Done. Review it.'],
+      [5.5, 'Noor', 'Now lengthen line 2.'], [5.5, 'Claude', t < 8 ? 'Working…' : 'Done. Review it.']].filter(([at]) => t >= at);
     const now = messages.map(([, , text]) => text).join('|');
     if (now !== said) {
       said = now;
@@ -395,8 +395,8 @@ function chatWindow(win) {
         return row;
       }));
     }
-    prompt.textContent = t < 1 ? typed('Clippy, shorten line 1.', span(t, 0, 1)) : t >= 4.5 && t < 5.5 ? typed('Max, lengthen line 2.', span(t, 4.5, 5.5)) : '';
-    const lines = [agent(t, LINES[0], SHORT, 'Clippy', 1), agent(t, LINES[1], LONG, 'Max', 5.5)];
+    prompt.textContent = t < 1 ? typed('Shorten line 1.', span(t, 0, 1)) : t >= 4.5 && t < 5.5 ? typed('Now lengthen line 2.', span(t, 4.5, 5.5)) : '';
+    const lines = [agent(t, LINES[0], SHORT, 'Claude', 1), agent(t, LINES[1], LONG, 'Claude', 5.5)];
     if (t >= 9) {
       const text = typed(MINE, span(t, 9, 11));
       lines.push({ text, caret: { at: text.length, by: 'Noor' } });
@@ -408,11 +408,11 @@ function chatWindow(win) {
 }
 
 // 2. One queue, and 3. Ponjo: a doc with its threads in the margin. In the
-// queue, each ask waits for the one before and edits the doc as it goes; in
-// Ponjo each works on its own copy at once, merged (merge3) when it ends.
-const ASKS = {
-  queue: { Clippy: [0, 0.8, 0.8, 3.3], Max: [0.8, 1.6, 3.3, 5.8] }, // asked from, to; works from, to
-  ponjo: { Clippy: [0, 0.8, 0.8, 3.3], Max: [0.8, 1.6, 1.6, 4.1] },
+// queue, one agent answers the asks in turn and edits the doc as it goes; in
+// Ponjo each ask is its own turn on its own copy, merged (merge3) when it ends.
+const ASKS = { // [who answers, the ask, asked from, to, works from, to]
+  queue: [['Claude', 'shorten this', 0, 0.8, 0.8, 3.3], ['Claude', 'lengthen this', 0.8, 1.6, 3.3, 5.8]],
+  ponjo: [['Clippy', 'shorten this', 0, 0.8, 0.8, 3.3], ['Max', 'lengthen this', 0.8, 1.6, 1.6, 4.1]],
 };
 
 function docWindow(win, way) {
@@ -422,7 +422,7 @@ function docWindow(win, way) {
   const margin = el('div', 'arch-margin');
   win.append(doc, margin);
   const ponjo = way === 'ponjo';
-  const cards = Object.entries(ASKS[way]).map(([buddy, [from, to, start, end]]) => {
+  const cards = ASKS[way].map(([buddy, words, from, to, start, end]) => {
     const card = el('div', 'pj-card arch-card');
     card.style.setProperty('--buddy', buddyColor(buddy));
     const head = el('div', 'arch-actor');
@@ -438,7 +438,7 @@ function docWindow(win, way) {
     return (t) => {
       const working = t >= start && t < end;
       card.hidden = t < from;
-      ask.textContent = typed(`@${buddy} ${buddy === 'Clippy' ? 'shorten this' : 'lengthen this'}`, span(t, from, to));
+      ask.textContent = typed(`@${buddy} ${words}`, span(t, from, to));
       card.classList.toggle('pj-card-working', working);
       if (working) who.dataset.presence = 'working';
       else if (t >= to && t < start) who.dataset.presence = 'away';
@@ -448,7 +448,7 @@ function docWindow(win, way) {
       done.hidden = !(ponjo && t >= end);
     };
   });
-  const [clippy, max] = Object.values(ASKS[way]);
+  const [first, second] = ASKS[way].map(([by, , from, , start, end]) => ({ by, from, start, end }));
   return (t) => {
     for (const card of cards) card(t);
     const mine = typed(MINE, span(t, 1.6, 4));
@@ -456,47 +456,47 @@ function docWindow(win, way) {
     if (ponjo) {
       const base = `${LINES.join('\n')}\n`;
       let text = base + mine;
-      if (t >= clippy[3]) text = merge3(base, text, `${SHORT}\n${LINES[1]}\n`).text;
-      if (t >= max[3]) text = merge3(base, text, `${LINES[0]}\n${LONG}\n`).text;
+      if (t >= first.end) text = merge3(base, text, `${SHORT}\n${LINES[1]}\n`).text;
+      if (t >= second.end) text = merge3(base, text, `${LINES[0]}\n${LONG}\n`).text;
       const [one, two] = text.split('\n');
-      lines = [
-        t >= clippy[3] ? { text: one, by: 'Clippy' } : { text: one, hl: true, caret: t >= clippy[2] ? { at: 0, by: 'Clippy', working: true } : null },
-        t >= max[3] ? { text: two, by: 'Max' } : { text: two, hl: t >= max[0], caret: t >= max[2] ? { at: 0, by: 'Max', working: true } : null },
-      ];
+      const line = (words, { by, from, start, end }) => (t >= end ? { text: words, by }
+        : { text: words, hl: t >= from, caret: t >= start ? { at: 0, by, working: true } : null });
+      lines = [line(one, first), line(two, second)];
     } else {
-      const edit = (line, next, by, [from, , start, end]) => {
+      const edit = (line, next, { by, from, start, end }) => {
         if (t >= end) return { text: next };
         if (t < start) return { text: line, hl: t >= from };
         const now = overwrite(line, next, span(t, start, end));
         return { text: now.text, caret: { at: now.at, by, working: true } };
       };
-      lines = [edit(LINES[0], SHORT, 'Clippy', clippy), edit(LINES[1], LONG, 'Max', max)];
+      lines = [edit(LINES[0], SHORT, first), edit(LINES[1], LONG, second)];
     }
     if (t >= 1.6) lines.push({ text: mine, caret: { at: mine.length, by: 'Noor' } });
     drawLines(body, lines);
   };
 }
 
-const WRITES = [[0, 1.6, 'comments'], [1.6, 4, 'writes']];
+// Lanes: Noor's, then one per run of an agent, named by its agent and its line.
+const WRITES = ['Noor', '', [[0, 1.6, 'comments'], [1.6, 4, 'writes']]];
 const MODES = {
   chat: {
     end: 11,
     window: chatWindow,
-    lanes: {
-      Noor: [[0, 1, 'asks'], [1, 3.5, 'waits', true], [3.5, 4.5, 'reviews'], [4.5, 5.5, 'asks'], [5.5, 8, 'waits', true], [8, 9, 'reviews'], [9, 11, 'writes']],
-      Clippy: [[1, 3.5, 'edits'], [3.5, 4.5, 'waits', true]],
-      Max: [[5.5, 8, 'edits'], [8, 9, 'waits', true]],
-    },
+    lanes: [
+      ['Noor', '', [[0, 1, 'asks'], [1, 3.5, 'waits', true], [3.5, 4.5, 'reviews'], [4.5, 5.5, 'asks'], [5.5, 8, 'waits', true], [8, 9, 'reviews'], [9, 11, 'writes']]],
+      ['Claude', 'line 1', [[1, 3.5, 'edits'], [3.5, 4.5, 'waits', true]]],
+      ['Claude', 'line 2', [[5.5, 8, 'edits'], [8, 9, 'waits', true]]],
+    ],
   },
   queue: {
     end: 5.8,
     window: (win) => docWindow(win, 'queue'),
-    lanes: { Noor: WRITES, Clippy: [[0.8, 3.3, 'edits']], Max: [[1.6, 3.3, 'queued', true], [3.3, 5.8, 'edits']] },
+    lanes: [WRITES, ['Claude', 'line 1', [[0.8, 3.3, 'edits']]], ['Claude', 'line 2', [[1.6, 3.3, 'queued', true], [3.3, 5.8, 'edits']]]],
   },
   ponjo: {
     end: 4.1,
     window: (win) => docWindow(win, 'ponjo'),
-    lanes: { Noor: WRITES, Clippy: [[0.8, 3.3, 'edits its copy']], Max: [[1.6, 4.1, 'edits its copy']] },
+    lanes: [WRITES, ['Clippy', 'line 1', [[0.8, 3.3, 'edits its copy']]], ['Max', 'line 2', [[1.6, 4.1, 'edits its copy']]]],
   },
 };
 
@@ -505,7 +505,7 @@ function drawLanes(node, lanes, end) {
   const bars = [];
   const heads = [];
   const at = (s) => `${(s / SCALE) * 100}%`;
-  const rows = Object.entries(lanes).map(([who, list]) => {
+  const rows = lanes.map(([who, run, list]) => {
     const track = el('div', 'arch-track');
     track.style.setProperty('--buddy', buddyColor(who));
     for (const [from, to, label, waiting] of list) {
@@ -518,7 +518,7 @@ function drawLanes(node, lanes, end) {
     heads.push(head);
     track.append(head);
     const name = el('span', 'arch-actor');
-    name.append(face(who, who === 'Noor'), who);
+    name.append(face(who, who === 'Noor'), run ? `${who} · ${run}` : who);
     const row = el('div', 'arch-lane');
     row.append(name, track);
     return row;
@@ -595,7 +595,7 @@ function deck() {
   for (const slide of slides) watch.observe(slide);
 }
 
-setBuddies([{ id: 'Clippy', name: 'Clippy' }, { id: 'Max', name: 'Max' }]);
+setBuddies(['Clippy', 'Max', 'Claude'].map((name) => ({ id: name, name })));
 setPeople(['Noor']);
 deck();
 for (const root of document.querySelectorAll('[data-demo="mode"]')) mode(root);
