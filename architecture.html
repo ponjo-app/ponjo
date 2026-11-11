@@ -6,8 +6,8 @@
 <title>How Ponjo is built</title>
 <meta name="description" content="How the Ponjo agent's runtime lets people and AI agents write the same file without waiting for each other.">
 <link rel="icon" href="./build/icon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="./dist/web/app.css?v=6c224d0">
-<link rel="stylesheet" href="site.css?v=6c224d0">
+<link rel="stylesheet" href="./dist/web/app.css?v=ee98df3">
+<link rel="stylesheet" href="site.css?v=ee98df3">
 </head>
 <body>
 <header class="site-header">
@@ -41,71 +41,45 @@
 <main class="ds-page arch-page arch-deck">
 
 <section class="arch-slide arch-cover">
-  <h1>People and AI agents write the same file, and no one waits.</h1>
-  <p class="ds-lead">How Ponjo is built: the Ponjo agent's runtime.</p>
-  <div class="arch-lanes" data-demo="done"></div>
+  <h1>Many people, many agents, one file. Nobody waits.</h1>
+  <p class="ds-lead">How Ponjo's agents work</p>
   <p class="arch-hint">Scroll to go on.</p>
 </section>
 
 <section class="arch-slide">
-  <h2>AI writing tools today block</h2>
-  <p>With a chat beside the file, you ask, wait, review, then ask again.</p>
-  <div class="arch-merge" data-demo="mode" data-mode="chat"></div>
-  <small class="arch-eg">E.g. Claude Code desktop, Cursor, Copilot Edits.</small>
+  <h2>The problem: someone always waits</h2>
+  <div class="arch-merge" data-demo="who"></div>
 </section>
 
 <section class="arch-slide">
-  <h2>Or they queue the agent's turns</h2>
-  <p>When an agent answers comments, its turns run one at a time, in one queue. You keep writing; your second ask waits for the first.</p>
-  <div class="arch-merge" data-demo="mode" data-mode="queue"></div>
-  <small class="arch-eg">E.g. Claude Docs, as we saw it: comments answered one by one.</small>
+  <h2>Three things block. Three designs remove them.</h2>
+  <div class="arch-merge" data-demo="blocks"></div>
 </section>
 
 <section class="arch-slide">
-  <h2>In Ponjo, nobody waits</h2>
-  <p>You keep writing while agents work. Each @mention starts its own turn, and turns run at once. Each turn lands as one change you can review and undo.</p>
-  <div class="arch-merge" data-demo="mode" data-mode="ponjo"></div>
-  <small class="arch-eg">When it ends, click a turn's edit count to see its change; Undo takes back that turn alone.</small>
+  <h2>1 · Asking an agent never stops you</h2>
+  <div class="arch-merge" data-demo="background"></div>
 </section>
 
 <section class="arch-slide">
-  <h2>The agent acts as a member, on its own copy</h2>
-  <p>Its tools are a member's actions. The model only proposes: the program checks each proposal and applies it to the turn's copy. Below, a real turn of the Ponjo agent's loop, its model scripted.</p>
-  <div class="arch-merge" data-demo="member"></div>
-  <small class="arch-eg">The tools are the permissions: no shell, and no network but the model's. Text in a doc can at worst make a proposal you undo.</small>
+  <h2>2 · Agents always run in parallel</h2>
+  <div class="arch-merge" data-demo="parallel"></div>
 </section>
 
 <section class="arch-slide">
-  <h2>The copy lands on the doc as it is now</h2>
-  <p>When the turn ends, the doc host merges its copy into the doc by line. Where a person changed the same lines meanwhile, the turn runs once more on the new text.</p>
-  <div class="arch-merge" data-demo="lines" data-buddy="Clippy">
-    <div class="arch-merge-head"><b>merge3</b><span>Edit any of the three</span></div>
-    <div class="arch-controls">
-      <div class="pj-segmented" role="radiogroup" aria-label="Case">
-        <button type="button" role="radio" aria-checked="true" data-preset="apart">Different lines</button>
-        <button type="button" role="radio" aria-checked="false" data-preset="collide">Same line</button>
-      </div>
-    </div>
-    <div class="arch-sides">
-      <label><span class="arch-who">Copy as it started</span><textarea class="pj-input arch-text" data-side="base" rows="5" spellcheck="false"></textarea></label>
-      <label><span class="arch-who">Doc now</span><textarea class="pj-input arch-text" data-side="ours" rows="5" spellcheck="false"></textarea></label>
-      <label><span class="arch-who">Clippy's copy</span><textarea class="pj-input arch-text" data-side="theirs" rows="5" spellcheck="false"></textarea></label>
-    </div>
-    <div class="arch-file"><span class="arch-who">Lands, as a revision of the doc now</span><div class="ds-prose" data-result></div></div>
-    <p class="arch-verdict" data-verdict></p>
-  </div>
+  <h2>3 · The app merges. You never resolve.</h2>
+  <div class="arch-merge" data-demo="merge"></div>
 </section>
 
 <section class="arch-slide">
-  <h2>The runner is a reconciler over stateless turns</h2>
-  <p>The running turns always equal the open asks in the comments. A turn keeps no state and changes nothing before its proposal, so turns run side by side, resolving a thread stops its turn at once, and a turn cut off by a restart simply runs again.</p>
-  <div class="arch-merge" data-demo="runner"></div>
+  <h2>Putting it together</h2>
+  <div class="arch-merge" data-demo="how"></div>
 </section>
 
 <section class="arch-slide">
   <div class="arch-merge" data-demo="turn" data-buddy="Clippy">
-    <div class="arch-merge-head"><b>Try a real turn</b><span>On NVIDIA Nemotron</span></div>
-    <p>Ask Clippy and watch its steps. Keep editing while it works on its copy; change the paragraph it is changing to see a collision.</p>
+    <div class="arch-merge-head"><b>Try it: ask Clippy</b><span>A real agent, on NVIDIA Nemotron</span></div>
+    <p>Edit the paragraph while Clippy works on it, and see what happens.</p>
     <textarea class="pj-input arch-text" data-doc rows="7" spellcheck="false" aria-label="plan.md"></textarea>
     <div class="arch-controls">
       <input class="pj-input arch-ask" data-ask value="@Clippy make the paragraph about the beta half as long" aria-label="Comment">
@@ -125,7 +99,7 @@
 </main>
 <nav class="arch-dots" aria-label="Slides" data-dots></nav>
 <script type="module">
-  import { agentFace, personFace, buddyColor, setBuddies } from './dist/web/faces.js?v=6c224d0';
+  import { agentFace, personFace, buddyColor, setBuddies } from './dist/web/faces.js?v=ee98df3';
 
   setBuddies([{ id: 'Clippy', name: 'Clippy' }]);
 
@@ -137,7 +111,7 @@
   }
   for (const node of document.querySelectorAll('[data-buddy]')) node.style.setProperty('--buddy', buddyColor(node.dataset.buddy));
 </script>
-<script type="module" src="preview/arch-demos.js?v=6c224d0"></script>
-<script type="module" src="site.js?v=6c224d0"></script>
+<script type="module" src="preview/arch-demos.js?v=ee98df3"></script>
+<script type="module" src="site.js?v=ee98df3"></script>
 </body>
 </html>
