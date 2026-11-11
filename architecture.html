@@ -6,8 +6,8 @@
 <title>How Ponjo is built</title>
 <meta name="description" content="How Ponjo merges edits from people and AI buddies, and how its own agent runs.">
 <link rel="icon" href="./build/icon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="./dist/web/app.css?v=fcf2e51">
-<link rel="stylesheet" href="site.css?v=fcf2e51">
+<link rel="stylesheet" href="./dist/web/app.css?v=d69fda6">
+<link rel="stylesheet" href="site.css?v=d69fda6">
 </head>
 <body>
 <header class="site-header">
@@ -119,7 +119,7 @@
   <p>More in <a href="https://github.com/ponjo-app/ponjo/blob/main/docs/architecture.md">the architecture doc</a> and <a href="https://github.com/ponjo-app/ponjo/blob/main/docs/ponjo-agent.md">the Ponjo agent's</a>.</p>
 </main>
 <script type="module">
-  import { agentFace, personFace, buddyColor, setBuddies } from './dist/web/faces.js?v=fcf2e51';
+  import { agentFace, personFace, buddyColor, setBuddies } from './dist/web/faces.js?v=d69fda6';
 
   setBuddies([{ id: 'Clippy', name: 'Clippy' }]);
 
@@ -131,7 +131,7 @@
   }
   for (const node of document.querySelectorAll('[data-buddy]')) node.style.setProperty('--buddy', buddyColor(node.dataset.buddy));
 </script>
-<script type="module" src="preview/arch-demos.js?v=fcf2e51"></script>
-<script type="module" src="site.js?v=fcf2e51"></script>
+<script type="module" src="preview/arch-demos.js?v=d69fda6"></script>
+<script type="module" src="site.js?v=d69fda6"></script>
 </body>
 </html>
