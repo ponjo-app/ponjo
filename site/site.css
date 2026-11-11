@@ -149,16 +149,13 @@ a { color: var(--accent); }
 .arch-mine { background: var(--active); }
 .arch-list { display: flex; flex-direction: column; gap: 8px; min-height: 64px; }
 .arch-row { font-size: 13px; }
-.arch-job { display: flex; flex-direction: column; gap: 6px; }
-.arch-job .arch-track { height: 6px; }
-.arch-job .arch-bar { background: var(--buddy); }
 .arch-quote { display: flex; flex-direction: column; gap: 2px; font-size: 13px; line-height: 1.6; }
 .arch-quote > div:nth-child(odd) { color: var(--text-soft); font-size: 12px; }
 .arch-verdict { margin: 12px 0 0; font-size: 13px; font-weight: 500; }
 .arch-ok { color: var(--green); }
 .arch-back { color: var(--red); }
 
-/* what blocks, beside what Ponjo does instead */
+/* the problem and the solution: a claim beside its reason, a row at a time */
 .arch-block { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: 16px; padding: 12px 0; border-top: 1px solid var(--border); font-size: 14px; }
 .arch-block.arch-who { padding-top: 0; border-top: 0; }
 .arch-blocks { color: var(--text-soft); }
@@ -180,19 +177,7 @@ a { color: var(--accent); }
 .arch-behind { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; padding: 12px; border-radius: 10px; background: var(--bg-soft); }
 .arch-behind .arch-pane { background: var(--canvas); }
 
-/* who waits: a way's name, and its lanes on one clock */
-.arch-way { display: flex; flex-direction: column; gap: 6px; margin-top: 16px; }
-.arch-way-name { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; font-size: 13px; font-weight: 600; }
-.arch-way-name span { color: var(--text-faint); font-size: 12px; font-weight: 400; }
-.arch-lanes { display: flex; flex-direction: column; gap: 6px; }
-.arch-lane { display: grid; grid-template-columns: 128px minmax(0, 1fr); align-items: center; gap: 8px; color: var(--text-soft); font-size: 12px; }
-.arch-track { position: relative; height: 20px; border-radius: 4px; background: var(--bg-soft); }
-.arch-bar { position: absolute; top: 0; bottom: 0; overflow: hidden; border-radius: 4px; background: color-mix(in oklch, var(--buddy) 45%, transparent); color: var(--text); font-size: 11px; line-height: 20px; text-indent: 6px; white-space: nowrap; }
-.arch-wait { background: repeating-linear-gradient(135deg, var(--active) 0 4px, transparent 4px 8px); color: var(--text-soft); }
-.arch-axis { position: relative; height: 16px; }
-.arch-done { position: absolute; top: 0; right: 0; color: var(--text); font-size: 12px; font-weight: 500; }
-
-/* how it works: the parts as boxes; with one in focus, it in ink and the rest dimmed */
+/* under the hood: the parts as boxes; with some in focus, they in ink and the rest dimmed */
 .arch-flow svg { display: block; width: 100%; height: auto; }
 .arch-flow rect { fill: var(--canvas); stroke: var(--border-strong); stroke-width: 1.25; }
 .arch-flow .chip { fill: var(--bg-soft); }
