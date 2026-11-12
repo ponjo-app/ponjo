@@ -1,13 +1,15 @@
 // The architecture page's live demos (site/architecture.html), each played
-// step by step with a caption: who waits, the same work three ways on one
-// clock; what blocks and the three designs that remove it; for each design,
-// what you see, in a Ponjo window drawn with the app's own classes with each
-// buddy's copy behind it, merged in with merge3 (src/core/diff.js), and the
-// parts under the hood that make it so; and a real turn of the Ponjo agent
-// (agents/ponjo-core.mjs) on the preview's model, landed as the doc host lands
-// one (src/host/doc-service.js, finishRun). preview/build.js bundles it into
+// step by step with a caption: the problem and the solution a row at a time,
+// with a recording of the problem as we met it in Claude Docs;
+// for each part of the solution, what you see, in a Ponjo window drawn with
+// the app's own classes (with what happens behind the scenes beside it,
+// merged in with merge3, src/core/diff.js), and the parts under the hood that
+// make it so; a real turn of the Ponjo agent (agents/ponjo-core.mjs) on
+// the preview's model, landed as the doc host lands one
+// (src/host/doc-service.js, finishRun). preview/build.js bundles it into
 // dist/preview, which the site serves at /preview/; the model
-// (infer.ponjo.app) answers pages on ponjo.app only.
+// (infer.ponjo.app) answers pages on ponjo.app only. Last, what's next:
+// agents that coordinate through the work they share.
 
 /* global document, IntersectionObserver */
 
@@ -194,15 +196,6 @@ function stepper(root, caption, steps, reset) {
   }, { threshold: 0.5 }).observe(root);
 }
 
-function face(name, person, size = 20) {
-  const avatar = el('span', `pj-avatar${person ? '' : ' pj-avatar-agent'}`);
-  avatar.style.setProperty('--size', `${size}px`);
-  avatar.append(person ? personFace(name) : agentFace(name));
-  const box = el('span', 'pj-agent-face');
-  box.append(avatar);
-  return box;
-}
-
 // A doc's lines, each { text, by?, old?, mine?, caret? }: by an agent, in its
 // colour; `old` struck through before it; `mine`, a line you changed; `caret`,
 // where you type.
@@ -218,120 +211,73 @@ function drawLines(node, lines) {
   }));
 }
 
-// ---- Who waits: the same work three ways, on one clock ----
+// ---- The problem and the solution, a row at a time ----
 
-// You ask an agent for two edits and write a line of your own. Each way is
-// what each of you does when, in seconds, drawn as lanes on one scale; grey
-// is waiting. Played at twice the speed.
-const SCALE = 11;
-const WAYS = [
-  {
-    name: 'A chat beside the file', eg: 'e.g. Claude Code desktop, Cursor', end: 11,
-    say: 'A chat beside the file: you wait while the agent works, then review its edit, twice.',
-    lanes: [
-      ['You', true, 'You', [[0, 1, 'asks'], [1, 3.5, 'waits', true], [3.5, 4.5, 'reviews'], [4.5, 5.5, 'asks'], [5.5, 8, 'waits', true], [8, 9, 'reviews'], [9, 11, 'writes']]],
-      ['Claude', false, 'Agent, edit 1', [[1, 3.5, 'edits'], [3.5, 4.5, 'waits', true]]],
-      ['Claude', false, 'Agent, edit 2', [[5.5, 8, 'edits'], [8, 9, 'waits', true]]],
+const TABLES = {
+  problem: {
+    say: 'In Claude Docs, as we used it, an agent works in a chat session behind the doc, and its context builds up there, on top of the doc.',
+    head: ['What follows', 'Why'],
+    rows: [
+      ['Asks wait in line', 'Within one session, each run builds on what the last one left, so a new ask waits for it to finish.'],
+      ['What the agent knows is hidden', 'The session adds a history you never see on top of the doc, so an edit can rest on things that were never on the page.'],
+      ['Context splits', 'What one person’s session learns stays in it, so each person and agent works from a different picture.'],
     ],
   },
-  {
-    name: 'One agent answering comments', eg: 'e.g. Claude Docs, as we saw it', end: 5.8,
-    say: 'One agent answering comments: you keep writing, but your second request waits for the first.',
-    lanes: [
-      ['You', true, 'You', [[0, 1.6, 'comments'], [1.6, 4, 'writes']]],
-      ['Claude', false, 'Agent, edit 1', [[0.8, 3.3, 'edits']]],
-      ['Claude', false, 'Agent, edit 2', [[1.6, 3.3, 'waits', true], [3.3, 5.8, 'edits']]],
+  solution: {
+    say: 'In Ponjo, each agent run is a stateless function of the doc, its comments and the thread it answers.',
+    head: ['What follows', 'Why'],
+    rows: [
+      ['Ask many things at once', 'A run starts from the doc and its thread, never from what an earlier run left behind.'],
+      ['Nothing it knows is hidden', 'A run knows only the doc, its comments, its persona and the files it reads.'],
+      ['Everyone shares one context', 'What an agent learns goes into the doc or a comment, or it is gone.'],
+      ['You keep the last word', 'An agent changes only its copy; the app, the only writer, merges it in.'],
     ],
   },
-  {
-    name: 'Ponjo', eg: '', end: 4.1,
-    say: 'Ponjo: you keep writing, and both edits are worked on at once.',
-    lanes: [
-      ['You', true, 'You', [[0, 1.6, 'comments'], [1.6, 4, 'writes']]],
-      ['Clippy', false, 'Clippy, edit 1', [[0.8, 3.3, 'edits a copy']]],
-      ['Max', false, 'Max, edit 2', [[1.6, 4.1, 'edits a copy']]],
-    ],
-  },
-];
+};
 
-// Lanes on one scale; the bars grow as the time `t` they are drawn at.
-function drawLanes(node, lanes, end) {
-  const bars = [];
-  const at = (s) => `${(s / SCALE) * 100}%`;
-  const rows = lanes.map(([who, person, label, list]) => {
-    const track = el('div', 'arch-track');
-    track.style.setProperty('--buddy', buddyColor(who));
-    for (const [from, to, words, waiting] of list) {
-      const bar = el('span', waiting ? 'arch-bar arch-wait' : 'arch-bar', words);
-      bar.style.left = at(from);
-      track.append(bar);
-      bars.push({ bar, from, to });
-    }
-    const name = el('span', 'arch-actor');
-    name.append(face(who, person), label);
-    const row = el('div', 'arch-lane');
-    row.append(name, track);
+function table(root, { say, head, rows }) {
+  const caption = el('p', 'arch-caption');
+  const top = el('div', 'arch-block arch-who');
+  top.append(...head.map((words) => el('span', '', words)));
+  const lines = rows.map(([claim, why]) => {
+    const row = el('div', 'arch-block');
+    row.append(el('span', 'arch-design', claim), el('span', 'arch-blocks', why));
     return row;
   });
-  const done = el('span', 'arch-done');
-  const foot = el('div', 'arch-lane');
-  const axis = el('div', 'arch-axis');
-  axis.append(done);
-  foot.append(el('span'), axis);
-  node.replaceChildren(...rows, foot);
-  return (t) => {
-    for (const { bar, from, to } of bars) bar.style.width = at(Math.max(0, Math.min(t, to) - from));
-    done.textContent = t >= end ? `done in ${end} s` : '';
-  };
-}
-
-function whoWaits(root) {
-  const caption = el('p', 'arch-caption');
-  const ways = WAYS.map((way) => {
-    const box = el('div', 'arch-way');
-    const name = el('div', 'arch-way-name', way.name);
-    if (way.eg) name.append(el('span', '', way.eg));
-    const lanes = el('div', 'arch-lanes');
-    box.append(name, lanes);
-    return { box, lanes, way };
-  });
-  root.append(caption, ...ways.map(({ box }) => box));
-  stepper(root, caption, ways.map(({ box, lanes, way }) => ({
-    say: way.say,
-    run: async (wait) => {
-      box.hidden = false;
-      const draw = drawLanes(lanes, way.lanes, way.end);
-      for (let t = 0; t < way.end; t += 0.1) {
-        draw(t);
-        await wait(50);
-      }
-      draw(way.end);
+  root.append(caption, top, ...lines);
+  stepper(root, caption, lines.map((row) => ({
+    say,
+    run: async () => {
+      row.hidden = false;
     },
-    hold: 2500,
+    hold: 3000,
   })), () => {
-    for (const { box } of ways) box.hidden = true;
+    for (const row of lines) row.hidden = true;
   });
 }
 
-// ---- Under the hood: the parts that make each design work ----
+// ---- Under the hood: the parts that make each one work ----
 
-// The window you type in, the doc host (the only writer of the file), the
-// runner, and the turns, each an agent in its own process with its own copy.
-// `parts` are the boxes and lines in focus; the rest are dimmed.
+// The window, the doc host (the only writer of the file), the runner, the
+// project's files, and the runs, each an agent in its own process on its own
+// copy. `parts` are the boxes and lines in focus; the rest are dimmed.
 function machine(node, parts) {
   const on = (name) => (parts.includes(name) ? ' class="on"' : '');
   node.toggleAttribute('data-focus', parts.length > 0);
-  node.innerHTML = `<svg viewBox="0 0 760 240" role="img" aria-label="The window sends your typing and comments to the doc host, the only writer of the file; the runner reads the open @mentions and starts a turn for each, an agent in its own process on its own copy; the host merges each copy back with merge3">
+  node.innerHTML = `<svg viewBox="0 0 760 240" role="img" aria-label="The window sends your typing and comments to the doc host, the only writer of the file; the runner starts a run for each open ask; each run works on its own copy of the doc and its comments and can read the project's files; the host merges each copy back with merge3">
 <defs><marker id="arch-tip" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arch-tip" d="M0 0L10 5L0 10z"/></marker></defs>
-<g${on('window')}><rect x="20" y="20" width="160" height="72" rx="10"/><text x="100" y="50">Window</text><text class="sub" x="100" y="70">you type and comment</text></g>
-<g${on('typing')}><path d="M180 42H294" marker-end="url(#arch-tip)"/><text class="sub" x="238" y="34">your typing</text></g>
+<g${on('window')}><rect x="20" y="20" width="160" height="72" rx="10"/><text x="100" y="50">Window</text><text class="sub" x="100" y="70">people type and comment</text></g>
+<g${on('typing')}><path d="M180 42H294" marker-end="url(#arch-tip)"/><text class="sub" x="238" y="34">typing</text></g>
 <g${on('comment')}><path d="M180 72H294" marker-end="url(#arch-tip)"/><text class="sub" x="238" y="88">@mention</text></g>
-<g${on('host')}><rect x="300" y="20" width="160" height="72" rx="10"/><text x="380" y="44">Doc host</text><text class="sub" x="380" y="62">the only writer</text><text class="sub" x="380" y="78">file, comments, versions</text></g>
-<g${on('asks')}><path d="M460 56H574" marker-end="url(#arch-tip)"/><text class="sub" x="518" y="48">open @mentions</text></g>
-<g${on('runner')}><rect x="580" y="20" width="160" height="72" rx="10"/><text x="660" y="50">Runner</text><text class="sub" x="660" y="70">turns = open @mentions</text></g>
+<g${on('host')}><rect x="300" y="20" width="160" height="72" rx="10"/><text x="380" y="44">Doc host</text><text class="sub" x="380" y="62">the only writer</text><text class="sub" x="380" y="78">doc, comments, versions</text></g>
+<g${on('asks')}><path d="M460 56H574" marker-end="url(#arch-tip)"/><text class="sub" x="518" y="48">open asks</text></g>
+<g${on('runner')}><rect x="580" y="20" width="160" height="72" rx="10"/><text x="660" y="50">Runner</text><text class="sub" x="660" y="70">a run per open ask</text></g>
 <g${on('start')}><path d="M660 92V146" marker-end="url(#arch-tip)"/><text class="sub start" x="668" y="124">start, stop</text></g>
-<g${on('turns')}><rect x="400" y="152" width="340" height="72" rx="10"/><text class="sub start" x="414" y="172">Turns, each a process with a private copy</text><rect class="chip" x="414" y="182" width="154" height="30" rx="6"/><text class="small" x="491" y="202">Clippy · copy + agent</text><rect class="chip" x="574" y="182" width="154" height="30" rx="6"/><text class="small" x="651" y="202">Max · copy + agent</text></g>
-<g${on('merge')}><path d="M400 188H380V98" marker-end="url(#arch-tip)"/><text class="sub end" x="372" y="150">merge3</text></g>
+<g${on('copy')}><path d="M440 92V146" marker-end="url(#arch-tip)"/><text class="sub start" x="448" y="124">a copy</text></g>
+<g${on('project')}><rect x="20" y="164" width="160" height="60" rx="10"/><text x="100" y="190">Project files</text><text class="sub" x="100" y="208">as in the sidebar</text></g>
+<g${on('read')}><path d="M180 204H396" marker-end="url(#arch-tip)"/><text class="sub" x="290" y="198">read only</text></g>
+<g${on('turns')}><rect x="400" y="152" width="340" height="72" rx="10"/><text class="sub start" x="414" y="172">Runs, each a process on its own copy</text><rect class="chip" x="414" y="182" width="154" height="30" rx="6"/><text class="small" x="491" y="202">Clippy · copy + agent</text><rect class="chip" x="574" y="182" width="154" height="30" rx="6"/><text class="small" x="651" y="202">Max · copy + agent</text></g>
+<g${on('merge')}><path d="M400 172H380V98" marker-end="url(#arch-tip)"/><text class="sub end" x="372" y="140">merge3</text></g>
 </svg>`;
 }
 
@@ -348,54 +294,30 @@ function underTheHood(root, steps) {
 }
 
 const HOODS = {
-  1: [
-    [['window', 'typing', 'host'], 'Your typing goes to the doc host as small edits, merged by character with everyone else’s. It never waits for an agent.'],
-    [['comment', 'host', 'asks', 'runner'], 'An @mention is just a line in the doc’s comments file. The runner reads it…'],
-    [['runner', 'start', 'turns'], '…and starts the agent in a process of its own. Nothing in your window waits on it.'],
+  parallel: [
+    [['comment', 'host', 'asks', 'runner'], 'An ask is a line in the doc’s comments. The runner keeps one run going for each open ask: no queue, no line.'],
+    [['copy', 'turns'], 'Each run starts from a fresh copy of the doc and its comments, and keeps nothing from any run before it.'],
+    [['runner', 'start', 'turns'], 'So no run depends on another: they go in parallel, and any one can stop, or start over, at any time.'],
   ],
-  2: [
-    [['asks', 'runner'], 'The runner is a reconciler, not a queue: it keeps one turn running for each open @mention. No line, no limit.'],
-    [['start', 'turns'], 'Each turn gets a private folder with copies of the doc and its comments. The agent keeps no state, and can only write its copies.'],
-    [['runner', 'start', 'turns'], 'So turns share nothing while they run. Resolving a comment stops its turn and deletes its folder; after a restart, the runner starts the unanswered ones again.'],
+  visible: [
+    [['host', 'copy', 'turns'], 'A run gets a copy of the doc and all its comments, and the persona of the buddy you asked.'],
+    [['project', 'read', 'turns'], 'It can read the project’s files, read only, as anyone sees them in the sidebar. Nothing else.'],
+    [['turns'], 'It keeps no memory between runs, so it knows nothing you cannot see. With traces on, you see which files it read.'],
   ],
-  3: [
+  shared: [
+    [['window', 'typing', 'comment', 'host'], 'There is one doc, one set of comments and one project, for everyone in it.'],
+    [['copy', 'project', 'read', 'turns'], 'Every run reads the same ones, whoever asked: you, a teammate, or another agent’s comment.'],
+    [['merge', 'host'], 'What a run learns comes back only through the doc, as an edit or a comment. Every later run, and every person, sees it.'],
+  ],
+  control: [
     [['host'], 'The doc host is the only writer of the file: every edit, typed or merged, goes through it, in order.'],
-    [['turns', 'merge', 'host'], 'When a turn ends, the host merges its copy into the doc as it is now, by line: merge3 of the copy as it started, the doc now, and the copy as it ended.'],
-    [['merge', 'runner', 'start', 'turns'], 'Where you changed the same lines, your lines stay, and the runner runs the turn once more, told what you changed.'],
-    [['host'], 'Each turn lands as one version, with the one before it kept: that is its “1 edit” count, and its Undo.'],
+    [['turns', 'merge', 'host'], 'When a run ends, the host merges its copy into the doc as it is now, by line: merge3 of the copy as it started, the doc now, and the copy as it ended.'],
+    [['merge', 'runner', 'start', 'turns'], 'Where you changed the same lines, your lines stay, and the runner runs it once more on your version.'],
+    [['host'], 'Each run lands as one version, with the one before it kept: that is its “1 edit” count, and its Undo.'],
   ],
 };
 
-// ---- Three things block; three designs remove them ----
-
-const BLOCKS = [
-  ['You wait while an agent works', '1 · You ask in a comment, and the agent works in the background'],
-  ['Agents wait for each other', '2 · Every agent works on its own copy, changing nothing else until it is done'],
-  ['Someone has to resolve conflicts', '3 · Only the app writes the file, and it merges every change'],
-];
-
-function blockers(root) {
-  const caption = el('p', 'arch-caption');
-  const head = el('div', 'arch-block arch-who');
-  head.append(el('span', '', 'What blocks'), el('span', '', 'What Ponjo does instead'));
-  const rows = BLOCKS.map(([blocks, design]) => {
-    const row = el('div', 'arch-block');
-    row.append(el('span', 'arch-blocks', blocks), el('span', 'arch-design', design));
-    return row;
-  });
-  root.append(caption, head, ...rows);
-  stepper(root, caption, rows.map((row) => ({
-    say: 'Many people and many agents edit one file. Three things usually make someone wait.',
-    run: async () => {
-      row.hidden = false;
-    },
-    hold: 3000,
-  })), () => {
-    for (const row of rows) row.hidden = true;
-  });
-}
-
-// ---- A Ponjo window, as the app draws it, for the three designs ----
+// ---- A Ponjo window, as the app draws it ----
 
 // The app's own classes (web/app.css): its header with the buddies' faces,
 // the doc, and the threads in the margin, with a buddy's cursor, its edit
@@ -406,7 +328,6 @@ const PARAS = [
   'Then we open the waitlist.',
 ];
 const TITLE = 'Launch plan';
-const MINE = 'Pricing comes after the beta.';
 const text = (paras) => `# ${TITLE}\n\n${paras.join('\n\n')}\n`;
 const parasOf = (doc) => doc.trimEnd().split('\n\n').slice(1);
 
@@ -417,7 +338,7 @@ function avatar(name, person, size = 24) {
   return node;
 }
 
-function app(root, buddies, { behind = false } = {}) {
+function app(root, buddies, { behind = null, people = ['You'] } = {}) {
   const head = el('div', 'arch-app-head');
   head.append(icon('file'), el('span', '', 'plan.md'), el('span', 'pj-spacer'));
   const faces = {};
@@ -429,7 +350,7 @@ function app(root, buddies, { behind = false } = {}) {
     faces[name] = agent;
     head.append(agent);
   }
-  head.append(avatar('You', true, 28));
+  head.append(...people.map((name) => avatar(name, true, 28)));
   const doc = el('div', 'arch-app-doc');
   const margin = el('div', 'arch-app-margin');
   const body = el('div', 'arch-app-body');
@@ -442,7 +363,7 @@ function app(root, buddies, { behind = false } = {}) {
   if (behind) {
     copies = el('div', 'arch-two');
     const panel = el('div', 'arch-behind');
-    panel.append(el('span', 'arch-who', 'Behind the scenes: each buddy’s own copy of the doc'), copies);
+    panel.append(el('span', 'arch-who', behind === true ? 'Behind the scenes: each buddy’s own copy of the doc' : behind), copies);
     root.insertBefore(panel, controls);
   }
   return {
@@ -473,9 +394,9 @@ function app(root, buddies, { behind = false } = {}) {
   };
 }
 
-// A thread in the margin: your comment asking `buddy`; it can show the buddy
-// at work, its reply with Undo, or that you resolved it.
-function thread(margin, buddy, words) {
+// A thread in the margin: a comment by `by` asking `buddy`; it can show the
+// buddy at work, its reply (with Undo when it edited), or that it was resolved.
+function thread(margin, buddy, words, by = 'You') {
   const card = el('article', 'pj-card');
   card.style.setProperty('--buddy', buddyColor(buddy));
   const message = (name, person, ...body) => {
@@ -492,7 +413,7 @@ function thread(margin, buddy, words) {
   const chip = el('span', 'pj-at pj-at-agent', `@${buddy}`);
   chip.style.setProperty('--buddy', buddyColor(buddy));
   const ask = el('span', '');
-  card.append(message('You', true, chip, ' ', ask));
+  card.append(message(by, true, chip, ' ', ask));
   margin.append(card);
   let busy = null;
   return {
@@ -514,8 +435,12 @@ function thread(margin, buddy, words) {
       busy.append(face, el('span', '', `${buddy} is working…`));
       card.append(busy);
     },
-    reply(words1) {
+    reply(words1, edits = 1) {
       this.working(false);
+      if (!edits) {
+        card.append(message(buddy, false, words1));
+        return;
+      }
       const receipt = el('div', 'pj-receipt');
       receipt.style.setProperty('--buddy', buddyColor(buddy));
       const count = el('span', 'pj-receipt-show');
@@ -562,40 +487,92 @@ function writing(from, to, x) {
   return to.slice(0, Math.min(k, to.length)) + from.slice(k);
 }
 
-// ---- 1 · Asking an agent never stops you ----
+// ---- Nothing it knows is hidden ----
 
-function design1(root) {
+// Clippy checks a price. Beside the window, everything its run knew, all of
+// it on the page or in the project: then its edit, resting on one of them.
+function visible(root) {
   const caption = el('p', 'arch-caption');
   root.append(caption);
-  const SHORTER = 'Fifty design partners get the beta in March.';
+  const DOC = ['The beta ships in March to fifty design partners.', 'It costs $10 a month.'];
+  const KNEW = [
+    ['plan.md', 'the doc'],
+    ['plan.md comments', 'every thread on it'],
+    ['Clippy.md', 'its persona, in the project'],
+    ['pricing.md', 'a file it chose to read'],
+  ];
   let win;
   let ask;
   const reset = () => {
-    root.querySelector('.arch-app')?.remove();
-    win = app(root, ['Clippy']);
-    ask = null;
-    win.draw(PARAS.map((t) => ({ text: t })));
+    for (const node of root.querySelectorAll('.arch-app, .arch-behind')) node.remove();
+    win = app(root, ['Clippy'], { behind: 'Everything Clippy’s run knew' });
+    win.draw(DOC.map((t) => ({ text: t })));
   };
   stepper(root, caption, [
-    { say: 'Clippy is an AI buddy: an AI agent with a name and a face. You ask it in a comment, as you would a teammate.', run: async (wait) => {
-      win.draw([{ text: PARAS[0], hl: true }, { text: PARAS[1] }]);
-      ask = thread(win.margin, 'Clippy', 'make this shorter');
+    { say: 'You ask Clippy whether the price is right.', run: async (wait) => {
+      win.draw([{ text: DOC[0] }, { text: DOC[1], hl: true }]);
+      ask = thread(win.margin, 'Clippy', 'is this price right?');
       await ask.type(wait);
     } },
-    { say: 'Clippy gets to work. You do not wait: you keep writing.', run: async (wait) => {
+    { say: 'Its run knows only what you can see too: the doc, its comments, its persona, and the files it reads.', run: async (wait) => {
       win.working('Clippy', true);
       ask.working(true);
-      for (let i = 0; i <= MINE.length; i += 1) {
-        win.draw([{ text: PARAS[0], hl: true, cursor: 'Clippy' }, { text: PARAS[1] }, { text: MINE.slice(0, i), caret: true }]);
-        await wait(90);
+      win.draw([{ text: DOC[0] }, { text: DOC[1], hl: true, cursor: 'Clippy' }]);
+      for (const [path, what] of KNEW) {
+        const row = el('div', 'arch-actor arch-row');
+        row.append(icon('file'), el('b', '', path), el('span', 'arch-quiet', what));
+        win.copies.append(row);
+        await wait(900);
       }
-    } },
-    { say: 'When Clippy is done, its edit lands in your doc with its name on it, and its reply has Undo.', run: async () => {
-      const now = merge3(text(PARAS), text([...PARAS, MINE]), text([SHORTER, PARAS[1]])).text;
-      const [one, two, three] = parasOf(now);
+    }, hold: 3000 },
+    { say: 'So its edit rests on nothing you cannot check: pricing.md says $12.', run: async () => {
       win.working('Clippy', false);
-      win.draw([{ text: one, by: 'Clippy' }, { text: two }, { text: three }]);
-      ask.reply('Made it shorter.');
+      win.draw([{ text: DOC[0] }, { text: 'It costs $12 a month.', by: 'Clippy' }]);
+      ask.reply('pricing.md says $12 a month.');
+    }, hold: 6000 },
+  ], reset);
+}
+
+// ---- Everyone shares one context ----
+
+// Alice asks Max to check the dates; Max's finding goes into its reply, on
+// the doc. Later you ask Clippy for a summary, and Clippy's run reads Max's
+// reply too: no private session holds it.
+function shared(root) {
+  const caption = el('p', 'arch-caption');
+  root.append(caption);
+  const DOC = ['The beta ships in March to fifty design partners.', 'Then we open the waitlist.'];
+  let win;
+  let alice;
+  let you;
+  const reset = () => {
+    for (const node of root.querySelectorAll('.arch-app, .arch-behind')) node.remove();
+    win = app(root, ['Max', 'Clippy'], { people: ['Alice', 'You'] });
+    win.draw(DOC.map((t) => ({ text: t })));
+  };
+  stepper(root, caption, [
+    { say: 'Alice, a teammate, asks Max to check the dates.', run: async (wait) => {
+      win.draw([{ text: DOC[0], hl: true }, { text: DOC[1] }]);
+      alice = thread(win.margin, 'Max', 'are the dates right?', 'Alice');
+      await alice.type(wait);
+      win.working('Max', true);
+      alice.working(true);
+    } },
+    { say: 'Max finds the launch moved, and says so in the thread, on the doc, where everyone can see it.', run: async () => {
+      win.working('Max', false);
+      alice.reply('The launch moved to April: see schedule.md.', 0);
+    } },
+    { say: 'Later you ask Clippy for a one-line summary. Nobody tells Clippy about April.', run: async (wait) => {
+      win.draw(DOC.map((t) => ({ text: t })));
+      you = thread(win.margin, 'Clippy', 'add a one-line summary');
+      await you.type(wait);
+      win.working('Clippy', true);
+      you.working(true);
+    } },
+    { say: 'Clippy’s run reads every comment on the doc, Max’s too, so its summary says April. One shared picture, no private sessions.', run: async () => {
+      win.working('Clippy', false);
+      win.draw([...DOC.map((t) => ({ text: t })), { text: 'In short: the beta ships in April.', by: 'Clippy' }]);
+      you.reply('Added a summary.');
     }, hold: 6000 },
   ], reset);
 }
@@ -618,7 +595,7 @@ function design2(root) {
   };
   const doc = (marks = {}) => win.draw(PARAS.map((t, i) => ({ text: t, hl: marks.hl?.includes(i), cursor: marks.cursor?.[i] })));
   stepper(root, caption, [
-    { say: 'You ask Clippy and Max, in two comments. Max is another AI buddy.', run: async (wait) => {
+    { say: 'Clippy and Max are AI buddies: AI agents with a name and a face. You ask them in comments, as you would teammates.', run: async (wait) => {
       doc({ hl: [0, 1] });
       threads.Clippy = thread(win.margin, 'Clippy', 'make this shorter');
       await threads.Clippy.type(wait);
@@ -712,6 +689,47 @@ function design3(root) {
   ], reset);
 }
 
+// ---- What's next: agents that coordinate through the work ----
+
+// People and agent runs around one shared piece of work. `parts` (people,
+// work, agents) are in focus; the rest are dimmed.
+function colony(node, parts) {
+  const on = (name) => (parts.includes(name) ? ' class="on"' : '');
+  node.toggleAttribute('data-focus', parts.length > 0);
+  const run = (y) => `<rect x="580" y="${y}" width="160" height="44" rx="10"/><text x="660" y="${y + 20}">Agent run</text><text class="sub" x="660" y="${y + 35}">stateless</text>`;
+  node.innerHTML = `<svg viewBox="0 0 760 236" role="img" aria-label="People and stateless agent runs around one shared piece of work: the runs read it and propose changes, one writer merges them, and people review and undo">
+<defs><marker id="arch-tip2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arch-tip" d="M0 0L10 5L0 10z"/></marker></defs>
+<g${on('people')}><rect x="20" y="40" width="160" height="52" rx="10"/><text x="100" y="62">You</text><text class="sub" x="100" y="80">edit and decide</text><rect x="20" y="144" width="160" height="52" rx="10"/><text x="100" y="166">Your team</text><text class="sub" x="100" y="184">edit and decide</text><path d="M180 66H254" marker-end="url(#arch-tip2)"/><path d="M180 170H254" marker-end="url(#arch-tip2)"/></g>
+<g${on('work')}><rect x="260" y="60" width="240" height="116" rx="10"/><text x="380" y="98">The shared work</text><text class="sub" x="380" y="118">today a doc; next, code, data, designs</text><text class="sub" x="380" y="146">one writer merges every change</text><text class="sub" x="380" y="162">each a version you can undo</text></g>
+<g${on('agents')}>${run(20)}${run(96)}${run(172)}<path d="M506 80L574 44" marker-start="url(#arch-tip2)" marker-end="url(#arch-tip2)"/><path d="M506 118H574" marker-start="url(#arch-tip2)" marker-end="url(#arch-tip2)"/><path d="M506 156L574 192" marker-start="url(#arch-tip2)" marker-end="url(#arch-tip2)"/><text class="sub" x="540" y="108">read, propose</text></g>
+</svg>`;
+}
+
+function whatsNext(root) {
+  const caption = el('p', 'arch-caption');
+  const drawing = el('div', 'arch-flow');
+  root.append(caption, drawing);
+  const focus = (parts, say, hold) => ({ say, run: async () => colony(drawing, parts), hold });
+  stepper(root, caption, [
+    focus(['work'], 'Agents don’t remember. The work does: whatever matters is written into it, for everyone to see.'),
+    focus(['agents'], 'So each agent run is a stateless function of the work: run as many as you like, stop or rerun any, swap in any model.'),
+    focus(['people', 'work'], 'One writer merges every change, and each change is a version people can review and undo. People stay the editors.'),
+    focus([], 'Like ants leaving trails, agents coordinate through what they leave in the work. Unlike ants, there is an editor: you.'),
+    focus(['work'], 'Today the work is a doc. We think the same shape fits any work people share: code, data, designs, research.', 6000),
+  ], () => colony(drawing, []));
+}
+
+// A recording plays from its start each time its slide comes into view, and
+// stops when it leaves; with reduced motion it waits for Play.
+function playInView(video) {
+  if (still) return;
+  new IntersectionObserver(([seen]) => {
+    if (!seen.isIntersecting) return video.pause();
+    video.currentTime = 0;
+    video.play().catch(() => {}); // blocked: its controls are there to start it
+  }, { threshold: 0.5 }).observe(video);
+}
+
 // ---- The page as slides: a dot per slide, the current one marked ----
 
 function deck() {
@@ -731,12 +749,14 @@ function deck() {
 }
 
 setBuddies(['Clippy', 'Max', 'Claude'].map((name) => ({ id: name, name })));
-setPeople(['You']);
+setPeople(['You', 'Alice']);
 deck();
-whoWaits($(document, '[data-demo="who"]'));
-blockers($(document, '[data-demo="blocks"]'));
-design1($(document, '[data-demo="design1"]'));
+for (const root of document.querySelectorAll('[data-table]')) table(root, TABLES[root.dataset.table]);
+for (const video of document.querySelectorAll('video[data-play]')) playInView(video);
 design2($(document, '[data-demo="design2"]'));
+visible($(document, '[data-demo="visible"]'));
+shared($(document, '[data-demo="shared"]'));
 design3($(document, '[data-demo="design3"]'));
 for (const root of document.querySelectorAll('[data-hood]')) underTheHood(root, HOODS[root.dataset.hood]);
 buddyTurn($(document, '[data-demo="turn"]'));
+whatsNext($(document, '[data-demo="next"]'));
