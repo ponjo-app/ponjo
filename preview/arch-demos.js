@@ -214,11 +214,12 @@ function drawLines(node, lines) {
 
 const TABLES = {
   problem: {
-    say: 'In tools like Claude Docs, as we used it, an agent works in a chat session behind the doc, and its context builds up there.',
+    say: 'In Claude Docs, as we used it, an agent works in a chat session behind the doc, and its context builds up there, on top of the doc.',
     head: ['What follows', 'Why'],
+    video: ['claude-docs-queue', 'Claude Docs, at 1.5× speed: the second @Claude waits its turn.'],
     rows: [
-      ['Asks wait in line', 'Each run builds on what the session kept from the last one, so a new ask waits for it to finish.'],
-      ['What the agent knows is hidden', 'Its context is a history you never see, so an edit can rest on things that were never on the page.'],
+      ['Asks wait in line', 'Within one session, each run builds on what the last one left, so a new ask waits for it to finish.'],
+      ['What the agent knows is hidden', 'The session adds a history you never see on top of the doc, so an edit can rest on things that were never on the page.'],
       ['Context splits', 'What one person’s session learns stays in it, so each person and agent works from a different picture.'],
     ],
   },
@@ -234,7 +235,10 @@ const TABLES = {
   },
 };
 
-function table(root, { say, head, rows }) {
+// With `video` ([its file name, as .webm and .mp4; a caption]), a recording
+// plays beside the rows while the slide is in view, from its start; with
+// reduced motion it waits for Play.
+function table(root, { say, head, rows, video }) {
   const caption = el('p', 'arch-caption');
   const top = el('div', 'arch-block arch-who');
   top.append(...head.map((words) => el('span', '', words)));
@@ -243,7 +247,26 @@ function table(root, { say, head, rows }) {
     row.append(el('span', 'arch-design', claim), el('span', 'arch-blocks', why));
     return row;
   });
-  root.append(caption, top, ...lines);
+  if (video) {
+    const [src, words] = video;
+    const clip = Object.assign(document.createElement('video'), { muted: true, loop: true, playsInline: true, controls: still, preload: 'metadata' });
+    for (const type of ['webm', 'mp4']) clip.append(Object.assign(document.createElement('source'), { src: `${src}.${type}`, type: `video/${type}` }));
+    clip.setAttribute('aria-label', words);
+    const figure = el('figure', 'arch-video');
+    figure.append(clip, el('figcaption', '', words));
+    const table1 = el('div', 'arch-rows');
+    table1.append(top, ...lines);
+    const both = el('div', 'arch-evidence');
+    both.append(table1, figure);
+    root.append(caption, both);
+    new IntersectionObserver(([seen]) => {
+      if (still) return;
+      if (seen.isIntersecting) {
+        clip.currentTime = 0;
+        clip.play().catch(() => { clip.controls = true; });
+      } else clip.pause();
+    }, { threshold: 0.5 }).observe(root);
+  } else root.append(caption, top, ...lines);
   stepper(root, caption, lines.map((row) => ({
     say,
     run: async () => {
