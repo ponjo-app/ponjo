@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>How Ponjo is built</title>
+<title>Ponjo Agent Runtime Design</title>
 <meta name="description" content="The Ponjo agent runtime: many agents work on a doc at once and you stay in control, because an agent's context lives in the doc, not in a chat session.">
 <link rel="icon" href="../build/icon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="../dist/web/app.css">
@@ -35,143 +35,80 @@
   <a class="pj-icon-btn" href="https://github.com/ponjo-app/ponjo" aria-label="GitHub" title="GitHub"><svg class="pj-icon" viewBox="0 0 24 24"><path fill="currentColor" stroke="none" d="M12 2C6.48 2 2 6.58 2 12.23c0 4.52 2.87 8.35 6.84 9.7.5.1.68-.22.68-.49l-.01-1.7c-2.78.62-3.37-1.38-3.37-1.38-.46-1.18-1.11-1.5-1.11-1.5-.91-.64.07-.62.07-.62 1 .07 1.53 1.06 1.53 1.06.9 1.57 2.35 1.12 2.92.86.09-.67.35-1.12.64-1.38-2.22-.26-4.56-1.14-4.56-5.07 0-1.12.39-2.04 1.03-2.76-.1-.26-.45-1.3.1-2.71 0 0 .84-.28 2.75 1.05A9.36 9.36 0 0 1 12 6.98c.85 0 1.71.12 2.51.34 1.91-1.33 2.75-1.05 2.75-1.05.55 1.41.2 2.45.1 2.71.64.72 1.03 1.64 1.03 2.76 0 3.94-2.34 4.81-4.57 5.06.36.32.68.94.68 1.9l-.01 2.81c0 .27.18.6.69.49A10.1 10.1 0 0 0 22 12.23C22 6.58 17.52 2 12 2z"/></svg></a>
   <button class="pj-icon-btn site-theme" type="button" aria-label="Switch theme" title="Switch theme"><svg class="pj-icon site-moon" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"/></svg><svg class="pj-icon site-sun" viewBox="0 0 24 24"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg></button>
 </header>
-<!-- How edits merge (docs/architecture.md) and how the Ponjo agent runs (docs/ponjo-agent.md),
-     with live demos on the app's own code (preview/arch-demos.js). The docs are the truth;
+<!-- The Ponjo agent runtime: the problem, the solution, a demo in the app's own UI and how it
+     works (preview/arch-demos.js). docs/architecture.md and docs/ponjo-agent.md are the truth;
      change this page with them. -->
 <main class="ds-page arch-page arch-deck">
 
 <section class="arch-slide arch-cover">
-  <h1>Many agents at once, and you stay in control.</h1>
-  <p class="ds-lead">The Ponjo agent runtime: an agent’s context lives in the doc, not in a chat session.</p>
+  <h1>Ponjo Agent Runtime Design</h1>
+  <p class="ds-lead">In Ponjo, many people and AI agents write one doc at the same time, and you stay in control. It works because of one design choice: <strong>an agent’s context lives in the doc, not in a hidden chat session.</strong> So agents can work in parallel, you can see everything they know, and everyone works from the same context.</p>
   <p class="arch-hint">Scroll to go on.</p>
 </section>
 
 <section class="arch-slide">
   <p class="arch-eyebrow">The problem</p>
   <h2>Context lives in a chat session</h2>
-  <div class="arch-merge" data-table="problem"></div>
-</section>
-
-<section class="arch-slide arch-wide">
-  <p class="arch-eyebrow">The problem · As we used it</p>
-  <h2>In Claude Docs, the second ask waits its turn</h2>
-  <figure class="arch-video">
-    <video muted loop playsinline preload="metadata" width="1000" height="904" data-play aria-label="A recording of Claude Docs: two comments ask Claude; the second waits until the first is answered">
-      <source src="claude-docs.webm" type="video/webm">
-      <source src="claude-docs.mp4" type="video/mp4">
-    </video>
-    <figcaption>A real session in Claude Docs, with the waiting cut out. Two comments ask @Claude; the second shows “Claude is busy with an earlier request. This one is waiting its turn.” until the first is answered.</figcaption>
-  </figure>
+  <p>In tools like Claude Docs, as we used it, an agent works in a chat session behind the doc, and its context builds up there, on top of the doc.</p>
+  <div class="arch-flow arch-picture"><svg viewBox="0 0 760 200" role="img" aria-label="The doc, and behind it a chat session per person: in yours, three asks in a line, each waiting for the one before; in Alice’s, a history of its own">
+    <defs><marker id="arch-tip-p" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="arch-tip" d="M0 0L10 5L0 10z"/></marker></defs>
+    <g><rect x="20" y="64" width="150" height="72" rx="10"/><text x="95" y="94">The doc</text><text class="sub" x="95" y="114">what everyone sees</text></g>
+    <path d="M170 86L236 54" marker-end="url(#arch-tip-p)"/><path d="M170 114L236 146" marker-end="url(#arch-tip-p)"/>
+    <g><rect class="arch-hidden" x="240" y="8" width="500" height="86" rx="10"/><text class="sub start" x="256" y="30">Your chat session · a history you never see</text>
+      <rect class="chip" x="256" y="42" width="140" height="36" rx="6"/><text class="small" x="326" y="65">Ask 1 · running</text>
+      <path d="M396 60H418" marker-end="url(#arch-tip-p)"/><rect class="chip" x="422" y="42" width="140" height="36" rx="6"/><text class="small" x="492" y="65">Ask 2 · waits</text>
+      <path d="M562 60H584" marker-end="url(#arch-tip-p)"/><rect class="chip" x="588" y="42" width="140" height="36" rx="6"/><text class="small" x="658" y="65">Ask 3 · waits</text></g>
+    <g><rect class="arch-hidden" x="240" y="106" width="500" height="86" rx="10"/><text class="sub start" x="256" y="128">Alice’s chat session · a history of its own</text>
+      <rect class="chip" x="256" y="140" width="140" height="36" rx="6"/><text class="small" x="326" y="163">Ask 1 · running</text><text class="sub start" x="422" y="163">knows nothing of what yours learned</text></g>
+  </svg></div>
+  <div class="arch-points">
+    <div><strong>Asks wait in line.</strong> Each run builds on what the session kept from the last one, so a new ask in the same session waits for the one before it to finish.</div>
+    <div><strong>What the agent knows is hidden.</strong> Its context is a history you never see, so an edit can rest on things that were never on the page.</div>
+    <div><strong>Context splits.</strong> What one person’s session learns stays in that session, so the people and agents on a doc each work from a different picture.</div>
+  </div>
 </section>
 
 <section class="arch-slide">
   <p class="arch-eyebrow">The solution</p>
   <h2>Context lives in the doc</h2>
-  <div class="arch-merge" data-table="solution"></div>
+  <p>In Ponjo, each agent run is a stateless function of the doc, its comments, and the thread it answers.</p>
+  <div class="arch-flow arch-picture"><svg viewBox="0 0 760 200" role="img" aria-label="The doc and its comments, which everyone sees; three agent runs, one per thread, read it at the same time and write back an edit or a comment">
+    <defs><marker id="arch-tip-s" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arch-tip" d="M0 0L10 5L0 10z"/></marker></defs>
+    <g><rect x="20" y="40" width="240" height="120" rx="10"/><text x="140" y="82">The doc and its comments</text><text class="sub" x="140" y="104">what everyone sees,</text><text class="sub" x="140" y="122">and all any run knows</text></g>
+    <path d="M266 76L434 36" marker-start="url(#arch-tip-s)" marker-end="url(#arch-tip-s)"/><path d="M266 100H434" marker-start="url(#arch-tip-s)" marker-end="url(#arch-tip-s)"/><path d="M266 124L434 164" marker-start="url(#arch-tip-s)" marker-end="url(#arch-tip-s)"/>
+    <text class="sub" x="350" y="92">reads it, writes back</text><text class="sub" x="350" y="122">an edit or a comment</text>
+    <g><rect x="440" y="12" width="300" height="48" rx="10"/><text x="590" y="33">Clippy · rewrite</text><text class="sub" x="590" y="50">thread 1 · running</text></g>
+    <g><rect x="440" y="76" width="300" height="48" rx="10"/><text x="590" y="97">Max · fact-check</text><text class="sub" x="590" y="114">thread 2 · running at the same time</text></g>
+    <g><rect x="440" y="140" width="300" height="48" rx="10"/><text x="590" y="161">Clippy · summary</text><text class="sub" x="590" y="178">thread 3 · running at the same time</text></g>
+  </svg></div>
+  <div class="arch-points">
+    <div><strong>Ask many things at once.</strong> A run starts from the doc and its thread, never from what an earlier run left behind. Runs in different threads, or by different agents, go in parallel: ask for a rewrite in one thread and a fact-check in another, and neither waits.</div>
+    <div><strong>Nothing it knows is hidden.</strong> A run knows only the doc, its comments, its agent’s persona, and the files it reads, all of which you can see. Turn on traces to see exactly which ones it read.</div>
+    <div><strong>Everyone shares one context.</strong> Every agent reads the same doc, comments, and files. What an agent learns goes into the doc or a comment, where teammates and their agents pick it up.</div>
+  </div>
 </section>
 
 <section class="arch-slide arch-wide">
-  <p class="arch-eyebrow">The solution · In Ponjo</p>
-  <h2>In Ponjo, you keep writing while Clippy works</h2>
-  <figure class="arch-video">
-    <video muted loop playsinline preload="metadata" width="960" height="930" data-play aria-label="A recording of Ponjo: comments ask Clippy in their own threads while the writer keeps going; each change lands as one edit with Undo">
-      <source src="ponjo-demo.webm" type="video/webm">
-      <source src="ponjo-demo.mp4" type="video/mp4">
-    </video>
-    <figcaption>A real session in Ponjo, cut to its key moments. Each comment asks @Clippy, our AI buddy, in its own thread. You keep writing and asking while it works, and each change lands as “1 edit” you can undo.</figcaption>
-  </figure>
+  <p class="arch-eyebrow">What you see</p>
+  <h2>In the app</h2>
+  <p>Clippy and Max are AI buddies: agents with a name and a face. You ask one by @mentioning it in a comment, as you would a teammate. Here the app’s own comment cards play a scripted scene, with what happens behind the scenes beside it.</p>
+  <div class="arch-demo" data-demo></div>
 </section>
 
 <section class="arch-slide">
-  <p class="arch-eyebrow">1 · What you see</p>
-  <h2>Ask many things at once</h2>
-  <div class="arch-merge" data-demo="design2"></div>
-</section>
-
-<section class="arch-slide">
-  <p class="arch-eyebrow">1 · Under the hood</p>
-  <h2>No run depends on another</h2>
-  <div class="arch-merge" data-hood="parallel"></div>
-</section>
-
-<section class="arch-slide">
-  <p class="arch-eyebrow">2 · What you see</p>
-  <h2>Nothing it knows is hidden</h2>
-  <div class="arch-merge" data-demo="visible"></div>
-</section>
-
-<section class="arch-slide">
-  <p class="arch-eyebrow">2 · Under the hood</p>
-  <h2>A run knows only the doc, its comments and the project</h2>
-  <div class="arch-merge" data-hood="visible"></div>
-</section>
-
-<section class="arch-slide">
-  <p class="arch-eyebrow">3 · What you see</p>
-  <h2>Everyone shares one context</h2>
-  <div class="arch-merge" data-demo="shared"></div>
-</section>
-
-<section class="arch-slide">
-  <p class="arch-eyebrow">3 · Under the hood</p>
-  <h2>One doc, read by every run</h2>
-  <div class="arch-merge" data-hood="shared"></div>
-</section>
-
-<section class="arch-slide">
-  <p class="arch-eyebrow">4 · What you see</p>
-  <h2>You keep the last word</h2>
-  <div class="arch-merge" data-demo="design3"></div>
-</section>
-
-<section class="arch-slide">
-  <p class="arch-eyebrow">4 · Under the hood</p>
-  <h2>One writer merges every change</h2>
-  <div class="arch-merge" data-hood="control"></div>
-</section>
-
-<section class="arch-slide">
-  <p class="arch-eyebrow">Try it</p>
-  <div class="arch-merge" data-demo="turn" data-buddy="Clippy">
-    <div class="arch-merge-head"><b>Ask Clippy</b><span>A real agent, on NVIDIA Nemotron</span></div>
-    <p>Edit the paragraph while Clippy works on it, and see what happens.</p>
-    <textarea class="pj-input arch-text" data-doc rows="7" spellcheck="false" aria-label="plan.md"></textarea>
-    <div class="arch-controls">
-      <input class="pj-input arch-ask" data-ask value="@Clippy make the paragraph about the beta half as long" aria-label="Comment">
-      <button class="pj-primary" type="button" data-run>Ask</button>
-      <button class="pj-link-button" type="button" data-reset>Reset</button>
-    </div>
-    <div class="arch-status" data-status hidden><span class="pj-agent-face" data-presence="working"><span data-face="Clippy"></span></span><span data-status-text></span></div>
-    <ol class="arch-trace" data-trace></ol>
-    <div class="arch-landed" data-landed hidden>
-      <p class="arch-reply"><b>Clippy</b> <span data-reply></span></p>
-      <div class="arch-file"><span class="arch-who">Lands, as a revision of the doc</span><div class="ds-prose" data-result></div></div>
-      <p class="arch-verdict" data-verdict></p>
-    </div>
-  </div>
-  <p>More in <a href="https://github.com/ponjo-app/ponjo/blob/main/docs/architecture.md">the architecture doc</a> and <a href="https://github.com/ponjo-app/ponjo/blob/main/docs/ponjo-agent.md">the Ponjo agent's</a>.</p>
-</section>
-
-<section class="arch-slide">
-  <p class="arch-eyebrow">What’s next</p>
-  <h2>Beyond writing: a new way for agents to work</h2>
-  <div class="arch-merge" data-demo="next"></div>
+  <p class="arch-eyebrow">How it works</p>
+  <h2>One writer, and a stateless run per ask</h2>
+  <div class="arch-flow arch-picture" data-machine></div>
+  <ol class="arch-points arch-parts" data-points>
+    <li data-parts="comment host asks runner start copy turns"><strong>Ask many things at once.</strong> An ask is a comment. The runner keeps one run going for each open ask, each on a fresh copy of the doc and its comments. No run depends on another, so there is no queue, and any run can stop or start over.</li>
+    <li data-parts="copy project read turns"><strong>Nothing it knows is hidden.</strong> A run gets the doc, its comments and its buddy’s persona, and can read the project’s files, read only. It keeps no memory between runs; with traces on, each run lists what it read.</li>
+    <li data-parts="window host copy read project turns merge"><strong>Everyone shares one context.</strong> One doc, one set of comments, one project, read by every run whoever asked. What a run learns comes back only through the doc, as an edit or a comment.</li>
+    <li data-parts="host merge turns"><strong>You stay in control.</strong> The doc host is the only writer of the file. It merges each run’s copy into the doc as it is now, line by line (merge3); where you changed the same lines, yours stay and the run redoes its edit on them. Each run lands as one version you can undo.</li>
+  </ol>
+  <p>Try it in <a href="../dist/preview/">the online preview</a>, where buddies answer on a real model. More in <a href="https://github.com/ponjo-app/ponjo/blob/main/docs/architecture.md">the architecture doc</a> and <a href="https://github.com/ponjo-app/ponjo/blob/main/docs/ponjo-agent.md">the Ponjo agent’s</a>.</p>
 </section>
 </main>
 <nav class="arch-dots" aria-label="Slides" data-dots></nav>
-<script type="module">
-  import { agentFace, personFace, buddyColor, setBuddies } from '../dist/web/faces.js';
-
-  setBuddies([{ id: 'Clippy', name: 'Clippy' }]);
-
-  for (const slot of document.querySelectorAll('[data-face]')) {
-    const name = slot.dataset.face;
-    slot.className = `pj-avatar${slot.hasAttribute('data-person') ? '' : ' pj-avatar-agent'}`;
-    slot.style.setProperty('--size', '24px');
-    slot.append(slot.hasAttribute('data-person') ? personFace(name) : agentFace(name));
-  }
-  for (const node of document.querySelectorAll('[data-buddy]')) node.style.setProperty('--buddy', buddyColor(node.dataset.buddy));
-</script>
 <script type="module" src="../dist/preview/arch-demos.js"></script>
 <script type="module" src="site.js"></script>
 </body>
