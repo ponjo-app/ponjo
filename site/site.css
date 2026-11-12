@@ -158,7 +158,7 @@ a { color: var(--accent); }
 /* a recording, on a slide wider than the page's column */
 .arch-wide { position: relative; left: 50%; width: min(1200px, calc(100vw - 96px)); translate: -50% 0; }
 .arch-video { display: flex; flex-direction: column; gap: 8px; margin: 8px 0 0; }
-.arch-video video { display: block; width: 100%; max-height: calc(100vh - 260px); object-fit: contain; border-radius: 10px; box-shadow: var(--shadow-raised); background: var(--canvas); }
+.arch-video video { display: block; align-self: center; width: auto; max-width: 100%; height: auto; max-height: calc(100vh - 260px); border-radius: 10px; box-shadow: var(--shadow-raised); background: var(--canvas); }
 .arch-video figcaption { color: var(--text-soft); font-size: 13px; line-height: 1.5; }
 
 /* the problem and the solution: a claim beside its reason, a row at a time */
