@@ -720,13 +720,13 @@ function whatsNext(root) {
 }
 
 // A recording plays from its start each time its slide comes into view, and
-// stops when it leaves; with reduced motion it waits for Play.
+// stops when it leaves; with reduced motion it shows its controls and waits for Play.
 function playInView(video) {
-  if (still) return;
+  if (still) { video.controls = true; return; }
   new IntersectionObserver(([seen]) => {
     if (!seen.isIntersecting) return video.pause();
     video.currentTime = 0;
-    video.play().catch(() => {}); // blocked: its controls are there to start it
+    video.play().catch(() => {}); // muted and inline, so browsers allow it
   }, { threshold: 0.5 }).observe(video);
 }
 
