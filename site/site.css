@@ -155,11 +155,13 @@ a { color: var(--accent); }
 .arch-ok { color: var(--green); }
 .arch-back { color: var(--red); }
 
+/* a recording, on a slide wider than the page's column */
+.arch-wide { position: relative; left: 50%; width: min(1200px, calc(100vw - 96px)); translate: -50% 0; }
+.arch-video { display: flex; flex-direction: column; gap: 8px; margin: 8px 0 0; }
+.arch-video video { display: block; width: 100%; max-height: calc(100vh - 260px); object-fit: contain; border-radius: 10px; box-shadow: var(--shadow-raised); background: var(--canvas); }
+.arch-video figcaption { color: var(--text-soft); font-size: 13px; line-height: 1.5; }
+
 /* the problem and the solution: a claim beside its reason, a row at a time */
-.arch-evidence { display: grid; grid-template-columns: minmax(0, 1fr) 220px; gap: 24px; align-items: start; }
-.arch-video { display: flex; flex-direction: column; gap: 6px; margin: 0; }
-.arch-video video { display: block; width: 100%; height: auto; max-height: 420px; object-fit: cover; object-position: top; border-radius: 10px; box-shadow: var(--shadow); background: var(--bg-soft); }
-.arch-video figcaption { color: var(--text-faint); font-size: 12px; line-height: 1.5; }
 .arch-block { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: 16px; padding: 12px 0; border-top: 1px solid var(--border); font-size: 14px; }
 .arch-block.arch-who { padding-top: 0; border-top: 0; }
 .arch-blocks { color: var(--text-soft); }
@@ -211,7 +213,7 @@ a { color: var(--accent); }
 .arch-page .arch-slide > p:last-child { margin-top: 32px; }
 
 @media (max-width: 720px) {
-  .arch-two, .arch-block, .arch-app-body, .arch-evidence { grid-template-columns: minmax(0, 1fr); }
+  .arch-two, .arch-block, .arch-app-body { grid-template-columns: minmax(0, 1fr); }
   .arch-app-body { padding: 16px; }
   .arch-merge { padding: 16px; }
 }

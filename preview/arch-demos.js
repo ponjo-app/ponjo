@@ -1,5 +1,6 @@
 // The architecture page's live demos (site/architecture.html), each played
-// step by step with a caption: the problem and the solution a row at a time;
+// step by step with a caption: the problem and the solution a row at a time,
+// with a recording of the problem as we met it in Claude Docs;
 // for each part of the solution, what you see, in a Ponjo window drawn with
 // the app's own classes (with what happens behind the scenes beside it,
 // merged in with merge3, src/core/diff.js), and the parts under the hood that
@@ -216,7 +217,6 @@ const TABLES = {
   problem: {
     say: 'In Claude Docs, as we used it, an agent works in a chat session behind the doc, and its context builds up there, on top of the doc.',
     head: ['What follows', 'Why'],
-    video: ['claude-docs-queue', 'Claude Docs, at 1.5× speed: the second @Claude waits its turn.'],
     rows: [
       ['Asks wait in line', 'Within one session, each run builds on what the last one left, so a new ask waits for it to finish.'],
       ['What the agent knows is hidden', 'The session adds a history you never see on top of the doc, so an edit can rest on things that were never on the page.'],
@@ -235,10 +235,7 @@ const TABLES = {
   },
 };
 
-// With `video` ([its file name, as .webm and .mp4; a caption]), a recording
-// plays beside the rows while the slide is in view, from its start; with
-// reduced motion it waits for Play.
-function table(root, { say, head, rows, video }) {
+function table(root, { say, head, rows }) {
   const caption = el('p', 'arch-caption');
   const top = el('div', 'arch-block arch-who');
   top.append(...head.map((words) => el('span', '', words)));
@@ -247,26 +244,7 @@ function table(root, { say, head, rows, video }) {
     row.append(el('span', 'arch-design', claim), el('span', 'arch-blocks', why));
     return row;
   });
-  if (video) {
-    const [src, words] = video;
-    const clip = Object.assign(document.createElement('video'), { muted: true, loop: true, playsInline: true, controls: still, preload: 'metadata' });
-    for (const type of ['webm', 'mp4']) clip.append(Object.assign(document.createElement('source'), { src: `${src}.${type}`, type: `video/${type}` }));
-    clip.setAttribute('aria-label', words);
-    const figure = el('figure', 'arch-video');
-    figure.append(clip, el('figcaption', '', words));
-    const table1 = el('div', 'arch-rows');
-    table1.append(top, ...lines);
-    const both = el('div', 'arch-evidence');
-    both.append(table1, figure);
-    root.append(caption, both);
-    new IntersectionObserver(([seen]) => {
-      if (still) return;
-      if (seen.isIntersecting) {
-        clip.currentTime = 0;
-        clip.play().catch(() => { clip.controls = true; });
-      } else clip.pause();
-    }, { threshold: 0.5 }).observe(root);
-  } else root.append(caption, top, ...lines);
+  root.append(caption, top, ...lines);
   stepper(root, caption, lines.map((row) => ({
     say,
     run: async () => {
@@ -741,6 +719,17 @@ function whatsNext(root) {
   ], () => colony(drawing, []));
 }
 
+// A recording plays from its start each time its slide comes into view, and
+// stops when it leaves; with reduced motion it waits for Play.
+function playInView(video) {
+  if (still) return;
+  new IntersectionObserver(([seen]) => {
+    if (!seen.isIntersecting) return video.pause();
+    video.currentTime = 0;
+    video.play().catch(() => {}); // blocked: its controls are there to start it
+  }, { threshold: 0.5 }).observe(video);
+}
+
 // ---- The page as slides: a dot per slide, the current one marked ----
 
 function deck() {
@@ -763,6 +752,7 @@ setBuddies(['Clippy', 'Max', 'Claude'].map((name) => ({ id: name, name })));
 setPeople(['You', 'Alice']);
 deck();
 for (const root of document.querySelectorAll('[data-table]')) table(root, TABLES[root.dataset.table]);
+for (const video of document.querySelectorAll('video[data-play]')) playInView(video);
 design2($(document, '[data-demo="design2"]'));
 visible($(document, '[data-demo="visible"]'));
 shared($(document, '[data-demo="shared"]'));
