@@ -6,7 +6,7 @@
 // folders by their place in the folder. Clicking a file asks the app to show
 // it in this window as a doc (the page is replaced by that doc's); a file
 // that is not one (not text, or too large) shows here, read only, in place
-// of the doc.
+// of the doc: an image the host shows (api.image) as the image.
 // The app keeps which subfolders are open, whether the sidebar shows, how
 // far it was scrolled and what its folders held, so the next page draws it
 // at once, just as this one left it, and then reads the folders again.
@@ -524,8 +524,12 @@ export function createFileList({ place = null, onError = () => {}, onCarry = () 
       onError(`Could not open ${nameOf(path)}: ${result.error}`);
       return;
     }
+    // A file that is not text may be an image the host shows (api.image, from the project's top).
+    const image = result.problem ? await api.image(`/${path.split('/').map(encodeURIComponent).join('/')}`).catch(() => null) : null;
+    if (previewing !== path) return;
     previewName.textContent = nameOf(path);
-    preview.replaceChildren(result.problem ? el('p', 'pj-preview-note', NOT_SHOWN[result.problem]) : el('pre', 'pj-preview-text', result.text));
+    const img = image && Object.assign(el('img', 'pj-preview-image'), { src: image, alt: nameOf(path) });
+    preview.replaceChildren(img || (result.problem ? el('p', 'pj-preview-note', NOT_SHOWN[result.problem]) : el('pre', 'pj-preview-text', result.text)));
     document.documentElement.setAttribute('data-preview', '');
     preview.scrollIntoView({ block: 'start' });
     if (floating) closeFloating();
