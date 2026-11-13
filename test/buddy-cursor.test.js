@@ -1,8 +1,8 @@
 // Where a buddy's cursor stands in the doc (web/main.js): at the passage it
 // was asked about while it works, after its last edit when its run lands,
-// and gone once the person types while it is not at work. The desktop app
-// on a folder with the fake agent, so it needs the page built (npm run
-// build).
+// and gone once the person types while it is not at work; its edit flagged
+// by its name, not its id. The desktop app on a folder with the fake
+// agent, so it needs the page built (npm run build).
 
 import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -25,7 +25,7 @@ before(async () => {
   const folder = join(await mkdtemp(join(tmpdir(), 'ponjo-buddy-cursor-')), 'project');
   await mkdir(join(folder, '.ponjo', 'buddies'), { recursive: true });
   await writeFile(join(folder, 'plan.md'), SAMPLE);
-  await writeFile(join(folder, '.ponjo', 'buddies', 'Ada.md'), '\n');
+  await writeFile(join(folder, '.ponjo', 'buddies', 'Ada.md'), '---\nid: b_ada\n---\n'); // an id that is not its name
   config = await fakeConfig();
   const env = { ...process.env, PONJO_CONFIG_DIR: config };
   delete env.ELECTRON_RUN_AS_NODE;
@@ -103,6 +103,8 @@ test('a buddy at work keeps its cursor at the passage while the person types; on
 
 test('a buddy\'s cursor stands after its last edit when its run lands, and goes when the person types there', { timeout: 60_000 }, async () => {
   await ask('extra load', 'replace "extra load" with "extra peak load"');
+  const flag = await waitFor(() => page.evaluate(`document.querySelector('.pj-flag-label')?.textContent ?? null`), 30_000, 'its edit flagged');
+  assert.equal(flag, 'Ada');
   await waitFor(async () => (await cursorAfter())?.endsWith('extra peak '), 30_000, 'Ada after its edit, the "peak " it put in');
   await typeAfter('peak ', 'hour ');
   await waitFor(async () => (await cursorAfter()) === null, 10_000, 'the cursor gone, not left inside the typing');
