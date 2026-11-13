@@ -10,7 +10,7 @@ import { Decoration, EditorView, ViewPlugin, WidgetType, drawSelection, keymap }
 import { defaultKeymap, history, historyKeymap, redo, undo } from '@codemirror/commands';
 import { diffOps } from '../../src/core/ot.js';
 import { diffEdits } from '../../src/core/diff.js';
-import { buddyColor } from '../faces.js';
+import { buddyColor, nameOf } from '../faces.js';
 import { cursorNode } from '../marks.js';
 import { hydrateIcons } from '../icons.js';
 import { matches } from '../../src/core/search.js';
@@ -214,8 +214,8 @@ export function createEditor({ stage, host, text, editable = true, keys = [], ex
   /**
    * Show `next`, outside the human's undo history, as `ops` change the text
    * shown (when given; else as diffOps finds), so the caret stays at its
-   * character; glowing and flagged `by` for a while, if given (in the
-   * buddy's colour for a buddy's change, `buddy`).
+   * character; glowing and flagged `by` for a while, if given (a buddy's
+   * change, `buddy`: `by` its id, flagged by its name in its colour).
    */
   function applyText(next, { by = null, buddy = false, ops = null } = {}) {
     const before = currentText();
@@ -242,7 +242,7 @@ export function createEditor({ stage, host, text, editable = true, keys = [], ex
       // The flag at the start of the word the change begins in, before what it removed.
       const at = edits[0].start;
       const word = view.state.update({ changes }).state.wordAt(at);
-      flashes.push(Decoration.widget({ widget: new Flag(by, buddy ? buddyColor(by) : null), side: -2, flashId }).range(word && word.from < at ? word.from : at));
+      flashes.push(Decoration.widget({ widget: new Flag(buddy ? nameOf(by) : by, buddy ? buddyColor(by) : null), side: -2, flashId }).range(word && word.from < at ? word.from : at));
     }
     view.dispatch({
       changes,

@@ -437,7 +437,8 @@ An undo takes some edits back, all at once, and keeps everything written
 since: where someone changed that text since, their text stays.
 
 1. **Your own typing:** Cmd+Z, which undoes only yours, as in shared docs.
-2. **An AI buddy's turn:** Undo on its reply: the change of its version.
+2. **An AI buddy's turn:** Undo on its reply: the change of its version;
+   then Redo there, which undoes that undo.
 3. **Any change:** Undo this change in history, for a version or a row of
    them, whoever made it; or restore a whole version.
 
@@ -518,8 +519,8 @@ carries `resolved`. Anything else is ignored
 ### What the user sees after a turn
 
 What the app knows, the app shows, not the buddy's reply: under the reply,
-how many places the turn edited, with Undo; a turn whose version says
-`conflict` says that part of it was not applied; its comments are in the
+how many places the turn edited, with Undo (once undone, Redo); a turn
+whose version says `conflict` says that part of it was not applied; its comments are in the
 margin. The reply says only what the
 app cannot (why, what to decide), and may be empty. The turn's edits land at
 once and glow with the buddy's name, as anyone's do; clicking the count

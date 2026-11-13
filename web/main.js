@@ -63,7 +63,7 @@ let me; // your name
 let myId; // your id, which your comments carry
 let comments; // the doc's threads, who wrote in them, and a notice about its sidecar (state())
 let client; // the doc in the doc host's order (web/client.js)
-let asking = null; // what the page asked the doc host to change (Undo, Restore), while it does
+let asking = null; // what the page asked the doc host to change (Undo, Redo, Restore), while it does
 let runLanded = null; // the reply whose buddy's edit just landed: its cursor moves once its comments arrive
 let docName; // the doc's file name
 let pendingSelection = null; // an anchor on the doc's text while a comment is written on it
@@ -246,6 +246,7 @@ async function start() {
     onResolve: (thread) => send(api.comment({ thread, body: '', resolved: true })),
     onReopen: (thread) => send(api.comment({ thread, body: '' })),
     onUndo: undoReply,
+    onRedo: redoReply,
     onShowEdits: (id) => (id ? showRun(id) : hideRun()),
     onSelect: (id) => {
       select(id);
@@ -860,12 +861,21 @@ async function send(request) {
 // undo comes back as an edit from the doc host.
 async function undoReply(id) {
   if (shownRun === id) hideRun();
+  await undoAs('Undo', comments.edits[id].version);
+}
+
+// Redo the edit of a buddy's reply `id`: its last undo undone.
+async function redoReply(id) {
+  await undoAs('Redo', comments.edits[id].undo);
+}
+
+async function undoAs(what, version) {
   await client.landed();
-  asking = 'Undo';
+  asking = what;
   try {
-    applyComments(await api.undo(comments.edits[id].version));
+    applyComments(await api.undo(version));
   } catch (error) {
-    setStatus(`Could not undo: ${error.message}`, 'error');
+    setStatus(`Could not ${what.toLowerCase()}: ${error.message}`, 'error');
     throw error;
   } finally {
     asking = null;
