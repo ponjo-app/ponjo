@@ -52,8 +52,8 @@ const PREFIXES = /^(\s*(#{1,6} |> ?|[-*+] \[[ xX]\] |[-*+] |\d+[.)] ))*/;
  *   [from, to) new text and `removed` the text it replaced, shown struck
  *   through before it; `by` shows it as that buddy's, and a new `replay`
  *   number (0: none) animates it once.
- * - { kind: 'cursor', at, by, working }: buddy `by`'s cursor after the
- *   character before text offset `at`; `working` shows its name.
+ * - { kind: 'cursor', at, by, name, working }: buddy `by`'s cursor after
+ *   the character before text offset `at`; `working` shows its `name`.
  *
  * @param {{ stage: HTMLElement, text: string, editable?: boolean, onChange?: () => void, onEdit?: () => void,
  *           onMarkClick?: (id: string) => void, onLayout?: () => void,

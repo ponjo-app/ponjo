@@ -81,7 +81,7 @@ function createHarnessClient(view, name, call) {
           at = op.from + shift + op.insert.length;
           shift += op.insert.length - (op.to - op.from);
         }
-        view.setMarks([{ kind: 'cursor', at, by: 'other', working: false }]);
+        view.setMarks([{ kind: 'cursor', at, by: 'other', name: 'other', working: false }]);
         const applied = performance.now();
         const after = view.getText();
         harness.batches.push({ before: shown - received, applyText: applied - shown, after: performance.now() - applied });
