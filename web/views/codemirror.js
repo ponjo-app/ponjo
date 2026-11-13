@@ -9,6 +9,7 @@ import { Annotation, EditorState, StateEffect, StateField, Transaction } from '@
 import { Decoration, EditorView, ViewPlugin, WidgetType, drawSelection, keymap } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap, redo, undo } from '@codemirror/commands';
 import { diffOps } from '../../src/core/ot.js';
+import { diffEdits } from '../../src/core/diff.js';
 import { buddyColor, nameOf } from '../faces.js';
 import { cursorNode } from '../marks.js';
 import { hydrateIcons } from '../icons.js';
@@ -231,13 +232,17 @@ export function createEditor({ stage, host, text, editable = true, keys = [], ex
     const flashId = Symbol('flash');
     const flashes = [];
     if (by) {
-      const added = [];
-      changes.iterChanges((_fromA, _toA, from, to) => added.push([from, to]));
-      flashes.push(...added.filter(([from, to]) => from < to).map(([from, to]) => Decoration.mark({ class: 'pj-flash', flashId }).range(from, to)));
-      // The flag at the start of the word the change begins in.
-      const at = added[0][0];
+      // What changed as a run's revision shows it, not as the operations cut it: per run of lines,
+      // in whole words; the new text glows and the removed is struck through where it was.
+      const edits = diffEdits(lf(before), lf(next)).map((change) => change.edit);
+      for (const { before: removed, after: added, start } of edits) {
+        if (removed) flashes.push(Decoration.widget({ widget: new Removed(removed, 'pj-flash-del', '', 0), side: -1, flashId }).range(start));
+        if (added) flashes.push(Decoration.mark({ class: 'pj-flash', flashId }).range(start, start + added.length));
+      }
+      // The flag at the start of the word the change begins in, before what it removed.
+      const at = edits[0].start;
       const word = view.state.update({ changes }).state.wordAt(at);
-      flashes.push(Decoration.widget({ widget: new Flag(buddy ? nameOf(by) : by, buddy ? buddyColor(by) : null), side: -1, flashId }).range(word && word.from < at ? word.from : at));
+      flashes.push(Decoration.widget({ widget: new Flag(buddy ? nameOf(by) : by, buddy ? buddyColor(by) : null), side: -2, flashId }).range(word && word.from < at ? word.from : at));
     }
     view.dispatch({
       changes,

@@ -172,10 +172,12 @@ export function diffEdits(before, after) {
   const startsB = lineStarts(b);
   const changes = [];
   for (const [i, j, k, l] of regions) {
-    let from = Math.min(startsA[i], before.length);
-    let to = Math.min(startsA[j], before.length);
-    let bFrom = Math.min(startsB[k], after.length);
-    let bTo = Math.min(startsB[l], after.length);
+    // A run of lines that ends the text takes the line break before it: the last line has none after it.
+    const back = j === a.length && i > 0 ? 1 : 0;
+    let from = Math.min(startsA[i] - back, before.length);
+    let to = Math.min(startsA[j] - back, before.length);
+    let bFrom = Math.min(startsB[k] - back, after.length);
+    let bTo = Math.min(startsB[l] - back, after.length);
     while (from < to && bFrom < bTo && before[from] === after[bFrom]) {
       from++;
       bFrom++;

@@ -98,14 +98,23 @@ for (const name of VIEWS) {
     }
   });
 
-  test(`D6: ${name} view: a buddy's change glows, flagged with its name before the word it changed, and its revision is drawn whole over the glow`, async () => {
+  test(`D6: ${name} view: a buddy's change glows in whole words, what it removed struck through, flagged with its name before the word it changed, and its revision is drawn whole over the glow`, async () => {
     await make(name, 'Say Hello to all.\n');
     const at = 'Say H'.length;
     await run(`view.applyText('Say Howdy to all.\\n', { by: 'Clippy', buddy: true, ops: [{ from: ${at}, to: ${at + 4}, insert: 'owdy' }] })`);
-    assert.equal(await run(`contract.drawn('.pj-flash')`), 'owdy');
+    assert.equal(await run(`contract.drawn('.pj-flash')`), 'Howdy');
+    assert.equal(await run(`contract.drawn('.pj-flash-del')`), 'Hello');
     assert.equal(await run(`contract.drawn('.pj-flag')`), 'Clippy');
     await run(`view.setMarks([{ kind: 'edit', from: 4, to: 9, removed: 'Hello', by: 'Clippy', replay: 1 }])`);
     assert.equal(await run(`contract.drawn('.pj-buddy-edit')`), 'Howdy');
+  });
+
+  test(`D6: ${name} view: a rewrite glows as one run, not in the pieces its operations cut`, async () => {
+    await make(name, 'The sync is scheduled for Tuesday in the main hall.\n');
+    await run(`view.applyText('The meeting is on Monday at the office.\\n', { by: 'Undo' })`);
+    assert.equal(await run(`document.querySelectorAll('.pj-flash').length`), 1);
+    assert.equal(await run(`contract.drawn('.pj-flash')`), 'meeting is on Monday at the office');
+    assert.equal(await run(`contract.drawn('.pj-flash-del')`), 'sync is scheduled for Tuesday in the main hall');
   });
 
   test(`D2: ${name} view: when others add lines above, the line on top of the page keeps its place`, async () => {

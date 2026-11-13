@@ -29,6 +29,12 @@ test('a change inside a word covers the whole word', () => {
   assert.deepEqual(edits(SAMPLE, SAMPLE.replace('extra load', 'extra loads')).map((e) => [e.before, e.after]), [['load', 'loads']]);
 });
 
+test('a line break added or removed at the end of the text is an edit', () => {
+  assert.deepEqual(edits('One.', 'One.\n').map((e) => [e.before, e.after, e.start]), [['', '\n', 4]]);
+  assert.deepEqual(edits('One.\n', 'One.\n\n').map((e) => [e.before, e.after, e.start]), [['', '\n', 5]]);
+  assert.deepEqual(edits('One.\n', 'One.').map((e) => [e.before, e.after, e.start]), [['\n', '', 4]]);
+});
+
 test('a deletion is found again by its context', () => {
   const after = SAMPLE.replace(' for details', '');
   const all = edits(SAMPLE, after);

@@ -470,9 +470,12 @@ del.pj-mark-del { margin-right: 0.15em; }
 @keyframes pj-replay-ins { from { opacity: 0; background: color-mix(in srgb, var(--green) 35%, transparent); } }
 @media (prefers-reduced-motion: reduce) { .pj-replay { animation: none !important; } }
 
-/* text someone just changed outside a buddy's run, labelled with their name, fading out */
+/* text someone just changed, labelled with their name, fading out */
 .pj-flash { animation: pj-flash 6s ease-out forwards; border-radius: 0; }
 @keyframes pj-flash { 0%, 40% { background: var(--active); } 100% { background: transparent; } }
+/* what the change removed, struck through where it was, closing up as the glow fades */
+del.pj-flash-del { color: var(--text-faint); text-decoration: line-through; margin-right: 0.15em; animation: pj-flash-gone 6s ease-out forwards; }
+@keyframes pj-flash-gone { 0%, 70% { opacity: 1; } 100% { opacity: 0; font-size: 0; margin-right: 0; } }
 .pj-flag { position: relative; display: inline; }
 .pj-flag-label { position: absolute; bottom: 100%; left: -1px; z-index: 4; padding: 0 6px; border-radius: 4px 4px 4px 0; background: var(--buddy, var(--text)); color: var(--buddy-ink, var(--on-text)); font: 600 11px/1.6 var(--ui-font); white-space: nowrap; pointer-events: none; animation: pj-fade 6s ease-out forwards; }
 .pj-flag::before { content: ''; position: absolute; top: -0.1em; bottom: -0.1em; left: -1px; border-left: 2px solid var(--buddy, var(--text)); animation: pj-fade 6s ease-out forwards; }
@@ -911,7 +914,7 @@ label.pj-setting { cursor: pointer; }
   html, body { height: auto; background: none; }
   :root[data-files] body { padding-left: 0; }
   body > :not(.pj-canvas), .pj-canvas > :not(.pj-stage:first-child), .pj-margin, .pj-find, .pj-statusbar,
-  .pj-cursor, .pj-flag, .pj-buddy-del, .pj-outline, .cm-gutters { display: none !important; }
+  .pj-cursor, .pj-flag, .pj-buddy-del, .pj-flash-del, .pj-outline, .cm-gutters { display: none !important; }
   .pj-canvas, .pj-stage, .pj-stage[data-plain] { display: block; overflow: visible; padding: 0; }
   .pj-page, .pj-stage[data-plain] .pj-page { min-height: 0; padding: 0; border: 0; }
   .pj-editor .cm-editor .cm-content { min-height: 0; }
