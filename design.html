@@ -6,8 +6,8 @@
   <title>Ponjo Design System</title>
   <!-- A live specimen: the app's own stylesheet and classes, so this page is
        always what the app looks like. Run `npm run build` to view it locally. -->
-  <link rel="stylesheet" href="./dist/web/app.css?v=3b98442">
-  <link rel="stylesheet" href="site.css?v=3b98442">
+  <link rel="stylesheet" href="./dist/web/app.css?v=f414044">
+  <link rel="stylesheet" href="site.css?v=f414044">
   <link rel="icon" href="./build/icon.svg" type="image/svg+xml">
 </head>
 <body>
@@ -77,7 +77,7 @@
     <div class="ds-swatch"><i style="background: var(--green)"></i><b>--green</b><span>Insertions, online</span></div>
   </div>
   <h3>Buddies</h3>
-  <p>Each buddy has its own colour, the one in its face (see <a href="avatars.html">Avatars</a>). It is set as <code>--buddy</code> on whatever belongs to that buddy: its @chip, edits, flag and the card it is working on. A run's edits, shown from the count under its reply, are a revision in the text: new text in its colour, removed text grey and struck through where it was. Anyone else's change glows for a moment as it lands, flagged with who made it: in whole words, as a revision is, the new text on <code>--active</code> and what it removed in <code>--text-faint</code>, struck through, closing up as the glow fades.</p>
+  <p>Each buddy has its own colour, the one in its face (see <a href="avatars.html">Avatars</a>). It is set as <code>--buddy</code> on whatever belongs to that buddy: its @chip, edits, flag and the dot it puts on the comment icon while it works on a thread there. A run's edits, shown from the count under its reply, are a revision in the text: new text in its colour, removed text grey and struck through where it was. Anyone else's change glows for a moment as it lands, flagged with who made it: in whole words, as a revision is, the new text on <code>--active</code> and what it removed in <code>--text-faint</code>, struck through, closing up as the glow fades.</p>
 
   <h2>Type</h2>
   <p>Inter for the UI, with each platform's own Chinese font behind it (PingFang SC, Microsoft YaHei UI, Noto Sans CJK SC; Songti SC, Noto Serif CJK SC for serif). The Markdown editor's page font (sans, serif or mono, set in that view) and its sizes in <code>em</code> are the writer's, not the UI's. A text file that is not Markdown shows as it is, in <code>--mono</code> at 14px by default (a size from 12 to 20 in its plugin).</p>
@@ -212,13 +212,21 @@
     <ul><li data-item-type="task" data-checked="true"><p>Invite the partners</p></li><li data-item-type="task" data-checked="false"><p>Open the waitlist</p></li></ul>
   </div>
   <p>A task list item has a box in place of its bullet: a <code>.pj-radio</code>'s outline, square (radius 4); ink with a check when done. Clicking it ticks it.</p>
-  <h3>A thread</h3>
-  <div class="pj-card ds-card" style="--buddy: oklch(0.84 0.17 85)">
-    <div class="pj-msg">
-      <div class="pj-msg-head"><span class="pj-who"><span class="pj-name">Fan</span><span class="pj-time">2m</span></span></div>
-      <div class="pj-body">Too vague. <span class="pj-at pj-at-agent">@Clippy</span> can you make it concrete? cc <span class="pj-at pj-at-person">@Sam</span></div>
+  <h3>Threads in the margin</h3>
+  <p>Each thread is a card beside its text. A thread not open is folded, <code>.pj-card-folded</code>: its first comment cut to two lines, then one line, <code>.pj-foot</code>, on what followed: who replied (their faces), how many replies, how many edits they made and when; or the buddies at work on it, their faces at work; or, in red, that its run failed. The open thread is whole: every reply, its receipts and the reply box, raised (<code>--bg</code>, <code>--shadow-raised</code>). It sits at its text, and the cards above and below give way; one pushed past the top of the margin comes back when it closes.</p>
+  <p>The threads with no place in the text, on the whole doc or whose text was deleted, are one <code>.pj-unplaced</code> at the top of the margin: the comment icon and how many, bare as an icon button, saying which in its tooltip. A buddy at work on one puts a dot of its colour on the icon's top left corner; a failed run, a red one. Opened, they are whole cards at the top, over the cards there, each saying why it has no place, a deleted text quoted and struck through; a click in the doc closes them.</p>
+  <div class="ds-row">
+    <div class="pj-card pj-card-folded ds-card">
+      <div class="pj-msg-head"><span class="pj-who"><span class="pj-name">Fan</span><span class="pj-time">5 min ago</span></span></div>
+      <div class="pj-body">Too vague. <span class="pj-at pj-at-agent" style="--buddy: oklch(0.84 0.17 85)">@Clippy</span> can you make it concrete, with the dates?</div>
+      <div class="pj-foot"><span>2 replies</span><span class="pj-foot-dot">·</span><span>3 edits</span><span class="pj-foot-dot">·</span><span>2 min ago</span></div>
     </div>
-    <div class="pj-typing"><span class="pj-dots"><i></i><i></i><i></i></span>Clippy is working on it</div>
+    <div class="pj-card pj-card-folded ds-card">
+      <div class="pj-msg-head"><span class="pj-who"><span class="pj-name">Sam</span><span class="pj-time">1 h ago</span></span></div>
+      <div class="pj-body"><span class="pj-at pj-at-agent" style="--buddy: oklch(0.84 0.17 85)">@Clippy</span> cite the beta numbers</div>
+      <div class="pj-foot pj-foot-failed"><span>Clippy's run failed</span><span class="pj-foot-dot">·</span><span>58 min ago</span></div>
+    </div>
+    <div style="position: relative; width: 64px; height: 26px"><button class="pj-unplaced pj-unplaced-working" type="button" style="--buddy: oklch(0.84 0.17 85)" title="1 on the whole document, 2 whose text was deleted"><svg class="pj-icon" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><span>3</span></button></div>
   </div>
   <h3>Tooltip and keys</h3>
   <div class="ds-row">
@@ -227,6 +235,6 @@
   </div>
 
 </main>
-<script type="module" src="site.js?v=3b98442"></script>
+<script type="module" src="site.js?v=f414044"></script>
 </body>
 </html>
