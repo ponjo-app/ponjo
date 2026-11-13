@@ -4,8 +4,8 @@
 // replies, and its face at work while it works. A reply whose run failed, or
 // whose edit was partly dropped for the human's text, says so; one that
 // edited the doc on this machine shows its edits in the text and offers
-// Undo; one whose run left a trace links to it. Only people resolve and
-// reopen threads.
+// Undo, and once undone, Redo; one whose run left a trace links to it. Only
+// people resolve and reopen threads.
 
 import { icon } from './icons.js';
 import { agentFace, buddyColor, nameOf, personFace } from './faces.js';
@@ -19,7 +19,8 @@ const MENTION_BEFORE_CARET = /(^|[^A-Za-z0-9._-])@([A-Za-z0-9._-]*)$/;
  * @param {{ onCreate: (body: string) => Promise<void>, onCancelDraft: () => void,
  *           onReply: (threadId: string, body: string) => Promise<void>,
  *           onResolve: (threadId: string) => Promise<void>, onReopen: (threadId: string) => Promise<void>,
- *           onUndo: (replyId: string) => Promise<void>, onShowEdits: (replyId: string | null) => void,
+ *           onUndo: (replyId: string) => Promise<void>, onRedo: (replyId: string) => Promise<void>,
+ *           onShowEdits: (replyId: string | null) => void,
  *           onSelect: (threadId: string | null) => void, onHover: (threadId: string | null) => void,
  *           anchorTops: (items: { id: string, anchor: object }[]) => Map<string, number>,
  *           mentionChoices?: (query: string, me: string) => { id?, name, kind, group, tagline? }[],
@@ -30,7 +31,7 @@ export function createCommentMargin(margin, handlers) {
   let threads = [];
   let agents = []; // the buddies' statuses in this doc: who works on which threads
   let me = { id: null, name: '' };
-  let edits = {}; // the buddy replies that edited the doc here: { [id]: 'edited' | 'undone' }
+  let edits = {}; // the buddy replies that edited the doc here: { [id]: { state: 'edited' | 'undone', ... } }
   let shownEdits = null; // the reply whose edits the text shows
   let activeId = null;
   let draft = null; // { anchor } while composing a comment on the selected text
@@ -157,12 +158,16 @@ export function createCommentMargin(margin, handlers) {
   }
 
   // What a run did, as the app counted it, on the machine that ran it:
-  // the count shows its edits in the text, or hides them; the icon undoes them.
+  // the count shows its edits in the text, or hides them; the icon undoes
+  // them, and once they are undone, redoes them.
   function receipt(id, { state, by, changes }) {
     const box = el('div', `pj-receipt${state === 'undone' ? ' pj-receipt-undone' : ''}`);
     box.style.setProperty('--buddy', buddyColor(by ?? ''));
-    if (state === 'undone') box.append(icon('pencil'), el('span', '', `${changes === 1 ? 'Edit' : 'Edits'} undone`));
-    else {
+    const them = changes === 1 ? 'this edit' : `these ${changes} edits`;
+    if (state === 'undone') {
+      box.append(icon('pencil'), el('span', '', `${changes === 1 ? 'Edit' : 'Edits'} undone`));
+      box.append(receiptButton('redo', `Redo ${them}`, () => handlers.onRedo(id)));
+    } else {
       const show = el('button', 'pj-receipt-show');
       show.type = 'button';
       show.setAttribute('aria-pressed', String(shownEdits === id));
@@ -172,20 +177,24 @@ export function createCommentMargin(margin, handlers) {
         event.stopPropagation();
         handlers.onShowEdits(shownEdits === id ? null : id);
       });
-      box.append(show);
-      const undo = el('button', 'pj-icon-btn pj-receipt-undo');
-      undo.type = 'button';
-      undo.title = `Undo ${changes === 1 ? 'this edit' : `these ${changes} edits`}`;
-      undo.setAttribute('aria-label', undo.title);
-      undo.append(icon('undo'));
-      undo.addEventListener('click', (event) => {
-        event.stopPropagation();
-        undo.disabled = true;
-        handlers.onUndo(id).catch(() => { undo.disabled = false; });
-      });
-      box.append(undo);
+      box.append(show, receiptButton('undo', `Undo ${them}`, () => handlers.onUndo(id)));
     }
     return box;
+  }
+
+  // A receipt's Undo or Redo: off while the doc host does it, on again if it cannot.
+  function receiptButton(name, title, act) {
+    const button = el('button', `pj-icon-btn pj-receipt-${name}`);
+    button.type = 'button';
+    button.title = title;
+    button.setAttribute('aria-label', title);
+    button.append(icon(name));
+    button.addEventListener('click', (event) => {
+      event.stopPropagation();
+      button.disabled = true;
+      act().catch(() => { button.disabled = false; });
+    });
+    return button;
   }
 
   // The replies folded out of a long thread: who wrote them and how many,

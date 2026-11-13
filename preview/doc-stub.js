@@ -8,7 +8,7 @@
 // A buddy asked runs the Ponjo agent's turn (agents/ponjo-core.mjs) here,
 // on Nemotron through the preview's Worker (relay/worker.js, at INFER), and
 // its edit lands as the app lands one: merged with what was typed
-// meanwhile, its reply showing its edits, which undo; Settings' Agents
+// meanwhile, its reply showing its edits, which undo and redo; Settings' Agents
 // say so, fixed (agents.js). No version history, no menus. A project's
 // room is a sample: once opened, Noor and Sam are in it, and its link
 // leads nowhere.
@@ -134,7 +134,7 @@ function view() {
     const found = locate(text, thread.anchor);
     return { ...thread, anchor: found ? createAnchor(text, found.start, found.end) : thread.anchor, detached: !found };
   });
-  const edits = Object.fromEntries(versions().map((v) => [v.id, { state: v.undone ? 'undone' : 'edited', by: v.by, changes: v.changes, version: v.id, conflict: false }]));
+  const edits = Object.fromEntries(versions().map((v) => [v.id, { state: v.undone ? 'undone' : 'edited', by: v.by, changes: v.changes, version: v.id, ...(v.undone ? { undo: `${v.id}-undo` } : {}), conflict: false }]));
   return { threads, people: peopleOf(comments()), edits, readOnly: null, notice: null };
 }
 
@@ -303,12 +303,14 @@ const calls = {
   history: () => ({ versions: [] }),
   version: ({ id }) => versions().find((v) => v.id === id) ?? refuse('no such version'),
   restoreVersion: () => refuse('no history in the preview'),
-  // Undo a buddy's edit: taken back, merged with what landed since.
+  // Undo a buddy's edit, or redo it (undo its undo, `<id>-undo`): taken
+  // back or put back, merged with what landed since.
   undo({ id }) {
-    const found = versions().find((v) => v.id === id && !v.undone) ?? refuse('no such edit');
+    const redo = id.endsWith('-undo');
+    const found = versions().find((v) => v.id === id.replace(/-undo$/, '') && v.undone === redo) ?? refuse('no such edit');
     const text = s.files[current];
-    s.files[current] = merge3(found.text, text, found.before).text;
-    found.undone = true;
+    s.files[current] = (redo ? merge3(found.before, text, found.text) : merge3(found.text, text, found.before)).text;
+    found.undone = !redo;
     save();
     emit('ops', { epoch, rev: ++rev, ops: diffOps(text, s.files[current]), id: null });
     return view();

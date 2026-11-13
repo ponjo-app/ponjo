@@ -171,7 +171,8 @@ works, or what went wrong.
   change or one from outside: it takes those edits back, all at once, and
   keeps everything written since; where someone changed those lines since,
   their lines stay. **Cmd+Z** (Ctrl+Z) undoes your own typing, never anyone
-  else's. **Undo** on an AI buddy's reply undoes its run; its comments stay.
+  else's. **Undo** on an AI buddy's reply undoes its run; its comments stay;
+  **Redo** there puts it back, by undoing that undo.
   **Undo this change** in history undoes any version, or a burst of typing.
   It works in every window of the team.
 - **A failed run** replies with the end of its output, marked failed.

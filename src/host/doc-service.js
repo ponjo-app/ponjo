@@ -586,17 +586,20 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
   }
 
   // The runs that edited the doc on this machine, by their reply: { [replyId]:
-  // { state: 'edited' | 'undone', by, changes, version, conflict } },
+  // { state: 'edited' | 'undone', by, changes, version, undo, conflict } },
   // `changes` how many places the run changed, `version` the version that
-  // holds the doc right after it, and `conflict` whether people's lines
+  // holds the doc right after it, `undo` (while undone) the version of its
+  // last undo, whose undo redoes it, and `conflict` whether people's lines
   // stayed where it collided with them, twice.
   async function replyEdits() {
     await chronicle; // a run's version is in before the page reads the doc it wrote
     const edits = {};
     const versions = await readHistory(docPath, settingsDir);
-    const undone = new Set(versions.map((v) => v.undid));
+    const lastUndo = new Map(versions.filter((v) => v.undid).map((v) => [v.undid, v.id]));
     for (const v of versions) {
-      if (v.reply) edits[v.reply] = { state: undone.has(v.id) ? 'undone' : 'edited', by: v.author?.id ?? v.author?.name ?? null, changes: v.changes ?? 0, version: v.id, conflict: Boolean(v.conflict) };
+      const undo = lastUndo.get(v.id);
+      const undone = Boolean(undo) && !lastUndo.has(undo);
+      if (v.reply) edits[v.reply] = { state: undone ? 'undone' : 'edited', by: v.author?.id ?? v.author?.name ?? null, changes: v.changes ?? 0, version: v.id, ...(undone ? { undo } : {}), conflict: Boolean(v.conflict) };
     }
     return edits;
   }
