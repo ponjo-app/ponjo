@@ -94,3 +94,20 @@ test('printing a doc prints its text alone, every line of a long plain text file
   assert.deepEqual(await long.evaluate(`['.pj-header', '.pj-files', '.pj-toolbar', '.pj-margin', '.cm-gutters'].map((s) => getComputedStyle(document.querySelector(s)).display)`), ['none', 'none', 'none', 'none', 'none']);
   await long.send('Emulation.setEmulatedMedia', { media: '' });
 });
+
+test('an image file shows as the image, read only; another file not text says so', { timeout: 120_000 }, async () => {
+  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAIAAAADCAYAAAC56t6BAAAAEUlEQVR4nGP4z8DwH4QZMBgAoXkL9U3EmgcAAAAASUVORK5CYII=', 'base64');
+  await mkdir(join(folder, 'pics'));
+  await writeFile(join(folder, 'pics', 'a #1.png'), png);
+  await writeFile(join(folder, 'data.bin'), Buffer.from([0, 1, 2]));
+  const page = await app.page('long.txt', 30_000);
+  await waitFor(() => page.evaluate(`Boolean(document.querySelector('.pj-files-folder[data-path="pics"]'))`), 10_000, 'the folder in the tree');
+  await page.evaluate(`document.querySelector('.pj-files-folder[data-path="pics"]').click()`);
+  await waitFor(() => page.evaluate(`Boolean(document.querySelector('.pj-files-file[data-path="pics/a #1.png"]'))`), 10_000, 'the image in the tree');
+  await page.evaluate(`document.querySelector('.pj-files-file[data-path="pics/a #1.png"]').click()`);
+  await waitFor(() => page.evaluate(`document.querySelector('.pj-preview-image')?.complete`), 10_000, 'the image shown');
+  assert.deepEqual(await page.evaluate(`(() => { const img = document.querySelector('.pj-preview-image'); return [img.naturalWidth, img.naturalHeight, document.querySelector('.pj-preview-name').textContent]; })()`), [2, 3, 'a #1.png']);
+  await page.evaluate(`document.querySelector('.pj-files-file[data-path="data.bin"]').click()`);
+  await waitFor(() => page.evaluate(`Boolean(document.querySelector('.pj-preview-note'))`), 10_000, 'the note');
+  assert.equal(await page.evaluate(`document.querySelector('.pj-preview-image')`), null);
+});

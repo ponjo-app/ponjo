@@ -746,6 +746,7 @@ label.pj-setting { cursor: pointer; }
 [data-preview] .pj-preview-name { display: block; font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pj-preview-text { margin: 0; font: 13px/1.6 var(--mono); color: var(--text); white-space: pre-wrap; overflow-wrap: anywhere; tab-size: 4; }
 .pj-preview-note { margin: 0; color: var(--text-soft); font-size: 14px; }
+.pj-preview-image { display: block; max-width: 100%; border-radius: 6px; }
 /* A folder window with no doc: only its files, and a way to start one. */
 .pj-folder-empty { display: none; }
 [data-folder-only] :is(.pj-toolbar, .pj-stage, .pj-doc-icon, .pj-doc-name, .pj-people, .pj-settings-toggle) { display: none; }
