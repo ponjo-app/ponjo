@@ -11,7 +11,7 @@ import { markdown } from './views/markdown/index.js';
 import { viewFor } from './views/index.js';
 import { createCommentMargin } from './threads.js';
 import { WORKING_MS, createPeople, modeOf } from './agent.js';
-import { setBuddies, setOwner } from './faces.js';
+import { nameOf, setBuddies, setOwner } from './faces.js';
 import { createNameCards } from './namecard.js';
 import { createChrome } from './ui.js';
 import { createSettings } from './settings.js';
@@ -1019,11 +1019,11 @@ function paintMarks() {
   if (preview) marks.push(...revisionMarks(text, preview.edits, preview));
   for (const [by, anchor] of cursors) {
     const found = where(text, anchor);
-    if (found) marks.push({ kind: 'cursor', at: found.end, by, working: working.has(by) });
+    if (found) marks.push({ kind: 'cursor', at: found.end, by, name: nameOf(by), working: working.has(by) });
   }
   // People's, named while they move or type.
   for (const { id, name, at } of client?.cursorsShown() ?? []) {
-    if (id !== myId && at <= text.length) marks.push({ kind: 'cursor', at, by: name, working: people?.atWork(id) });
+    if (id !== myId && at <= text.length) marks.push({ kind: 'cursor', at, by: name, name, working: people?.atWork(id) });
   }
   editor.setMarks(marks);
   return marks;

@@ -180,7 +180,7 @@ for (const name of VIEWS) {
   test(`${name} view: setMarks draws a buddy's cursor after the text it stands at; its name shows while it works`, async () => {
     const text = 'Some **bold** words here.\n';
     await make(name, text);
-    const mark = (working) => JSON.stringify([{ kind: 'cursor', at: text.indexOf(' here'), by: 'Clippy', working }]);
+    const mark = (working) => JSON.stringify([{ kind: 'cursor', at: text.indexOf(' here'), by: 'Clippy', name: 'Clippy', working }]);
     const before = () => run(`(() => {
       const cursor = document.querySelector('.pj-cursor');
       const range = document.createRange();
@@ -190,7 +190,7 @@ for (const name of VIEWS) {
     })()`);
     await run(`view.setMarks(${mark(false)})`);
     assert.equal(await before(), 'Some bold words');
-    await run(`view.setMarks(${JSON.stringify([{ kind: 'cursor', at: text.indexOf('bold'), by: 'Clippy' }])})`);
+    await run(`view.setMarks(${JSON.stringify([{ kind: 'cursor', at: text.indexOf('bold'), by: 'Clippy', name: 'Clippy' }])})`);
     assert.equal(await before(), 'Some ', 'after markup: before the next character');
     assert.equal(await run(`getComputedStyle(document.querySelector('.pj-cursor-name')).display`), 'none');
     await run(`view.setMarks(${mark(true)})`);

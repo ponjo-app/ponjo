@@ -381,7 +381,7 @@ function app(root, buddies, { behind = null, people = ['You'] } = {}) {
           flag.append(el('span', 'pj-flag-label', p.by));
           row.append(flag);
         }
-        if (p.cursor) row.append(cursorNode({ by: p.cursor, working: true }));
+        if (p.cursor) row.append(cursorNode({ by: p.cursor, name: p.cursor, working: true }));
         row.append(words);
         if (p.caret) row.append(el('span', 'arch-caret'));
         return row;

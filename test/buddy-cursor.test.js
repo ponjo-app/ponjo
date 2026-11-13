@@ -1,8 +1,9 @@
 // Where a buddy's cursor stands in the doc (web/main.js): at the passage it
 // was asked about while it works, after its last edit when its run lands,
 // and gone once the person types while it is not at work; its edit flagged
-// by its name, not its id. The desktop app on a folder with the fake
-// agent, so it needs the page built (npm run build).
+// by its name, not its id, and its cursor renamed with it. The desktop app
+// on a folder with the fake agent, so it needs the page built (npm run
+// build).
 
 import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -108,4 +109,11 @@ test('a buddy\'s cursor stands after its last edit when its run lands, and goes 
   await waitFor(async () => (await cursorAfter())?.endsWith('extra peak '), 30_000, 'Ada after its edit, the "peak " it put in');
   await typeAfter('peak ', 'hour ');
   await waitFor(async () => (await cursorAfter()) === null, 10_000, 'the cursor gone, not left inside the typing');
+});
+
+test('a buddy renamed while its cursor stays after its run: the cursor says its new name', { timeout: 60_000 }, async () => {
+  await ask('week one', 'hold'); // released already: it is done at once
+  await waitFor(async () => (await cursorAfter())?.endsWith('week one') && page.evaluate(`!document.querySelector('.pj-cursor-working')`), 30_000, 'Ada done, at the passage');
+  await page.evaluate(`window.ponjoHost.call('updateBuddy', { id: 'b_ada', patch: { name: 'Bea' } })`);
+  await waitFor(() => page.evaluate(`document.querySelector('.pj-cursor')?.textContent === 'Bea'`), 10_000, 'its cursor renamed');
 });

@@ -404,7 +404,7 @@ class Removed extends WidgetType {
   }
 }
 
-// A buddy's cursor (see cursorNode).
+// A buddy's cursor (see cursorNode), drawn again once the buddy is renamed.
 class Cursor extends WidgetType {
   constructor(mark) {
     super();
@@ -412,7 +412,7 @@ class Cursor extends WidgetType {
   }
 
   eq(other) {
-    return other.mark.by === this.mark.by && other.mark.working === this.mark.working;
+    return other.mark.by === this.mark.by && other.mark.name === this.mark.name && other.mark.working === this.mark.working;
   }
 
   toDOM() {
