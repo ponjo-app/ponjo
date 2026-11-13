@@ -17,6 +17,11 @@ import { matches } from '../../src/core/search.js';
 import { createFind } from '../find.js';
 
 const FLASH_MS = 6000;
+// What a change removed shows this long, then goes a character at a time, at
+// most this fast, and faster if it is long, so it is gone this long before the flash.
+const ERASE_FROM_MS = 2000;
+const ERASE_STEP_MS = 40;
+const ERASE_SPARE_MS = 500;
 const CHANGE_MS = 200; // onChange waits for a pause in typing this long, as the Markdown view's does; onEdit does not
 const fromDisk = Annotation.define();
 const setMarks = StateEffect.define();
@@ -233,10 +238,10 @@ export function createEditor({ stage, host, text, editable = true, keys = [], ex
     const flashes = [];
     if (by) {
       // What changed as a run's revision shows it, not as the operations cut it: per run of lines,
-      // in whole words; the new text glows and the removed is struck through where it was.
+      // in whole words; the new text glows and the removed is deleted where it was (Erased).
       const edits = diffEdits(lf(before), lf(next)).map((change) => change.edit);
       for (const { before: removed, after: added, start } of edits) {
-        if (removed) flashes.push(Decoration.widget({ widget: new Removed(removed, 'pj-flash-del', '', 0), side: -1, flashId }).range(start));
+        if (removed) flashes.push(Decoration.widget({ widget: new Erased(removed), side: -1, flashId }).range(start));
         if (added) flashes.push(Decoration.mark({ class: 'pj-flash', flashId }).range(start, start + added.length));
       }
       // The flag at the start of the word the change begins in, before what it removed.
@@ -406,6 +411,44 @@ class Removed extends WidgetType {
     node.style.cssText = this.style;
     node.textContent = this.text;
     return node;
+  }
+}
+
+// What someone else's change removed, left as it was a moment, then
+// deleted from its end a character at a time, as backspace would, before the
+// flash goes. It counts from when the change landed, so a redraw (a scroll
+// away and back) picks up where it was.
+class Erased extends Removed {
+  constructor(text) {
+    super(text, 'pj-flash-del', '', 0);
+    this.landed = Date.now();
+  }
+
+  eq(other) {
+    return super.eq(other) && other.landed === this.landed;
+  }
+
+  toDOM(view) {
+    const node = super.toDOM();
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) return node;
+    const chars = Array.from(this.text);
+    const step = Math.min(ERASE_STEP_MS, (FLASH_MS - ERASE_FROM_MS - ERASE_SPARE_MS) / chars.length);
+    let shown = chars.length;
+    const tick = () => {
+      const left = Math.max(0, chars.length - Math.floor((Date.now() - this.landed - ERASE_FROM_MS) / step));
+      if (left < shown) {
+        shown = left;
+        node.textContent = chars.slice(0, shown).join('');
+        view.requestMeasure();
+      }
+      if (shown > 0) node.frame = requestAnimationFrame(tick);
+    };
+    node.frame = requestAnimationFrame(tick);
+    return node;
+  }
+
+  destroy(node) {
+    cancelAnimationFrame(node.frame);
   }
 }
 
