@@ -58,7 +58,12 @@ AI buddies.
    doc opens read-only.
 3. **Comment.** Select text and click the comment button at the page edge
    (Ctrl+Alt+M). The comment sits in the margin beside its text and follows
-   it as the text changes.
+   it as the text changes. A thread not open is folded to its first comment
+   and a line on what followed (who replied, the edits made, a buddy at work,
+   a run that failed); the open one is whole, beside its text, and the
+   others make way. The threads with no place in the text, on the whole doc
+   or whose text was deleted, are one comment icon with their number at the
+   top of the margin, opened in place.
 4. **Someone answers.** A person replies in the thread. `@Clippy` in a
    comment asks the AI buddy Clippy: it edits the doc, may comment on other
    passages, and replies in the thread.

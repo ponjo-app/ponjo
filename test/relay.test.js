@@ -535,6 +535,10 @@ test('the browser build finds the project\'s files: Mod+P filters the sidebar, w
 
     // #124: a path that is a file's is a link; one that is no file's is not.
     await host.call('comment', { anchor: null, body: 'See notes/b.md, not docs/none.md.' });
+    // On the whole doc, it is under the comment icon at the top of the margin.
+    const openUnplaced = () => shown.evaluate(`document.querySelector('.pj-unplaced[aria-expanded="false"]')?.click()`);
+    await waitFor(() => shown.evaluate(`Boolean(document.querySelector('.pj-unplaced'))`), 10_000, 'the comment icon');
+    await openUnplaced();
     const links = () => shown.evaluate(`[...document.querySelectorAll('.pj-margin .pj-file-link')].map((a) => a.textContent)`);
     await waitFor(async () => JSON.stringify(await links()) === '["notes/b.md"]', 10_000, 'the link in the comment');
 
@@ -653,8 +657,10 @@ test('C2 C6 D7 E1: the browser build asks a name, then shows the doc live at Edi
     await waitFor(async () => (await text().catch(() => '')).includes('Then ask for feedback.'), 30_000, 'back');
 
     // A thread: a reader sees it, with nothing to reply, resolve or undo with.
+    // On the whole doc, it is under the comment icon at the top of the margin.
     await host.call('comment', { anchor: null, body: 'Shall we?' });
-    await waitFor(() => shown.evaluate(`document.querySelector('.pj-margin').textContent.includes('Shall we?')`), 10_000, 'the comment');
+    const openUnplaced = () => shown.evaluate(`document.querySelector('.pj-unplaced[aria-expanded="false"]')?.click()`);
+    await waitFor(async () => (await openUnplaced(), shown.evaluate(`document.querySelector('.pj-margin').textContent.includes('Shall we?')`)), 10_000, 'the comment');
     const visible = (selector) => shown.evaluate(`[...document.querySelectorAll('${selector}')].filter((node) => node.offsetParent).length`);
     for (const selector of ['.pj-composer', '.pj-resolve', '.pj-toolbar [data-command]']) assert.equal(await visible(selector), 0, selector);
 

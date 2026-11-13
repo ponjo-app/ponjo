@@ -374,7 +374,7 @@ async function start() {
   // around the text puts the caret at the text nearest the click.
   const stage = document.querySelector('.pj-stage');
   document.querySelector('.pj-canvas').addEventListener('mousedown', (event) => {
-    if (!event.target.closest('.pj-card, [data-thread], .pj-bubble')) select(null);
+    if (!event.target.closest('.pj-card, [data-thread], .pj-bubble, .pj-unplaced')) select(null);
     if (event.button === 0 && (event.target === stage || event.target === stage.querySelector('.pj-page')) && !reading()) {
       event.preventDefault();
       editor.focusAt(event.clientX, event.clientY);

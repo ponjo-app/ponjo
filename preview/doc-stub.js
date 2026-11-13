@@ -129,7 +129,7 @@ const agents = () => buddies().map((b) => ({ ...b, state: running.has(b.id) ? 'r
 
 function view() {
   const text = s.files[current];
-  const threads = threadsOf(comments(), buddies().map(({ id, name }) => ({ id, name }))).map((thread) => {
+  const threads = threadsOf(comments(), buddies().map(({ id, name }) => ({ id, name })), text).map((thread) => {
     if (!thread.anchor) return { ...thread, detached: false };
     const found = locate(text, thread.anchor);
     return { ...thread, anchor: found ? createAnchor(text, found.start, found.end) : thread.anchor, detached: !found };
@@ -147,7 +147,7 @@ const infer = INFER.openai({ endpoint: 'https://infer.ponjo.app/infer', model: '
 
 // The buddies this user's comments ask, as the runner would start them.
 function answer() {
-  for (const thread of threadsOf(comments(), buddies().map(({ id, name }) => ({ id, name })))) {
+  for (const thread of threadsOf(comments(), buddies().map(({ id, name }) => ({ id, name })), s.files[current])) {
     for (const asked of askedOf(thread, [s.settings.id])) {
       if (running.get(asked)?.includes(thread.id)) continue;
       running.set(asked, [...(running.get(asked) ?? []), thread.id]);
