@@ -68,6 +68,32 @@ test('Undo on a reply removes that buddy\'s edit and keeps later edits, yours an
   });
 });
 
+test('Redo on an undone reply puts the buddy\'s edit back, keeps edits made since, and can be undone again', { timeout: 30_000 }, async () => {
+  await withDoc(async ({ call, state, ask, type, disk, versions, undoReply }) => {
+    const ada = await ask('@Ada replace "extra load" with "extra peak load"');
+    // Redo it, as its Redo button does.
+    const redoReply = async () => call('undo', { id: (await state()).edits[ada.id].undo });
+    await undoReply(ada.id);
+    const undone = (await state()).edits[ada.id];
+    assert.equal(undone.state, 'undone');
+    assert.equal(undone.undo, (await versions()).at(-1).id, 'Redo undoes its last undo');
+    await type('week one', 'week 1');
+
+    await redoReply();
+    const text = await disk();
+    assert.match(text, /extra peak load/);
+    assert.match(text, /week 1/, 'what you typed since stays');
+    assert.equal((await state()).edits[ada.id].state, 'edited');
+    assert.equal((await state()).edits[ada.id].undo, undefined);
+
+    await undoReply(ada.id);
+    assert.match(await disk(), /the extra load\./);
+    assert.equal((await state()).edits[ada.id].state, 'undone');
+    await redoReply();
+    assert.match(await disk(), /extra peak load/);
+  });
+});
+
 test('where you changed the buddy\'s text since, Undo leaves your text and asks nothing', { timeout: 30_000 }, async () => {
   await withDoc(async ({ call, ask, type, disk, undoReply }) => {
     const ada = await ask('@Ada replace "extra load" with "extra peak load"');
