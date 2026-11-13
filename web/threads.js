@@ -1,8 +1,11 @@
 // The comment margin, Google Docs style: one card per thread beside the text it
-// is about, stacked so they never overlap, with the active card aligned to its
-// text. A buddy shows up like any other collaborator: an avatar, its
-// replies, and its face at work while it works. A reply whose run failed, or
-// whose edit was partly dropped for the human's text, says so; one that
+// is about, stacked so they never overlap. A thread not open is folded to its
+// first comment and a line on what followed; the open one is whole and sits
+// at its text, the others giving way. The threads with no place in the text
+// are one comment icon at the top, opened in place. A buddy shows up like
+// any other collaborator: an avatar, its replies, and its face at work while
+// it works. A reply whose run failed, or whose edit was partly dropped for
+// the human's text, says so; one that
 // edited the doc on this machine shows its edits in the text and offers
 // Undo, and once undone, Redo; one whose run left a trace links to it. Only
 // people resolve and reopen threads.
@@ -36,9 +39,9 @@ export function createCommentMargin(margin, handlers) {
   let activeId = null;
   let draft = null; // { anchor } while composing a comment on the selected text
   let showResolved = false;
+  let asideOpen = false; // the threads with no place in the text, opened at the top
   const replyDrafts = new Map();
   const unfolded = new Set(); // ids of long comments shown in full
-  const expanded = new Set(); // ids of long threads shown with every reply
   const narrow = window.matchMedia('(max-width: 900px)');
 
   // ---- rendering ----
@@ -46,6 +49,11 @@ export function createCommentMargin(margin, handlers) {
   function visibleThreads() {
     return threads.filter((t) => t.resolved === showResolved);
   }
+
+  // Cards beside their text: not in the list of resolved ones, nor in a narrow window's sheet.
+  const beside = () => !showResolved && !narrow.matches;
+  // A thread with no place in the text: on the whole doc, or its text deleted.
+  const unplaced = (thread) => !thread.anchor || thread.detached;
 
   function render() {
     const focused = document.activeElement?.closest?.('[data-box]')?.dataset.box;
@@ -55,7 +63,14 @@ export function createCommentMargin(margin, handlers) {
     const cards = [];
     if (draft) cards.push(draftCard());
     const shown = visibleThreads();
-    for (const thread of shown) cards.push(threadCard(thread));
+    const aside = beside() ? shown.filter(unplaced) : [];
+    if (aside.length > 0) {
+      cards.push(unplacedButton(aside));
+      if (asideOpen) for (const thread of aside) cards.push(threadCard(thread));
+    }
+    for (const thread of shown) {
+      if (!aside.includes(thread)) cards.push(thread.id === activeId ? threadCard(thread) : foldedCard(thread));
+    }
     if (showResolved && shown.length === 0) cards.push(el('p', 'pj-empty', 'No resolved comments.'));
 
     // Live updates arrive while the human types: keep the card they are typing
@@ -80,34 +95,19 @@ export function createCommentMargin(margin, handlers) {
     layout();
   }
 
+  // A thread whole: every comment, what its runs did, and the reply box when it is open.
   function threadCard(thread) {
-    const card = el('article', 'pj-card');
-    card.dataset.thread = thread.id;
+    const card = cardFor(thread, 'pj-card');
     const active = thread.id === activeId;
-    const working = thread.resolved ? [] : agents.filter((a) => a.threadIds.includes(thread.id));
+    const working = workingOn(thread);
     card.classList.toggle('pj-card-active', active);
-    card.classList.toggle('pj-card-working', working.length > 0);
-    if (working.length > 0) card.style.setProperty('--buddy', buddyColor(working[0].id));
-    card.classList.toggle('pj-card-resolved', thread.resolved);
-    // A click that ends selecting the card's text leaves the selection, to copy.
-    card.addEventListener('click', (event) => {
-      if (!event.target.closest('textarea, button, a') && getSelection().isCollapsed) handlers.onSelect(thread.id);
-    });
+    card.classList.toggle('pj-card-aside', beside() && unplaced(thread));
 
     if (thread.anchor && thread.detached) card.append(el('div', 'pj-card-note', 'The text this was about was deleted.'));
-    if (thread.anchor && (showResolved || thread.detached)) card.append(el('blockquote', 'pj-quote', truncate(thread.anchor.exact, 120)));
+    if (thread.anchor && (showResolved || thread.detached)) card.append(quote(thread));
     if (!thread.anchor) card.append(el('div', 'pj-card-note', 'On the whole document'));
 
-    // A long thread folds its middle replies until the human opens them or
-    // selects the card (setActive); Hide folds them again either way. A
-    // comment that only resolved the thread shows as the resolved line; a
-    // buddy's reply with nothing to say still shows, for what its run did.
-    const comments = thread.comments.filter((c) => c.body.trim() !== '' || (c.by.kind === 'ai' && !c.resolved));
-    const long = comments.length > 3;
-    const collapse = long && !expanded.has(thread.id);
-    comments.forEach((comment, i) => {
-      if (long && i === 1) card.append(moreButton(thread.id, comments.slice(1, -1), !collapse));
-      if (collapse && i > 0 && i < comments.length - 1) return;
+    commentsOf(thread).forEach((comment, i) => {
       card.append(commentRow(comment, i === 0 && !thread.resolved ? resolveButton(thread) : null));
     });
 
@@ -131,8 +131,100 @@ export function createCommentMargin(margin, handlers) {
     return card;
   }
 
-  function commentRow(comment, action) {
-    const row = el('div', 'pj-msg');
+  // A thread folded: its first comment, cut to two lines, and one line on
+  // what followed: the buddies at work on it, a run that failed, or who
+  // replied, the edits they made and when.
+  function foldedCard(thread) {
+    const card = cardFor(thread, 'pj-card pj-card-folded');
+    if (!thread.anchor) card.append(el('div', 'pj-card-note', 'On the whole document'));
+    else if (showResolved || thread.detached) card.append(quote(thread));
+    const [first, ...replies] = commentsOf(thread);
+    const body = el('div', 'pj-body');
+    body.append(...withMentions(first.body, handlers.mentionable?.() ?? [], handlers.files?.(), handlers.openFile));
+    card.append(messageHead(first, thread.resolved ? null : resolveButton(thread)), body);
+    const foot = footOf(thread, replies);
+    if (foot) card.append(foot);
+    return card;
+  }
+
+  function footOf(thread, replies) {
+    const working = workingOn(thread);
+    const last = replies.at(-1);
+    const foot = el('div', 'pj-foot');
+    const faces = (people) => {
+      const row = el('span', 'pj-foot-faces');
+      for (const { id, name, kind } of people) row.append(avatar(name, kind, true, id));
+      return row;
+    };
+    const dot = () => el('span', 'pj-foot-dot', '·');
+    if (working.length > 0) {
+      foot.classList.add('pj-foot-working');
+      foot.append(faces(working.map(({ id, name }) => ({ id, name, kind: 'agent' }))), el('span', '', `${listed(working.map((a) => a.name))} ${working.length === 1 ? 'is' : 'are'} working…`));
+    } else if (last?.failed) {
+      foot.classList.add('pj-foot-failed');
+      foot.append(el('span', '', `${nameOf(last.by.id, last.by.name)}'s run failed`), dot(), el('time', '', relativeTime(last.at)));
+    } else if (last) {
+      const who = [...new Map(replies.map((c) => [c.by.id, { id: c.by.id, name: kindOf(c) === 'agent' ? nameOf(c.by.id, c.by.name) : c.by.name, kind: kindOf(c) }])).values()];
+      const changes = replies.reduce((n, c) => n + (edits[c.id]?.state === 'edited' ? edits[c.id].changes : 0), 0);
+      foot.append(faces(who.slice(0, 3)), el('span', '', `${replies.length} ${replies.length === 1 ? 'reply' : 'replies'}`));
+      if (changes > 0) foot.append(dot(), el('span', '', `${changes} ${changes === 1 ? 'edit' : 'edits'}`));
+      foot.append(dot(), el('time', '', relativeTime(last.at)));
+    } else return null;
+    return foot;
+  }
+
+  // The threads with no place in the text, as one: the comment icon and how
+  // many. Opened, they are whole at the top of the margin, over the cards
+  // there; selecting another thread, or clicking the doc, closes them.
+  function unplacedButton(list) {
+    const button = el('button', 'pj-unplaced');
+    button.type = 'button';
+    const whole = list.filter((t) => !t.anchor).length;
+    const gone = list.length - whole;
+    button.title = [whole && `${whole} on the whole document`, gone && `${gone} whose text was deleted`].filter(Boolean).join(', ');
+    button.setAttribute('aria-label', button.title);
+    button.setAttribute('aria-expanded', String(asideOpen));
+    const busy = list.flatMap(workingOn)[0];
+    if (busy) {
+      button.classList.add('pj-unplaced-working');
+      button.style.setProperty('--buddy', buddyColor(busy.id));
+    }
+    button.classList.toggle('pj-unplaced-failed', list.some((t) => commentsOf(t).at(-1)?.failed));
+    button.append(icon('comments'), el('span', '', String(list.length)));
+    button.addEventListener('click', () => {
+      if (activeId) handlers.onSelect(null);
+      asideOpen = true;
+      render();
+    });
+    return button;
+  }
+
+  // A thread's card, which a click selects; a click that ends selecting its
+  // text leaves the selection, to copy.
+  function cardFor(thread, className) {
+    const card = el('article', className);
+    card.dataset.thread = thread.id;
+    card.classList.toggle('pj-card-resolved', thread.resolved);
+    card.addEventListener('click', (event) => {
+      if (!event.target.closest('textarea, button, a') && getSelection().isCollapsed) handlers.onSelect(thread.id);
+    });
+    return card;
+  }
+
+  // The deleted text a thread was about, struck through, or the text of a resolved one.
+  function quote(thread) {
+    return el('blockquote', `pj-quote${thread.detached ? ' pj-quote-gone' : ''}`, truncate(thread.anchor.exact, 120));
+  }
+
+  // The buddies at work on a thread not resolved.
+  const workingOn = (thread) => (thread.resolved ? [] : agents.filter((a) => a.threadIds.includes(thread.id)));
+
+  // What a thread shows: a comment that only resolved it shows as the
+  // resolved line; a buddy's reply with nothing to say still shows, for what
+  // its run did.
+  const commentsOf = (thread) => thread.comments.filter((c) => c.body.trim() !== '' || (c.by.kind === 'ai' && !c.resolved));
+
+  function messageHead(comment, action) {
     const head = el('div', 'pj-msg-head');
     const who = el('div', 'pj-who');
     const kind = kindOf(comment);
@@ -144,6 +236,13 @@ export function createCommentMargin(margin, handlers) {
     const run = handlers.traceOf?.(comment.id);
     if (run) head.append(linkButton('Trace', () => handlers.onTrace(run)));
     if (action) head.append(action);
+    return head;
+  }
+
+  function commentRow(comment, action) {
+    const row = el('div', 'pj-msg');
+    const head = messageHead(comment, action);
+    const shown = head.querySelector('.pj-name').textContent;
     const open = unfolded.has(comment.id);
     const body = el('div', `pj-body${open ? '' : ' pj-body-folded'}`);
     body.append(...withMentions(comment.body, handlers.mentionable?.() ?? [], handlers.files?.(), handlers.openFile));
@@ -193,28 +292,6 @@ export function createCommentMargin(margin, handlers) {
       event.stopPropagation();
       button.disabled = true;
       act().catch(() => { button.disabled = false; });
-    });
-    return button;
-  }
-
-  // The replies folded out of a long thread: who wrote them and how many,
-  // in the link color, opening and closing them in place.
-  function moreButton(threadId, hidden, open) {
-    const button = el('button', 'pj-more');
-    button.type = 'button';
-    button.setAttribute('aria-expanded', String(open));
-    if (!open) {
-      const faces = el('span', 'pj-more-faces');
-      const authors = new Map(hidden.map((c) => [c.by.id, c]));
-      for (const c of [...authors.values()].slice(0, 3)) faces.append(avatar(c.by.name, kindOf(c), true, c.by.id));
-      button.append(faces);
-    }
-    const n = hidden.length;
-    button.append(el('span', '', open ? 'Hide replies' : `${n} more ${n === 1 ? 'reply' : 'replies'}`), icon('chevron'));
-    button.addEventListener('click', () => {
-      if (open) expanded.delete(threadId);
-      else expanded.add(threadId);
-      render();
     });
     return button;
   }
@@ -363,14 +440,15 @@ export function createCommentMargin(margin, handlers) {
 
   function layout() {
     foldBodies();
-    const cards = [...margin.querySelectorAll('.pj-card')];
-    if (showResolved || narrow.matches) {
-      for (const card of cards) card.style.top = '';
+    const placed = [...margin.querySelectorAll(':scope > :is(.pj-card, .pj-unplaced)')];
+    if (!beside()) {
+      for (const card of placed) card.style.top = '';
       margin.style.height = '';
       return;
     }
+    const aside = placed.filter((card) => card.classList.contains('pj-card-aside'));
     const byId = new Map(threads.map((t) => [t.id, t]));
-    const items = cards.map((card) => {
+    const items = placed.filter((card) => !aside.includes(card)).map((card) => {
       const id = card.dataset.thread;
       // The draft card can outlive `draft` until the next render (cancelling
       // repaints the doc, which lays out the margin first).
@@ -378,31 +456,37 @@ export function createCommentMargin(margin, handlers) {
     });
     const tops = handlers.anchorTops(items.filter((i) => i.anchor));
     const origin = margin.getBoundingClientRect().top;
-    // Cards with no place in the text (whole-doc, detached) line up at the top.
-    let unplaced = 0;
+    // The comment icon of the threads with no place, and any card whose
+    // text is not found here yet, at the top.
     for (const item of items) {
       item.height = item.card.offsetHeight;
-      item.want = tops.has(item.id) ? tops.get(item.id) - origin : -1000 + unplaced++;
+      item.want = tops.has(item.id) ? Math.max(0, tops.get(item.id) - origin) : 0;
     }
     items.sort((a, b) => a.want - b.want);
-    for (const item of items) if (item.want < 0) item.want = 0;
 
-    const pivot = Math.max(0, items.findIndex((i) => i.id === (draft ? 'draft' : activeId)));
-    if (items.length > 0) items[pivot].top = items[pivot].want;
-    for (let i = pivot + 1; i < items.length; i++) {
+    // The open card sits at its text: the cards below give way downward,
+    // those above upward, past the top if need be, to come back when it
+    // closes. With none open, the cards stack from the top.
+    const pivot = items.findIndex((i) => i.id === (draft ? 'draft' : activeId));
+    if (items.length > 0) items[Math.max(0, pivot)].top = items[Math.max(0, pivot)].want;
+    for (let i = Math.max(0, pivot) + 1; i < items.length; i++) {
       items[i].top = Math.max(items[i].want, items[i - 1].top + items[i - 1].height + GAP);
     }
     for (let i = pivot - 1; i >= 0; i--) {
       items[i].top = Math.min(items[i].want, items[i + 1].top - items[i].height - GAP);
     }
-    const shift = items.length > 0 && items[0].top < 0 ? -items[0].top : 0;
     let bottom = 0;
     for (const item of items) {
-      item.top += shift;
       item.card.style.top = `${item.top}px`;
       bottom = Math.max(bottom, item.top + item.height);
     }
-    margin.style.height = `${bottom + 40}px`;
+    // Opened, the threads with no place stack from the top, over the rest.
+    let top = 0;
+    for (const card of aside) {
+      card.style.top = `${top}px`;
+      top += card.offsetHeight + GAP;
+    }
+    margin.style.height = `${Math.max(bottom, top) + 40}px`;
   }
 
   // Offer Show more only on messages cut off by their line clamp.
@@ -413,7 +497,7 @@ export function createCommentMargin(margin, handlers) {
   }
 
   window.addEventListener('resize', layout);
-  narrow.addEventListener('change', layout);
+  narrow.addEventListener('change', render); // beside the text, or a list
 
   // The card under the pointer lights up its text. Delegated, as cards are redrawn.
   margin.addEventListener('mouseover', (event) => handlers.onHover(event.target.closest('.pj-card')?.dataset.thread ?? null));
@@ -446,12 +530,9 @@ export function createCommentMargin(margin, handlers) {
     },
     /** Make `id` the active card; `focus: false` leaves the caret where it is (e.g. in the doc). */
     setActive(id, { focus = true } = {}) {
-      // Selecting a card shows its folded replies; leaving it folds them again.
-      if (id !== activeId) {
-        expanded.delete(activeId);
-        if (id) expanded.add(id);
-      }
       activeId = id;
+      // The threads with no place stay open while one of them is selected.
+      asideOpen = threads.some((t) => t.id === id && unplaced(t));
       render();
       if (narrow.matches) margin.querySelector(`[data-thread="${id}"]`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
       if (id && focus) margin.querySelector(`[data-thread="${id}"] textarea`)?.focus({ preventScroll: true });
@@ -612,6 +693,9 @@ function el(tag, className, text) {
 }
 
 const truncate = (s, n) => (s.length > n ? s.slice(0, n - 1) + '…' : s);
+
+// "Ada", "Ada and Ben", "Ada, Ben and Clippy".
+const listed = (names) => (names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names.at(-1)}` : names[0]);
 
 // A comment's author as faces and name cards know them: 'agent' for a buddy.
 const kindOf = (comment) => (comment.by.kind === 'ai' ? 'agent' : 'human');
