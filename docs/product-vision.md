@@ -42,6 +42,7 @@ People and AI buddies work on the same doc at the same time, discussing in comme
 - **Fine-grained permissions**: A teammate reads or edits, and is trusted; no roles, no per-doc rights, no tracking of who typed what
 - **Knowledge base**: We work on a doc or a project folder, not note management
 - **Chat interface**: All communication happens in comments; no chat window
+- **Buddies that act on their own**: Every turn is asked by a person, who decides each time what it costs; no buddy runs on a schedule or when files change
 
 ## Target Users
 
