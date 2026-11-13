@@ -473,8 +473,9 @@ del.pj-mark-del { margin-right: 0.15em; }
 /* text someone just changed, labelled with their name, fading out */
 .pj-flash { animation: pj-flash 6s ease-out forwards; border-radius: 0; }
 @keyframes pj-flash { 0%, 40% { background: var(--active); } 100% { background: transparent; } }
-/* what the change removed, struck through where it was, fading with the glow; it closes up in one step when the glow is dropped */
-del.pj-flash-del { color: var(--text-faint); text-decoration: line-through; margin-right: 0.15em; animation: pj-fade 6s ease-out forwards; }
+/* what the change removed, as it was, deleted a character at a time (Erased in web/views/codemirror.js) */
+del.pj-flash-del { text-decoration: none; margin-right: 0.15em; }
+del.pj-flash-del:empty { margin-right: 0; }
 .pj-flag { position: relative; display: inline; }
 .pj-flag-label { position: absolute; bottom: 100%; left: -1px; z-index: 4; padding: 0 6px; border-radius: 4px 4px 4px 0; background: var(--buddy, var(--text)); color: var(--buddy-ink, var(--on-text)); font: 600 11px/1.6 var(--ui-font); white-space: nowrap; pointer-events: none; animation: pj-fade 6s ease-out forwards; }
 .pj-flag::before { content: ''; position: absolute; top: -0.1em; bottom: -0.1em; left: -1px; border-left: 2px solid var(--buddy, var(--text)); animation: pj-fade 6s ease-out forwards; }
