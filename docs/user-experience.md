@@ -58,7 +58,12 @@ AI buddies.
    doc opens read-only.
 3. **Comment.** Select text and click the comment button at the page edge
    (Ctrl+Alt+M). The comment sits in the margin beside its text and follows
-   it as the text changes.
+   it as the text changes. A thread not open is folded to its first comment
+   and a line on what followed (who replied, the edits made, a buddy at work,
+   a run that failed); the open one is whole, beside its text, and the
+   others make way. The threads with no place in the text, on the whole doc
+   or whose text was deleted, are one comment icon with their number at the
+   top of the margin, opened in place.
 4. **Someone answers.** A person replies in the thread. `@Clippy` in a
    comment asks the AI buddy Clippy: it edits the doc, may comment on other
    passages, and replies in the thread.
@@ -273,9 +278,9 @@ works, or what went wrong.
   each line with its number, the match marked; what git ignores is not
   searched, and past 1,000 matches it says so. A line opens its file with
   the find bar at that match. Everyone on the team sees the same tree. A
-  doc opens in the editor; any other file shows read only in its place
-  (Escape goes back). A file's path in a comment, as Copy Path writes it,
-  is a link that opens it; in the link popover, typing finds the
+  doc opens in the editor; any other file shows read only in its place,
+  an image as the image, up to 5 MB (Escape goes back). A file's path in a
+  comment, as Copy Path writes it, is a link that opens it; in the link popover, typing finds the
   project's files and links one by its path from the doc.
   Its menu, the same for every row and only yours: New File and New Folder
   (in a folder; `/` in a name makes folders), Rename (F2), Copy Path (relative to the

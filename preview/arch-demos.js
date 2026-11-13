@@ -425,7 +425,6 @@ function thread(margin, buddy, words, by = 'You') {
       }
     },
     working(on) {
-      card.classList.toggle('pj-card-working', on);
       busy?.remove();
       busy = null;
       if (!on) return;

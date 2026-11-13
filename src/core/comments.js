@@ -197,15 +197,19 @@ export function movedAnchor(anchor, base, edited, text) {
  * the order of their first comments. A thread is resolved when its latest
  * comment says so: any comment without `resolved` reopens it. A reply whose
  * first comment is missing is left out. `mentionable` ([{ id, name }]) is who an @name can mean (§6); each comment
- * gets `mentions`, the ids it mentions.
+ * gets `mentions`, the ids it mentions. A thread's `anchor` is the latest of
+ * its comments' anchors found in the doc's `text`, when given (§3); else,
+ * or when none is, the latest.
  */
-export function threadsOf(comments, mentionable = []) {
+export function threadsOf(comments, mentionable = [], text = null) {
   const firsts = comments.filter((c) => c.thread === undefined).sort(byTime);
   return firsts.map((first) => {
     const all = [first, ...comments.filter((c) => c.thread === first.id).sort(byTime)]
       .map((c) => ({ ...c, mentions: parseMentions(c.body, mentionable) }));
-    // On the latest anchor: a buddy's reply that rewrote the thread's text moves it (§3).
-    return { id: first.id, anchor: first.anchor ? all.findLast((c) => c.anchor).anchor : null, resolved: all.at(-1).resolved === true, comments: all };
+    // A buddy's reply that rewrote the thread's text moves it; undoing that edit moves it back (§3).
+    const anchors = all.filter((c) => c.anchor).map((c) => c.anchor);
+    const anchor = first.anchor ? (text !== null && anchors.findLast((a) => locate(text, a))) || anchors.at(-1) : null;
+    return { id: first.id, anchor, resolved: all.at(-1).resolved === true, comments: all };
   });
 }
 

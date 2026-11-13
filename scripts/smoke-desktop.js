@@ -57,6 +57,11 @@ const env = { ...process.env, PONJO_CONFIG_DIR: config, FAKE_DIR: work, PONJO_HO
 delete env.ELECTRON_RUN_AS_NODE;
 
 const step = (text) => console.log(`smoke: ${text}`);
+// In the page: open the threads with no place in the text (the comment icon
+// at the top of the margin), where the buddy's replies to the asks on the
+// whole doc are.
+const OPEN_UNPLACED = `document.querySelector('.pj-unplaced[aria-expanded="false"]')?.click();`;
+
 // In the page, the text of each element `selector` finds, as the person reads
 // it: a buddy's cursor, and the name it shows while it works, are not text,
 // nor is text a change took out, struck through where it was.
@@ -102,6 +107,7 @@ check(await commentShows(plain, CODE, 'greet'), 'a comment on its text is drawn 
 check(await bubbleComments(plain, 'world'), 'selecting text shows Comment, which opens a draft on it');
 check(await answers(plain, 'Hello', 'Howdy', code), 'a buddy answers in app.js and its edit lands');
 const revision = await waitFor(() => plain.evaluate(`(() => {
+  ${OPEN_UNPLACED}
   const show = [...document.querySelectorAll('.pj-receipt-show')].at(-1);
   if (show?.getAttribute('aria-pressed') === 'false') show.click();
   return [...document.querySelectorAll('.pj-stage .pj-buddy-edit')].map((el) => el.textContent).join('') || null;
@@ -282,6 +288,7 @@ async function undoesOwnOnly(page, doc, from, to) {
 // text it changed, is back on disk.
 async function undoesReply(page, doc, before) {
   const clicked = await page.evaluate(`(() => {
+    ${OPEN_UNPLACED}
     const button = [...document.querySelectorAll('.pj-receipt-undo')].at(-1);
     button?.click();
     return Boolean(button);

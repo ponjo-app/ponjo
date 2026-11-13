@@ -139,6 +139,12 @@ test('D8: a thread whose text its buddy rewrote is on the new text: the reply ca
     const thread = await threadOf(state, id);
     assert.equal(thread.detached, false);
     assert.equal(thread.anchor.exact, 'the six features we promised the beta cohort last spring');
+
+    // Undone, its text is gone: the thread is back on the text it was on.
+    await call('undo', { id: (await state()).edits[answer.id].version });
+    const back = await threadOf(state, id);
+    assert.equal(back.detached, false);
+    assert.equal(back.anchor.exact, 'six features');
   });
 });
 

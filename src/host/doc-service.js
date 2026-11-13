@@ -400,7 +400,7 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
   async function commentsView(text) {
     const { lines, bad, problem } = await readComments();
     const comments = lines.map((l) => l.comment).filter(Boolean);
-    const threads = threadsOf(comments, (await buddies()).map(({ id, name }) => ({ id, name }))).map((thread) => {
+    const threads = threadsOf(comments, (await buddies()).map(({ id, name }) => ({ id, name })), text).map((thread) => {
       if (!thread.anchor) return { ...thread, detached: false };
       const found = locate(text, thread.anchor);
       return { ...thread, anchor: found ? createAnchor(text, found.start, found.end) : thread.anchor, detached: !found };
@@ -461,7 +461,7 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
     const editors = (room?.list()?.players ?? []).filter((p) => p.level === 'write').map((p) => p.id);
     const askers = [(await me()).id, ...editors];
     const taken = await readTaken(docPath, settingsDir);
-    const threads = threadsOf(lines.map((l) => l.comment).filter(Boolean), here.map(({ id, name }) => ({ id, name })));
+    const threads = threadsOf(lines.map((l) => l.comment).filter(Boolean), here.map(({ id, name }) => ({ id, name })), text);
     return threads.flatMap((thread) => [...askedBy(thread, askers, taken)].map(([id, asker]) => ({
       threadId: thread.id, thread, buddy: here.find((b) => b.id === id), buddies: here, asker,
       redo: redo.get(`${thread.id} ${id}`)?.seen === thread.comments.at(-1).at ? redo.get(`${thread.id} ${id}`) : null,
@@ -523,7 +523,7 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
   async function finishRun({ threadId, id: buddyId, name, asker, base, seen, edited, comments, body, failed }) {
     if (!can({ level: await levelOf(asker) }, 'write')) return { reply: null, landed: 'Dropped: whoever asked can no longer edit' };
     const latest = (await readComments()).lines.map((l) => l.comment).filter(Boolean);
-    const thread = threadsOf(latest).find((t) => t.id === threadId);
+    const thread = threadsOf(latest, [], base).find((t) => t.id === threadId);
     if (thread?.resolved) return { reply: null, landed: 'Dropped: the thread was resolved meanwhile' };
     const again = redo.get(`${threadId} ${buddyId}`)?.seen === seen; // this run is its ask run once more
     redo.delete(`${threadId} ${buddyId}`);

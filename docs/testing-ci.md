@@ -40,7 +40,7 @@ for a window), **e2e** (the packaged app, under xvfb on Linux).
 - A doc's text: UTF-8 only, no byte order mark, LF; written back with its
   byte order mark and each line's end.
 - Anchors on the doc's text: exact → context → fuzzy → detached; a thread
-  on its latest anchor.
+  on its latest anchor that is found.
 
 ### Model — unit, property
 
