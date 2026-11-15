@@ -341,7 +341,7 @@ async function start() {
   history = createHistory({
     api,
     chooseView: (text) => viewFor(docName, settings.get(), text),
-    commentOf: (id) => comments?.threads.find((t) => t.id === id)?.comments[0]?.body ?? null,
+    commentOf: (id) => comments?.all.find((t) => t.id === id)?.comments[0]?.body ?? null,
     onRestore: restoreVersion,
     onUndo: undoVersions,
     onClose: () => editor.focus(),
@@ -349,7 +349,7 @@ async function start() {
   runs = createRuns({
     api,
     enabled: () => level === 'owner' && settings.get().trace,
-    commentOf: (id) => comments?.threads.find((t) => t.id === id)?.comments[0]?.body ?? null,
+    commentOf: (id) => comments?.all.find((t) => t.id === id)?.comments[0]?.body ?? null,
     onChange: repaintThreads,
     onOpen: () => history.close(),
     onClose: () => editor.focus(),
@@ -710,6 +710,17 @@ noticeBanner.querySelector('[data-action="any-size"]').addEventListener('click',
 // Show the doc's comments (from state() or a comment request). Redrawing
 // every card for the same ones would stall typing.
 let failedShown = null; // ids of the failed replies on screen; null until the first update
+// A thread whose first comment only names buddies, as one asked from the
+// text is (askInText), shows as the buddies' own, as a reviewer's who read
+// the doc and commented: the ask is not shown, and nothing of the thread is
+// until one has answered. `comments.all` has every thread whole.
+const NAMES_ONLY = /^(@[A-Za-z0-9][A-Za-z0-9._-]*\s*)+$/;
+function asShown(thread) {
+  const [ask, ...answers] = thread.comments;
+  if (!thread.anchor || ask.by.kind !== 'human' || !NAMES_ONLY.test(ask.body)) return [thread];
+  return answers.length > 0 ? [{ ...thread, comments: answers }] : [];
+}
+
 function applyComments({ threads, people: writers, edits, notice, readOnly }) {
   const json = JSON.stringify({ threads, writers, edits, notice, readOnly });
   if (json === shownComments) return;
@@ -718,13 +729,13 @@ function applyComments({ threads, people: writers, edits, notice, readOnly }) {
   const failed = threads.flatMap((t) => t.comments).filter((c) => c.failed);
   if (failedShown) for (const c of failed.filter((c) => !failedShown.has(c.id))) people?.failed(c.by.id);
   failedShown = new Set(failed.map((c) => c.id));
-  comments = { threads, people: writers, edits, notice, readOnly };
+  comments = { threads: threads.flatMap(asShown), all: threads, people: writers, edits, notice, readOnly };
   showReadOnly(readOnly);
   paintMarks();
   people?.render({ people: writers }); // first: who is here sets the colours
-  margin.update(threads, { id: myId, name: me }, edits);
+  margin.update(comments.threads, { id: myId, name: me }, edits);
   paintNotice();
-  const open = threads.filter((t) => !t.resolved).length;
+  const open = comments.threads.filter((t) => !t.resolved).length;
   commentsToggle.querySelector('.pj-comment-count').textContent = open > 0 ? String(open) : '';
   paintEmpty();
   if (edits?.[runLanded]) {
@@ -872,7 +883,7 @@ async function askInText({ from, to, names }) {
 // not left marked as commented; a reply with something to read stays open.
 function settleAsks() {
   for (const [id, { buddies, done }] of asked) {
-    const thread = comments.threads.find((t) => t.id === id);
+    const thread = comments.all.find((t) => t.id === id);
     const replies = thread?.comments.slice(1).filter((c) => c.by.kind === 'ai') ?? [];
     if (thread && !thread.resolved && replies.length < buddies) continue;
     asked.delete(id);
@@ -938,7 +949,7 @@ function standAtWork(statuses) {
   for (const id of cursors.keys()) if (!ids.has(id)) cursors.delete(id);
   const now = new Set(statuses.filter((a) => modeOf(a) === 'working').map((a) => a.id));
   for (const a of statuses) {
-    const thread = !working.has(a.id) && now.has(a.id) && comments?.threads.find((t) => a.threadIds.includes(t.id) && t.anchor && !t.detached);
+    const thread = !working.has(a.id) && now.has(a.id) && comments?.all.find((t) => a.threadIds.includes(t.id) && t.anchor && !t.detached);
     if (thread) cursors.set(a.id, thread.anchor);
   }
   working = now;

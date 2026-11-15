@@ -142,13 +142,16 @@ works, or what went wrong.
   typed out or pasted in the doc's text.
 - A buddy picked from the @ menu in the doc's text is asked without a
   comment box: once the caret has been off its line for 3 seconds
-  (Mod+Enter: at once; Escape: not at all), the line becomes a thread of
-  yours that names the buddy, and the buddy reads what the line asks, does
-  it and takes the request out of the text. Each line waits on its own,
+  (Mod+Enter: at once; Escape: not at all), the buddy reads what the line asks, does
+  it and takes the request out of the text, as a reviewer at work in the
+  doc would: its edits land with its name, and what it has to say is its
+  own comment there. (The ask is a thread of yours that only names the
+  buddy; a comment that only names buddies is not shown, only their
+  answers.) Each line waits on its own,
   whatever you type elsewhere; the wait is paused while you are in another
-  app or outside the text. The name pulses until the buddy is done. A
-  thread asked this way is resolved once the buddy has done it and has
-  nothing to say.
+  app or outside the text. The name pulses until the buddy is done. Where
+  the buddy has done it and has nothing to say, there is no comment at all:
+  the thread is resolved.
 - A comment that reached the file from outside Ponjo (a `git pull`, another
   editor, another computer) asks no one.
 - A comment that mentions several AI buddies asks each; they work at once.
