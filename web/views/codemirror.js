@@ -18,11 +18,11 @@ import { createFind } from '../find.js';
 import { asking } from './ask.js';
 
 const FLASH_MS = 6000;
-// What a change removed shows this long, then goes a character at a time, at
-// most this fast, and faster if it is long, so it is gone this long before the flash.
-const ERASE_FROM_MS = 2000;
-const ERASE_STEP_MS = 40;
-const ERASE_SPARE_MS = 500;
+// Someone else's change lands as a person makes one in a batch: what it
+// removes shows selected this long, then is gone at once, and what it adds
+// is there at once in its place, as pasted. A change that removes nothing
+// is there at once, and so is one that adds text where the person's caret is.
+const SELECT_MS = 700;
 const CHANGE_MS = 200; // onChange waits for a pause in typing this long, as the Markdown view's does; onEdit does not
 const fromDisk = Annotation.define();
 const setMarks = StateEffect.define();
@@ -235,17 +235,23 @@ export function createEditor({ stage, host, text, editable = true, keys = [], ex
     crlf = isCrlf(next);
     textOf = { doc: view.state.doc, text: next };
     if (changes.empty) return; // only how lines end changed
-    // The line at the top of what is shown, which the page scrolls past.
-    const scroller = host.closest('.pj-canvas') ?? document.scrollingElement;
-    const shown = view.lineBlockAtHeight(scroller.getBoundingClientRect().top - view.documentTop);
     const flashId = Symbol('flash');
+    const selectId = Symbol('select');
     const flashes = [];
+    let selects = false;
     if (by) {
       // What changed as a run's revision shows it, not as the operations cut it: per run of lines,
-      // in whole words; the new text glows and the removed is deleted where it was (Erased).
+      // in whole words. While what it removed shows selected where it was, what it added is
+      // not drawn; then the one goes and the other glows.
       const edits = diffEdits(lf(before), lf(next)).map((change) => change.edit);
+      const style = buddy ? `--buddy: ${buddyColor(by)}` : '';
+      // Not where the person's caret or selection is in what it added: text not drawn cannot hold them.
+      const mine = view.state.selection.main;
+      const [from, to] = [changes.mapPos(mine.from, 1), changes.mapPos(mine.to, -1)];
+      selects = edits.some((edit) => edit.before) && !edits.some((edit) => edit.start < Math.max(from, to) && Math.min(from, to) < edit.start + edit.after.length);
       for (const { before: removed, after: added, start } of edits) {
-        if (removed) flashes.push(Decoration.widget({ widget: new Erased(removed), side: -1, flashId }).range(start));
+        if (removed) flashes.push(Decoration.widget({ widget: new Removed(removed, 'pj-flash-del', style, 0), side: -1, flashId: selectId }).range(start));
+        if (added && selects) flashes.push(Decoration.replace({ flashId: selectId }).range(start, start + added.length));
         if (added) flashes.push(Decoration.mark({ class: 'pj-flash', flashId }).range(start, start + added.length));
       }
       // The flag at the start of the word the change begins in, before what it removed.
@@ -253,15 +259,24 @@ export function createEditor({ stage, host, text, editable = true, keys = [], ex
       const word = view.state.update({ changes }).state.wordAt(at);
       flashes.push(Decoration.widget({ widget: new Flag(buddy ? nameOf(by) : by, buddy ? buddyColor(by) : null), side: -2, flashId }).range(word && word.from < at ? word.from : at));
     }
-    view.dispatch({
+    inPlace(changes, () => view.dispatch({
       changes,
       effects: flashes.length > 0 ? addFlash.of(flashes) : [],
       annotations: [Transaction.addToHistory.of(false), fromDisk.of(true)],
-    });
-    // It keeps its place on screen, whatever came or went above it.
-    scroller.scrollTop += view.lineBlockAt(changes.mapPos(shown.from, 1)).top - shown.top;
+    }));
     textOf = { doc: view.state.doc, text: next };
-    if (flashes.length > 0) setTimeout(() => view.dispatch({ effects: dropFlash.of(flashId) }), FLASH_MS);
+    if (selects) setTimeout(() => inPlace(null, () => view.dispatch({ effects: dropFlash.of(selectId) })), SELECT_MS);
+    if (flashes.length > 0) setTimeout(() => view.dispatch({ effects: dropFlash.of(flashId) }), FLASH_MS + (selects ? SELECT_MS : 0));
+  }
+
+  // Draw with `draw`; the line at the top of what is shown, which the page
+  // scrolls past, keeps its place on screen, whatever came or went above it
+  // (`changes`, when the doc's text changes too).
+  function inPlace(changes, draw) {
+    const scroller = host.closest('.pj-canvas') ?? document.scrollingElement;
+    const shown = view.lineBlockAtHeight(scroller.getBoundingClientRect().top - view.documentTop);
+    draw();
+    scroller.scrollTop += view.lineBlockAt(changes ? changes.mapPos(shown.from, 1) : shown.from).top - shown.top;
   }
 
   const editor = {
@@ -398,7 +413,8 @@ function decorations(marks, toDoc) {
   return Decoration.set(ranges, true);
 }
 
-// Text a revision removed, struck through where it was; a new `replay` draws it again.
+// Text a revision removed, struck through where it was, a new `replay` drawing it again; or what
+// a change landing removes, selected (applyText).
 class Removed extends WidgetType {
   constructor(text, className, style, replay) {
     super();
@@ -415,44 +431,6 @@ class Removed extends WidgetType {
     node.style.cssText = this.style;
     node.textContent = this.text;
     return node;
-  }
-}
-
-// What someone else's change removed, left as it was a moment, then
-// deleted from its end a character at a time, as backspace would, before the
-// flash goes. It counts from when the change landed, so a redraw (a scroll
-// away and back) picks up where it was.
-class Erased extends Removed {
-  constructor(text) {
-    super(text, 'pj-flash-del', '', 0);
-    this.landed = Date.now();
-  }
-
-  eq(other) {
-    return super.eq(other) && other.landed === this.landed;
-  }
-
-  toDOM(view) {
-    const node = super.toDOM();
-    if (matchMedia('(prefers-reduced-motion: reduce)').matches) return node;
-    const chars = Array.from(this.text);
-    const step = Math.min(ERASE_STEP_MS, (FLASH_MS - ERASE_FROM_MS - ERASE_SPARE_MS) / chars.length);
-    let shown = chars.length;
-    const tick = () => {
-      const left = Math.max(0, chars.length - Math.floor((Date.now() - this.landed - ERASE_FROM_MS) / step));
-      if (left < shown) {
-        shown = left;
-        node.textContent = chars.slice(0, shown).join('');
-        view.requestMeasure();
-      }
-      if (shown > 0) node.frame = requestAnimationFrame(tick);
-    };
-    node.frame = requestAnimationFrame(tick);
-    return node;
-  }
-
-  destroy(node) {
-    cancelAnimationFrame(node.frame);
   }
 }
 
