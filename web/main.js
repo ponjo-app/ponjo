@@ -731,6 +731,7 @@ function applyComments({ threads, people: writers, edits, notice, readOnly }) {
     standAfterRun(runLanded);
     runLanded = null;
   }
+  settleAsks();
 }
 
 // A sidecar this app must not write (spec/SPEC.md §2): its comments show,
@@ -848,15 +849,38 @@ async function createThread(body) {
 
 // Buddies `names` asked in the doc's text (web/views/ask.js): a thread on
 // their line, yours, that names them. What the line asks is the buddy's to
-// read; the caret stays in the text and no card opens.
+// read; the caret stays in the text and no card opens. Settles once each has
+// answered (settleAsks).
+const asked = new Map(); // thread id → { buddies: how many were asked, done }
 async function askInText({ from, to, names }) {
   if (comments?.readOnly || reading() || from === to) return;
-  const asked = createAnchor(editor.getText(), from, to);
+  const line = createAnchor(editor.getText(), from, to);
   await client.landed();
   const text = editor.getText();
-  const found = locate(text, asked);
+  const found = locate(text, line);
   if (!found) return;
-  await send(api.comment({ anchor: createAnchor(text, found.start, found.end), body: names.map((name) => `@${name}`).join(' ') }));
+  const { id } = await send(api.comment({ anchor: createAnchor(text, found.start, found.end), body: names.map((name) => `@${name}`).join(' ') }));
+  await new Promise((done) => {
+    asked.set(id, { buddies: names.length, done });
+    settleAsks();
+  });
+}
+
+// The threads asked from the text that every buddy asked has answered: where
+// each did what was asked and has nothing to say (an empty reply, not failed,
+// an edit, all of it applied), the thread is resolved, as you, so the text it wrote is
+// not left marked as commented; a reply with something to read stays open.
+function settleAsks() {
+  for (const [id, { buddies, done }] of asked) {
+    const thread = comments.threads.find((t) => t.id === id);
+    const replies = thread?.comments.slice(1).filter((c) => c.by.kind === 'ai') ?? [];
+    if (thread && !thread.resolved && replies.length < buddies) continue;
+    asked.delete(id);
+    done();
+    if (thread && !thread.resolved && replies.every((c) => !c.body && !c.failed && comments.edits?.[c.id]?.changes > 0 && !comments.edits[c.id].conflict)) {
+      send(api.comment({ thread: id, body: '', resolved: true })).catch(() => {});
+    }
+  }
 }
 
 // A comment request: its answer shows the comments as they are now.

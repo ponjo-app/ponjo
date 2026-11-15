@@ -240,12 +240,15 @@ kbd { font: 500 11px/1 var(--ui-font); padding: 2px 6px; border-radius: 4px; bor
 .pj-at:hover { background: var(--active); }
 .pj-at-agent:hover { background: color-mix(in oklch, var(--buddy) 38%, transparent); }
 [data-namecard="click"] { cursor: pointer; }
-/* a buddy armed in the doc's text (web/views/ask.js): its chip, and while its line waits to be asked a bar under it running out */
+/* a buddy armed in the doc's text (web/views/ask.js): its chip, and while its line waits to be asked a bar under it running out, held where it is while the wait is paused */
 .pj-editor .pj-ask { cursor: text; }
 .pj-ask-counting, .pj-ask-paused { background-image: linear-gradient(var(--buddy), var(--buddy)); background-repeat: no-repeat; background-position: left bottom; background-size: var(--ask-left) 2px; }
 .pj-ask-counting { background-size: 0 2px; animation: pj-ask-count var(--ask) linear; }
 @keyframes pj-ask-count { from { background-size: var(--ask-left) 2px; } }
-@media (prefers-reduced-motion: reduce) { .pj-ask-counting { background-size: var(--ask-left) 2px; animation: none; } }
+/* asked: it pulses until the buddy is done */
+.pj-ask-sent { animation: pj-ask-sent 0.9s ease-in-out infinite alternate; }
+@keyframes pj-ask-sent { to { opacity: 0.4; } }
+@media (prefers-reduced-motion: reduce) { .pj-ask-counting { background-size: var(--ask-left) 2px; animation: none; } .pj-ask-sent { animation: none; } }
 /* a card opened by hovering a name: view only, a click away from editable */
 .pj-panel[data-state="view"][data-editable] { cursor: pointer; }
 .pj-mention { display: flex; align-items: center; gap: 8px; cursor: pointer; }

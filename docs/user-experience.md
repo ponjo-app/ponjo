@@ -139,7 +139,16 @@ works, or what went wrong.
 - Only people's comments ask: yours, and a teammate's who can edit. A
   turn acts as whoever asked it may when it ends: if they were removed or
   set to Read meanwhile, nothing it did lands. An AI buddy's reply asks no one, and neither does an `@name`
-  typed in the doc's text.
+  typed out or pasted in the doc's text.
+- A buddy picked from the @ menu in the doc's text is asked without a
+  comment box: once the caret has been off its line for 3 seconds
+  (Mod+Enter: at once; Escape: not at all), the line becomes a thread of
+  yours that names the buddy, and the buddy reads what the line asks, does
+  it and takes the request out of the text. Each line waits on its own,
+  whatever you type elsewhere; the wait is paused while you are in another
+  app or outside the text. The name pulses until the buddy is done. A
+  thread asked this way is resolved once the buddy has done it and has
+  nothing to say.
 - A comment that reached the file from outside Ponjo (a `git pull`, another
   editor, another computer) asks no one.
 - A comment that mentions several AI buddies asks each; they work at once.
