@@ -21,9 +21,9 @@ import { indentGuides, whitespaceMarks } from './whitespace.js';
  * view also has a status bar.
  *
  * @param {{ stage: HTMLElement, text: string, name: string, settings: object, saveSettings?: (patch: object) => void, editable?: boolean, color?: boolean, onChange?: () => void, onEdit?: () => void,
- *           onMarkClick?: (id: string) => void, onLayout?: () => void, onComment?: () => void }} options
+ *           onMarkClick?: (id: string) => void, onLayout?: () => void, onComment?: () => void, ask?: object }} options
  */
-export async function createPlainView({ stage, text, name, settings, saveSettings = () => {}, editable = true, color = true, onChange, onEdit, onMarkClick, onLayout, onComment = null }) {
+export async function createPlainView({ stage, text, name, settings, saveSettings = () => {}, editable = true, color = true, onChange, onEdit, onMarkClick, onLayout, onComment = null, ask = null }) {
   const host = stage.querySelector('.pj-editor');
   stage.dataset.plain = ''; // the page runs edge to edge (app.css)
   let destroyed = false;
@@ -53,7 +53,7 @@ export async function createPlainView({ stage, text, name, settings, saveSetting
   reindent(text);
   host.style.setProperty('--code-size', `${settings.fontSize}px`);
   const { view, editor } = createEditor({
-    stage, host, text, editable, onChange, onEdit, onMarkClick, onLayout, onComment,
+    stage, host, text, editable, onChange, onEdit, onMarkClick, onLayout, onComment, ask,
     keys: indentKeys({ indent: () => indent, keep: () => own.keepIndent }),
     extensions: [numbers.of(numbersFor(settings)), wrapping.of(wrapFor(settings)), syntax.of([]), marking.of(markingFor(settings)), guiding.of(guidingFor(settings))],
     onUpdate: (update) => {

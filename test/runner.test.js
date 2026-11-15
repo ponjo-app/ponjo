@@ -451,6 +451,14 @@ test('the prompt tells a buddy who the other members are, as the app shows them'
   assert.doesNotMatch(prompt, /I write novels/, 'nothing about an owner who wrote nothing');
 });
 
+test('the prompt of a request typed in the doc says to read it there and take it out', () => {
+  const ada = { id: 'b_ada', name: 'Ada', about: '' };
+  const prompt = (exact) => buildPrompt({ buddy: ada, docName: 'a.md', sidecarName: 'a.md.comments.jsonl', thread: { id: 'c_thread01', anchor: exact && { exact }, comments: [{ by: { name: 'fzhan', kind: 'human' }, body: '@Ada' }] } });
+  assert.match(prompt('@ada write an intro'), /typed in the doc itself.*take them out as part of your edit/);
+  assert.doesNotMatch(prompt('An intro.'), /typed in the doc itself/, 'a comment on text that does not name it');
+  assert.doesNotMatch(prompt(null), /typed in the doc itself/, 'a comment on the whole doc');
+});
+
 test('the prompt names files by their paths in the project, a comment\'s from the doc\'s folder', () => {
   const thread = { id: 'c_thread01', anchor: null, comments: [{ by: { name: 'fzhan', kind: 'human' }, body: 'Summarize rule.md' }] };
   const prompt = (docName, project) => buildPrompt({ buddy: { id: 'b_ada', name: 'Ada', about: '' }, docName, sidecarName: `${docName}.comments.jsonl`, thread, project });

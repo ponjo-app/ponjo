@@ -76,10 +76,11 @@ const PREFIXES = /^(\s*(#{1,6} |> ?|[-*+] \[[ xX]\] |[-*+] |\d+[.)] ))*/;
 // given, writes an image pasted or dropped in ({ name, type, data }, data
 // base64) beside the doc and gives the path to link it by. `files` says the
 // project's files and the doc's path in it, for the link popover to offer.
+// `ask` is the shared editor's (web/views/codemirror.js).
 export async function createMarkdownView({
   stage, text, editable = true, onChange, onEdit, onMarkClick, onLayout, toolbar = null, onComment = () => {},
   image = async () => null, saveImage = null, files = () => null,
-  settings = null, saveSettings = () => {},
+  settings = null, saveSettings = () => {}, ask = null,
 }) {
   const host = stage.querySelector('.pj-editor');
   let chrome = null;
@@ -105,7 +106,7 @@ export async function createMarkdownView({
     { key: 'Shift-Tab', run: () => tab(-1) },
   ];
   const { view, editor } = createEditor({
-    stage, host, text, editable, onChange, onEdit, onMarkClick, onLayout, keys,
+    stage, host, text, editable, onChange, onEdit, onMarkClick, onLayout, keys, ask,
     extensions: [
       Prec.highest(keymap.of([{ key: 'Enter', run: endBlock }, { key: 'Backspace', run: unmark }])), // before Markdown's own
       // CommonMark and GFM only: CodeMirror's markdownLanguage reads ~x~ as subscript, ^x^ and :x: too.

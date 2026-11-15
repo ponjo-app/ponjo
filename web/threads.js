@@ -15,7 +15,7 @@ import { agentFace, buddyColor, nameOf, personFace } from './faces.js';
 import { mentionSpans } from '../src/core/mentions.js';
 
 const GAP = 10;
-const MENTION_BEFORE_CARET = /(^|[^A-Za-z0-9._-])@([A-Za-z0-9._-]*)$/;
+export const MENTION_BEFORE_CARET = /(^|[^A-Za-z0-9._-])@([A-Za-z0-9._-]*)$/;
 
 /**
  * @param {HTMLElement} margin
@@ -568,7 +568,7 @@ function patchCard(card, fresh) {
  * click. Hidden when there is nothing to offer. The comment box and the doc's
  * text share it, so @ looks the same in both.
  */
-function fillMentionMenu(menu, choices, selected, onPick) {
+export function fillMentionMenu(menu, choices, selected, onPick) {
   const items = [];
   let group = null;
   choices.forEach((choice, i) => {

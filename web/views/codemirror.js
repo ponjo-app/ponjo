@@ -15,6 +15,7 @@ import { cursorNode } from '../marks.js';
 import { hydrateIcons } from '../icons.js';
 import { matches } from '../../src/core/search.js';
 import { createFind } from '../find.js';
+import { asking } from './ask.js';
 
 const FLASH_MS = 6000;
 // What a change removed shows this long, then goes a character at a time, at
@@ -88,13 +89,15 @@ const flashField = StateField.define({
  * web/views/markdown/view.js) as `editor`, and the CodeMirror view itself.
  * `keys` go before the editor's own (history, the defaults); `extensions` are
  * the view's (language, display); `onUpdate` hears every update after the
- * editor has. Given `onComment`, a bubble over a selection offers Comment.
+ * editor has. Given `onComment`, a bubble over a selection offers Comment;
+ * given `ask` ({ choices, onAsk }, see ask.js), @ in the text asks a buddy,
+ * `onAsk` getting offsets in the text.
  *
  * @param {{ stage: HTMLElement, host: HTMLElement, text: string, editable?: boolean, keys?: object[], extensions?: object[],
  *           onUpdate?: (update: object) => void, onChange?: () => void, onEdit?: () => void,
- *           onMarkClick?: (id: string) => void, onLayout?: () => void, onComment?: () => void }} options
+ *           onMarkClick?: (id: string) => void, onLayout?: () => void, onComment?: () => void, ask?: object }} options
  */
-export function createEditor({ stage, host, text, editable = true, keys = [], extensions = [], onUpdate = () => {}, onChange = () => {}, onEdit = () => {}, onMarkClick = () => {}, onLayout = () => {}, onComment = null }) {
+export function createEditor({ stage, host, text, editable = true, keys = [], extensions = [], onUpdate = () => {}, onChange = () => {}, onEdit = () => {}, onMarkClick = () => {}, onLayout = () => {}, onComment = null, ask = null }) {
   let changeTimer = 0;
   let finder = null; // the find bar (web/find.js)
   let found = []; // [from, to) of each of its matches, in `foundIn`
@@ -108,6 +111,7 @@ export function createEditor({ stage, host, text, editable = true, keys = [], ex
     state: EditorState.create({
       doc: text,
       extensions: [
+        editable && ask ? asking({ stage, choices: ask.choices, onAsk: ({ from, to, names }) => ask.onAsk({ from: toText(from), to: toText(to), names }) }) : [], // its keys before the view's
         history(), keymap.of([...keys, ...historyKeymap, ...defaultKeymap]), ...extensions, marksField, flashField, foundField,
         bidi, EditorView.perLineTextDirection.of(true),
         EditorState.readOnly.of(!editable), EditorView.editable.of(editable),

@@ -462,6 +462,7 @@ function makeView(chosen, text) {
     name: docName,
     toolbar: document.querySelector('.pj-toolbar'),
     onComment: requestComment,
+    ask: { choices: (query) => people.mentionChoices(query).filter((choice) => choice.kind === 'agent'), onAsk: askInText },
     onEdit: () => {
       client.edited();
       paintSave();
@@ -843,6 +844,20 @@ async function createThread(body) {
   paintEmpty();
   paintMarks();
   select(id);
+}
+
+// Buddies `names` asked in the doc's text (web/views/ask.js): a thread on
+// their line, yours, that names them. What the line asks is the buddy's to
+// read; the caret stays in the text.
+async function askInText({ from, to, names }) {
+  if (comments?.readOnly || reading() || from === to) return;
+  const asked = createAnchor(editor.getText(), from, to);
+  await client.landed();
+  const text = editor.getText();
+  const found = locate(text, asked);
+  if (!found) return;
+  const { id } = await send(api.comment({ anchor: createAnchor(text, found.start, found.end), body: names.map((name) => `@${name}`).join(' ') }));
+  if (commentsShown() && !narrow.matches) select(id, { focus: false });
 }
 
 // A comment request: its answer shows the comments as they are now.
