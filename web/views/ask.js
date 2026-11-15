@@ -3,9 +3,10 @@
 // is armed, a chip. Once the caret is on another line and no key has come
 // for ASK_MS, its line is asked: `onAsk({ from, to, names })`, the line
 // without the space around it and the buddies armed on it. The wait starts
-// over with each key and each move of the caret, and stops while the caret
-// is on the line, a composition is open or the editor has no focus (another
-// app, a dialog, a comment box). Escape disarms; Mod+Enter asks at once.
+// over with each key and ends when the caret is back on the line; it is
+// paused, to go on from where it was, while a composition is open or the
+// editor has no focus (another app, a dialog, a comment box). Escape
+// disarms; Mod+Enter asks at once.
 // Only a name picked is armed: one typed out, pasted or already there is text.
 
 import { Prec, StateEffect, StateField, Transaction } from '@codemirror/state';
@@ -40,8 +41,10 @@ export function asking({ stage, choices, onAsk }) {
       this.view = view;
       this.decorations = Decoration.none;
       this.timer = 0;
-      this.counting = []; // the starts of the armed names whose wait is on
-      this.waits = 0; // how many waits started: a new one draws its chips again, so their countdown starts over
+      this.waiting = []; // the starts of the armed names off the caret's line: their wait is on, or paused
+      this.left = ASK_MS; // of the wait
+      this.since = 0; // when it last went on; 0 while paused
+      this.waits = 0; // how many times the wait changed: each draws its chips again, so their countdown runs from where it is
       this.composing = false;
       this.at = null; // the @ the menu is open for
       this.dismissed = null; // the @ whose menu Escape closed
@@ -57,19 +60,19 @@ export function asking({ stage, choices, onAsk }) {
     update(update) {
       const { view } = update;
       // The person's own keys and moves, not what others' edits change.
-      const acted = update.focusChanged || this.composing !== view.composing || update.transactions.some((tr) => tr.selection
-        || (tr.docChanged && tr.annotation(Transaction.addToHistory) !== false) || tr.effects.some((e) => e.is(arm) || e.is(disarm)));
+      const mine = (tr) => tr.docChanged && tr.annotation(Transaction.addToHistory) !== false;
+      const key = update.transactions.some((tr) => mine(tr) || (tr.selection && !tr.isUserEvent('select.pointer')) || tr.effects.some((e) => e.is(arm)));
+      const acted = key || update.focusChanged || this.composing !== view.composing || update.transactions.some((tr) => tr.selection || tr.effects.some((e) => e.is(disarm)));
       this.composing = view.composing;
-      if (acted) this.wait();
+      if (acted) this.wait(key);
       else if (update.docChanged) this.draw();
-      if (acted) this.offer(update.docChanged);
+      if (acted) this.offer(update.transactions.some(mine));
     }
 
-    // The armed names off the caret's line, while the person is in the text.
+    // The armed names off the caret's line (`all`: every one).
     due(all = false) {
       const { state } = this.view;
       const found = [];
-      if (!all && (!this.view.hasFocus || this.view.composing)) return found;
       const caret = state.doc.lineAt(state.selection.main.head).number;
       state.field(armedField).between(0, state.doc.length, (from, to, mark) => {
         const line = state.doc.lineAt(from);
@@ -78,13 +81,15 @@ export function asking({ stage, choices, onAsk }) {
       return found;
     }
 
-    wait() {
+    // The wait as it is now; `over`: a key came, so it starts over.
+    wait(over) {
       clearTimeout(this.timer);
-      this.counting = this.due().map((d) => d.from);
-      if (this.counting.length > 0) {
-        this.waits += 1;
-        this.timer = setTimeout(() => this.send(), ASK_MS);
-      }
+      if (this.since) this.left -= Date.now() - this.since;
+      this.waiting = this.due().map((d) => d.from);
+      if (over || this.waiting.length === 0) this.left = ASK_MS;
+      this.since = this.waiting.length > 0 && this.view.hasFocus && !this.view.composing ? Date.now() : 0;
+      if (this.since) this.timer = setTimeout(() => this.send(), this.left);
+      this.waits += 1;
       this.draw();
     }
 
@@ -92,10 +97,10 @@ export function asking({ stage, choices, onAsk }) {
       const { state } = this.view;
       const ranges = [];
       state.field(armedField).between(0, state.doc.length, (from, to, mark) => {
-        const counting = this.counting.includes(from);
+        const waiting = this.waiting.includes(from);
         ranges.push(Decoration.mark({
-          class: `pj-at pj-at-agent pj-ask${counting ? ' pj-ask-counting' : ''}`,
-          attributes: { style: `--buddy: ${buddyColor(mark.spec.id)}; --ask: ${ASK_MS}ms`, ...(counting ? { 'data-wait': String(this.waits) } : {}) },
+          class: `pj-at pj-at-agent pj-ask${waiting ? (this.since ? ' pj-ask-counting' : ' pj-ask-paused') : ''}`,
+          attributes: { style: `--buddy: ${buddyColor(mark.spec.id)}; --ask: ${this.left}ms; --ask-left: ${(100 * this.left) / ASK_MS}%`, ...(waiting ? { 'data-wait': String(this.waits) } : {}) },
         }).range(from, to));
       });
       this.decorations = Decoration.set(ranges);
