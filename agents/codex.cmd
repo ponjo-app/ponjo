@@ -1,6 +1,8 @@
 @echo off
 rem Runs a buddy on Codex (docs/agent-config.md): the prompt on stdin, the
-rem doc's copy in the working folder, the reply on stdout. Yours to change.
+rem copies of the doc and its comments in the working folder, which it edits
+rem and appends its comments to; its last message on stdout, for the trace.
+rem Yours to change.
 rem It reads the project without --add-dir, which would make it writable.
 rem The model is Settings > Agents' if set (codex.json), else Codex's own.
 set "MODEL="

@@ -9,9 +9,7 @@ const MAX_FOUND = 100; // paths find, or lines grep, gives before it asks to nar
 const MAX_LINE = 500; // characters of a line grep shows
 const MAX_LISTED = 200; // the project's files the first message lists; over that, its top folder's
 const SIDECAR = '.comments.jsonl';
-const ANY_TOOL = 'read, find, grep, comment, resolve, wait or propose';
-const READS = ['read', 'find', 'grep'];
-const NOT_RUN = 'Not run: propose once, in a step with no read, find or grep: it ends your turn, so it comes after what you read.';
+const ANY_TOOL = 'read, find, grep or comment';
 const PATTERN = 'A JavaScript regular expression, not a glob. Case is ignored unless it has a capital letter.';
 
 // The tools, as each provider's infer gets them: { name, description, parameters (a JSON schema) }.
@@ -54,164 +52,107 @@ const TOOLS = [
   },
   {
     name: 'comment',
-    description: 'Comment as a member does: start a thread on `on`, or reply in the thread `thread`. Never a mark in the doc itself. It is added when your turn ends, with your edits.',
+    description: 'Comment as a member does: reply in the thread `thread`, or start a thread on `on`. It is your only way to change anything: a change to the doc is the `edits` of the comment that says why, and members can undo each comment\'s edits on their own. Each edit replaces `old`, quoted exactly from the doc and found there once, with `new`; one bad edit sends the comment back, saying what to fix. The edits apply at once, so what you read next has them; the comment is posted when your turn ends, which is at a step with no call.',
     parameters: {
       type: 'object',
       properties: {
-        on: { type: 'string', description: 'For a new thread: the text it is about, quoted exactly from the doc as your edits leave it, text they write included, and found there once; "" for the whole doc.' },
-        thread: { type: 'string', description: 'For a reply: the id of the thread, its first comment\'s, as the comments file gives it.' },
+        thread: { type: 'string', description: 'For a reply: the id of the thread, its first comment\'s.' },
+        on: { type: 'string', description: 'For a new thread: the text it is about, quoted exactly from the doc as this comment\'s edits leave it, and found there once; "" for the whole doc.' },
         body: { type: 'string', description: 'What you say.' },
+        edits: { type: 'array', items: { type: 'object', properties: { old: { type: 'string' }, new: { type: 'string' } }, required: ['old', 'new'] } },
       },
       required: ['body'],
-    },
-  },
-  {
-    name: 'resolve',
-    description: 'Resolve a thread when your turn ends, as a member does: the one you are answering, or `thread`. Only when the last comment asks you to; doing what a thread asked is no reason to.',
-    parameters: { type: 'object', properties: { thread: { type: 'string', description: 'The id of the thread to resolve, its first comment\'s; the one you are answering if left out.' } } },
-  },
-  {
-    name: 'wait',
-    description: 'Keep the comment you are answering open when your turn ends, as what it asks is not done yet or goes on: your reply is not posted, your edits and comments are, and you answer it again when the doc or its comments change, or after a while if nothing does.',
-    parameters: { type: 'object', properties: {} },
-  },
-  {
-    name: 'propose',
-    description: 'End your turn, once you have read what you need: your edits of the doc and your reply, all in one call. Each edit replaces `old`, quoted exactly from the doc and found there once, with `new`; no other file can change, and comments are the comment tool\'s. `reply` is what you print, your answer in this thread, and may be empty. One bad edit sends the whole proposal back, saying what to fix.',
-    parameters: {
-      type: 'object',
-      properties: {
-        edits: { type: 'array', items: { type: 'object', properties: { old: { type: 'string' }, new: { type: 'string' } }, required: ['old', 'new'] } },
-        reply: { type: 'string' },
-      },
-      required: ['edits', 'reply'],
     },
   },
 ];
 
 /**
- * One buddy answering one thread, `thread` (its id): `prompt` is stdin as
- * is, `doc` and `sidecar` the copies' paths in the project. `infer(messages, tools)` is one step of the
+ * One run of a buddy: `prompt` is stdin as is, `doc` and `sidecar` the
+ * copies' paths in the project. `infer(messages, tools)` is one step of the
  * model (INFER) and resolves to { calls: [{ id, name, args }], text, sent, usage },
  * `args` the JSON the model wrote, `text` what it wrote besides, `sent` its
  * message as its API sent it and `usage` the tokens it took, as the API
  * counts them; `readFile(path)` to a file's text, a folder's entries (a
  * subfolder's ending in /) or null;
  * `resolve(path)` a path the model wrote as the copies' paths are written
- * (ponjo.mjs's inProject). Resolves to the checked { doc, sidecar, reply, waiting? }:
- * the copies' new texts, with the edits and the lines comment and resolve
- * add, the reply, and `waiting` true when wait kept the comment open. Throws when the turn fails.
+ * (ponjo.mjs's inProject). Resolves, at a step with no call, to { doc,
+ * sidecar, groups, text }: the copies' new texts, the doc with every comment's
+ * edits and the sidecar with a line for each comment, and `groups`, for
+ * each comment with edits, { comment (its place among the lines), doc (the
+ * doc after its edits) } (docs/agent-config.md, PONJO_GROUPS), and what
+ * the model wrote in that last step. Throws when the turn fails.
  *
  * The messages are in one form for every provider: { role: 'user', content },
  * { role: 'assistant', calls, sent }, and { role: 'tool', id, content }, a
- * call's result. Each call of a step runs, in order, but a propose last.
+ * call's result. Each call of a step runs, in order.
  */
-export async function turn({ prompt, doc, sidecar, thread }, { infer, readFile, resolve = (path) => path }) {
+export async function turn({ prompt, doc, sidecar }, { infer, readFile, resolve = (path) => path }) {
+  const texts = { doc: await readFile(doc) }; // the doc as the comments' edits leave it, which reads see
+  const reads = (path) => (typeof path === 'string' && resolve(path) === doc ? texts.doc : readFile(path));
   // Nearly every turn needs the doc, so it comes with the prompt, as read gives it: a step saved.
   // What stays the same from one run to the next, the prompt's rules and the
   // doc, is one message, marked to cache; the situation (the prompt's last
   // part, from SITUATION on) another, after it.
   const cut = prompt.indexOf(`\n\n${SITUATION}\n\n`);
   const [rules, situation] = cut < 0 ? [prompt, ''] : [prompt.slice(0, cut), prompt.slice(cut + 2)];
-  const opening = [rules, await listing(readFile, [doc, sidecar]), `The doc, ${doc}, as read gives it:\n\n${await read({ path: doc }, readFile, doc)}`];
+  const opening = [rules, await listing(readFile, [doc, sidecar]), `The doc, ${doc}, as read gives it:\n\n${await read({ path: doc }, reads, doc)}`];
   const messages = [{ role: 'user', content: opening.filter(Boolean).join('\n\n'), cache: true }, ...(situation ? [{ role: 'user', content: situation }] : [])];
-  const comments = []; // the sidecar's lines from comment and resolve, as objects, added when the turn ends
-  let waiting = false; // wait was called
-  const wait = () => { waiting = true; };
-  // The copies' texts with `edits` (the doc's) and the comments, and the
-  // reply; or, as text, what to fix. The app finds a comment's text in the
-  // doc as the edits leave it: one they change or repeat, or never write,
-  // would be on the whole doc, so it is taken back.
-  const finish = async (edits, reply) => {
-    const lines = comments.length ? [{ path: sidecar, old: '', new: comments.map((c) => JSON.stringify(c)).join('\n') }] : [];
-    let texts;
-    try {
-      texts = apply([...edits, ...lines], { doc, sidecar }, { doc: await readFile(doc), sidecar: await readFile(sidecar) }, resolve);
-    } catch (error) {
-      return `Nothing was changed. ${error.message}`;
-    }
-    const lost = comments.filter((c) => c.anchor && quoted(texts.doc, c.anchor.exact).count !== 1);
-    if (!lost.length) return { ...texts, reply, ...(waiting ? { waiting } : {}) };
-    comments.splice(0, comments.length, ...comments.filter((c) => !lost.includes(c)));
-    return `Nothing was changed. As your edits leave the doc, the text of ${lost.length > 1 ? 'comments' : 'a comment'} on ${lost.map((c) => JSON.stringify(c.anchor.exact)).join(', ')} is not in it once, so ${lost.length > 1 ? 'they were' : 'it was'} taken back: comment again on text that is, or on the whole doc, then end your turn again.`;
-  };
+  const comments = []; // the sidecar's lines, as objects, added when the turn ends
+  const groups = [];
   for (let step = 0; step < STEPS; step++) {
     const { calls, text, sent } = await infer(messages, TOOLS);
     messages.push({ role: 'assistant', calls, sent });
-    if (!calls.length) { // an answer without a call, as any agent's
-      const done = await finish([], text.trim());
-      if (typeof done !== 'string') return done;
-      messages.push({ role: 'user', content: done });
-      continue;
+    if (!calls.length) {
+      const before = await readFile(sidecar);
+      const lines = comments.map((c) => `${JSON.stringify(c)}\n`).join('');
+      return { doc: texts.doc, sidecar: `${before}${lines && before && !before.endsWith('\n') ? '\n' : ''}${lines}`, groups, text: text.trim() };
     }
-    // A propose ends the turn: it runs after the step's other calls, and only
-    // alone and in a step that reads nothing, since it was written before
-    // the model saw what the reads return.
-    const ends = calls.filter((call) => call.name === 'propose');
-    const runs = ends.length === 1 && !calls.some((call) => READS.includes(call.name));
-    const results = new Map();
-    for (const call of [...calls.filter((c) => !ends.includes(c)), ...ends]) {
-      const result = ends.includes(call) && !runs ? NOT_RUN : await use(call, { doc, sidecar, thread, comments, wait, finish, readFile, resolve });
-      if (typeof result !== 'string') return result;
-      results.set(call, result);
-    }
-    for (const call of calls) messages.push({ role: 'tool', id: call.id, content: results.get(call) });
+    for (const call of calls) messages.push({ role: 'tool', id: call.id, content: await use(call, { doc, sidecar, texts, comments, groups, readFile, reads, resolve }) });
   }
-  throw new Error(`No proposal in ${STEPS} steps.`);
+  throw new Error(`The turn did not end in ${STEPS} steps.`);
 }
 
-// What a tool call gives back to the model, or a valid proposal's { doc, sidecar, reply, waiting }.
-async function use({ name, args: json }, { doc, sidecar, thread, comments, wait, finish, readFile, resolve }) {
+// What a tool call gives back to the model.
+async function use({ name, args: json }, { doc, sidecar, texts, comments, groups, readFile, reads, resolve }) {
   let args;
   try {
     args = JSON.parse(json);
   } catch {
     return `The arguments are not JSON: ${json}`;
   }
-  if (name === 'read') return read(args, readFile, doc);
-  if (name === 'find' || name === 'grep') return search(name, args, readFile, resolve);
+  if (name === 'read') return read(args, reads, doc);
+  if (name === 'find' || name === 'grep') return search(name, args, reads, resolve);
+  if (name !== 'comment') return `No tool ${name}: call ${ANY_TOOL}.`;
+  const { on, thread: to, body, edits = [] } = args;
+  if (typeof body !== 'string' || !body.trim() || (typeof on !== 'string') === (typeof to !== 'string') || !Array.isArray(edits)) return 'Not posted: comment takes { on, body, edits } for a new thread or { thread, body, edits } for a reply, body not empty, edits [{ old, new }] or left out.';
   // A thread of the doc, by the id of its first comment, as the comments file has it.
-  const isThread = async (id) => (await readFile(sidecar) ?? '').split('\n').some((line) => {
+  const isThread = (await readFile(sidecar) ?? '').split('\n').some((line) => {
     try {
       const c = JSON.parse(line);
-      return c?.id === id && c.thread === undefined;
+      return c?.id === to && c.thread === undefined;
     } catch {
       return false;
     }
   });
-  if (name === 'comment') {
-    const { on, thread: to, body } = args;
-    if (typeof body !== 'string' || !body.trim() || (typeof on !== 'string') === (typeof to !== 'string')) return 'Not added: comment takes { on, body } for a new thread or { thread, body } for a reply, body not empty.';
-    if (to !== undefined) {
-      if (!(await isThread(to))) return `Not added: no thread ${to}. Its id is its first comment's, in the comments file.`;
-      comments.push({ thread: to, body });
-      return `Added when your turn ends, as a reply in ${to}.`;
-    }
-    if (!on.trim()) {
-      comments.push({ body });
-      return 'Added when your turn ends, on the whole doc.';
-    }
-    const { count, line } = quoted(await readFile(doc), on);
-    if (count > 1) return 'Not added: on is in the doc more than once: quote more of it, or give "" for the whole doc.';
-    comments.push({ anchor: { exact: on }, body });
-    return count ? `Added when your turn ends, on line ${line}.` : 'Added when your turn ends, if your edits write on once: it is not in the doc now.';
+  if (to !== undefined && !isThread) return `Not posted: no thread ${to}. Its id is its first comment's, in the comments file.`;
+  let edited;
+  try {
+    edited = applied(texts.doc, edits);
+  } catch (error) {
+    return `Not posted, and nothing changed. ${error.message}`;
   }
-  if (name === 'resolve') {
-    const which = args.thread ?? thread;
-    if (typeof which !== 'string' || (which !== thread && !(await isThread(which)))) return `Not resolved: no thread ${which}. Its id is its first comment's, in the comments file.`;
-    if (!comments.some((c) => c.resolved && c.thread === which)) comments.push({ thread: which, resolved: true });
-    return which === thread ? 'This thread is resolved when your turn ends.' : `Thread ${which} is resolved when your turn ends.`;
+  let where = `as a reply in ${to}`;
+  if (on !== undefined) {
+    const { count, line } = on.trim() ? quoted(edited, on) : { count: 1 };
+    if (count !== 1) return `Not posted, and nothing changed: on is ${count ? 'in the doc more than once: quote more of it' : 'not in the doc as your edits leave it: quote it from there'}, or give "" for the whole doc.`;
+    where = on.trim() ? `on line ${line}` : 'on the whole doc';
   }
-  if (name === 'wait') {
-    wait();
-    return 'This comment stays open when your turn ends: your reply is not posted.';
+  comments.push(to !== undefined ? { thread: to, body } : on.trim() ? { anchor: { exact: on }, body } : { body });
+  if (edits.length) {
+    texts.doc = edited;
+    groups.push({ comment: comments.length - 1, doc: edited });
   }
-  if (name !== 'propose') return `No tool ${name}: call ${ANY_TOOL}.`;
-  const { edits, reply = '' } = args;
-  if (!Array.isArray(edits) || typeof reply !== 'string') return 'propose takes { edits: [{ old, new }], reply }.';
-  const off = edits.find((edit) => edit?.path !== undefined && resolve(edit.path) !== doc);
-  if (off) return `Nothing was changed. ${off.path} cannot change: edits change only ${doc}, and comments are the comment tool's.`;
-  return finish(edits.map((edit) => ({ ...edit, path: doc })), reply);
+  return `Posted when your turn ends, ${where}${edits.length ? `, with its ${edits.length === 1 ? 'edit' : `${edits.length} edits`}, applied now: read the doc to see them` : ''}.`;
 }
 
 /**
@@ -324,58 +265,29 @@ function outline(path, all) {
   return [about, ...(ranges.length ? ['Its headings, with their lines:', ...ranges] : [])].join('\n');
 }
 
-// A sidecar line the app takes (docs/agent-config.md#comments).
-const isComment = (line) => {
-  try {
-    const c = JSON.parse(line);
-    if (Object.keys(c).sort().join() === 'resolved,thread') return c.resolved === true && typeof c.thread === 'string';
-    return ['body', 'anchor,body', 'body,thread'].includes(Object.keys(c).sort().join()) && typeof c.body === 'string'
-      && (!('anchor' in c) || typeof c.anchor?.exact === 'string') && (!('thread' in c) || typeof c.thread === 'string');
-  } catch {
-    return false;
-  }
-};
-
-/**
- * The copies' texts { doc, sidecar } after `edits`, all or none: throws what
- * to fix. `paths` are the copies' paths, `resolve` as for `turn`.
- */
-function apply(edits, paths, texts, resolve = (path) => path) {
+/** `text` after `edits` ([{ old, new }]), all or none: throws what to fix. */
+function applied(text, edits) {
   // read shows a CRLF doc's lines without their \r: a quote and its edit get them back.
-  const eol = (text) => (texts.doc.includes('\r\n') ? text.replace(/\r?\n/g, '\r\n') : text);
+  const eol = (part) => (text.includes('\r\n') ? part.replace(/\r?\n/g, '\r\n') : part);
   const spans = [];
-  const appended = [];
   for (const [i, edit] of edits.entries()) {
     const which = `Edit ${i + 1}`;
-    if (!['path', 'old', 'new'].every((key) => typeof edit?.[key] === 'string')) throw new Error(`${which}: path, old and new must be strings.`);
-    const { path, old, new: by } = edit;
-    if (resolve(path) === paths.sidecar) {
-      if (old) throw new Error(`${which}: on ${paths.sidecar}, old must be empty: new is appended.`);
-      const lines = by.split('\n').filter((line) => line.trim());
-      const bad = lines.find((line) => !isComment(line));
-      if (bad) throw new Error(`${which}: not a comment line: ${bad}. Each line is {"anchor":{"exact":"…"},"body":"…"}, {"body":"…"}, {"thread":"c_…","body":"…"} or {"thread":"c_…","resolved":true}.`);
-      appended.push(...lines);
-    } else if (resolve(path) === paths.doc) {
-      const quote = eol(old);
-      const start = quote ? texts.doc.indexOf(quote) : -1;
-      if (start < 0) throw new Error(`${which}: old ${old ? 'is not in the doc: read it and quote it exactly' : 'is empty: quote the text to replace'}.`);
-      if (texts.doc.includes(quote, start + 1)) throw new Error(`${which}: old is in the doc more than once: quote more of it.`);
-      spans.push({ start, end: start + quote.length, by: eol(by), which });
-    } else {
-      throw new Error(`${which}: ${path} cannot change: only ${paths.doc} and ${paths.sidecar} can.`);
-    }
+    if (!['old', 'new'].every((key) => typeof edit?.[key] === 'string')) throw new Error(`${which}: old and new must be strings.`);
+    const quote = eol(edit.old);
+    const start = quote ? text.indexOf(quote) : -1;
+    if (start < 0) throw new Error(`${which}: old ${edit.old ? 'is not in the doc: read it and quote it exactly' : 'is empty: quote the text to replace'}.`);
+    if (text.includes(quote, start + 1)) throw new Error(`${which}: old is in the doc more than once: quote more of it.`);
+    spans.push({ start, end: start + quote.length, by: eol(edit.new), which });
   }
   spans.sort((a, b) => a.start - b.start);
-  let doc = '';
+  let out = '';
   let at = 0;
   for (const { start, end, by, which } of spans) {
     if (start < at) throw new Error(`${which} overlaps another edit: make them one.`);
-    doc += texts.doc.slice(at, start) + by;
+    out += text.slice(at, start) + by;
     at = end;
   }
-  const sidecar = texts.sidecar;
-  const tail = appended.length ? `${sidecar && !sidecar.endsWith('\n') ? '\n' : ''}${appended.join('\n')}\n` : '';
-  return { doc: doc + texts.doc.slice(at), sidecar: sidecar + tail };
+  return out + text.slice(at);
 }
 
 // Where a failed run's reply sends the user: the failure, then what to change.
@@ -395,8 +307,8 @@ const MAX_PAUSES = 4;
  * One step of the model, by provider: `INFER[provider](settings, url)` is
  * `infer` for `turn`, over that provider's API at `url`. `settings` are the
  * agent's: { endpoint, model, key, effort, web }. Each sends `tool_choice: auto`:
- * current Claude models refuse a forced tool call, and an answer without one
- * is the reply.
+ * current Claude models refuse a forced tool call, and a step without one
+ * ends the turn.
  */
 export const INFER = {
   // Anthropic's Messages API. The model thinks as it needs, at `effort`; its

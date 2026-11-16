@@ -61,10 +61,10 @@ async function run(c) {
     await writeFile(join(dir, path), text);
   }
   const thread = { id: c.id, anchor: c.quote && { exact: c.quote }, comments: c.thread.map(([name, body]) => ({ by: { name }, body })) };
-  const prompt = buildPrompt({ buddy: BUDDY, docName: doc, sidecarName: comments, thread, project: Boolean(c.files), human: HUMAN });
-  const env = { ...process.env, PONJO_DOC: join(dir, doc), PONJO_COMMENTS: join(dir, comments), PONJO_PROJECT: c.files ? dir : '', PONJO_THREAD: c.id, PONJO_BUDDY: BUDDY.name, PONJO_TRACE: join(dir, '.trace.jsonl') };
+  const prompt = buildPrompt({ buddy: BUDDY, docName: doc, sidecarName: comments, threads: [thread], project: Boolean(c.files), human: HUMAN });
+  const env = { ...process.env, PONJO_DOC: join(dir, doc), PONJO_COMMENTS: join(dir, comments), PONJO_PROJECT: c.files ? dir : '', PONJO_BUDDY: BUDDY.name, PONJO_TRACE: join(dir, '.trace.jsonl') };
   const at = Date.now();
-  const { code, stdout, stderr } = await new Promise((resolve) => {
+  const { code, stderr } = await new Promise((resolve) => {
     const child = execFile(process.execPath, [AGENT], { cwd: dir, env, timeout: TIMEOUT_MS }, (error, stdout, stderr) => resolve({ code: error ? (error.code ?? 1) : 0, stdout, stderr }));
     child.stdin.end(prompt);
   });
@@ -75,8 +75,9 @@ async function run(c) {
   const tokens = answers.reduce((sum, { usage = {} }) => sum + counted.reduce((n, key) => n + (usage[key] ?? 0), 0), 0);
   const result = { c, steps: answers.length, tokens, ms: Date.now() - at, dir };
   if (code !== 0) return { ...result, outcome: API_ERROR.test(stderr) ? 'error' : 'fail', failed: ['the run fails'], why: stderr.trim() };
-  const after = await readFile(join(dir, comments), 'utf8');
-  const out = { reply: stdout, doc: await readFile(join(dir, doc), 'utf8'), comments: after.slice(before.length).split('\n').filter(Boolean).map((line) => JSON.parse(line)) };
+  const after = (await readFile(join(dir, comments), 'utf8')).slice(before.length).split('\n').filter(Boolean).map((line) => JSON.parse(line));
+  const mine = (m) => m.thread === c.id && Object.keys(m).sort().join() === 'body,thread';
+  const out = { reply: after.filter(mine).map((m) => m.body).join('\n\n'), doc: await readFile(join(dir, doc), 'utf8'), comments: after.filter((m) => !mine(m)) };
   const failed = Object.entries(c.checks).filter(([, check]) => !check(out, c)).map(([name]) => name);
   return { ...result, outcome: failed.length ? 'fail' : 'pass', failed, out };
 }

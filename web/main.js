@@ -917,8 +917,8 @@ async function undoAs(what, version) {
 // ---- where each buddy stands in the text ----
 
 // A buddy asked to work in this window stays in the doc with its cursor, at
-// the end of its last edit, or at the passage it was asked about until it
-// edits. The place is an anchor, so it follows the text; the cursor goes with
+// the end of its last edit, or at the passage it was last asked about until
+// it edits. The place is an anchor, so it follows the text; the cursor goes with
 // the page, with the buddy once it is no longer here, and, once it is done,
 // when the human types.
 const cursors = new Map(); // buddy id -> anchor of the character before its cursor
@@ -932,7 +932,9 @@ function standAtWork(statuses) {
   for (const id of cursors.keys()) if (!ids.has(id)) cursors.delete(id);
   const now = new Set(statuses.filter((a) => modeOf(a) === 'working').map((a) => a.id));
   for (const a of statuses) {
-    const thread = !working.has(a.id) && now.has(a.id) && comments?.threads.find((t) => a.threadIds.includes(t.id) && t.anchor && !t.detached);
+    // Of the threads it works on, the one with the latest comment: most likely the one it acts on.
+    const thread = !working.has(a.id) && now.has(a.id) && comments?.threads.filter((t) => a.threadIds.includes(t.id) && t.anchor && !t.detached)
+      .reduce((latest, t) => (!latest || t.comments.at(-1).at > latest.comments.at(-1).at ? t : latest), null);
     if (thread) cursors.set(a.id, thread.anchor);
   }
   working = now;

@@ -48,7 +48,7 @@ Writing with AI today mostly means going back and forth between a chat window an
 
 ## How it works
 
-Each AI buddy has a name and a persona. Behind it, an agent does the work: here the Ponjo agent, which reads the doc and proposes edits that the app checks before they land. Docs are plain Markdown files stored in the cloud, and the comments are kept in a file next to each doc. People stay in control: a buddy changes only what it was asked about, and every change it makes can be undone.
+Each AI buddy has a name and a persona. Behind it, an agent does the work: here the Ponjo agent, which reads the doc and comments, each edit it makes with the comment that says why, checked before it lands. Docs are plain Markdown files stored in the cloud, and the comments are kept in a file next to each doc. People stay in control: a buddy changes only what it was asked about, and every change it makes can be undone.
 
 ## What is not here
 
@@ -146,69 +146,71 @@ const emit = (event, data) => listener?.(event, data);
 // picks the model (MODEL, as relay/wrangler.toml names it) and holds the key.
 const infer = INFER.openai({ endpoint: 'https://infer.ponjo.app/infer', model: 'nemotron', key: 'preview' });
 
-// The buddies this user's comments ask, as the runner would start them.
+// The buddies this user's comments ask, each with the open threads that
+// ask it, as the runner starts them on a look: one run a buddy at a time.
 function answer() {
+  const inboxes = new Map(); // buddy id → its threads
   for (const thread of threadsOf(comments(), buddies().map(({ id, name }) => ({ id, name })), s.files[current])) {
-    for (const asked of askedOf(thread, [s.settings.id])) {
-      if (running.get(asked)?.includes(thread.id)) continue;
-      running.set(asked, [...(running.get(asked) ?? []), thread.id]);
+    for (const asked of askedOf(thread, [s.settings.id])) inboxes.set(asked, [...(inboxes.get(asked) ?? []), thread]);
+  }
+  for (const [id, threads] of inboxes) {
+    if (running.has(id)) continue;
+    running.set(id, threads.map((t) => t.id));
+    emit('agents', agents());
+    run(id, threads).finally(() => {
+      running.delete(id);
       emit('agents', agents());
-      run(asked, thread).finally(() => {
-        const left = running.get(asked).filter((id) => id !== thread.id);
-        if (left.length) running.set(asked, left);
-        else running.delete(asked);
-        emit('agents', agents());
-      });
-    }
+    });
   }
 }
 
 // A path as the turn's copies and the project's files are named here.
 const plain = (path) => path.replace(/^\.?\//, '');
 
-// Buddy `id`'s turn on `thread`, on copies of the doc and its comments as
+// Buddy `id`'s run on `threads`, on copies of the doc and its comments as
 // they are now; then, as the app does (src/host/doc-service.js, finishRun),
-// its edit lands merged with what was typed meanwhile, and its comments
-// and reply come after. Dropped if the thread was resolved or the doc
-// renamed meanwhile. It never resolves the thread, even when its turn asks
-// to: people resolve (docs/product-vision.md), and a resolved thread folds
-// away its reply.
-async function run(id, thread) {
+// each comment's edits land as their own version, merged with what was
+// typed meanwhile, and its comments come after. Dropped if the doc was
+// renamed meanwhile, and a reply with its edits if its thread was resolved.
+// Only people resolve (docs/product-vision.md).
+async function run(id, threads) {
   const doc = current;
   const sidecar = `${doc}.comments.jsonl`;
   const copies = { [doc]: s.files[doc], [sidecar]: serializeSidecar(comments().map((comment) => ({ comment }))) };
   const buddy = buddies().find((b) => b.id === id);
   const by = { id, name: buddy.name, kind: 'ai' };
-  let texts = { doc: copies[doc], sidecar: copies[sidecar] };
-  let body;
-  let failed = false;
+  let texts = null;
+  let failure = null;
   try {
-    const prompt = buildPrompt({ buddy, buddies: buddies(), docName: doc, sidecarName: sidecar, thread, project: inFolder, human: { name: s.settings.name, about: s.settings.about.trim() } });
-    const { reply, ...proposed } = await turn({ prompt, doc, sidecar, thread: thread.id }, { infer, readFile: (path) => read(plain(path), copies), resolve: plain });
-    texts = proposed;
-    body = reply.trim();
+    const prompt = buildPrompt({ buddy, buddies: buddies(), docName: doc, sidecarName: sidecar, threads, project: inFolder, human: { name: s.settings.name, about: s.settings.about.trim() } });
+    texts = await turn({ prompt, doc, sidecar }, { infer, readFile: (path) => read(plain(path), copies), resolve: plain });
   } catch (error) {
-    body = error.message.split('\n')[0];
-    failed = true;
+    failure = error.message.split('\n')[0];
   }
-  if (doc !== current || threadsOf(comments()).find((t) => t.id === thread.id)?.resolved) return;
-  const replyId = newId('c');
-  let anchor = null;
-  if (texts.doc !== copies[doc]) {
-    const text = s.files[doc];
-    const merged = merge3(copies[doc], text, texts.doc).text;
-    s.files[doc] = merged;
-    versions().push({ id: replyId, by: id, before: text, text: merged, changes: diffEdits(text, merged).length, undone: false });
-    emit('ops', { epoch, rev: ++rev, ops: diffOps(text, merged), id: null, reply: replyId, by: id });
-    anchor = movedAnchor(thread.anchor, copies[doc], texts.doc, merged);
+  if (doc !== current) return;
+  const open = new Set(threadsOf(comments()).filter((t) => !t.resolved).map((t) => t.id));
+  const kept = (c) => c.thread === undefined || open.has(c.thread);
+  const at = new Date().toISOString();
+  if (failure) {
+    comments().push(...threads.filter((t) => open.has(t.id)).map((t) => ({ ...newComment({ thread: t.id, body: failure }, { by, at }), failed: true })));
+  } else {
+    const added = appendedComments(copies[sidecar], texts.sidecar, { text: texts.doc, by, at, threads: new Set(comments().filter((c) => c.thread === undefined).map((c) => c.id)) });
+    let prev = copies[doc];
+    for (const group of texts.groups) {
+      const comment = added.find((a) => a.line === group.comment)?.comment;
+      if (comment && kept(comment)) {
+        const text = s.files[doc];
+        const merged = merge3(prev, text, group.doc).text;
+        s.files[doc] = merged;
+        versions().push({ id: comment.id, by: id, before: text, text: merged, changes: diffEdits(text, merged).length, undone: false });
+        emit('ops', { epoch, rev: ++rev, ops: diffOps(text, merged), id: null, reply: comment.id, by: id });
+        const anchor = comment.thread !== undefined && movedAnchor(threads.find((t) => t.id === comment.thread)?.anchor, prev, group.doc, merged);
+        if (anchor) comment.anchor = anchor;
+      }
+      prev = group.doc;
+    }
+    comments().push(...added.map((a) => a.comment).filter(kept));
   }
-  const at = Date.now();
-  const threads = new Set(comments().filter((c) => c.thread === undefined).map((c) => c.id));
-  const added = appendedComments(copies[sidecar], texts.sidecar, { text: texts.doc, by, at: new Date(at).toISOString(), threads, own: thread.id });
-  comments().push(...added.comments, {
-    id: replyId, thread: thread.id, by, at: new Date(at + 1).toISOString(), body,
-    ...(anchor ? { anchor } : {}), ...(failed ? { failed: true } : {}),
-  });
   save();
   emit('sidecar', {});
 }

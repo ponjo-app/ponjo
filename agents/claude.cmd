@@ -1,6 +1,7 @@
 @echo off
 rem Runs a buddy on Claude Code (docs/agent-config.md): the prompt on stdin,
-rem the doc's copy in the working folder, the reply on stdout. Yours to change.
+rem the copies of the doc and its comments in the working folder, which it
+rem edits and appends its comments to. Yours to change.
 rem The project is read only: its files are the user's, not the copy.
 rem The model is Settings > Agents' if set (claude.json), else Claude Code's own.
 set "MODEL="

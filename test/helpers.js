@@ -43,7 +43,8 @@ export async function fakeConfig(settings = {}) {
   // On this process's binary, as Node when it is Electron's (test/views/main.js).
   await writeFile(join(dir, 'agents', 'fake'), `#!/bin/sh\nELECTRON_RUN_AS_NODE=1 exec "${process.execPath}" "${FAKE_AGENT}"\n`, { mode: 0o755 });
   await writeFile(join(dir, 'agents', 'fake.cmd'), `@set ELECTRON_RUN_AS_NODE=1\r\n@"${process.execPath}" "${FAKE_AGENT}"\r\n`);
-  await writeFile(join(dir, 'settings.json'), JSON.stringify({ name: 'fzhan', agent: 'fake', ...settings }));
+  // The doc looks again only after a person's change, unless a test says how often.
+  await writeFile(join(dir, 'settings.json'), JSON.stringify({ name: 'fzhan', agent: 'fake', watchEvery: 3600, ...settings }));
   process.env.FAKE_DIR = dir;
   return dir;
 }
