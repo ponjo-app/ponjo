@@ -6,8 +6,8 @@
   <title>Ponjo Design System</title>
   <!-- A live specimen: the app's own stylesheet and classes, so this page is
        always what the app looks like. Run `npm run build` to view it locally. -->
-  <link rel="stylesheet" href="./dist/web/app.css?v=ec1da7a">
-  <link rel="stylesheet" href="site.css?v=ec1da7a">
+  <link rel="stylesheet" href="./dist/web/app.css?v=5a4b3c1">
+  <link rel="stylesheet" href="site.css?v=5a4b3c1">
   <link rel="icon" href="./build/icon.svg" type="image/svg+xml">
 </head>
 <body>
@@ -77,7 +77,7 @@
     <div class="ds-swatch"><i style="background: var(--green)"></i><b>--green</b><span>Insertions, online</span></div>
   </div>
   <h3>Buddies</h3>
-  <p>Each buddy has its own colour, the one in its face (see <a href="avatars.html">Avatars</a>). It is set as <code>--buddy</code> on whatever belongs to that buddy: its @chip, edits, flag and the dot it puts on the comment icon while it works on a thread there. A run's edits, shown from the count under its reply, are a revision in the text: new text in its colour, removed text grey and struck through where it was. Anyone else's change glows for a moment as it lands, flagged with who made it: in whole words, as a revision is, the new text on <code>--active</code>, and what it removed left as it was a moment, then deleted from its end a character at a time, as backspace would.</p>
+  <p>Each buddy has its own colour, the one in its face (see <a href="avatars.html">Avatars</a>). It is set as <code>--buddy</code> on whatever belongs to that buddy: its @chip, edits, flag and the dot it puts on the comment icon while it works on a thread there. A buddy's edits, shown from the count under the comment they came with, are a revision in the text: new text in its colour, removed text grey and struck through where it was. Anyone else's change glows for a moment as it lands, flagged with who made it: in whole words, as a revision is, the new text on <code>--active</code>, and what it removed left as it was a moment, then deleted from its end a character at a time, as backspace would.</p>
 
   <h2>Type</h2>
   <p>Inter for the UI, with each platform's own Chinese font behind it (PingFang SC, Microsoft YaHei UI, Noto Sans CJK SC; Songti SC, Noto Serif CJK SC for serif). The Markdown editor's page font (sans, serif or mono, set in that view) and its sizes in <code>em</code> are the writer's, not the UI's. A text file that is not Markdown shows as it is, in <code>--mono</code> at 14px by default (a size from 12 to 20 in its plugin).</p>
@@ -177,12 +177,12 @@
     </ul>
   </div>
   <h3>Runs: a run's trace</h3>
-  <p>Under the agents, Trace runs is a switch, off by default. While it is on, the owner's toolbar has Runs (the code icon), and a buddy's reply whose run left a trace has a Trace link button in its head. Runs takes the doc's place as the history does: the same bar with Back, the same list on the right (a row per run: the buddy, Failed in red or Stopped in grey on a <code>.pj-version-tag</code>, when and how long, the comment it answered), and the selected run as a page: its title, a line of facts in <code>--text-soft</code>, then parts that open and close, each a <code>.pj-trace-part</code> whose chevron turns: the prompt, each step (its calls in a few words, how long and its tokens on the right), the output, its changes to the doc in red and green, its lines in the comments. Text the run was given or wrote is <code>.pj-trace-text</code>: 12px mono on <code>--bg-soft</code>, a model's thinking in <code>--text-soft</code>; labels inside a part are <code>.pj-setting-group</code>.</p>
+  <p>Under the agents, Trace runs is a switch, off by default. While it is on, the owner's toolbar has Runs (the code icon), and a buddy's comment whose run left a trace has a Trace link button in its head. Runs takes the doc's place as the history does: the same bar with Back, the same list on the right (a row per run: the buddy, Failed in red or Stopped in grey on a <code>.pj-version-tag</code>, when and how long, the first thread that asked it and how many more), and the selected run as a page: its title, a line of facts in <code>--text-soft</code>, then parts that open and close, each a <code>.pj-trace-part</code> whose chevron turns: the prompt, each step (its calls in a few words, how long and its tokens on the right), the output, its changes to the doc in red and green, its lines in the comments. Text the run was given or wrote is <code>.pj-trace-text</code>: 12px mono on <code>--bg-soft</code>, a model's thinking in <code>--text-soft</code>; labels inside a part are <code>.pj-setting-group</code>.</p>
   <div class="ds-box pj-trace">
     <details class="pj-trace-part" open><summary><svg class="pj-icon" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg><span class="pj-trace-title">1. read plan.md 1–40</span><span class="pj-trace-meta">2.1 s · 3,120 in, 64 out</span></summary>
       <h3 class="pj-setting-group">Thinking</h3><pre class="pj-trace-text pj-trace-thinking">The comment asks for week two. Read the doc first.</pre>
       <h3 class="pj-setting-group">Result</h3><pre class="pj-trace-text">3	We plan to ship in week one.</pre></details>
-    <details class="pj-trace-part"><summary><svg class="pj-icon" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg><span class="pj-trace-title">2. propose 1 edit</span><span class="pj-trace-meta">1.8 s · 3,300 in, 90 out</span></summary></details>
+    <details class="pj-trace-part"><summary><svg class="pj-icon" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg><span class="pj-trace-title">2. comment with 1 edit</span><span class="pj-trace-meta">1.8 s · 3,300 in, 90 out</span></summary></details>
   </div>
   <h3>Lists: current is ink on grey</h3>
   <div class="pj-files ds-files">
@@ -247,6 +247,6 @@
   </div>
 
 </main>
-<script type="module" src="site.js?v=ec1da7a"></script>
+<script type="module" src="site.js?v=5a4b3c1"></script>
 </body>
 </html>
