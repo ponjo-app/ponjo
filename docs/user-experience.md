@@ -262,8 +262,9 @@ works, or what went wrong.
   others, for what you type next, never the file) and Wrap and Whitespace
   toggles that change the same settings. The Markdown view's: the page's font
   and width, Outline and Focus mode. Every doc has a status bar under the
-  page: the doc's word count (of the selection too, when there is one), and
-  the buddies' loop while a comment is unanswered, with Pause and Resume.
+  page: in the Markdown view the doc's word count (of the selection too,
+  when there is one), and the buddies' loop while a comment is unanswered,
+  with a pause or play button.
   Switching a view applies at once to every open doc: a Markdown doc turns to
   plain text and back, comments still in the margin, and nothing is written.
 - **Files.** New Doc and Rename (the comments move too). Opening an already

@@ -3,6 +3,8 @@
 // right the buddies' loop (src/host/runner.js, loop) with Pause or Resume,
 // then the view's own buttons. The view fills its parts in (web/views/plain/status.js).
 
+import { icon } from './icons.js';
+
 const RING_R = 6;
 const RING = 2 * Math.PI * RING_R; // the loop's ring, round (app.css: .pj-loop-arc)
 const SOON_MS = 3000; // a look this soon follows a change (src/host/runner.js)
@@ -26,7 +28,8 @@ const listed = (names) => (names.length > 1 ? `${names.slice(0, -1).join(', ')} 
  * The bar `bar` (index.html's `.pj-docbar`). `onPause(paused)` asks the host
  * to pause the loop or resume it; `canPause()` is whether this window may.
  * `setWords(text, selection)` counts the doc's words, and the selection's
- * ({ from, to }) when there is one; `setLoop(loop)` and `setAgents(statuses)`
+ * ({ from, to }) when there is one, or with `text` null shows none (a view
+ * of code or plain text); `setLoop(loop)` and `setAgents(statuses)`
  * repaint the loop, which is painted each second while it shows.
  */
 export function createDocBar(bar, { onPause, canPause }) {
@@ -37,7 +40,7 @@ export function createDocBar(bar, { onPause, canPause }) {
   const pause = bar.querySelector('.pj-loop-pause');
   let loop = { waiting: 0, paused: false, from: null, at: null };
   let agents = [];
-  let total = 0;
+  let total = null; // the doc's words, null when none are counted
 
   pause.addEventListener('click', () => onPause(!loop.paused));
 
@@ -67,18 +70,24 @@ export function createDocBar(bar, { onPause, canPause }) {
     loopPart.dataset.state = state;
     loopText.textContent = text;
     arc.style.strokeDashoffset = String(RING * (1 - filled));
-    pause.textContent = loop.paused ? 'Resume' : 'Pause';
-    pause.dataset.tip = loop.paused ? 'Let the buddies look at the doc again' : 'Stop the buddies looking at the doc';
+    const label = loop.paused ? 'Resume the buddies' : 'Pause the buddies';
+    if (pause.getAttribute('aria-label') !== label) {
+      pause.replaceChildren(icon(loop.paused ? 'play' : 'pause'));
+      pause.setAttribute('aria-label', label);
+      pause.dataset.tip = label;
+    }
   }
   setInterval(paintLoop, 1000);
 
   return {
     setWords(text, selection) {
-      total = wordCount(text);
+      total = text === null ? null : wordCount(text);
       this.setSelection(text, selection);
     },
     /** Only the selection moved: the doc's count stands. */
     setSelection(text, selection) {
+      count.hidden = total === null;
+      if (total === null) return;
       const of = (n) => `${n.toLocaleString()} ${n === 1 ? 'word' : 'words'}`;
       const picked = selection && selection.from !== selection.to ? wordCount(text.slice(Math.min(selection.from, selection.to), Math.max(selection.from, selection.to))) : null;
       count.textContent = picked === null ? of(total) : `${picked.toLocaleString()} of ${of(total)}`;

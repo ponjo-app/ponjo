@@ -540,7 +540,7 @@ they resume it, and turns on then finish. The loop lives only in memory, as
 which turns run, and shows apart from them: a buddy's face shows its turns,
 and the doc's status bar, under the page in every view, the loop ("Next
 look in 0:07", "Clippy is working…", "Next look when the doc changes",
-"Paused") with Pause or Resume, beside the doc's word count.
+"Paused") with a pause or play button, beside the Markdown view's word count.
 
 An AI buddy comments as a member does: new threads, replies in any thread,
 and resolving any thread when the comment asks it to (the thread it

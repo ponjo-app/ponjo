@@ -465,10 +465,12 @@ async function loadPaths() {
 
 // ---- the doc's view ----
 
-// The doc's words, in the status bar: once typing pauses, the whole doc's;
-// as the selection moves, the selection's, in the next frame.
+// The doc's words, in the status bar, in the Markdown view only (not code
+// or plain text): once typing pauses, the whole doc's; as the selection
+// moves, the selection's.
+const counted = () => made.id === markdown.id;
 function countWords() {
-  afterTyping('words', () => docBar.setWords(editor.getText(), editor.selection()));
+  afterTyping('words', () => docBar.setWords(counted() ? editor.getText() : null, editor.selection()));
 }
 // Reading the selection's words reads the doc, so a few times a second at most.
 let counting = 0;
@@ -476,7 +478,7 @@ function countSelection() {
   if (counting) return;
   counting = setTimeout(() => {
     counting = 0;
-    if (editor) docBar.setSelection(editor.getText(), editor.selection());
+    if (editor && counted()) docBar.setSelection(editor.getText(), editor.selection());
   }, 300);
 }
 
@@ -534,6 +536,7 @@ function followViews() {
       await history.viewChanged(); // an open history view follows too
     }
     made = chosen;
+    countWords(); // a view of plain text counts none
   }).catch((error) => setStatus(`Could not switch the view: ${error.message}`, 'error'));
 }
 

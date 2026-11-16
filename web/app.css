@@ -594,6 +594,10 @@ del.pj-buddy-del { margin-right: 0.15em; }
 /* the buddies' loop, in the status bar while an ask is unanswered or the loop is paused: its ring the rest until the next look */
 .pj-loop { display: flex; align-items: center; gap: 7px; margin-right: 6px; }
 .pj-loop[hidden] { display: none; }
+.pj-statusbar .pj-loop-pause { display: inline-flex; align-items: center; justify-content: center; width: 22px; padding: 0; background: var(--hover); color: var(--text); }
+.pj-statusbar .pj-loop-pause:hover { background: var(--active); }
+.pj-loop-pause[hidden] { display: none; }
+.pj-loop-pause .pj-icon { width: 14px; height: 14px; }
 .pj-loop-ring { flex: none; width: 14px; height: 14px; }
 .pj-loop-ring circle { fill: none; stroke-width: 2; }
 .pj-loop-track { stroke: var(--border-strong); }

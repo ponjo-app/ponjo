@@ -160,7 +160,7 @@ The view's settings, on its page in Settings > Views:
 - **Outline:** a tick per heading at the left edge; hover for the list,
   click to go.
 - **Focus mode:** every block but the caret's fades.
-- **Word count**, in the doc's status bar under the page, as in every view:
+- **Word count**, in the doc's status bar under the page:
   the doc's words, and the selection's when there is one.
 
 ### Others in the doc
