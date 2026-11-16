@@ -359,7 +359,7 @@ others put in; its result is your typing, merged by character.
 | Store | read, write, watch and move files | `read(path)`, `write(path, text, { ifHash })`, `watch(path, fn)`, `move(from, to)`. Settings, buddies, agent scripts and history are paths and parsers over these, not interfaces of their own |
 | DocService | order every edit to a doc, and write it | `state({ since? })` → text, `{ epoch, rev }`, the `events` missed since, and what this connection may do; `submit({ ops, epoch, rev, id })` → `{ rev }`, or `stale`, or `not_saved`; `comment({ thread?, anchor?, body, resolved? })`; `undo({ id, from? })`, a version (or the versions from `from` to it) undone as above, a turn's from its reply; `cursor({ at, epoch, rev })`; `move(to)`; events `ops` (every landed edit, written), `saved` (`{ error }`: why the file does not hold them, or null), `sidecar`, `room`, `cursors`, `missing`; a window that connects again catches up with `state`. Cursors are never queued behind writes: each is kept at the last rev windows were told of, and moved with every edit told |
 | History | keep the doc as it was at each version | `record`, `list`, `read`; a version may have several authors |
-| Runner | make the running turns equal the asks the sidecar holds | `reconcile()`, `changed(by)`, `statuses()`, `pause(on)`. An ask a turn kept open runs again on a change by anyone but its buddy, or after a while. The asks are people's comments: the owner's and those of players who can edit. A finished turn comes through the door as its buddy, then is logged with its trace |
+| Runner | make the running turns equal the asks the sidecar holds | `reconcile()`, `changed(by)`, `statuses()`, `pause(on)`. An ask a turn kept open runs again soon after a change by anyone but its buddy, and every minute until nothing has changed for a while. The asks are people's comments: the owner's and those of players who can edit. A finished turn comes through the door as its buddy, then is logged with its trace |
 | Room | who plays in the project's room and what each may do, while it is open | for the owner `open()`, `close()`, `lock(locked)`, `setLevel(id, level)` with `level` `read` or `write`, `kick(id)` and `list()` (`{ link, locked, players }`, or null while closed), at the door as `openRoom`, `closeRoom`, `lockRoom`, `setLevel`, `kick` and `room`; a page that opens the link joins as `join({ id, name })`; the host asks it a player's level on each call; event `room` to the owner's windows |
 | ProjectService | the project's files, the same for everyone | `list(path)`, `read(path)`, `open(path)`, for the owner's windows and a teammate's page alike. A path must resolve inside the root and not start with `.`. An agent reads no more than this |
 | Config | own the settings, buddies and agents | `settings.get/patch`, `buddies.save/remove`, `scripts.list/reset` |
@@ -519,15 +519,17 @@ then exits 75 ([agent config](agent-config.md#the-contract)): its edits
 and comments land as in step 3, no reply is posted, and its ask stays
 open. It is reconciled as a Kubernetes controller reconciles: the ask is
 the desired state, what a turn is shown the observed state, and each turn
-one stateless look at both. The ask runs again 3 s after the doc or its
-comments change by anyone but its buddy (an edit landing, a comment),
-then 6 s, 12 s, and on, twice as long each time nothing changes, while
-the doc is open; a change starts it again from 3 s, and a new comment in
-its thread runs it at once. Its prompt says what the buddy changed in the
-doc since the comment, from the doc's history, so a turn knows its own
-lines from others'. It ends when the buddy replies or a person resolves
-the thread. Which asks wait lives only in memory, as which turns run: the
-buddy's card and the thread say Waiting.
+one stateless look at both. While the doc is open, the ask runs again 3 s
+after the doc or its comments change by anyone but its buddy (an edit
+landing, a comment), and every minute after its last turn until nothing
+has changed for 10 minutes; then not until the next change (Settings >
+Agents: `watchEvery`, `watchFor`). A new comment in its thread runs it at
+once. Its prompt says what the buddy changed in the doc since the comment,
+from the doc's history, so a turn knows its own lines from others'. It
+ends when the buddy replies or a person resolves the thread. Which asks
+are open lives only in memory, as which turns run, and apart from them: a
+buddy's face shows its turns, and the thread a line of its own, "Clippy is
+watching", or "will look again when the doc changes".
 
 An AI buddy comments as a person does: new threads, replies in any thread.
 It resolves the thread it answers when the comment asks it to: its reply

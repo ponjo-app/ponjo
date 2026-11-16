@@ -84,6 +84,10 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
     agent: pickAgent,
     folder: async () => folder,
     human: async () => ({ name: (await me()).name, about: (await settingsWithId(settingsDir)).about.trim() }),
+    watch: async () => {
+      const { watchEvery, watchFor } = await settingsWithId(settingsDir);
+      return { every: watchEvery * 60_000, quiet: watchFor * 60_000 };
+    },
     finish: (result) => serial(() => finishRun(result)),
     onChange: broadcastAgents,
     log: (entry, trace) => logRun(settingsDir, { doc: docPath, ...entry }, trace),
@@ -502,13 +506,14 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
     return room?.levelOf(id) ?? null;
   }
 
-  // The buddies the doc reaches, and which are at work.
+  // The buddies the doc reaches, which are at work (`state`, a run's), and
+  // the asks each keeps open (`watching`, apart from its runs).
   let shownBuddies = [];
   function agentStatuses() {
     const statuses = runner.statuses();
     return shownBuddies.map((b) => {
-      const { threadIds = [], waitingIds = [] } = statuses.find((r) => r.id === b.id) ?? {};
-      return { ...b, state: threadIds.length ? 'running' : waitingIds.length ? 'waiting' : 'ready', threadIds, waitingIds };
+      const { threadIds = [], watching = [] } = statuses.find((r) => r.id === b.id) ?? {};
+      return { ...b, state: threadIds.length ? 'running' : 'ready', threadIds, watching };
     });
   }
 

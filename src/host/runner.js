@@ -1,7 +1,8 @@
 // The Runner (docs/architecture.md, A run): keeps one run for each ask
 // waiting on a buddy, and none for an ask that is gone. An ask whose run
-// says it is not done yet (exit WAIT_CODE) stays open, and runs again once
-// the doc or its comments change, or after a while. A run copies the doc and its sidecar
+// says it is not done yet (exit WAIT_CODE) stays open, and runs again
+// (nextLook): soon after the doc or its comments change, and every few
+// minutes until nothing has changed for a while. A run copies the doc and its sidecar
 // into a new private folder, runs the agent script there with the prompt on
 // stdin, and hands back the copies and the script's stdout when it exits. The agent knows
 // nothing of Ponjo. Which runs are working lives only here, in memory; what
@@ -22,8 +23,18 @@ const TEST_TIMEOUT_MS = 2 * 60 * 1000;
 const TEST_PROMPT = 'Ponjo is testing that you run. Edit no file and reply only: OK';
 /** The exit code of a run whose ask is not done yet: EX_TEMPFAIL, "try again later". */
 const WAIT_CODE = 75;
-// An open ask runs again this long after the last change, then after twice as long each time.
-const LOOK_MS = 3000;
+// An open ask runs again this long after a change.
+const CHANGE_MS = 3000;
+
+/**
+ * When an open ask runs again, in ms from `now`: CHANGE_MS after a change
+ * (`changed`), else `every` from now while that is no more than `quiet`
+ * after the last change (`quietSince`); null once it is, until the next change.
+ */
+export function nextLook({ changed, quietSince, now, every, quiet }) {
+  if (changed) return CHANGE_MS;
+  return now + every - quietSince <= quiet ? every : null;
+}
 
 const keyOf = (threadId, id) => `${threadId}:${id}`;
 
@@ -40,7 +51,8 @@ export class Runner {
    * `agent()` resolves to the agent that runs every buddy: { script (its
    * path), settings ({ <key>: value }, each handed to the run as
    * PONJO_SETTING_<KEY>) }. `folder()` resolves to the project folder
-   * the agent is given, or null, `human()` the user, { name, about }. `finish(result)` takes a run
+   * the agent is given, or null, `human()` the user, { name, about },
+   * `watch()` how an open ask keeps looking, { every, quiet } in ms (nextLook). `finish(result)` takes a run
    * that ended: { threadId, id, name, asker, base, seen, edited, comments, body, failed },
    * `seen` the `at` of the thread's last comment the run was given,
    * `edited` being the doc's copy at the end (null when the run failed) and
@@ -48,18 +60,21 @@ export class Runner {
    * and resolves, while the doc is open, to what became of it: { reply (its
    * id, or null), landed (in words), waiting (true when it landed and its ask stays open) }.
    * A run that exits WAIT_CODE is finished with `waiting` true and no
-   * `body`. `onChange()` runs when a run starts or ends, or an ask starts
-   * or stops waiting. `log(entry, trace)` takes each run that ended: `entry` { run
+   * `body`. `onChange()` runs when a run starts or ends, or an open ask
+   * starts, stops or pauses looking. `log(entry, trace)` takes each run that ended: `entry` { run
    * (its id), buddy, thread, reply, at, ms, outcome: ok | waiting | failed | timedOut
    * | stopped, code }, and `trace` what it was given and did: { script,
    * prompt, steps (the lines the agent wrote to PONJO_TRACE), stdout,
    * stderr, base, edited, comments, landed }.
    */
-  constructor({ asks, doc, agent, folder = async () => null, human = async () => null, finish, onChange = () => {}, log = async () => {}, timeoutMs = RUN_TIMEOUT_MS }) {
-    Object.assign(this, { asks, doc, agent, folder, human, finish, onChange, log, timeoutMs });
-    this.runs = new Map(); // keyOf(threadId, id) → { runId, threadId, id, name, asker, seen, delay, changed, waits, child, done, cancelled, ended }
+  constructor({ asks, doc, agent, folder = async () => null, human = async () => null, watch, finish, onChange = () => {}, log = async () => {}, timeoutMs = RUN_TIMEOUT_MS }) {
+    Object.assign(this, { asks, doc, agent, folder, human, watch, finish, onChange, log, timeoutMs });
+    // keyOf(threadId, id) → { runId, threadId, id, name, asker, seen, quietSince,
+    // open (its ask was open when it started), changed, waits, child, done, cancelled, ended }
+    this.runs = new Map();
     // The open asks between runs: keyOf(threadId, id) → { threadId, id, name,
-    // seen (the `at` of the thread's last comment its run was given), delay, timer, due }.
+    // seen (the `at` of the thread's last comment its run was given),
+    // quietSince (when the doc or its comments last changed), timer, due, paused }.
     this.waiting = new Map();
     this.stopped = false;
     this.checking = null;
@@ -67,40 +82,51 @@ export class Runner {
   }
 
   /**
-   * The buddies at work or waiting: [{ id, name, threadIds, waitingIds }],
-   * the threads each runs on and those whose asks it keeps open.
+   * The buddies at work or keeping asks open: [{ id, name, threadIds,
+   * watching }], the threads each runs on, and the open asks, [{ threadId,
+   * paused }], `paused` once nothing changed for a while: two states apart,
+   * as an open ask runs now and then.
    */
   statuses() {
     const byId = new Map();
-    const add = ({ id, name, threadId }, list) => {
-      const status = byId.get(id) ?? { id, name, threadIds: [], waitingIds: [] };
-      status[list].push(threadId);
-      byId.set(id, status);
-    };
-    for (const run of this.runs.values()) add(run, 'threadIds');
-    for (const wait of this.waiting.values()) add(wait, 'waitingIds');
+    const of = ({ id, name }) => byId.get(id) ?? byId.set(id, { id, name, threadIds: [], watching: [] }).get(id);
+    for (const run of this.runs.values()) {
+      of(run).threadIds.push(run.threadId);
+      if (run.open) of(run).watching.push({ threadId: run.threadId, paused: false });
+    }
+    for (const wait of this.waiting.values()) of(wait).watching.push({ threadId: wait.threadId, paused: wait.paused });
     return [...byId.values()];
   }
 
   /**
    * The doc or its comments changed, by buddy `by` (its id) or by anyone
-   * else (null): each open ask of another buddy runs again LOOK_MS from
+   * else (null): each open ask of another buddy runs again CHANGE_MS from
    * now, and a run of another buddy that is on now, once it ends.
    */
   changed(by = null) {
-    for (const run of this.runs.values()) if (run.id !== by) run.changed = true;
-    for (const wait of this.waiting.values()) if (wait.id !== by) this.#lookAgain(wait, LOOK_MS);
+    const now = Date.now();
+    for (const run of this.runs.values()) if (run.id !== by) Object.assign(run, { changed: true, quietSince: now });
+    for (const wait of this.waiting.values()) {
+      if (wait.id === by) continue;
+      wait.quietSince = now;
+      this.#lookAgain(wait, CHANGE_MS);
+    }
   }
 
-  // Run open ask `wait` again in `delay`.
+  // Run open ask `wait` again in `delay`, or once something changes (null).
   #lookAgain(wait, delay) {
     clearTimeout(wait.timer);
-    Object.assign(wait, { delay, due: false });
-    wait.timer = setTimeout(() => {
-      wait.due = true;
-      this.reconcile();
-    }, delay);
-    wait.timer.unref?.();
+    const paused = delay === null;
+    const flips = wait.paused !== paused;
+    Object.assign(wait, { due: false, paused, timer: null });
+    if (!paused) {
+      wait.timer = setTimeout(() => {
+        wait.due = true;
+        this.reconcile();
+      }, delay);
+      wait.timer.unref?.();
+    }
+    if (flips) this.onChange();
   }
 
   #stopWaiting(key) {
@@ -141,7 +167,7 @@ export class Runner {
             if (wait && !wait.due && !asked) continue;
             if (this.runs.has(key) || this.stopped) continue;
             this.#stopWaiting(key);
-            this.#start(key, ask, asked ? 0 : wait?.delay ?? 0);
+            this.#start(key, ask, asked ? null : wait);
           }
           if (changes) this.onChange();
         } catch (error) {
@@ -173,21 +199,18 @@ export class Runner {
     this.stopped = false;
   }
 
-  // Start a run for `ask`; `delay` is how long its ask waited since it last
-  // changed, 0 when it did not.
-  #start(key, { threadId, thread, buddy, buddies, asker, redo, mine }, delay) {
-    const run = { runId: newId('r'), threadId, id: buddy.id, name: buddy.name, asker, seen: thread.comments.at(-1).at, delay, changed: false, waits: false, child: null, done: null, cancelled: false, ended: false };
+  // Start a run for `ask`; `wait` is the open ask it runs again, or null.
+  #start(key, { threadId, thread, buddy, buddies, asker, redo, mine }, wait) {
+    const run = { runId: newId('r'), threadId, id: buddy.id, name: buddy.name, asker, seen: thread.comments.at(-1).at, quietSince: wait?.quietSince ?? Date.now(), open: Boolean(wait), changed: false, waits: false, child: null, done: null, cancelled: false, ended: false };
     this.runs.set(key, run);
     run.done = this.#run(run, thread, buddy, buddies, redo, mine)
       .catch((error) => console.error(`Run of ${buddy.name} failed to finish:`, error))
       .finally(() => {
         this.runs.delete(key);
-        // Its ask open, it runs again LOOK_MS after the last change, then
-        // twice as long each time nothing changes.
         if (run.waits && !this.stopped) {
-          const wait = { threadId, id: buddy.id, name: buddy.name, seen: run.seen, delay: 0, timer: null, due: false };
-          this.waiting.set(key, wait);
-          this.#lookAgain(wait, run.changed || !run.delay ? LOOK_MS : run.delay * 2);
+          const open = { threadId, id: buddy.id, name: buddy.name, seen: run.seen, quietSince: run.quietSince, timer: null, due: false, paused: false };
+          this.waiting.set(key, open);
+          this.#lookAgain(open, nextLook({ ...run.watch, changed: run.changed, quietSince: run.quietSince, now: Date.now() }));
         }
         this.onChange();
         this.reconcile(); // asked again meanwhile, or another ask waits
@@ -232,6 +255,7 @@ export class Runner {
           trace.comments = { before, after: await readFile(sidecar, 'utf8').catch(() => before) };
           answered = await this.finish({ ...out, edited: trace.edited, comments: trace.comments, body: waits ? null : result.stdout.trim(), failed: false, waiting: waits });
           run.waits = Boolean(answered?.waiting);
+          if (run.waits) run.watch = await this.watch();
         } else {
           answered = await this.finish({ ...out, edited: null, body: failure(script, result), failed: true });
         }

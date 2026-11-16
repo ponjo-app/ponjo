@@ -691,12 +691,12 @@ export function createPeople({ root, invite, panel, me, getName, getId = () => n
 const FAILED_MS = 1000; // how long a failed run's moment plays (app.css: .pj-failed)
 
 // Where a buddy stands in this doc, on its card under its name.
-const STANDING = { working: 'Working…', waiting: 'Waiting', away: 'Not running here' };
+const STANDING = { working: 'Working…', away: 'Not running here' };
 const WHERE = { user: 'In all your docs', project: "This project's" };
 
-const LABELS = { working: 'Working…', waiting: 'Waiting', idle: 'Ready', away: 'Not here' };
+const LABELS = { working: 'Working…', idle: 'Ready', away: 'Not here' };
 const PERSON = { working: 'Working…', idle: 'In this doc', away: 'Away' };
-const RANK = { working: 0, waiting: 1, idle: 1, away: 2 }; // the queue's order
+const RANK = { working: 0, idle: 1, away: 2 }; // the queue's order
 
 /** How long a person is at work after they move or type: while their cursor is named. */
 export const WORKING_MS = 3000;
@@ -704,13 +704,10 @@ export const WORKING_MS = 3000;
 // What a player may do, under their name.
 const LEVEL = { read: 'Can read', write: 'Can edit' };
 
-/**
- * 'working', 'waiting' (keeps an ask open; its face as idle's), 'idle'
- * (answers when @mentioned), or 'away' (no status: not run here).
- */
+/** 'working', 'idle' (answers when @mentioned), or 'away' (no status: not run here). */
 export function modeOf(status) {
   if (!status) return 'away';
-  return status.state === 'running' ? 'working' : status.state === 'waiting' ? 'waiting' : 'idle';
+  return status.state === 'running' ? 'working' : 'idle';
 }
 
 // A small icon-only button, labelled for screen readers and on hover.

@@ -11,6 +11,7 @@ import { tmpdir } from 'node:os';
 import { basename, delimiter, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildPrompt } from '../src/core/prompt.js';
+import { nextLook } from '../src/host/runner.js';
 import { agentScript, agentsDir, installAgents, listAgents } from '../src/store/agents.js';
 import { readSecrets, secretTails, writeSecrets } from '../src/store/secrets.js';
 import { SAMPLE, fakeConfig, fakeRuns, openTestDoc, readOnly, tempDoc, until } from './helpers.js';
@@ -287,51 +288,59 @@ test('a buddy\'s new comment is anchored on the text it quoted, though a person 
   });
 });
 
-test('a run that is not done yet (exit 75) posts no reply and keeps its ask open: a person\'s edit runs it again, and it answers once it can', { timeout: 30_000 }, async () => {
+const watchOf = async (state, id) => (await state()).agents.find((a) => a.name === 'Clippy')?.watching.find((w) => w.threadId === id);
+
+test('a run that is not done yet (exit 75) posts no reply and keeps its ask open, apart from its run\'s state: a person\'s edit runs it again, and it answers once it can', { timeout: 30_000 }, async () => {
   await withDoc(async ({ settingsDir, call, edit, state, runs }) => {
     const id = await comment(call, '@Clippy until "ten" replace "extra load" with "extra peak load"');
-    await until(async () => (await state()).agents.find((a) => a.name === 'Clippy')?.state === 'waiting', 'Clippy to wait');
-    const clippy = (await state()).agents.find((a) => a.name === 'Clippy');
-    assert.deepEqual([clippy.threadIds, clippy.waitingIds], [[], [id]]);
-    assert.equal((await repliesIn(state, id)).length, 0, 'no reply while it waits');
+    await until(async () => (await watchOf(state, id)) && (await state()).agents.find((a) => a.name === 'Clippy').state === 'ready', 'Clippy to keep it open, no run on');
+    assert.deepEqual(await watchOf(state, id), { threadId: id, paused: false });
+    assert.equal((await repliesIn(state, id)).length, 0, 'no reply while it is open');
     assert.equal((await runLog(settingsDir))[0].outcome, 'waiting');
     await edit(`${(await state()).text}\nNine, ten.\n`);
     await until(async () => (await repliesIn(state, id)).length === 1, 'the reply once the doc says ten');
     assert.match((await state()).text, /extra peak load/);
     assert.equal((await runs()).length, 2, 'one run more, on the edit');
-    assert.equal((await state()).agents.find((a) => a.name === 'Clippy').state, 'ready');
+    assert.equal(await watchOf(state, id), undefined, 'answered, not open');
   });
 });
 
-test('an open ask whose run edits is not run again by its own edit: it looks again 3 s later, then after twice as long; its prompt says what it changed', { timeout: 30_000 }, async () => {
-  await withDoc(async ({ call, state, runs }) => {
+test('an open ask is not run again by its own edit, but 3 s after a person\'s; its prompt says what it changed', { timeout: 30_000 }, async () => {
+  await withDoc(async ({ call, edit, state, runs }) => {
     const id = await comment(call, '@Clippy keep replace "extra load" with "extra peak load"');
-    await until(async () => (await runs()).length === 1, 'the first run');
-    await until(async () => (await state()).agents.find((a) => a.name === 'Clippy')?.state === 'waiting', 'Clippy to wait');
-    const waited = Date.now();
+    await until(async () => (await watchOf(state, id)) && (await runs()).length === 1, 'Clippy to keep it open');
     assert.match((await state()).text, /extra peak load/, 'its edit landed');
-    await until(async () => (await runs()).length === 2, 'the second run', 6000);
-    const second = Date.now();
-    assert.ok(second - waited >= 2500, `not before 3 s (${second - waited} ms)`);
+    await new Promise((r) => setTimeout(r, 4000));
+    assert.equal((await runs()).length, 1, 'not run again by its own edit');
+    const edited = Date.now();
+    await edit(`${(await state()).text}\nMore.\n`);
+    await until(async () => (await runs()).length === 2, 'the run after the edit', 8000);
+    assert.ok(Date.now() - edited >= 2500, `not before 3 s (${Date.now() - edited} ms)`);
     assert.match((await runs())[1].prompt, /you kept it open and changed plan\.md so[\s\S]*\+.*extra peak load/, 'told what it changed');
-    await until(async () => (await state()).agents.find((a) => a.name === 'Clippy')?.state === 'waiting', 'Clippy to wait again');
-    await until(async () => (await runs()).length === 3, 'the third run', 10_000);
-    assert.ok(Date.now() - second >= 5500, `then not before 6 s (${Date.now() - second} ms)`);
     assert.equal((await repliesIn(state, id)).length, 0);
   });
+});
+
+test('an open ask looks again every watchEvery minutes, until nothing has changed for watchFor; then until the next change', () => {
+  const [every, quiet, at] = [60_000, 600_000, 1_000_000];
+  assert.equal(nextLook({ changed: true, quietSince: at, now: at, every, quiet }), 3000, 'soon after a change');
+  assert.equal(nextLook({ changed: false, quietSince: at, now: at, every, quiet }), every);
+  assert.equal(nextLook({ changed: false, quietSince: at, now: at + 9 * every, every, quiet }), every, 'the tenth look, 10 min after the change');
+  assert.equal(nextLook({ changed: false, quietSince: at, now: at + 9.5 * every, every, quiet }), null, 'then none');
+  assert.equal(nextLook({ changed: false, quietSince: at, now: at, every: quiet * 2, quiet }), null, 'none when it is longer than watchFor');
 });
 
 test('resolving an open ask\'s thread ends it; a new comment in the thread runs it at once', { timeout: 30_000 }, async () => {
   await withDoc(async ({ call, state, runs }) => {
     const id = await comment(call, '@Clippy until "ten"');
-    await until(async () => (await state()).agents.find((a) => a.name === 'Clippy')?.state === 'waiting', 'Clippy to wait');
+    await until(async () => watchOf(state, id), 'Clippy to keep it open');
     await reply(call, id, 'say Now then.');
     await until(async () => (await repliesIn(state, id)).length === 1, 'the answer to the new comment, before the 3 s are up', 2500);
     const other = await comment(call, '@Clippy until "ten"');
-    await until(async () => (await state()).agents.find((a) => a.name === 'Clippy')?.waitingIds.includes(other), 'Clippy to wait on the other');
+    await until(async () => watchOf(state, other), 'Clippy to keep the other open');
     const before = (await runs()).length;
     await call('comment', { thread: other, body: '', resolved: true });
-    await until(async () => (await state()).agents.find((a) => a.name === 'Clippy')?.state === 'ready', 'Clippy to stop waiting');
+    await until(async () => !(await watchOf(state, other)), 'Clippy to stop watching');
     await new Promise((r) => setTimeout(r, 4000));
     assert.equal((await runs()).length, before, 'no run after its thread is resolved');
   });
