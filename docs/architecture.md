@@ -28,8 +28,8 @@ with a way to fix it.
 2. **Only the app writes them.** An agent gets only a copy. Any other
    change (other editors, `git pull`) is seen and merged.
 3. **An agent is a filter:** prompt on stdin, copies of the doc and its
-   comments to edit, reply on stdout. It knows nothing of Ponjo and
-   remembers nothing.
+   comments to edit, reply on stdout, or exit 75: not done yet. It knows
+   nothing of Ponjo and remembers nothing.
 4. **No one resolves a conflict by hand.** An edit merges by how it comes,
    not by who made it ([how edits merge](#how-edits-merge)). An edit made in
    a window (typing, a paste) is merged by character, and nothing typed is
@@ -41,7 +41,8 @@ with a way to fix it.
 5. **AI buddies always edit, and every edit can be undone.** See
    [Undoing changes](#undoing-changes).
 6. **Only a person's comment starts a turn:** mine, or a player's who can
-   edit. Nothing in a shared file makes an AI buddy run, or chooses what
+   edit. A turn that keeps its ask open runs again on that same ask.
+   Nothing in a shared file makes an AI buddy run, or chooses what
    program runs, on this machine.
 7. **One component does one thing.** If it takes two sentences to say what
    a component does, it is two components.
@@ -358,7 +359,7 @@ others put in; its result is your typing, merged by character.
 | Store | read, write, watch and move files | `read(path)`, `write(path, text, { ifHash })`, `watch(path, fn)`, `move(from, to)`. Settings, buddies, agent scripts and history are paths and parsers over these, not interfaces of their own |
 | DocService | order every edit to a doc, and write it | `state({ since? })` → text, `{ epoch, rev }`, the `events` missed since, and what this connection may do; `submit({ ops, epoch, rev, id })` → `{ rev }`, or `stale`, or `not_saved`; `comment({ thread?, anchor?, body, resolved? })`; `undo({ id, from? })`, a version (or the versions from `from` to it) undone as above, a turn's from its reply; `cursor({ at, epoch, rev })`; `move(to)`; events `ops` (every landed edit, written), `saved` (`{ error }`: why the file does not hold them, or null), `sidecar`, `room`, `cursors`, `missing`; a window that connects again catches up with `state`. Cursors are never queued behind writes: each is kept at the last rev windows were told of, and moved with every edit told |
 | History | keep the doc as it was at each version | `record`, `list`, `read`; a version may have several authors |
-| Runner | make the running turns equal the asks the sidecar holds | `reconcile()`, `statuses()`, `pause(on)`. The asks are people's comments: the owner's and those of players who can edit. A finished turn comes through the door as its buddy, then is logged with its trace |
+| Runner | make the running turns equal the asks the sidecar holds | `reconcile()`, `changed(by)`, `statuses()`, `pause(on)`. An ask a turn kept open runs again on a change by anyone but its buddy, or after a while. The asks are people's comments: the owner's and those of players who can edit. A finished turn comes through the door as its buddy, then is logged with its trace |
 | Room | who plays in the project's room and what each may do, while it is open | for the owner `open()`, `close()`, `lock(locked)`, `setLevel(id, level)` with `level` `read` or `write`, `kick(id)` and `list()` (`{ link, locked, players }`, or null while closed), at the door as `openRoom`, `closeRoom`, `lockRoom`, `setLevel`, `kick` and `room`; a page that opens the link joins as `join({ id, name })`; the host asks it a player's level on each call; event `room` to the owner's windows |
 | ProjectService | the project's files, the same for everyone | `list(path)`, `read(path)`, `open(path)`, for the owner's windows and a teammate's page alike. A path must resolve inside the root and not start with `.`. An agent reads no more than this |
 | Config | own the settings, buddies and agents | `settings.get/patch`, `buddies.save/remove`, `scripts.list/reset` |
@@ -510,6 +511,24 @@ the ids of those who may ask. AI buddies run only on docs open in a window.
 Resolving a thread ends its turns at once, with no answer; a turn that
 ended but is not merged yet is dropped. Deleting a buddy ends its turns too.
 
+### An ask that stays open
+
+What a comment asks may not be done yet ("once I've finished this
+section") or may go on ("each time I write a line, add the next"). A turn
+then exits 75 ([agent config](agent-config.md#the-contract)): its edits
+and comments land as in step 3, no reply is posted, and its ask stays
+open. It is reconciled as a Kubernetes controller reconciles: the ask is
+the desired state, what a turn is shown the observed state, and each turn
+one stateless look at both. The ask runs again 3 s after the doc or its
+comments change by anyone but its buddy (an edit landing, a comment),
+then 6 s, 12 s, and on, twice as long each time nothing changes, while
+the doc is open; a change starts it again from 3 s, and a new comment in
+its thread runs it at once. Its prompt says what the buddy changed in the
+doc since the comment, from the doc's history, so a turn knows its own
+lines from others'. It ends when the buddy replies or a person resolves
+the thread. Which asks wait lives only in memory, as which turns run: the
+buddy's card and the thread say Waiting.
+
 An AI buddy comments as a person does: new threads, replies in any thread.
 It resolves the thread it answers when the comment asks it to: its reply
 carries `resolved`. Anything else is ignored
@@ -535,7 +554,7 @@ A turn that fails is answered too: the buddy's comment is marked `failed`,
 with the end of the program's output. One ask, one reply (a turn run once
 more answers once); to retry, or to redo what was not applied, @mention
 the buddy again. Which turns are working lives
-only in memory: after a restart, unanswered asks run again. Turns go on at
+only in memory: after a restart, unanswered asks, open ones too, run again. Turns go on at
 the same time; their merges are applied one at a time.
 
 ## Sharing

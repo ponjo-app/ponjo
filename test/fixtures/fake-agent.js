@@ -5,6 +5,8 @@
 //   hold                                wait for $FAKE_DIR/release-<buddy> first
 //   wait                                the same, and take the file away: each run waits for its own
 //   fail                                print to stderr and exit 1
+//   until "<text>"                      while the copy lacks <text>, change nothing and exit 75: not done yet
+//   keep                                do the rest, then exit 75: the ask stays open
 //   say <text>                          reply <text>
 //   quiet                               reply nothing
 //   append <json>                       append a line to the sidecar's copy
@@ -32,6 +34,8 @@ if (/\b(hold|wait)\b/.test(ask)) {
   while (!existsSync(join(dir, `release-${buddy}`))) await new Promise((r) => setTimeout(r, 50));
   if (/\bwait\b/.test(ask)) rmSync(join(dir, `release-${buddy}`), { force: true });
 }
+const awaited = ask.match(/\buntil "(.*?)"/)?.[1];
+if (awaited !== undefined && !readFileSync(doc, 'utf8').includes(awaited)) process.exit(75);
 if (/\bfail\b/.test(ask)) {
   console.log('some output');
   console.error('fake agent: something went wrong');
@@ -54,4 +58,5 @@ for (const command of ask.split(';;').map((c) => c.trim())) {
   }
 }
 const said = ask.match(/\bsay (.*)/)?.[1];
+if (/\bkeep\b/.test(ask)) process.exit(75);
 if (!/\bquiet\b/.test(ask)) console.log(said ?? (edit ? `Replaced "${edit[1]}".` : 'Nothing to change.'));

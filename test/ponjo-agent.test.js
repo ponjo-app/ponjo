@@ -74,7 +74,7 @@ test('a turn reads the doc by line number, comments, resolves and proposes an ed
     'the copies\' new texts: the program writes the sidecar\'s lines, the thread resolved once',
   );
   assert.deepEqual(infer.messages[0], { role: 'user', content: opening(doc, 'the prompt') }, 'the first message is the prompt as is, then the doc');
-  assert.deepEqual(infer.tools.map((t) => t.name), ['read', 'find', 'grep', 'comment', 'resolve', 'propose']);
+  assert.deepEqual(infer.tools.map((t) => t.name), ['read', 'find', 'grep', 'comment', 'resolve', 'wait', 'propose']);
   assert.deepEqual([infer.messages[1].role, infer.messages[1].sent], ['assistant', 'as the API sent it'], 'the model\'s message, kept as its API sent it');
   assert.deepEqual(infer.messages[2], { role: 'tool', id: infer.messages[1].calls[0].id, content: '8\tThe main risk is that the `sync` service cannot handle the extra load.' });
   assert.deepEqual(results(infer.messages).slice(1), ['Added when your turn ends, on the whole doc.', 'Added when your turn ends, on line 8.', 'This thread is resolved when your turn ends.', 'This thread is resolved when your turn ends.']);
@@ -362,7 +362,7 @@ test('Anthropic: the Messages API, cached up to the last message, the model\'s c
     assert.equal(first.headers['anthropic-version'], '2023-06-01');
     const { tools, messages, ...rest } = second.body;
     assert.deepEqual(rest, { model: 'claude-opus-5-5', max_tokens: 16_000, output_config: { effort: 'low' }, tool_choice: { type: 'auto' } }, 'no thinking setting: the model thinks as it needs');
-    assert.deepEqual(tools.map((t) => [t.name, Object.keys(t.input_schema.properties).join(), t.cache_control]), [['read', 'path,lines', undefined], ['find', 'pattern,path', undefined], ['grep', 'pattern,path', undefined], ['comment', 'on,body', undefined], ['resolve', '', undefined], ['propose', 'edits,reply', undefined]]);
+    assert.deepEqual(tools.map((t) => [t.name, Object.keys(t.input_schema.properties).join(), t.cache_control]), [['read', 'path,lines', undefined], ['find', 'pattern,path', undefined], ['grep', 'pattern,path', undefined], ['comment', 'on,body', undefined], ['resolve', '', undefined], ['wait', '', undefined], ['propose', 'edits,reply', undefined]]);
     assert.deepEqual(messages, [
       { role: 'user', content: [{ type: 'text', text: opening(doc, 'the prompt') }] },
       { role: 'assistant', content: [thinking, { type: 'tool_use', id: 'toolu_1', name: 'read', input: { path: doc, lines: [1, 1] } }] },
@@ -428,7 +428,7 @@ test('OpenAI-compatible: Chat Completions at the endpoint, with the key and the 
     assert.equal(url, '/v1/chat/completions');
     assert.equal(headers.authorization, 'Bearer sk-test');
     assert.deepEqual([body.model, body.reasoning_effort, body.tool_choice], ['gpt-5', 'medium', 'auto']);
-    assert.deepEqual(body.tools.map((t) => [t.type, t.function.name]), [['function', 'read'], ['function', 'find'], ['function', 'grep'], ['function', 'comment'], ['function', 'resolve'], ['function', 'propose']]);
+    assert.deepEqual(body.tools.map((t) => [t.type, t.function.name]), [['function', 'read'], ['function', 'find'], ['function', 'grep'], ['function', 'comment'], ['function', 'resolve'], ['function', 'wait'], ['function', 'propose']]);
     assert.deepEqual(body.messages, [{ role: 'user', content: opening(doc, 'the prompt') }, read, { role: 'tool', tool_call_id: 'call_a', content: '1\t# Q4 Launch Plan' }]);
     assert.equal((await infer(body.messages, [])).text, 'Fine as is.', 'an answer without a call: its content');
   } finally {

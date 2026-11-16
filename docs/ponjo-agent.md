@@ -14,7 +14,7 @@ laptop runs (an 8B model tried) claim edits they did not make.
 
 1. **Read and propose, never write.** The model's only effect is a
    proposal; the program checks it and applies it to the copies.
-2. **The tools are the permissions.** `read`, `find`, `grep`, `comment`, `resolve` and `propose` only, and
+2. **The tools are the permissions.** `read`, `find`, `grep`, `comment`, `resolve`, `wait` and `propose` only, and
    with Anthropic, its web fetch: no shell, no network but the model's API. Text a teammate wrote can at
    worst make an undoable proposal.
 3. **Stateless.** A turn remembers nothing after. Within it, all state is
@@ -31,12 +31,13 @@ laptop runs (an 8B model tried) claim edits they did not make.
 | --- | --- |
 | `turn({ prompt, doc, sidecar, thread }, { infer, readFile, resolve }) → { doc, sidecar, reply }` | the program's `main`; the preview's buddies (`preview/doc-stub.js`) |
 | `infer(messages, tools) → { calls: [{ id, name, args }], text, sent, usage }` | `turn`, for each step |
-| `read`, `find`, `grep`, `comment`, `resolve`, `propose` | the model, as tools |
+| `read`, `find`, `grep`, `comment`, `resolve`, `wait`, `propose` | the model, as tools |
 
 **`main`** is all the I/O, and all of the contract: it reads the prompt on
 stdin, the paths in `PONJO_DOC`, `PONJO_COMMENTS` and `PONJO_PROJECT`,
 the thread in `PONJO_THREAD` and its settings in `PONJO_SETTING_*`, calls `turn`, writes the texts it
-gives back to the copies, prints the reply and exits 0. A run without a key fails at once,
+gives back to the copies, prints the reply and exits 0, or, when the turn
+called `wait`, prints nothing and exits 75. A run without a key fails at once,
 saying where to set it.
 
 **`turn`** is one buddy answering one thread, with no I/O of its own: it
@@ -124,6 +125,12 @@ in the doc yet says so, and one found more than once is not added. When the
 turn ends its texts are checked again: one the edits change, repeat or never
 write would quietly be on the whole doc, so it is taken back and the turn
 sent back, saying to comment again.
+
+**`wait()`** keeps the comment the turn answers open: what it asks is not
+done yet, or goes on. The edits and comments land, the reply does not, and
+the app runs the turn again when the doc or its comments change, or after a
+while ([architecture](architecture.md#a-buddys-turn)). Its own tool, for
+the same reason as `resolve`.
 
 **Web pages**, with Anthropic and `web` on: Anthropic's web fetch
 (`web_fetch_20260209`), which runs at Anthropic, not on this computer, so it

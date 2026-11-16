@@ -20,7 +20,9 @@ An agent is a filter ([architecture](architecture.md#a-run)):
 | `PONJO_TRACE` | a file, out of the working folder, the agent may write its steps to (see [Traces](#traces)) |
 | `PONJO_SETTING_<KEY>` | each of the agent's [settings](#settings) |
 | stdout | the reply; may be empty |
-| Exit 0 | success; the app merges the doc copy's edits into the doc and adds the appended comments. Otherwise the reply is marked `failed`, with the end of the output. |
+| Exit 0 | success; the app merges the doc copy's edits into the doc and adds the appended comments. |
+| Exit 75 | not done yet: the same, but no reply is posted, and the ask stays open, to run again when the doc or its comments change, or after a while ([architecture](architecture.md#a-buddys-turn)). Only the Ponjo agent exits so (its `wait` tool); the shipped Claude Code and Codex scripts always answer at once. |
+| Any other exit | the reply is marked `failed`, with the end of the output. |
 
 The program needs no Ponjo tool: it reads files, edits them and prints.
 

@@ -9,7 +9,7 @@ const MAX_FOUND = 100; // paths find, or lines grep, gives before it asks to nar
 const MAX_LINE = 500; // characters of a line grep shows
 const MAX_LISTED = 200; // the project's files the first message lists; over that, its top folder's
 const SIDECAR = '.comments.jsonl';
-const ANY_TOOL = 'read, find, grep, comment, resolve or propose';
+const ANY_TOOL = 'read, find, grep, comment, resolve, wait or propose';
 const READS = ['read', 'find', 'grep'];
 const NOT_RUN = 'Not run: propose once, in a step with no read, find or grep: it ends your turn, so it comes after what you read.';
 const PATTERN = 'A JavaScript regular expression, not a glob. Case is ignored unless it has a capital letter.';
@@ -70,6 +70,11 @@ const TOOLS = [
     parameters: { type: 'object', properties: {} },
   },
   {
+    name: 'wait',
+    description: 'Keep the comment you are answering open when your turn ends, as what it asks is not done yet or goes on: your reply is not posted, your edits and comments are, and you answer it again when the doc or its comments change, or after a while if nothing does.',
+    parameters: { type: 'object', properties: {} },
+  },
+  {
     name: 'propose',
     description: 'End your turn, once you have read what you need: your edits of the doc and your reply, all in one call. Each edit replaces `old`, quoted exactly from the doc and found there once, with `new`; no other file can change, and comments are the comment tool\'s. `reply` is what you print, your answer in this thread, and may be empty. One bad edit sends the whole proposal back, saying what to fix.',
     parameters: {
@@ -92,9 +97,9 @@ const TOOLS = [
  * counts them; `readFile(path)` to a file's text, a folder's entries (a
  * subfolder's ending in /) or null;
  * `resolve(path)` a path the model wrote as the copies' paths are written
- * (ponjo.mjs's inProject). Resolves to the checked { doc, sidecar, reply }:
+ * (ponjo.mjs's inProject). Resolves to the checked { doc, sidecar, reply, waiting? }:
  * the copies' new texts, with the edits and the lines comment and resolve
- * add, and the reply. Throws when the turn fails.
+ * add, the reply, and `waiting` true when wait kept the comment open. Throws when the turn fails.
  *
  * The messages are in one form for every provider: { role: 'user', content },
  * { role: 'assistant', calls, sent }, and { role: 'tool', id, content }, a
@@ -105,6 +110,8 @@ export async function turn({ prompt, doc, sidecar, thread }, { infer, readFile, 
   const opening = [prompt, await listing(readFile, [doc, sidecar]), `The doc, ${doc}, as read gives it:\n\n${await read({ path: doc }, readFile, doc)}`];
   const messages = [{ role: 'user', content: opening.filter(Boolean).join('\n\n') }];
   const comments = []; // the sidecar's lines from comment and resolve, as objects, added when the turn ends
+  let waiting = false; // wait was called
+  const wait = () => { waiting = true; };
   // The copies' texts with `edits` (the doc's) and the comments, and the
   // reply; or, as text, what to fix. The app finds a comment's text in the
   // doc as the edits leave it: one they change or repeat, or never write,
@@ -118,7 +125,7 @@ export async function turn({ prompt, doc, sidecar, thread }, { infer, readFile, 
       return `Nothing was changed. ${error.message}`;
     }
     const lost = comments.filter((c) => c.anchor && quoted(texts.doc, c.anchor.exact).count !== 1);
-    if (!lost.length) return { ...texts, reply };
+    if (!lost.length) return { ...texts, reply, ...(waiting ? { waiting } : {}) };
     comments.splice(0, comments.length, ...comments.filter((c) => !lost.includes(c)));
     return `Nothing was changed. As your edits leave the doc, the text of ${lost.length > 1 ? 'comments' : 'a comment'} on ${lost.map((c) => JSON.stringify(c.anchor.exact)).join(', ')} is not in it once, so ${lost.length > 1 ? 'they were' : 'it was'} taken back: comment again on text that is, or on the whole doc, then end your turn again.`;
   };
@@ -138,7 +145,7 @@ export async function turn({ prompt, doc, sidecar, thread }, { infer, readFile, 
     const runs = ends.length === 1 && !calls.some((call) => READS.includes(call.name));
     const results = new Map();
     for (const call of [...calls.filter((c) => !ends.includes(c)), ...ends]) {
-      const result = ends.includes(call) && !runs ? NOT_RUN : await use(call, { doc, thread, comments, finish, readFile, resolve });
+      const result = ends.includes(call) && !runs ? NOT_RUN : await use(call, { doc, thread, comments, wait, finish, readFile, resolve });
       if (typeof result !== 'string') return result;
       results.set(call, result);
     }
@@ -147,8 +154,8 @@ export async function turn({ prompt, doc, sidecar, thread }, { infer, readFile, 
   throw new Error(`No proposal in ${STEPS} steps.`);
 }
 
-// What a tool call gives back to the model, or a valid proposal's { doc, sidecar, reply }.
-async function use({ name, args: json }, { doc, thread, comments, finish, readFile, resolve }) {
+// What a tool call gives back to the model, or a valid proposal's { doc, sidecar, reply, waiting }.
+async function use({ name, args: json }, { doc, thread, comments, wait, finish, readFile, resolve }) {
   let args;
   try {
     args = JSON.parse(json);
@@ -172,6 +179,10 @@ async function use({ name, args: json }, { doc, thread, comments, finish, readFi
   if (name === 'resolve') {
     if (!comments.some((c) => c.resolved)) comments.push({ thread, resolved: true });
     return 'This thread is resolved when your turn ends.';
+  }
+  if (name === 'wait') {
+    wait();
+    return 'This comment stays open when your turn ends: your reply is not posted.';
   }
   if (name !== 'propose') return `No tool ${name}: call ${ANY_TOOL}.`;
   const { edits, reply = '' } = args;

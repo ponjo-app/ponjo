@@ -287,6 +287,56 @@ test('a buddy\'s new comment is anchored on the text it quoted, though a person 
   });
 });
 
+test('a run that is not done yet (exit 75) posts no reply and keeps its ask open: a person\'s edit runs it again, and it answers once it can', { timeout: 30_000 }, async () => {
+  await withDoc(async ({ settingsDir, call, edit, state, runs }) => {
+    const id = await comment(call, '@Clippy until "ten" replace "extra load" with "extra peak load"');
+    await until(async () => (await state()).agents.find((a) => a.name === 'Clippy')?.state === 'waiting', 'Clippy to wait');
+    const clippy = (await state()).agents.find((a) => a.name === 'Clippy');
+    assert.deepEqual([clippy.threadIds, clippy.waitingIds], [[], [id]]);
+    assert.equal((await repliesIn(state, id)).length, 0, 'no reply while it waits');
+    assert.equal((await runLog(settingsDir))[0].outcome, 'waiting');
+    await edit(`${(await state()).text}\nNine, ten.\n`);
+    await until(async () => (await repliesIn(state, id)).length === 1, 'the reply once the doc says ten');
+    assert.match((await state()).text, /extra peak load/);
+    assert.equal((await runs()).length, 2, 'one run more, on the edit');
+    assert.equal((await state()).agents.find((a) => a.name === 'Clippy').state, 'ready');
+  });
+});
+
+test('an open ask whose run edits is not run again by its own edit: it looks again 3 s later, then after twice as long; its prompt says what it changed', { timeout: 30_000 }, async () => {
+  await withDoc(async ({ call, state, runs }) => {
+    const id = await comment(call, '@Clippy keep replace "extra load" with "extra peak load"');
+    await until(async () => (await runs()).length === 1, 'the first run');
+    await until(async () => (await state()).agents.find((a) => a.name === 'Clippy')?.state === 'waiting', 'Clippy to wait');
+    const waited = Date.now();
+    assert.match((await state()).text, /extra peak load/, 'its edit landed');
+    await until(async () => (await runs()).length === 2, 'the second run', 6000);
+    const second = Date.now();
+    assert.ok(second - waited >= 2500, `not before 3 s (${second - waited} ms)`);
+    assert.match((await runs())[1].prompt, /you kept it open and changed plan\.md so[\s\S]*\+.*extra peak load/, 'told what it changed');
+    await until(async () => (await state()).agents.find((a) => a.name === 'Clippy')?.state === 'waiting', 'Clippy to wait again');
+    await until(async () => (await runs()).length === 3, 'the third run', 10_000);
+    assert.ok(Date.now() - second >= 5500, `then not before 6 s (${Date.now() - second} ms)`);
+    assert.equal((await repliesIn(state, id)).length, 0);
+  });
+});
+
+test('resolving an open ask\'s thread ends it; a new comment in the thread runs it at once', { timeout: 30_000 }, async () => {
+  await withDoc(async ({ call, state, runs }) => {
+    const id = await comment(call, '@Clippy until "ten"');
+    await until(async () => (await state()).agents.find((a) => a.name === 'Clippy')?.state === 'waiting', 'Clippy to wait');
+    await reply(call, id, 'say Now then.');
+    await until(async () => (await repliesIn(state, id)).length === 1, 'the answer to the new comment, before the 3 s are up', 2500);
+    const other = await comment(call, '@Clippy until "ten"');
+    await until(async () => (await state()).agents.find((a) => a.name === 'Clippy')?.waitingIds.includes(other), 'Clippy to wait on the other');
+    const before = (await runs()).length;
+    await call('comment', { thread: other, body: '', resolved: true });
+    await until(async () => (await state()).agents.find((a) => a.name === 'Clippy')?.state === 'ready', 'Clippy to stop waiting');
+    await new Promise((r) => setTimeout(r, 4000));
+    assert.equal((await runs()).length, before, 'no run after its thread is resolved');
+  });
+});
+
 test('after a restart, an unanswered ask runs again', { timeout: 30_000 }, async () => {
   await withDoc(async ({ settingsDir, call, state, runs, release, restart }) => {
     const id = await comment(call, '@Clippy hold replace "extra load" with "extra peak load"');

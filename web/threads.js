@@ -149,6 +149,7 @@ export function createCommentMargin(margin, handlers) {
 
   function footOf(thread, replies) {
     const working = workingOn(thread);
+    const waiting = waitingOn(thread);
     const last = replies.at(-1);
     const foot = el('div', 'pj-foot');
     const faces = (people) => {
@@ -160,6 +161,8 @@ export function createCommentMargin(margin, handlers) {
     if (working.length > 0) {
       foot.classList.add('pj-foot-working');
       foot.append(faces(working.map(({ id, name }) => ({ id, name, kind: 'agent' }))), el('span', '', `${listed(working.map((a) => a.name))} ${working.length === 1 ? 'is' : 'are'} working…`));
+    } else if (waiting.length > 0) {
+      foot.append(faces(waiting.map(({ id, name }) => ({ id, name, kind: 'agent' }))), el('span', '', `${listed(waiting.map((a) => a.name))} ${waiting.length === 1 ? 'is' : 'are'} waiting`));
     } else if (last?.failed) {
       foot.classList.add('pj-foot-failed');
       foot.append(el('span', '', `${nameOf(last.by.id, last.by.name)}'s run failed`), dot(), el('time', '', relativeTime(last.at)));
@@ -216,8 +219,9 @@ export function createCommentMargin(margin, handlers) {
     return el('blockquote', `pj-quote${thread.detached ? ' pj-quote-gone' : ''}`, truncate(thread.anchor.exact, 120));
   }
 
-  // The buddies at work on a thread not resolved.
+  // The buddies at work on a thread not resolved, and those keeping its ask open.
   const workingOn = (thread) => (thread.resolved ? [] : agents.filter((a) => a.threadIds.includes(thread.id)));
+  const waitingOn = (thread) => (thread.resolved ? [] : agents.filter((a) => a.waitingIds?.includes(thread.id)));
 
   // What a thread shows: a comment that only resolved it shows as the
   // resolved line; a buddy's reply with nothing to say still shows, for what
