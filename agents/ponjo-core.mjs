@@ -54,12 +54,13 @@ const TOOLS = [
   },
   {
     name: 'comment',
-    description: 'Start a new thread in the doc, as a member does, for a member to decide something: never a mark in the doc itself. It is added when your turn ends, with your edits.',
+    description: 'Start a new thread in the doc, as a member does: for a member to decide something, or on a place a member asked you to find or point at, one thread on each. Never a mark of your own accord. It is added when your turn ends, with your edits.',
     parameters: {
       type: 'object',
       properties: {
-        on: { type: 'string', description: 'The text it is about, quoted exactly from the doc as your edits leave it, text they write included, and found there once; "" for the whole doc.' },
-        body: { type: 'string', description: 'What the member must decide.' },
+        on: { type: 'string', description: 'The text it is about, just the words meant, quoted exactly from the doc as your edits leave it, text they write included; "" for the whole doc. Found there once, or once in `in`.' },
+        in: { type: 'string', description: 'Only when `on` is in the doc more than once: a longer quote around this one, found in the doc once, with `on` in it once.' },
+        body: { type: 'string', description: 'What the member must decide, or in a few words what the place is.' },
       },
       required: ['on', 'body'],
     },
@@ -117,7 +118,7 @@ export async function turn({ prompt, doc, sidecar, thread }, { infer, readFile, 
     } catch (error) {
       return `Nothing was changed. ${error.message}`;
     }
-    const lost = comments.filter((c) => c.anchor && quoted(texts.doc, c.anchor.exact).count !== 1);
+    const lost = comments.filter((c) => c.anchor && quoted(texts.doc, c.anchor.exact, c.anchor.in).count !== 1);
     if (!lost.length) return { ...texts, reply };
     comments.splice(0, comments.length, ...comments.filter((c) => !lost.includes(c)));
     return `Nothing was changed. As your edits leave the doc, the text of ${lost.length > 1 ? 'comments' : 'a comment'} on ${lost.map((c) => JSON.stringify(c.anchor.exact)).join(', ')} is not in it once, so ${lost.length > 1 ? 'they were' : 'it was'} taken back: comment again on text that is, or on the whole doc, then end your turn again.`;
@@ -158,15 +159,17 @@ async function use({ name, args: json }, { doc, thread, comments, finish, readFi
   if (name === 'read') return read(args, readFile, doc);
   if (name === 'find' || name === 'grep') return search(name, args, readFile, resolve);
   if (name === 'comment') {
-    const { on, body } = args;
-    if (typeof on !== 'string' || typeof body !== 'string' || !body.trim()) return 'Not added: comment takes { on, body }, body not empty.';
+    const { on, in: within = '', body } = args;
+    if (typeof on !== 'string' || typeof within !== 'string' || typeof body !== 'string' || !body.trim()) return 'Not added: comment takes { on, in?, body }, body not empty.';
     if (!on.trim()) {
       comments.push({ body });
       return 'Added when your turn ends, on the whole doc.';
     }
-    const { count, line } = quoted(await readFile(doc), on);
-    if (count > 1) return 'Not added: on is in the doc more than once: quote more of it, or give "" for the whole doc.';
-    comments.push({ anchor: { exact: on }, body });
+    const { count, line, around } = quoted(await readFile(doc), on, within);
+    if (within.trim() && around > 1) return 'Not added: in is in the doc more than once: quote more around on, so that it is there once.';
+    if (within.trim() && around && !count) return 'Not added: on is not in in: in is a longer quote of the doc with on inside it.';
+    if (count > 1) return within.trim() ? 'Not added: on is in in more than once: quote less around it.' : 'Not added: on is in the doc more than once: give in, a longer quote around this one that is in the doc once, or "" for the whole doc.';
+    comments.push({ anchor: { exact: on, ...(within.trim() ? { in: within } : {}) }, body });
     return count ? `Added when your turn ends, on line ${line}.` : 'Added when your turn ends, if your edits write on once: it is not in the doc now.';
   }
   if (name === 'resolve') {
@@ -182,23 +185,29 @@ async function use({ name, args: json }, { doc, thread, comments, finish, readFi
 }
 
 /**
- * How the app finds a comment's text `exact` in the doc's `text`
- * (src/core/comments.js, appendedComments): as it is, else with any run of
- * whitespace standing for any other, in the text with its line ends as \n.
- * `count` is 0, 1, or 2 for more; the app anchors the comment only on 1.
- * `line` is where the first is.
+ * How the app finds a comment's text in the doc's `text`
+ * (src/core/comments.js, quotedAnchor): `exact` as it is, else with any run
+ * of whitespace standing for any other, in the text with its line ends as
+ * \n; given `within`, in that longer quote alone, where it is in the text
+ * once. `count` is 0, 1, or 2 for more; the app anchors the comment only on
+ * 1. `line` is where the first is.
  */
-export function quoted(text, exact) {
+export function quoted(text, exact, within = null) {
   const doc = text.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n');
   const escape = (part) => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  for (const pattern of exact.trim() ? [escape(exact), exact.trim().split(/\s+/).map(escape).join('\\s+')] : []) {
-    const regex = new RegExp(pattern, 'g');
-    const first = regex.exec(doc);
-    if (!first) continue;
-    regex.lastIndex = first.index + 1;
-    return { count: regex.exec(doc) ? 2 : 1, line: doc.slice(0, first.index).split('\n').length };
-  }
-  return { count: 0 };
+  const find = (inside, quote) => {
+    for (const pattern of quote.trim() ? [escape(quote), quote.trim().split(/\s+/).map(escape).join('\\s+')] : []) {
+      const regex = new RegExp(pattern, 'g');
+      const first = regex.exec(inside);
+      if (!first) continue;
+      regex.lastIndex = first.index + 1;
+      return { count: regex.exec(inside) ? 2 : 1, at: first.index, text: first[0] };
+    }
+    return { count: 0, at: 0, text: '' };
+  };
+  const around = within?.trim() ? find(doc, within) : { count: 1, at: 0, text: doc };
+  const found = around.count === 1 ? find(around.text, exact) : { count: 0, at: 0 };
+  return { count: found.count, line: doc.slice(0, around.at + found.at).split('\n').length, around: around.count };
 }
 
 // A file read as it is, with a note when the doc's folder has one by the
@@ -297,7 +306,7 @@ const isComment = (line) => {
     const c = JSON.parse(line);
     if (Object.keys(c).sort().join() === 'resolved,thread') return c.resolved === true && typeof c.thread === 'string';
     return ['body', 'anchor,body', 'body,thread'].includes(Object.keys(c).sort().join()) && typeof c.body === 'string'
-      && (!('anchor' in c) || typeof c.anchor?.exact === 'string') && (!('thread' in c) || typeof c.thread === 'string');
+      && (!('anchor' in c) || (typeof c.anchor?.exact === 'string' && ['undefined', 'string'].includes(typeof c.anchor.in))) && (!('thread' in c) || typeof c.thread === 'string');
   } catch {
     return false;
   }

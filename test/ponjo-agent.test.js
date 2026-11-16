@@ -80,6 +80,24 @@ test('a turn reads the doc by line number, comments, resolves and proposes an ed
   assert.deepEqual(results(infer.messages).slice(1), ['Added when your turn ends, on the whole doc.', 'Added when your turn ends, on line 8.', 'This thread is resolved when your turn ends.', 'This thread is resolved when your turn ends.']);
 });
 
+test('a comment on words that are in the doc more than once says where: in a longer quote found once', async () => {
+  const text = 'A strawberry here.\n\nOne more strawberry there, and a\nstrawberry last.\n';
+  const { doc, sidecar } = await copies(text);
+  const said = [];
+  const infer = fake(
+    calling(['comment', { on: 'strawberry', body: 'x' }], ['comment', { on: 'strawberry', in: 'strawberry', body: 'x' }], ['comment', { on: 'strawberry', in: 'A strawberry here', body: '1' }],
+      ['comment', { on: 'strawberry', in: 'more strawberry there', body: '2' }], ['comment', { on: 'strawberry', in: 'and a strawberry last', body: '3' }], ['comment', { on: 'cherry', in: 'A strawberry here', body: 'x' }]),
+    calling(['propose', { edits: [], reply: '' }]),
+  );
+  const out = await turn({ prompt: 'p', doc, sidecar, thread: 'c_asked' }, { infer, readFile: seen({ doc, sidecar }) });
+  for (const m of infer.messages.filter((message) => message.role === 'tool')) said.push(m.content);
+  assert.match(said[0], /^Not added: on is in the doc more than once: give in/);
+  assert.match(said[1], /^Not added: in is in the doc more than once/);
+  assert.match(said[5], /^Not added: on is not in in/);
+  const { comments } = appendedComments(HEADER, out.sidecar, { text, by: {}, at: '', threads: new Set(), own: '' });
+  assert.deepEqual(comments.map((c) => [c.body, c.anchor.exact, c.anchor.start]), [['1', 'strawberry', 2], ['2', 'strawberry', 29], ['3', 'strawberry', 53]], 'the app anchors each where the turn meant');
+});
+
 test('a bad comment or proposal goes back saying what to fix', async () => {
   const { doc, sidecar } = await copies();
   const bad = [
@@ -90,7 +108,7 @@ test('a bad comment or proposal goes back saying what to fix', async () => {
     ['propose', { edits: [{ path: sidecar, old: '', new: '{"body":"no"}' }], reply: '' }, /^Nothing was changed\. plan\.md\.comments\.jsonl cannot change: edits change only plan\.md, and comments are the comment tool's/],
     ['propose', { edits: [{ path: 'other.md', old: 'week one', new: 'x' }], reply: '' }, /other\.md cannot change/],
     ['comment', { on: 'the', body: 'Which?' }, /^Not added: on is in the doc more than once/],
-    ['comment', { on: '', body: ' ' }, /^Not added: comment takes \{ on, body \}, body not empty/],
+    ['comment', { on: '', body: ' ' }, /^Not added: comment takes \{ on, in\?, body \}, body not empty/],
     ['comment', { body: 'No on.' }, /^Not added: comment takes/],
   ];
   const good = { edits: [{ path: doc, old: 'week one', new: 'week two' }], reply: '' };
@@ -362,7 +380,7 @@ test('Anthropic: the Messages API, cached up to the last message, the model\'s c
     assert.equal(first.headers['anthropic-version'], '2023-06-01');
     const { tools, messages, ...rest } = second.body;
     assert.deepEqual(rest, { model: 'claude-opus-5-5', max_tokens: 16_000, output_config: { effort: 'low' }, tool_choice: { type: 'auto' } }, 'no thinking setting: the model thinks as it needs');
-    assert.deepEqual(tools.map((t) => [t.name, Object.keys(t.input_schema.properties).join(), t.cache_control]), [['read', 'path,lines', undefined], ['find', 'pattern,path', undefined], ['grep', 'pattern,path', undefined], ['comment', 'on,body', undefined], ['resolve', '', undefined], ['propose', 'edits,reply', undefined]]);
+    assert.deepEqual(tools.map((t) => [t.name, Object.keys(t.input_schema.properties).join(), t.cache_control]), [['read', 'path,lines', undefined], ['find', 'pattern,path', undefined], ['grep', 'pattern,path', undefined], ['comment', 'on,in,body', undefined], ['resolve', '', undefined], ['propose', 'edits,reply', undefined]]);
     assert.deepEqual(messages, [
       { role: 'user', content: [{ type: 'text', text: opening(doc, 'the prompt') }] },
       { role: 'assistant', content: [thinking, { type: 'tool_use', id: 'toolu_1', name: 'read', input: { path: doc, lines: [1, 1] } }] },

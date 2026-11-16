@@ -44,6 +44,7 @@ app fills in `id`, `by` and `at`.
 | Line | Makes |
 | --- | --- |
 | `{"anchor":{"exact":"…"},"body":"…"}` | a thread on that text |
+| `{"anchor":{"exact":"…","in":"…"},"body":"…"}` | a thread on that text where it is in the longer quote `in` |
 | `{"body":"…"}` | a thread on the whole doc |
 | `{"thread":"c_…","body":"…"}` | a reply in that thread |
 | `{"thread":"c_…","resolved":true}` | the run's reply resolves its thread; only the thread the run answers |
@@ -51,12 +52,15 @@ app fills in `id`, `by` and `at`.
 - `exact` quotes the doc copy as the agent left it, as written in the file
   (markup included), and must be found exactly once (any run of whitespace
   may stand for another); the app makes the rest of the anchor. Otherwise
-  the thread is on the whole doc.
+  the thread is on the whole doc. Words that are in the doc more than once
+  are told apart by `in`: a longer quote around them, found exactly once,
+  with `exact` in it exactly once. So a buddy asked to find every place of
+  a word starts a thread on each.
 - Any other change to the copy is ignored: changed or removed lines,
   `resolved` on another thread, lines that are not valid.
 
 The rules on stdin tell the agent to comment only where the user has
-something to decide, to resolve only when asked to, and not to repeat in its reply what the app shows: its
+something to decide or asked it to point at places, to resolve only when asked to, and not to repeat in its reply what the app shows: its
 edits and comments.
 
 ## Agents

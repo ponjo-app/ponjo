@@ -127,31 +127,40 @@ export function appendedComments(before, after, { text, by, at, threads, own }) 
     if (line.thread !== undefined && !threads.has(line.thread)) continue;
     comments.push(newComment({
       thread: line.thread,
-      anchor: line.thread === undefined ? quoted(text, line.anchor?.exact) : undefined,
+      anchor: line.thread === undefined ? quotedAnchor(text, line.anchor) : undefined,
       body: line.body.trim(),
     }, { by, at }));
   }
   return { comments, resolves };
 }
 
-// The anchor of `exact` when it is in `text` once, else null. An agent may
-// quote a hard-wrapped line as one, or the other way round, so a quote not
-// found as it is is looked for with any run of whitespace standing for any
-// other.
-function quoted(text, exact) {
+/**
+ * The anchor a buddy's `{ exact, in? }` names in `text`, else null: `exact`
+ * where it is in `text` once; or, words that are there more than once, where
+ * it is once in `in`, a longer quote that is in `text` once. An agent may
+ * quote a hard-wrapped line as one, or the other way round, so a quote not
+ * found as it is is looked for with any run of whitespace standing for any
+ * other.
+ */
+export function quotedAnchor(text, quote) {
+  const { exact, in: within } = isObject(quote) ? quote : {};
   if (typeof exact !== 'string' || !exact.trim()) return null;
-  const escape = (part) => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return once(text, escape(exact)) ?? once(text, exact.trim().split(/\s+/).map(escape).join('\\s+'));
+  const around = typeof within === 'string' && within.trim() ? once(text, within) : [0, text.length];
+  const found = around && once(text.slice(...around), exact);
+  return found ? createAnchor(text, around[0] + found[0], around[0] + found[1]) : null;
 }
 
-// The anchor of the one match of `pattern` in `text`, else null.
-function once(text, pattern) {
-  const regex = new RegExp(pattern, 'g');
-  const found = regex.exec(text);
-  if (!found) return null;
-  regex.lastIndex = found.index + 1;
-  if (regex.exec(text)) return null;
-  return createAnchor(text, found.index, found.index + found[0].length);
+// [start, end) of `quote` where it is in `text` once, else null.
+function once(text, quote) {
+  const escape = (part) => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  for (const pattern of [escape(quote), quote.trim().split(/\s+/).map(escape).join('\\s+')]) {
+    const regex = new RegExp(pattern, 'g');
+    const found = regex.exec(text);
+    if (!found) continue;
+    regex.lastIndex = found.index + 1;
+    return regex.exec(text) ? null : [found.index, found.index + found[0].length];
+  }
+  return null;
 }
 
 /** Whether `anchor` is `{ exact, prefix, suffix, start }` (§3). */

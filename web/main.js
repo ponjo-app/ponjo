@@ -879,7 +879,7 @@ async function askInText({ from, to, names }) {
 
 // The threads asked from the text that every buddy asked has answered: where
 // each did what was asked and has nothing to say (an empty reply, not failed,
-// an edit, all of it applied), the thread is resolved, as you, so the text it wrote is
+// its edit, if it made one, all applied), the thread is resolved, as you, so the text it wrote is
 // not left marked as commented; a reply with something to read stays open.
 function settleAsks() {
   for (const [id, { buddies, done }] of asked) {
@@ -888,7 +888,7 @@ function settleAsks() {
     if (thread && !thread.resolved && replies.length < buddies) continue;
     asked.delete(id);
     done();
-    if (thread && !thread.resolved && replies.every((c) => !c.body && !c.failed && comments.edits?.[c.id]?.changes > 0 && !comments.edits[c.id].conflict)) {
+    if (thread && !thread.resolved && replies.every((c) => !c.body && !c.failed && comments.edits?.[c.id]?.changes !== 0 && !comments.edits?.[c.id]?.conflict)) {
       send(api.comment({ thread: id, body: '', resolved: true })).catch(() => {});
     }
   }
