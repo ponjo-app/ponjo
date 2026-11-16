@@ -70,8 +70,8 @@ for a window), **e2e** (the packaged app, under xvfb on Linux).
 ### Runner — integration, fake script
 
 - The script runs in a new folder holding only the copy, gets the prompt on
-  stdin and `PONJO_DOC`, `PONJO_PROJECT`, `PONJO_THREAD` and `PONJO_BUDDY`, and its stdout becomes the
-  reply; the folder is gone after.
+  stdin and `PONJO_DOC`, `PONJO_PROJECT`, `PONJO_GROUPS` and `PONJO_BUDDY`, and the lines it
+  appends to its sidecar copy become its comments; the folder is gone after.
 - **The human edits the same lines during a run**: the human's text stays,
   and the turn runs once more on the doc as it is, told what it and they
   changed; colliding again, it lands where no one changed its lines, and

@@ -18,8 +18,8 @@ something.
   resolve, ask AI buddies); one who can only **Read** sees it all and
   changes nothing.
 - **AI buddies** are a name and who it is, in one markdown file. An agent on
-  your computer does their work, when asked. They edit, comment and
-  resolve as whoever asked them may, and resolve a thread only when asked to.
+  your computer does their work, when asked. They edit and comment as
+  whoever asked them may; only people resolve.
 - Only you rename, move, delete or create files, and change settings, AI
   buddies and agents.
 
@@ -65,10 +65,13 @@ AI buddies.
    or whose text was deleted, are one comment icon with their number at the
    top of the margin, opened in place.
 4. **Someone answers.** A person replies in the thread. `@Clippy` in a
-   comment asks the AI buddy Clippy: it edits the doc, may comment on other
-   passages, and replies in the thread.
-5. **Anyone allowed decides.** Keep the edit, undo it from the reply, reply
-   again, or resolve the thread, whoever asked and whoever answered.
+   comment asks the AI buddy Clippy: it replies in the thread, with the
+   edits its reply says why it made, and may comment on other passages. It
+   keeps an eye on the thread while it is open: "each time I write a line,
+   add the next" goes on until you resolve it.
+5. **Anyone allowed decides.** Keep an edit, undo it from the comment it
+   came with, reply again, or resolve the thread, whoever asked and
+   whoever answered.
 
 ## Sharing a project
 
@@ -137,8 +140,10 @@ and 30 days, and by model.
 - `@name` in a comment asks that AI buddy.
 - A reply with no `@` asks the AI buddies already in its **thread**: a first
   comment on a passage and the replies under it.
-- Resolving a thread stops its AI buddies at once, and nothing they did
-  lands. Reopening asks no one.
+- A thread asks its AI buddies until it is resolved: their replies do not
+  end it, and they look at it again whenever the doc or its comments
+  change, and every while. Resolving it, which only people do, stops them
+  at once, and nothing they did there lands. Reopening asks no one.
 - Only people's comments ask: yours, and a teammate's who can edit. A
   turn acts as whoever asked it may when it ends: if they were removed or
   set to Read meanwhile, nothing it did lands. An AI buddy's reply asks no one, and neither does an `@name`
@@ -146,9 +151,10 @@ and 30 days, and by model.
 - A comment that reached the file from outside Ponjo (a `git pull`, another
   editor, another computer) asks no one.
 - A comment that mentions several AI buddies asks each; they work at once.
-- Every run starts fresh with the doc, who the AI buddy is, who asked and the
-  thread. Nothing is remembered in private; anything worth keeping is written
-  in the doc or the thread.
+  Each works on every thread that asks it in one run, one run at a time.
+- Every run starts fresh with the doc, who the AI buddy is, who is in the
+  doc and the threads that ask it. Nothing is remembered in private;
+  anything worth keeping is written in the doc or the threads.
 
 ## Everyone edits, and every edit can be undone
 
@@ -156,13 +162,14 @@ and 30 days, and by model.
   of the doc; when it is done, its changes are merged into the doc as it is
   then, at once, and glow for a moment with its name, as anyone's do.
 - An AI buddy comments as people do: on any passage, or in any thread. It
-  resolves the thread it answers when asked to ("…and resolve"). Its
-  comments ask no one.
-- Under its reply the app shows how many places the run edited; clicking
+  never resolves. Its comments ask no one.
+- **No edit without a comment.** Every edit an AI buddy makes comes with a
+  comment, its own reply or one the app posts for it, empty, when its agent
+  said nothing. Under that comment the app shows how many places it edited; clicking
   it shows them in the text as a revision (and scrolls to them): new text in
   its color, removed text grey and struck through where it was, until you
   type, press Escape or click it again. Edits changed since are left out.
-  The reply only says why, or what you need to decide, and may be empty.
+  The comment only says why, or what you need to decide.
 - **Nothing a person types is lost.** When two people change the same place
   at once, both edits stay, in the order they reached the host. Text one
   deletes while the other types inside it keeps what was typed. If both
@@ -172,19 +179,21 @@ and 30 days, and by model.
 - **People win over AI buddies.** Where a person changed the same lines
   while an AI buddy worked, the buddy does its turn once more on the doc as
   it is then, told what changed. If it collides again, the person's lines
-  stay, the rest of its change lands, and its reply says part of it was not
-  applied: @mention it again to redo it. A change from outside merges the
+  stay, the rest of its change lands, and its comment says part of it was not
+  applied: ask it again to redo it. A change from outside merges the
   same way, without the second try.
 - **Undo is one thing**, for your typing, an AI buddy's run, a teammate's
   change or one from outside: it takes those edits back, all at once, and
   keeps everything written since; where someone changed those lines since,
   their lines stay. **Cmd+Z** (Ctrl+Z) undoes your own typing, never anyone
-  else's. **Undo** on an AI buddy's reply undoes its run; its comments stay;
-  **Redo** there puts it back, by undoing that undo.
+  else's. **Undo** on an AI buddy's comment undoes the edits it came with,
+  and no other comment's; the comment stays; **Redo** there puts them back,
+  by undoing that undo.
   **Undo this change** in history undoes any version, or a burst of typing.
   It works in every window of the team.
-- **A failed run** replies with the end of its output, marked failed.
-  @mention the AI buddy again to retry.
+- **A failed run** says so in each thread that asked it, with the end of
+  its output, marked failed. It is tried again on the doc's next look, and
+  says so again only where someone has written since.
 
 ## Seeing teammates work
 
@@ -266,7 +275,7 @@ and 30 days, and by model.
   toggles that change the same settings. The Markdown view's: the page's font
   and width, Outline and Focus mode. Every doc has a status bar under the
   page: in the Markdown view the doc's word count (of the selection too,
-  when there is one), and the buddies' loop while a comment is unanswered,
+  when there is one), and the buddies' loop while a thread asks them,
   with a pause or play button.
   Switching a view applies at once to every open doc: a Markdown doc turns to
   plain text and back, comments still in the margin, and nothing is written.

@@ -101,40 +101,41 @@ export function newComment({ thread, anchor = null, body, resolved }, { by, at }
 /**
  * What a buddy's run appended to its copy of the sidecar
  * (docs/agent-config.md, Comments): lines in `after` that were not in
- * `before` and have no `id` (a changed comment has one). `comments` are the
- * lines `{ anchor: { exact }, body }`, `{ body }` or `{ thread, body }`,
+ * `before` and have no `id` (a changed comment has one), each with `line`,
+ * its place among them from 0 (PONJO_GROUPS names a comment by it). They
+ * are the lines `{ anchor: { exact }, body }`, `{ body }` or `{ thread, body }`,
  * made comments `by` the buddy `at` a time; a reply needs a thread of
  * `threads`, and a quote found other than once in `text` (the buddy's copy
  * of the doc as it left it, the text it quoted) is on the whole doc.
- * `resolves` is whether a line `{ thread: own, resolved: true }` resolves
- * the thread of the run, `own`, and `resolved` the other threads of
- * `threads` such a line resolves, as a member may. Anything else is ignored.
+ * Anything else is skipped, and so is a line's `resolved`: only people
+ * resolve.
  */
-export function appendedComments(before, after, { text, by, at, threads, own }) {
+export function appendedComments(before, after, { text, by, at, threads }) {
   const had = new Set(before.split('\n'));
   const comments = [];
-  let resolves = false;
-  const resolved = new Set();
+  let line = -1;
   for (const raw of after.split('\n')) {
     if (!raw.trim() || had.has(raw)) continue;
-    let line;
+    line += 1;
+    let parsed;
     try {
-      line = JSON.parse(raw);
+      parsed = JSON.parse(raw);
     } catch {
       continue;
     }
-    if (!isObject(line) || line.id !== undefined) continue;
-    if (line.resolved === true && line.thread === own) resolves = true;
-    else if (line.resolved === true && threads.has(line.thread)) resolved.add(line.thread);
-    if (typeof line.body !== 'string' || !line.body.trim()) continue;
-    if (line.thread !== undefined && !threads.has(line.thread)) continue;
-    comments.push(newComment({
-      thread: line.thread,
-      anchor: line.thread === undefined ? quoted(text, line.anchor?.exact) : undefined,
-      body: line.body.trim(),
-    }, { by, at }));
+    if (!isObject(parsed) || parsed.id !== undefined) continue;
+    if (typeof parsed.body !== 'string' || !parsed.body.trim()) continue;
+    if (parsed.thread !== undefined && !threads.has(parsed.thread)) continue;
+    comments.push({
+      line,
+      comment: newComment({
+        thread: parsed.thread,
+        anchor: parsed.thread === undefined ? quoted(text, parsed.anchor?.exact) : undefined,
+        body: parsed.body.trim(),
+      }, { by, at }),
+    });
   }
-  return { comments, resolves, resolved: [...resolved] };
+  return comments;
 }
 
 // The anchor of `exact` when it is in `text` once, else null. An agent may
@@ -217,9 +218,9 @@ export function threadsOf(comments, mentionable = [], text = null) {
 }
 
 /**
- * The ids the open `thread` (from threadsOf) waits on: each X that a comment
- * by one of `askers` (the ids that may ask) asks, newer than X's last
- * comment there. A comment asks whom it @mentions; one that mentions no one
+ * The ids the open `thread` (from threadsOf) asks: each X that a comment
+ * by one of `askers` (the ids that may ask) asks, until the thread is
+ * resolved: X's comments there do not end it. A comment asks whom it @mentions; one that mentions no one
  * asks the thread's others: the one that opened it and each that an asker
  * @mentioned there before, never an asker. An empty one (it reopened the
  * thread) asks no one (docs/architecture.md, Who answers). Resolving drops
@@ -238,13 +239,10 @@ export function askedBy(thread, askers, taken = () => true) {
   const asked = new Map();
   if (thread.resolved) return asked;
   const theirs = [thread.comments[0].by.id].filter((id) => !askers.includes(id));
-  thread.comments.forEach((c, i) => {
+  thread.comments.forEach((c) => {
     if (c.resolved) asked.clear();
     if (!askers.includes(c.by.id) || c.body.trim() === '' || !taken(c)) return;
-    for (const id of c.mentions.length > 0 ? c.mentions : theirs) {
-      const answered = thread.comments.slice(i + 1).some((r) => r.by.id === id);
-      if (!answered && !askers.includes(id)) asked.set(id, c.by.id);
-    }
+    for (const id of c.mentions.length > 0 ? c.mentions : theirs) if (!askers.includes(id)) asked.set(id, c.by.id);
     for (const id of c.mentions) if (!theirs.includes(id) && !askers.includes(id)) theirs.push(id);
   });
   return asked;

@@ -1,6 +1,8 @@
 #!/bin/sh
 # Runs a buddy on Codex (docs/agent-config.md): the prompt on stdin, the
-# doc's copy in the working folder, the reply on stdout. Yours to change.
+# copies of the doc and its comments in the working folder, which it edits
+# and appends its comments to; its last message on stdout, for the trace.
+# Yours to change.
 # The model is Settings > Agents' if set (agents/codex.json), else Codex's own.
 # It reads the project without --add-dir, which would make it writable.
 # The prompt's paths are the project's: in a project, the first instructions

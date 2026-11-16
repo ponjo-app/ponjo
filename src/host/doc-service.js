@@ -475,47 +475,43 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
     return buddiesHere(folder ? await readBuddies(projectBuddiesDir(folder)) : [], await readBuddies(userBuddiesDir(settingsDir)));
   }
 
-  // The asks waiting on a buddy now (docs/architecture.md, Who answers):
-  // only the comments of those who may write ask: the owner and the
+  // The buddies asked now, each with its inbox (docs/architecture.md, Who
+  // answers): the open threads that ask it, oldest first, and who asked.
+  // Only the comments of those who may write ask: the owner and the
   // players who can edit, and only those this host took (comment), as
   // they were taken: one that reached the sidecar another way is shown but
-  // asks no one. Each says who asked, and what its buddy changed in the doc
-  // since (`mine`, [{ before, after }]): runs whose ask stayed open.
+  // asks no one. `redo` is what its last run did when it collided.
   async function asks() {
     if (closed) return [];
     const here = await buddies();
     if (here.length === 0) return [];
     const { lines, problem } = await readComments();
-    if (problem) return []; // a buddy could not post its reply
+    if (problem) return []; // a buddy could not post its comments
     const editors = (room?.list()?.players ?? []).filter((p) => p.level === 'write').map((p) => p.id);
     const askers = [(await me()).id, ...editors];
     const taken = await readTaken(docPath, settingsDir);
-    const threads = threadsOf(lines.map((l) => l.comment).filter(Boolean), here.map(({ id, name }) => ({ id, name })), text);
-    const found = threads.flatMap((thread) => [...askedBy(thread, askers, taken)].map(([id, asker]) => ({
-      threadId: thread.id, thread, buddy: here.find((b) => b.id === id), buddies: here, asker,
-      redo: redo.get(`${thread.id} ${id}`)?.seen === thread.comments.at(-1).at ? redo.get(`${thread.id} ${id}`) : null,
-    })).filter((ask) => ask.buddy // a thread's opener may be gone
-      && unposted.get(`${ask.threadId} ${ask.buddy.id}`) !== thread.comments.at(-1).id));
-    const versions = found.length ? await readHistory(docPath, settingsDir).catch(() => []) : [];
-    return Promise.all(found.map(async (ask) => ({ ...ask, mine: await changesBy(versions, ask) })));
+    const all = lines.map((l) => l.comment).filter(Boolean);
+    const inboxes = new Map(); // buddy id → { threads, askers }
+    for (const thread of threadsOf(all, here.map(({ id, name }) => ({ id, name })), text)) {
+      for (const [id, asker] of askedBy(thread, askers, taken)) {
+        const inbox = inboxes.get(id) ?? { threads: [], askers: new Set() };
+        inbox.threads.push(thread);
+        inbox.askers.add(asker);
+        inboxes.set(id, inbox);
+      }
+    }
+    return [...inboxes].map(([id, inbox]) => ({ buddy: here.find((b) => b.id === id), buddies: here, threads: inbox.threads, askers: [...inbox.askers], redo: redo.get(id) ?? null }))
+      .filter((inbox) => inbox.buddy // a thread's opener may be gone
+        && unposted.get(inbox.buddy.id) !== all.at(-1)?.id);
   }
-  // What `ask`'s buddy changed in the doc since the thread's last comment:
-  // its versions on the thread, each as lines, oldest first.
-  async function changesBy(versions, { threadId, thread, buddy }) {
-    const since = thread.comments.at(-1).at;
-    const own = versions.filter((v) => v.author?.id === buddy.id && v.thread === threadId && v.at > since);
-    const read = await Promise.all(own.map((v) => readVersion(docPath, settingsDir, v.id).catch(() => null)));
-    return read.filter(Boolean).flatMap(({ text: after, before }) => lineChanges(before ?? '', after));
-  }
-  // The asks whose turn collided with people's edits, to run once more:
-  // thread and buddy → { seen, the `at` of the thread's last comment then;
-  // mine, what the turn changed; theirs, what people changed meanwhile },
-  // each [{ before, after }].
+  // The buddies whose last run collided with people's edits, to run once
+  // more: buddy → { mine, what the run changed; theirs, what people changed
+  // meanwhile }, each [{ before, after }].
   const redo = new Map();
-  // The asks a turn answered whose reply could not be written: thread and
-  // buddy → the thread's latest comment then. Not asked again until the
-  // thread has another comment, so a sidecar that cannot be written never
-  // makes a turn run, and its edit land, again and again.
+  // The buddies whose run's comments could not be written: buddy → the
+  // sidecar's last comment then. Not run again until the comments change,
+  // so a sidecar that cannot be written never makes runs land edits again
+  // and again.
   const unposted = new Map();
 
   // The level of the person with id `id` now: the owner's, a player's, or null.
@@ -546,71 +542,96 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
     await runner.reconcile();
   }
 
-  // A run ended (runner.js): what it changed in its copy is merged with what
-  // landed since the copy was made (merge3) and lands, then its reply is
-  // posted. Where people changed the same lines meanwhile, its ask is run
-  // once more, on the doc as it is now, told what it changed and what they
-  // did (`redo`); colliding again, their lines stay, the rest of its change
-  // lands, and its version says `conflict`. A run whose thread was resolved
-  // meanwhile is dropped whole. Its reply and
+  // A run ended (runner.js): each comment it appended is posted, and the
+  // edits each carries (its group, PONJO_GROUPS) land as a version of their
+  // own, hung on it and merged with what landed since (merge3), so each
+  // comment's edits are undone on their own. An agent that wrote no groups
+  // lands its edits on its last comment, or, with none, on an empty reply
+  // in the first thread that asked it: no edit lands without a comment.
+  // Where people changed the same lines meanwhile, nothing lands, and the
+  // buddy runs once more on the doc as it is now, told what it changed and
+  // what they did (`redo`); colliding again, their lines stay, the rest
+  // lands, and its versions say `conflict`. A reply in a thread resolved
+  // meanwhile is dropped, with its edits. In a thread that asked it, its
   // comments come just after the last comment it saw, so one written while
-  // it worked still asks; the reply resolves the thread when the run asked
-  // to. A run whose ask stays open (`waiting`) lands its edit and comments
-  // the same, with no reply. The buddy acts with the level of whoever asked it, at most write,
-  // asked now: a run whose asker was removed or set to Read meanwhile lands
-  // nothing. Run in `serial`. Resolves to its reply's id (null when none was
-  // posted) and what landed, in words, for its trace.
-  async function finishRun({ threadId, id: buddyId, name, asker, base, seen, edited, comments, body, failed, waiting = false }) {
-    if (!can({ level: await levelOf(asker) }, 'write')) return { reply: null, landed: 'Dropped: whoever asked can no longer edit' };
-    const latest = (await readComments()).lines.map((l) => l.comment).filter(Boolean);
-    const thread = threadsOf(latest, [], base).find((t) => t.id === threadId);
-    if (thread?.resolved) return { reply: null, landed: 'Dropped: the thread was resolved meanwhile' };
-    const again = redo.get(`${threadId} ${buddyId}`)?.seen === seen; // this run is its ask run once more
-    redo.delete(`${threadId} ${buddyId}`);
-    let anchor = null; // where its edit put the thread's text
-    let conflict = false;
-    const id = newId('c');
-    if (edited !== null && edited !== base && !missing) { // a doc gone has nothing to land on
-      const merged = merge3(base, text, edited);
-      if (merged.conflicts > 0 && !again) {
-        redo.set(`${threadId} ${buddyId}`, { seen, mine: lineChanges(base, edited), theirs: lineChanges(base, text) });
-        return { reply: null, landed: 'People changed the same lines meanwhile: it runs once more' }; // unanswered, its ask runs again (runner.js)
-      }
-      conflict = merged.conflicts > 0;
-      await flushTyping();
-      land(diffOps(text, merged.text), { by: buddyId, ...(waiting ? {} : { reply: id }) });
-      await committed(); // landed: windows hear if it is not saved, and the turn is answered
-      anchor = movedAnchor(thread?.anchor, base, edited, text);
-      await noteVersion(text, { kind: 'edit', author: { id: buddyId, name, kind: 'agent' }, thread: threadId, ...(waiting ? {} : { reply: id }), ...(conflict ? { conflict: true } : {}) });
-    }
-    let posted = false;
+  // it worked is after them, still to answer; elsewhere, after the latest.
+  // Only people resolve: a line's `resolved` is ignored (appendedComments).
+  // A failed run says why in each thread that
+  // asked it, unless that thread already ends with its failure. The buddy
+  // acts with the level of whoever asked it, at most write, asked now: a
+  // run one of whose askers was removed or set to Read meanwhile lands
+  // nothing. Run in `serial`. Resolves to the ids of the comments it posted
+  // and what landed, in words, for its trace.
+  async function finishRun({ id: buddyId, name, threadIds, askers, seen, again, base, edited, comments, groups = [], failed, body }) {
+    for (const asker of askers) if (!can({ level: await levelOf(asker) }, 'write')) return { comments: [], landed: 'Dropped: whoever asked can no longer edit' };
+    redo.delete(buddyId);
     const by = { id: buddyId, name, kind: 'ai' };
-    const at = Date.parse(seen) + 1;
-    // Its comments are anchored on its copy as it left it, the text it
-    // quoted; readers find them in the doc as it is now. In another thread,
-    // a reply or a resolve comes after that thread's latest comment.
+    const all = (await readComments()).lines.map((l) => l.comment).filter(Boolean);
+    const threads = threadsOf(all, [], text);
+    const open = new Map(threads.filter((t) => !t.resolved).map((t) => [t.id, t]));
+    const asking = threadIds.filter((id) => open.has(id));
+    const kept = (c) => c.thread === undefined || open.has(c.thread);
+    let posts; // the comments to post, in order
+    let carried = []; // [{ comment, doc (the doc after its edits) }], in order
+    if (failed) {
+      const said = (id) => open.get(id).comments.at(-1);
+      posts = asking.filter((id) => !(said(id).by.id === buddyId && said(id).failed)).map((thread) => ({ ...newComment({ thread, body }, { by, at: '' }), failed: true }));
+    } else {
+      const added = appendedComments(comments.before, comments.after, { text: edited, by, at: '', threads: new Set(threads.map((t) => t.id)) });
+      posts = added.map((a) => a.comment);
+      const byLine = new Map(added.map((a) => [a.line, a.comment]));
+      if (groups.length && groups.every((g) => byLine.has(g?.comment) && typeof g.doc === 'string') && groups.at(-1).doc === edited) {
+        carried = groups.map((g) => ({ comment: byLine.get(g.comment), doc: g.doc }));
+      } else if (edited !== base) {
+        if (!posts.length && asking.length) posts.push(newComment({ thread: asking[0], body: '' }, { by, at: '' }));
+        if (!posts.length) return { comments: [], landed: 'Dropped: the threads that asked it were resolved meanwhile' };
+        carried = [{ comment: posts.at(-1), doc: edited }];
+      }
+      if (edited !== base && !missing) {
+        const merged = merge3(base, text, edited);
+        if (merged.conflicts > 0 && !again) {
+          redo.set(buddyId, { mine: lineChanges(base, edited), theirs: lineChanges(base, text) });
+          return { comments: [], landed: 'People changed the same lines meanwhile: it runs once more' };
+        }
+      }
+    }
+    posts = posts.filter(kept);
+    let prev = base;
+    let conflict = false;
+    for (const { comment, doc } of carried) {
+      if (!missing && kept(comment) && doc !== prev) { // a doc gone has nothing to land on
+        const merged = merge3(prev, text, doc);
+        conflict ||= merged.conflicts > 0;
+        await flushTyping();
+        land(diffOps(text, merged.text), { by: buddyId, reply: comment.id });
+        await committed(); // landed: windows hear if it is not saved
+        // A reply whose edits rewrote its thread's text moves the thread (SPEC §3).
+        const anchor = comment.thread !== undefined && movedAnchor(open.get(comment.thread).anchor, prev, doc, text);
+        if (anchor) comment.anchor = anchor;
+        await noteVersion(text, { kind: 'edit', author: { id: buddyId, name, kind: 'agent' }, thread: comment.thread ?? comment.id, reply: comment.id, ...(merged.conflicts > 0 ? { conflict: true } : {}) });
+      }
+      prev = doc;
+    }
+    if (!posts.length) return { comments: [], landed: failed ? 'Failed, as it said already' : 'Nothing to do' };
+    let posted = true;
     await changeComments((lines) => {
-      if (!lines.some((l) => l.comment?.id === threadId)) return lines;
-      const threads = new Set(lines.filter((l) => l.comment && l.comment.thread === undefined).map((l) => l.comment.id));
-      const added = comments ? appendedComments(comments.before, comments.after, { text: edited, by, at: new Date(at).toISOString(), threads, own: threadId }) : { comments: [], resolves: false, resolved: [] };
-      const after = (other) => new Date(lines.reduce((last, { comment: c }) => (c && (c.id === other || c.thread === other) ? Math.max(last, Date.parse(c.at) + 1) : last), at)).toISOString();
-      for (const c of added.comments) if (c.thread !== undefined && c.thread !== threadId) c.at = after(c.thread);
-      const last = (other) => new Date(Date.parse(after(other)) + 1).toISOString(); // after its reply there, if any
-      added.comments.push(...added.resolved.map((other) => newComment({ thread: other, body: '', resolved: true }, { by, at: last(other) })));
-      const reply = {
-        id, thread: threadId, by, at: new Date(at + 1).toISOString(), body, // after its comments, so it ends its thread
-        ...(anchor ? { anchor } : {}), ...(failed ? { failed: true } : {}), ...(added.resolves ? { resolved: true } : {}),
-      };
-      posted = true;
-      return [...lines, ...added.comments.map((comment) => ({ comment })), ...(waiting ? [] : [{ comment: reply }])];
+      // Each after the one before it in its thread, though written in the same millisecond (SPEC §4).
+      const last = new Map(Object.entries(seen).map(([thread, at]) => [thread, Date.parse(at)]));
+      for (const { comment: c } of lines) if (c && !((c.thread ?? c.id) in seen)) last.set(c.thread ?? c.id, Math.max(last.get(c.thread ?? c.id) ?? 0, Date.parse(c.at)));
+      const now = Date.now();
+      for (const c of posts) {
+        const at = c.thread === undefined ? now : (last.get(c.thread) ?? now) + 1;
+        if (c.thread !== undefined) last.set(c.thread, at);
+        c.at = new Date(at).toISOString();
+      }
+      return [...lines, ...posts.map((comment) => ({ comment }))];
     }, buddyId).catch((error) => {
-      console.error(`Could not post ${name}'s reply:`, error);
-      unposted.set(`${threadId} ${buddyId}`, thread?.comments.at(-1).id);
+      console.error(`Could not post ${name}'s comments:`, error);
+      unposted.set(buddyId, all.at(-1)?.id);
       posted = false;
     });
-    if (!posted) return { reply: null, landed: 'Its reply was not posted' };
-    if (waiting) return { reply: null, landed: 'Landed; its ask stays open' };
-    return { reply: id, landed: conflict ? 'Posted; where it collided with people twice, their lines stayed' : 'Posted' };
+    if (!posted) return { comments: [], landed: 'Its comments were not posted' };
+    return { comments: posts.map((c) => c.id), landed: failed ? 'Failed: it said why' : conflict ? 'Posted; where it collided with people twice, their lines stayed' : 'Posted' };
   }
 
   // ---- undo ----

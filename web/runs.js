@@ -18,7 +18,7 @@ const count = new Intl.NumberFormat();
 /**
  * `api` is web/api.js; `enabled()` whether this window traces runs (the
  * owner's, with Trace runs on); `commentOf(threadId)` is the text of the
- * comment a run answered, or null; `onChange()` follows each new list of
+ * first comment of a thread a run was asked in, or null; `onChange()` follows each new list of
  * runs (a reply's Trace link shows from it); `onOpen()` and `onClose()`
  * when it opens and closes.
  */
@@ -89,10 +89,11 @@ export function createRuns({ api, enabled, commentOf, onChange, onOpen, onClose 
     top.append(el('span', 'pj-version-who', run.buddy));
     if (run.outcome !== 'ok') top.append(el('span', 'pj-version-tag', OUTCOMES[run.outcome] ?? run.outcome, run.outcome === 'stopped' ? {} : { 'data-failed': '' }));
     li.append(avatar(run.buddy, 'agent', true), top, el('span', 'pj-version-time', `${when(run.at)} · ${seconds(run.ms)}`));
-    const comment = commentOf(run.thread);
+    const threads = run.threads ?? []; // a run logged before inboxes has none
+    const comment = commentOf(threads[0]);
     if (comment) {
       const what = el('span', 'pj-version-what');
-      what.append(el('span', 'pj-version-note', `On “${comment.replace(/\s+/g, ' ').trim()}”`));
+      what.append(el('span', 'pj-version-note', `On “${comment.replace(/\s+/g, ' ').trim()}”${threads.length > 1 ? ` and ${threads.length - 1} more` : ''}`));
       li.append(what);
     }
     li.addEventListener('click', () => select(run.run));
@@ -135,7 +136,7 @@ export function createRuns({ api, enabled, commentOf, onChange, onOpen, onClose 
       return;
     }
     if (load !== loads) return; // another run was picked meanwhile
-    page.replaceChildren(...traceNodes(trace, commentOf(trace.thread)));
+    page.replaceChildren(...traceNodes(trace, commentOf(trace.threads?.[0])));
     page.scrollIntoView({ block: 'start' });
   }
 
@@ -150,8 +151,8 @@ export function createRuns({ api, enabled, commentOf, onChange, onOpen, onClose 
 
   return {
     refresh, close, isOpen,
-    /** The run that posted reply `id`, or undefined. */
-    runOf: (id) => runs.find((r) => r.reply === id)?.run,
+    /** The run that posted comment `id`, or undefined. */
+    runOf: (id) => runs.find((r) => r.comments?.includes(id))?.run,
     /** Open on run `run`. */
     show: (run) => open(run),
   };
@@ -222,7 +223,7 @@ function said(sent) {
   return { thinking: sent?.reasoning ?? sent?.reasoning_content ?? '', text: typeof sent?.content === 'string' ? sent.content : '' };
 }
 
-// A call in a few words: `read plan.md 1–40`, `propose 2 edits`.
+// A call in a few words: `read plan.md 1–40`, `comment with 2 edits`.
 function summary({ name, args }) {
   let parsed;
   try {
@@ -231,7 +232,7 @@ function summary({ name, args }) {
     return name;
   }
   if (name === 'read' && typeof parsed.path === 'string') return `read ${parsed.path.split(/[\\/]/).pop()}${Array.isArray(parsed.lines) ? ` ${parsed.lines.join('–')}` : ''}`;
-  if (name === 'propose' && Array.isArray(parsed.edits)) return `propose ${parsed.edits.length} ${parsed.edits.length === 1 ? 'edit' : 'edits'}`;
+  if (name === 'comment' && Array.isArray(parsed.edits) && parsed.edits.length) return `comment with ${parsed.edits.length} ${parsed.edits.length === 1 ? 'edit' : 'edits'}`;
   return name;
 }
 

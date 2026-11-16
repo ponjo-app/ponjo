@@ -1,13 +1,13 @@
-// The Runner (docs/architecture.md, A run): runs the asks waiting on a
-// buddy, and ends the run of an ask that is gone. It looks into the files
-// on the doc's one clock (nextLook): soon after someone changes the doc or
-// its comments, then often, and once nothing has changed for a while,
-// slowly: it never stops by itself, only when a person pauses it. Each look runs every ask still unanswered, those a run said were
-// not done yet (exit WAIT_CODE) as any other; nothing else is kept of an
-// ask. A run copies the doc and its sidecar
-// into a new private folder, runs the agent script there with the prompt on
-// stdin, and hands back the copies and the script's stdout when it exits. The agent knows
-// nothing of Ponjo. Which runs are working lives only here, in memory; what
+// The Runner (docs/architecture.md, A run): runs each buddy that open
+// threads ask, one run at a time, and ends the run of a buddy no thread
+// asks any more. It looks into the files on the doc's one clock
+// (nextLook): soon after someone changes the doc or its comments, then
+// often, and once nothing has changed for a while, slowly: it never stops
+// by itself, only when a person pauses it. Each look runs every buddy asked,
+// with every thread that asks it; nothing else is kept of an ask. A run
+// copies the doc and its sidecar into a new private folder, runs the agent
+// script there with the prompt on stdin, and hands back the copies and the
+// comments' groups of edits when it exits. The agent knows nothing of Ponjo. Which runs are working lives only here, in memory; what
 // each did goes to `log`, with its trace.
 
 import { spawn } from 'node:child_process';
@@ -24,8 +24,6 @@ const TAIL_LINES = 20;
 const RUN_TIMEOUT_MS = 30 * 60 * 1000; // no one can stop a run by hand: one that hangs fails
 const TEST_TIMEOUT_MS = 2 * 60 * 1000;
 const TEST_PROMPT = 'Ponjo is testing that you run. Edit no file and reply only: OK';
-/** The exit code of a run whose ask is not done yet: EX_TEMPFAIL, "try again later". */
-const WAIT_CODE = 75;
 // The doc's next look is this long after a change.
 const CHANGE_MS = 3000;
 
@@ -40,16 +38,14 @@ export function nextLook({ changed, quietSince, now, every, quiet }) {
   return now + every - quietSince <= quiet ? every : Math.max(every, quiet);
 }
 
-const keyOf = (threadId, id) => `${threadId}:${id}`;
-
 export class Runner {
   /**
-   * `asks()` resolves to the asks waiting now: [{ threadId, thread, buddy:
-   * { id, name, about }, buddies, asker, redo, mine }], `buddies` all those the doc
-   * reaches, `asker` the id of whoever asked, `redo` null or, when its turn
-   * collided with people's edits and runs once more, what the turn changed
-   * and what people did ({ mine, theirs }, each [{ before, after }]), `mine`
-   * what its buddy changed since the thread's last comment. `doc()` to { path, text,
+   * `asks()` resolves to the buddies asked now, each with its inbox: [{
+   * buddy: { id, name, about }, buddies, threads, askers, redo }], `buddies`
+   * all those the doc reaches, `threads` those that ask it (threadsOf),
+   * `askers` the ids of whoever asked, `redo` null or, when its last run
+   * collided with people's edits, what that run changed and what people
+   * did ({ mine, theirs }, each [{ before, after }]). `doc()` to { path, text,
    * comments, people }, `path` the doc's in the project (`/`-separated; its name in
    * doc mode), where the run's folder holds its copy, `comments` the
    * sidecar's text or null, and `people` who is in the doc (buildPrompt).
@@ -58,23 +54,24 @@ export class Runner {
    * PONJO_SETTING_<KEY>) }. `folder()` resolves to the project folder
    * the agent is given, or null, `human()` the user, { name, about },
    * `watch()` how the doc keeps looking, { every, quiet } in ms (nextLook). `finish(result)` takes a run
-   * that ended: { threadId, id, name, asker, base, seen, edited, comments, body, failed, waiting },
-   * `seen` the `at` of the thread's last comment the run was given,
-   * `edited` being the doc's copy at the end (null when the run failed),
-   * `comments` { before, after } the sidecar's copy at the start and end,
-   * and `waiting` true, with no `body`, for a run that exited WAIT_CODE;
-   * it resolves, while the doc is open, to what became of it: { reply (its
-   * id, or null), landed (in words) }. `onChange()` runs when a run starts
+   * that ended: { id, name, threadIds, askers, seen, again, base, edited, comments, groups, failed, body },
+   * `seen` the `at` of each of its threads' last comment it was given, by
+   * thread, `again` whether it was run once more (`redo`), `edited` the doc's copy
+   * at the end (null when the run failed), `comments` { before, after } the
+   * sidecar's copy at the start and end, `groups` the lines it wrote to
+   * PONJO_GROUPS, parsed, and `body` why a failed run failed; it resolves,
+   * while the doc is open, to what became of it: { comments (the ids it
+   * posted), landed (in words) }. `onChange()` runs when a run starts
    * or ends, or the doc's clock or its count of asks changes. `log(entry, trace)` takes each run that ended: `entry` { run
-   * (its id), buddy, thread, reply, at, ms, outcome: ok | waiting | failed | timedOut
+   * (its id), buddy, threads, comments, at, ms, outcome: ok | failed | timedOut
    * | stopped, code, usage? (runUsage: its Claude API tokens, when its agent wrote them to its trace) }, and `trace` what it was given and did: { script,
    * prompt, steps (the lines the agent wrote to PONJO_TRACE), stdout,
    * stderr, base, edited, comments, landed }.
    */
   constructor({ asks, doc, agent, folder = async () => null, human = async () => null, watch, finish, onChange = () => {}, log = async () => {}, timeoutMs = RUN_TIMEOUT_MS }) {
     Object.assign(this, { asks, doc, agent, folder, human, watch, finish, onChange, log, timeoutMs });
-    this.runs = new Map(); // keyOf(threadId, id) → { runId, threadId, id, name, asker, from, child, done, cancelled, ended }
-    this.waiting = 0; // the asks unanswered at the last look into the files
+    this.runs = new Map(); // buddy id → { runId, id, name, threadIds, askers, from, child, done, cancelled, ended }
+    this.waiting = 0; // the asks (thread × buddy) open at the last look into the files
     // The doc's clock: when someone last changed it, and the next look, from
     // `from` to `at` (null: at the next change).
     this.clock = { quietSince: Date.now(), from: null, at: null, timer: null };
@@ -87,15 +84,11 @@ export class Runner {
 
   /** The buddies at work: [{ id, name, threadIds }]. */
   statuses() {
-    const byId = new Map();
-    for (const run of this.runs.values()) {
-      byId.set(run.id, { id: run.id, name: run.name, threadIds: [...(byId.get(run.id)?.threadIds ?? []), run.threadId] });
-    }
-    return [...byId.values()];
+    return [...this.runs.values()].map(({ id, name, threadIds }) => ({ id, name, threadIds }));
   }
 
   /**
-   * The doc's loop: { waiting (the asks unanswered), paused, from, at }, its
+   * The doc's loop: { waiting (the asks open), paused, from, at }, its
    * next look between `from` and `at` (both null while paused).
    */
   loop() {
@@ -127,7 +120,7 @@ export class Runner {
     if (!quietly) this.onChange();
   }
 
-  // Run every ask unanswered, then wait for the next look.
+  // Run every buddy asked, then wait for the next look.
   async #look() {
     const since = this.clock.quietSince;
     await this.reconcile({ look: true });
@@ -136,10 +129,11 @@ export class Runner {
   }
 
   /**
-   * Make the runs the asks the files hold: end (without an answer) each run
-   * whose ask is gone, such as a resolved thread or a deleted buddy, and on
-   * a look (`look`), start a run for each ask without one. Call on any
-   * change of the sidecar, the buddies or the settings.
+   * Make the runs the asks the files hold: end (without an answer) the run
+   * of each buddy no thread asks any more, such as one whose threads were
+   * resolved, or a deleted buddy, and on a look (`look`), start a run for
+   * each buddy asked without one. Call on any change of the sidecar, the
+   * buddies or the settings.
    */
   reconcile({ look = false } = {}) {
     if (this.stopped) return Promise.resolve();
@@ -153,17 +147,15 @@ export class Runner {
       do {
         this.again = false;
         try {
-          const asks = await this.asks();
-          const wanted = new Set(asks.map((ask) => keyOf(ask.threadId, ask.buddy.id)));
-          for (const [key, run] of this.runs) if (!wanted.has(key) && !run.ended) this.#end(run);
+          const asked = await this.asks();
+          const wanted = new Set(asked.map((inbox) => inbox.buddy.id));
+          for (const [id, run] of this.runs) if (!wanted.has(id) && !run.ended) this.#end(run);
           if (looking) {
-            for (const ask of asks) {
-              const key = keyOf(ask.threadId, ask.buddy.id);
-              if (!this.runs.has(key) && !this.stopped) this.#start(key, ask);
-            }
+            for (const inbox of asked) if (!this.runs.has(inbox.buddy.id) && !this.stopped) this.#start(inbox);
           }
-          if (asks.length !== this.waiting) {
-            this.waiting = asks.length;
+          const waiting = asked.reduce((n, inbox) => n + inbox.threads.length, 0);
+          if (waiting !== this.waiting) {
+            this.waiting = waiting;
             this.onChange();
           }
         } catch (error) {
@@ -182,7 +174,7 @@ export class Runner {
     killTree(run.child);
   }
 
-  /** End every run without an answer (an unanswered ask runs again next time) and start no more. */
+  /** End every run without an answer (an open ask runs again next time) and start no more. */
   async stop() {
     this.stopped = true;
     this.#lookIn(null);
@@ -198,13 +190,13 @@ export class Runner {
     this.changed();
   }
 
-  #start(key, { threadId, thread, buddy, buddies, asker, redo, mine }) {
-    const run = { runId: newId('r'), threadId, id: buddy.id, name: buddy.name, asker, from: Date.now(), child: null, done: null, cancelled: false, ended: false };
-    this.runs.set(key, run);
-    run.done = this.#run(run, thread, buddy, buddies, redo, mine)
+  #start({ buddy, buddies, threads, askers, redo }) {
+    const run = { runId: newId('r'), id: buddy.id, name: buddy.name, threadIds: threads.map((t) => t.id), askers, from: Date.now(), child: null, done: null, cancelled: false, ended: false };
+    this.runs.set(buddy.id, run);
+    run.done = this.#run(run, threads, buddy, buddies, redo)
       .catch((error) => console.error(`Run of ${buddy.name} failed to finish:`, error))
       .finally(() => {
-        this.runs.delete(key);
+        this.runs.delete(buddy.id);
         this.onChange();
         // Someone changed the doc while it ran, and the look then passed it by: look again soon.
         const soon = this.clock.at !== null && this.clock.at - Date.now() <= CHANGE_MS;
@@ -213,7 +205,7 @@ export class Runner {
     this.onChange();
   }
 
-  async #run(run, thread, buddy, buddies, redo, mine) {
+  async #run(run, threads, buddy, buddies, redo) {
     const { path: docPath, text: base, comments, people } = await this.doc();
     const dir = await mkdtemp(join(tmpdir(), 'ponjo-run-'));
     let aside = null; // the folder its trace is in, out of its sight
@@ -228,34 +220,35 @@ export class Runner {
       const folder = await this.folder();
       aside = await mkdtemp(join(tmpdir(), 'ponjo-trace-'));
       const steps = join(aside, 'trace.jsonl');
-      const prompt = buildPrompt({ buddy, buddies, docName: docPath, sidecarName: docPath + SIDECAR_SUFFIX, thread, project: Boolean(folder), human: await this.human(), redo, mine, people });
+      const groups = join(aside, 'groups.jsonl');
+      const prompt = buildPrompt({ buddy, buddies, docName: docPath, sidecarName: docPath + SIDECAR_SUFFIX, threads, project: Boolean(folder), human: await this.human(), redo, people });
       const at = Date.now();
-      const result = await runScript(script, { cwd: dir, prompt, timeoutMs: this.timeoutMs, env: runEnv({ doc: copy, sidecar, folder, thread: thread.id, buddy: buddy.name, settings, trace: steps }), onChild: (child) => {
+      const result = await runScript(script, { cwd: dir, prompt, timeoutMs: this.timeoutMs, env: runEnv({ doc: copy, sidecar, folder, buddy: buddy.name, settings, trace: steps, groups }), onChild: (child) => {
         run.child = child;
         if (run.cancelled) killTree(child);
       } });
       const stopped = this.stopped || run.cancelled;
-      const waits = result.code === WAIT_CODE;
-      const outcome = stopped ? 'stopped' : result.timedOut ? 'timedOut' : result.code === 0 ? 'ok' : waits ? 'waiting' : 'failed';
-      run.ended = true; // its reply is on its way: its ask going away is that reply
+      const outcome = stopped ? 'stopped' : result.timedOut ? 'timedOut' : result.code === 0 ? 'ok' : 'failed';
+      run.ended = true; // its comments are on their way
       const ms = Date.now() - at;
       const trace = { script, prompt, steps: await traceLines(steps), stdout: result.stdout, stderr: result.stderr, base, edited: null, comments: null, landed: 'Ended without an answer' };
       const usage = runUsage(trace.steps); // its Claude API tokens, when its agent said
       let answered = null; // what finish made of it
       try {
         if (stopped) return; // ended by stop or cancel: no answer
-        const out = { threadId: run.threadId, id: buddy.id, name: buddy.name, asker: run.asker, base, seen: thread.comments.at(-1).at };
-        if (result.code === 0 || waits) {
+        const seen = Object.fromEntries(threads.map((t) => [t.id, t.comments.at(-1).at]));
+        const out = { id: buddy.id, name: buddy.name, threadIds: run.threadIds, askers: run.askers, seen, again: Boolean(redo), base };
+        if (result.code === 0) {
           const bytes = await readFile(copy).catch(() => null);
           trace.edited = (bytes && decodeText(bytes)?.text) ?? base; // as text, like the doc
           trace.comments = { before, after: await readFile(sidecar, 'utf8').catch(() => before) };
-          answered = await this.finish({ ...out, edited: trace.edited, comments: trace.comments, body: waits ? null : result.stdout.trim(), failed: false, waiting: waits });
+          answered = await this.finish({ ...out, edited: trace.edited, comments: trace.comments, groups: (await traceLines(groups)).filter((g) => typeof g === 'object'), failed: false });
         } else {
           answered = await this.finish({ ...out, edited: null, body: failure(script, result), failed: true });
         }
       } finally {
         if (answered) trace.landed = answered.landed;
-        await this.log({ run: run.runId, buddy: buddy.name, thread: run.threadId, reply: answered?.reply ?? null, at: new Date(at).toISOString(), ms, outcome, code: result.code, ...(usage ? { usage } : {}) }, trace);
+        await this.log({ run: run.runId, buddy: buddy.name, threads: run.threadIds, comments: answered?.comments ?? [], at: new Date(at).toISOString(), ms, outcome, code: result.code, ...(usage ? { usage } : {}) }, trace);
       }
     } finally {
       await rm(dir, { recursive: true, force: true });
@@ -286,18 +279,19 @@ export async function testAgent({ script, settings }, timeoutMs = TEST_TIMEOUT_M
 }
 
 // A run's environment (docs/agent-config.md): its copies, the project, the
-// thread it answers, the buddy, where it may write its trace and the agent's settings.
-const runEnv = ({ doc, sidecar, folder, thread = '', buddy, settings, trace = '' }) => ({
+// buddy, where it may write its trace and its comments' groups of edits,
+// and the agent's settings.
+const runEnv = ({ doc, sidecar, folder, buddy, settings, trace = '', groups = '' }) => ({
   PONJO_DOC: doc,
   PONJO_COMMENTS: sidecar,
   PONJO_PROJECT: folder ?? '',
-  PONJO_THREAD: thread,
   PONJO_BUDDY: buddy,
   PONJO_TRACE: trace,
+  PONJO_GROUPS: groups,
   ...Object.fromEntries(Object.entries(settings).map(([key, value]) => [`PONJO_SETTING_${key.toUpperCase()}`, String(value ?? '')])),
 });
 
-// The lines an agent wrote to its trace, each parsed, or as text if it is not JSON.
+// The lines an agent wrote to a file (its trace, its groups), each parsed, or as text if it is not JSON.
 async function traceLines(path) {
   const text = await readFile(path, 'utf8').catch(() => '');
   return text.split('\n').filter((line) => line.trim()).map((line) => {

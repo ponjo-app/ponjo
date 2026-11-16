@@ -338,21 +338,18 @@ test('an image the doc shows, at the door: from the doc\'s place or the project\
   }
 });
 
-test('a buddy asked to resolve resolves its thread with its reply; the other buddies there stop', { timeout: 30_000 }, async () => {
-  await withDoc(async ({ call, state, settingsDir }) => {
-    const { id } = await call('comment', { anchor: null, body: '@Clippy @Pilot hold;; resolve' });
-    await until(async () => (await fakeRuns(settingsDir)).length === 2, 'both runs');
-    await writeFile(join(settingsDir, 'release-Clippy'), '');
-    await until(async () => (await threadOf(state, id)).resolved, 'the thread resolved');
-    await until(async () => (await state()).agents.every((a) => a.state !== 'running'), 'Pilot to stop');
-    await writeFile(join(settingsDir, 'release-Pilot'), '');
-    await pause(500);
-    const { comments } = await threadOf(state, id);
-    assert.deepEqual(comments.map((c) => [c.by.name, c.body, c.resolved ?? false]), [['fzhan', '@Clippy @Pilot hold;; resolve', false], ['Clippy', 'Nothing to change.', true]]);
+test('a buddy asked to resolve cannot: each buddy asked replies, and the thread stays open, asking them', { timeout: 30_000 }, async () => {
+  await withDoc(async ({ call, state }) => {
+    const { id } = await call('comment', { anchor: null, body: '@Clippy @Pilot resolve' });
+    await until(async () => (await threadOf(state, id)).comments.length === 3, 'both replies');
+    const thread = await threadOf(state, id);
+    assert.equal(thread.resolved, false);
+    assert.deepEqual(thread.comments.slice(1).map((c) => [c.body, c.resolved ?? false]), [['Nothing to change.', false], ['Nothing to change.', false]]);
+    assert.equal((await state()).loop.waiting, 2, 'both still asked');
   });
 });
 
-test('a comment written while a buddy works asks it again once it replies', { timeout: 30_000 }, async () => {
+test('a comment written while a buddy works comes after its reply, and its next run answers it', { timeout: 30_000 }, async () => {
   await withDoc(async ({ call, state, settingsDir }) => {
     const { id } = await call('comment', { anchor: null, body: '@Pilot hold' });
     await until(async () => (await fakeRuns(settingsDir)).length === 1, 'the run');

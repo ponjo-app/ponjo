@@ -11,20 +11,24 @@ An agent is a filter ([architecture](architecture.md#a-run)):
 | | |
 | --- | --- |
 | Working folder | new and private; holds only copies of the doc and its sidecar, at the doc's path in the project (in doc mode, under their names) |
-| stdin | the prompt: who the buddy is and the rules, then, under `The situation now:`, what changes from run to run: who is in the doc (the paragraph each person's cursor is in, how long since they typed), the thread, what the buddy did. It names files only by their paths in the project, never where a run keeps them: the script tells its agent that, if it needs to (see [Paths](#paths)) |
+| stdin | the prompt: who the buddy is and the rules, then, under `The situation now:`, what changes from run to run: who is in the doc (the paragraph each person's cursor is in, how long since they typed), and every open thread that asks the buddy, each by its id. It names files only by their paths in the project, never where a run keeps them: the script tells its agent that, if it needs to (see [Paths](#paths)) |
 | `PONJO_DOC` | the doc copy's path |
 | `PONJO_COMMENTS` | the sidecar copy's path |
 | `PONJO_PROJECT` | the project folder, to read only (see [Permissions](#permissions)); empty in doc mode |
-| `PONJO_THREAD` | the id of the thread the run answers, as the prompt names it |
 | `PONJO_BUDDY` | the buddy's name |
 | `PONJO_TRACE` | a file, out of the working folder, the agent may write its steps to (see [Traces](#traces)) |
+| `PONJO_GROUPS` | a file, out of the working folder, the agent may write its comments' edits to (see [Groups](#groups)) |
 | `PONJO_SETTING_<KEY>` | each of the agent's [settings](#settings) |
-| stdout | the reply; may be empty |
-| Exit 0 | success; the app merges the doc copy's edits into the doc and adds the appended comments. |
-| Exit 75 | not done yet: the same, but no reply is posted, and the ask stays open, to run again when the doc or its comments change, or after a while ([architecture](architecture.md#a-buddys-turn)). Only the Ponjo agent exits so (its `wait` tool); the shipped Claude Code and Codex scripts always answer at once. |
-| Any other exit | the reply is marked `failed`, with the end of the output. |
+| stdout | anything; kept in the trace, never posted |
+| Exit 0 | success; the app adds the appended comments and merges the doc copy's edits into the doc, each with the comment it comes with. |
+| Any other exit | a comment marked `failed`, with the end of the output, in each thread that asked it. |
 
-The program needs no Ponjo tool: it reads files, edits them and prints.
+A buddy acts only by commenting: an answer, a question or a change to the
+doc is a comment, and an edit comes with one. It is run again on each look
+of the doc's loop while a thread asks it, until a person resolves the
+thread ([architecture](architecture.md#a-buddys-turn)), so a run with
+nothing to do changes nothing. The program needs no Ponjo tool: it reads
+files and edits them.
 
 ### Paths
 
@@ -48,20 +52,34 @@ app fills in `id`, `by` and `at`.
 | `{"anchor":{"exact":"…"},"body":"…"}` | a thread on that text |
 | `{"body":"…"}` | a thread on the whole doc |
 | `{"thread":"c_…","body":"…"}` | a reply in that thread |
-| `{"thread":"c_…","resolved":true}` | resolves that thread: the run's reply resolves its own; another is resolved after its last comment |
 
 - `exact` quotes the doc copy as the agent left it, as written in the file
   (markup included), and must be found exactly once (any run of whitespace
   may stand for another); the app makes the rest of the anchor. Otherwise
   the thread is on the whole doc.
-- A reply in another thread comes after that thread's last comment.
-- Any other change to the copy is ignored: changed or removed lines, a
-  thread not in the doc, lines that are not valid.
+- In a thread that asked it, its comments come just after the last comment
+  the run was given, so one written while it worked is still to answer;
+  elsewhere, after the thread's last comment.
+- Only people resolve: a line's `resolved` is ignored. So is any other
+  change to the copy: changed or removed lines, a thread not in the doc,
+  lines that are not valid.
 
 A buddy comments as a member does. The rules on stdin tell the agent to do
-what the comment asks of comments; when it asks nothing of them, to comment
-only where the user has something to decide and to resolve nothing; and not
-to repeat in its reply what the app shows: its edits and comments.
+what a thread asks of comments; when it asks nothing of them, to comment
+only where the user has something to decide; and not to repeat in a
+comment what the app shows: its edits.
+
+### Groups
+
+Each comment's edits land as a version of their own, hung on it, so each
+is undone on its own. An agent says which edits come with which comment in
+`PONJO_GROUPS`, a line for each comment with edits, in order:
+`{"comment":<its place among the lines it appended, from 0>,"doc":"<the
+doc after its edits>"}`, the last one's `doc` the copy as it leaves it.
+The Ponjo agent writes them. An agent that writes none, or groups that do
+not end at its copy, lands all its edits with its last comment; with no
+comment, with an empty reply in the first thread that asked it. No edit
+lands without a comment.
 
 ## Agents
 
@@ -161,11 +179,11 @@ keeps the steps it took. The Ponjo agent writes each message of its turn
 
 ## Errors
 
-A run that does not exit 0 is answered with a reply marked `failed`: the
-end of the program's own output, as is, and the script that ran, to run
-yourself. To retry, @mention the buddy again.
+A run that does not exit 0 says so with a comment marked `failed` in each
+thread that asked it: the end of the program's own output, as is, and the
+script that ran, to run yourself. It runs again on the next look, but says
+so again only in a thread where someone has written since.
 
 ## Open
 
-- Check the shipped scripts on macOS, Windows and Linux; Codex's needs
-  `--output-last-message` to print only its reply.
+- Check the shipped scripts on macOS, Windows and Linux.

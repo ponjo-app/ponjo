@@ -60,7 +60,7 @@ test('a run\'s Claude API usage, from its trace, is in its log line, with Trace 
   });
 });
 
-test('a run edits its copy and prints its reply: the doc has the edit, the thread the reply; the run sees only the copy', { timeout: 30_000 }, async () => {
+test('a run edits its copy and appends its reply: the doc has the edit, the thread the reply; the run sees only the copy', { timeout: 30_000 }, async () => {
   await withDoc(async ({ docPath, call, state, runs }) => {
     const id = await comment(call, '@Clippy replace "extra load" with "extra peak load"');
     const [answer] = await until(async () => (await repliesIn(state, id)).length && repliesIn(state, id), 'the reply');
@@ -74,7 +74,7 @@ test('a run edits its copy and prints its reply: the doc has the edit, the threa
     assert.notEqual(run.cwd, dirname(docPath));
     assert.equal(join(basename(dirname(run.doc)), basename(run.doc)), join(basename(run.cwd), 'plan.md'), 'the copy, in its folder (macOS may name /var as /private/var)');
     assert.equal(run.buddy, 'Clippy');
-    assert.equal(run.threadId, id, 'the thread it answers');
+    assert.deepEqual(run.threadIds, [id], 'the threads that ask it');
     assert.equal(run.project, '');
     assert.equal(run.ponjo, false, 'no ponjo to call');
     assert.deepEqual(run.settings, {}, 'an agent with no manifest has no settings');
@@ -92,8 +92,8 @@ test('the human edits the same lines during a run: the turn runs once more, on t
     await release('Clippy');
     await until(async () => (await repliesIn(state, id)).length, 'the reply');
     const [first, again] = await runs();
-    assert.doesNotMatch(first.prompt, /was not applied/);
-    assert.match(again.prompt, /your edit was not applied/);
+    assert.doesNotMatch(first.prompt, /was applied/);
+    assert.match(again.prompt, /none of it was applied/);
     assert.match(again.prompt, /\n-The main risk is that the `sync` service cannot handle the extra load\.\n\+The main risk is that the `sync` service cannot handle the extra peak load\.\n/);
     assert.match(again.prompt, /What members changed meanwhile:\n\n-The main risk .* extra load\.\n\+The main risk .* extra traffic\.$/);
     const text = await readFile(docPath, 'utf8');
@@ -193,7 +193,7 @@ test('a script that exits 1 is answered with a reply marked failed; @mentioning 
     assert.equal((await runs()).length, 2);
     assert.ok(!(await repliesIn(state, id))[1].failed);
     const logged = await runLog(settingsDir);
-    assert.deepEqual(logged.map((l) => [l.doc, l.buddy, l.thread, l.outcome, l.code]), [[docPath, 'Clippy', id, 'failed', 1], [docPath, 'Clippy', id, 'ok', 0]], 'each run is logged');
+    assert.deepEqual(logged.map((l) => [l.doc, l.buddy, l.threads, l.outcome, l.code]), [[docPath, 'Clippy', [id], 'failed', 1], [docPath, 'Clippy', [id], 'ok', 0]], 'each run is logged');
     assert.ok(logged.every((l) => Number.isInteger(l.ms) && !Number.isNaN(Date.parse(l.at))));
   });
 });
@@ -208,7 +208,7 @@ test('a log past 10 MB keeps its newest half, from a line\'s start: runs.jsonl a
     const id = await comment(call, '@Clippy replace "extra load" with "extra peak load"');
     const sizes = () => Promise.all(['runs.jsonl', 'agent.jsonl'].map(async (name) => (await stat(join(logs, name))).size));
     await until(async () => (await sizes()).every((size) => size <= 5 * 1024 * 1024), 'the logs trimmed');
-    assert.equal((await runLog(settingsDir)).at(-1).thread, id, 'the new line is kept');
+    assert.deepEqual((await runLog(settingsDir)).at(-1).threads, [id], 'the new line is kept');
     const agents = (await readFile(join(logs, 'agent.jsonl'), 'utf8')).trim().split('\n');
     assert.ok(agents.every((line) => JSON.parse(line).old), 'whole lines');
   });
@@ -230,27 +230,27 @@ test('with Trace runs on, each run leaves its trace, read by the doc\'s runs: wh
     const id = await comment(call, '@Clippy replace "week one" with "week 1"');
     const [answer] = await until(async () => (await repliesIn(state, id)).length && repliesIn(state, id), 'the reply');
     const [run] = await traced(1);
-    assert.deepEqual([run.buddy, run.thread, run.reply, run.outcome], ['Clippy', id, answer.id, 'ok']);
+    assert.deepEqual([run.buddy, run.threads, run.comments, run.outcome], ['Clippy', [off, id], [answer.id], 'ok'], 'every thread that asks it, the answered one too');
     const { trace } = await call('trace', { run: run.run });
     assert.match(trace.prompt, /fzhan: @Clippy replace "week one"/);
     assert.deepEqual(trace.steps, [{ started: 'fzhan: @Clippy replace "week one" with "week 1"' }, 'not JSON'], 'the lines it wrote to PONJO_TRACE');
-    assert.equal(trace.stdout.trim(), answer.body);
+    assert.ok(trace.comments.after.endsWith(`${JSON.stringify({ thread: id, body: answer.body })}\n`), 'the line it appended');
     assert.ok(trace.base.includes('week one') && trace.edited.includes('week 1') && !trace.edited.includes('week one'));
     assert.ok(trace.comments.before.includes(id), 'the sidecar\'s copy it was given');
     assert.equal(trace.landed, 'Posted');
 
     const failed = await comment(call, '@Clippy fail');
     const [last] = await traced(2);
-    assert.deepEqual([last.thread, last.outcome], [failed, 'failed']);
+    assert.deepEqual([last.threads, last.outcome], [[off, id, failed], 'failed']);
     assert.match((await call('trace', { run: last.run })).trace.stderr, /fake agent: something went wrong/);
 
-    // A run ended without an answer keeps what it wrote before it was ended.
+    // A run ended without an answer, once no thread asks it, keeps what it wrote before it was ended.
     const held = await comment(call, '@Clippy hold');
     await until(async () => (await runs()).length === 4, 'the run to start');
-    await call('comment', { thread: held, body: '', resolved: true });
+    for (const thread of [off, id, failed, held]) await call('comment', { thread, body: '', resolved: true });
     const [ended] = await traced(3);
     const { trace: cut } = await call('trace', { run: ended.run });
-    assert.deepEqual([ended.outcome, ended.reply, cut.landed, cut.steps[0]], ['stopped', null, 'Ended without an answer', { started: 'fzhan: @Clippy hold' }]);
+    assert.deepEqual([ended.outcome, ended.comments, cut.landed, cut.steps[0]], ['stopped', [], 'Ended without an answer', { started: 'fzhan: @Clippy hold' }]);
     await release('Clippy');
 
     await assert.rejects(call('trace', { run: '../settings' }), { code: 'not_found' });
@@ -300,13 +300,13 @@ test('a buddy\'s new comment is anchored on the text it quoted, though a person 
   });
 });
 
-test('a run that is not done yet (exit 75) posts no reply and its ask stays unanswered, on the doc\'s loop: a person\'s edit runs it again 3 s later, and it answers once it can', { timeout: 30_000 }, async () => {
+test('an ask whose time has not come changes nothing, stays open on the doc\'s loop, and a person\'s edit runs it again 3 s later', { timeout: 30_000 }, async () => {
   await withDoc(async ({ settingsDir, call, edit, state, runs }) => {
     const id = await comment(call, '@Clippy until "ten" replace "extra load" with "extra peak load"');
-    await until(async () => (await runLog(settingsDir).catch(() => []))[0]?.outcome === 'waiting', 'a run that is not done yet');
+    await until(async () => (await runLog(settingsDir).catch(() => []))[0]?.outcome === 'ok', 'a run that did nothing');
     await until(async () => (await state()).agents.find((a) => a.name === 'Clippy').state === 'ready', 'the run to end');
     const { loop } = await state();
-    assert.equal(loop.waiting, 1, 'one ask unanswered');
+    assert.equal(loop.waiting, 1, 'one ask open');
     assert.ok(loop.at - loop.from === 10_000, 'the next look 10 s on');
     assert.equal((await repliesIn(state, id)).length, 0, 'no reply');
     const edited = Date.now();
@@ -315,19 +315,21 @@ test('a run that is not done yet (exit 75) posts no reply and its ask stays unan
     assert.ok(Date.now() - edited >= 2500, 'not before 3 s');
     assert.match((await state()).text, /extra peak load/);
     assert.equal((await runs()).length, 2, 'one run more, on the edit');
-    await until(async () => (await state()).loop.waiting === 0, 'nothing unanswered');
-  });
+    assert.equal((await state()).loop.waiting, 1, 'still open: only a person ends it, by resolving');
+  }, { settings: { watchEvery: 10 } });
 });
 
-test('a buddy\'s own edit is no change for the loop: only a person\'s is; a run is told what its buddy changed since the comment', { timeout: 30_000 }, async () => {
+test('a buddy\'s own edit is no change for the loop: only a person\'s is, and its next run sees what it said', { timeout: 30_000 }, async () => {
   await withDoc(async ({ call, edit, state, runs }) => {
-    await comment(call, '@Clippy keep replace "extra load" with "extra peak load"');
-    await until(async () => (await runs()).length === 1 && /extra peak load/.test((await state()).text), 'its edit to land');
+    const id = await comment(call, '@Clippy replace "extra load" with "extra peak load"');
+    await until(async () => (await repliesIn(state, id)).length === 1, 'its reply');
     await new Promise((r) => setTimeout(r, 4000));
-    assert.equal((await runs()).length, 1, 'not run again on its own edit');
+    assert.equal((await runs()).length, 1, 'not run again on its own edit and reply');
     await edit(`${(await state()).text}\nMore.\n`);
     await until(async () => (await runs()).length === 2, 'the run after the person\'s edit', 8000);
-    assert.match((await runs())[1].prompt, /you kept it open and changed plan\.md so[\s\S]*\+.*extra peak load/, 'told what it changed');
+    assert.match((await runs())[1].prompt, /Clippy: Replaced "extra load"\./, 'its reply, in the thread');
+    await new Promise((r) => setTimeout(r, 500));
+    assert.equal((await repliesIn(state, id)).length, 1, 'nothing more to say');
   });
 });
 
@@ -356,18 +358,70 @@ test('the doc looks every watchEvery, and once nothing has changed for watchFor,
   assert.equal(nextLook({ changed: false, quietSince: at, now: at, every: quiet * 2, quiet }), quiet * 2, 'never faster than watchEvery');
 });
 
-test('resolving the thread of an unanswered ask ends it; a new comment in it is a change, and runs it soon', { timeout: 30_000 }, async () => {
-  await withDoc(async ({ call, state, runs }) => {
-    const id = await comment(call, '@Clippy until "ten"');
-    await until(async () => (await runs()).length === 1 && (await state()).agents.find((a) => a.name === 'Clippy').state === 'ready', 'the first run to end');
-    await reply(call, id, 'say Now then.');
-    await until(async () => (await repliesIn(state, id)).length === 1, 'the answer to the new comment', 8000);
-    const other = await comment(call, '@Clippy until "ten"');
-    await until(async () => (await runs()).length === 3 && (await state()).agents.find((a) => a.name === 'Clippy').state === 'ready', 'its run to end');
-    await call('comment', { thread: other, body: '', resolved: true });
-    await until(async () => (await state()).loop.waiting === 0, 'nothing unanswered');
+test('an ask lives until a person resolves its thread: the buddy\'s reply does not end it, resolving does', { timeout: 30_000 }, async () => {
+  await withDoc(async ({ call, edit, state, runs }) => {
+    const id = await comment(call, '@Clippy say Hi.');
+    await until(async () => (await repliesIn(state, id)).length === 1, 'its reply');
+    assert.equal((await state()).loop.waiting, 1, 'answered, and still open');
+    await edit(`${(await state()).text}\nMore.\n`);
+    await until(async () => (await runs()).length === 2, 'a run on the person\'s edit', 8000);
+    await until(async () => (await state()).agents.find((a) => a.name === 'Clippy').state === 'ready', 'its run to end');
+    await call('comment', { thread: id, body: '', resolved: true });
+    await until(async () => (await state()).loop.waiting === 0, 'nothing open');
+    await edit(`${(await state()).text}\nMore still.\n`);
     await new Promise((r) => setTimeout(r, 4000));
-    assert.equal((await runs()).length, 3, 'no run after its thread is resolved');
+    assert.equal((await runs()).length, 2, 'no run once its thread is resolved');
+  });
+});
+
+test('one run a buddy, with every thread that asks it: each reply carries its own edits, as its own version, undone on its own', { timeout: 30_000 }, async () => {
+  await withDoc(async ({ call, state, runs, release }) => {
+    const first = await comment(call, '@Clippy hold replace "extra load" with "extra peak load"');
+    await until(async () => (await runs()).length === 1, 'the run to start');
+    const second = await comment(call, '@Clippy replace "week one" with "week 1"');
+    await new Promise((r) => setTimeout(r, 3500));
+    assert.equal((await runs()).length, 1, 'no second run while the first is on');
+    await release('Clippy');
+    await until(async () => (await repliesIn(state, first)).length === 1, 'the first reply');
+    await until(async () => (await repliesIn(state, second)).length === 1, 'the second reply, in a run of its own after the first', 8000);
+    await until(async () => (await state()).agents.find((a) => a.name === 'Clippy').state === 'ready', 'its runs to end');
+    assert.deepEqual((await runs()).map((r) => r.threadIds), [[first], [first, second]], 'the second run has both threads');
+
+    const one = await comment(call, '@Clippy hold replace "## Risks" with "## Open risks"');
+    const two = await comment(call, '@Clippy replace "The main risk" with "The one risk"');
+    await release('Clippy');
+    const [a] = await until(async () => (await repliesIn(state, one)).length === 1 && repliesIn(state, one), 'a reply in one');
+    const [b] = await until(async () => (await repliesIn(state, two)).length === 1 && repliesIn(state, two), 'a reply in two');
+    const { edits } = await state();
+    assert.notEqual(edits[a.id].version, edits[b.id].version, 'a version each');
+    await call('undo', { id: edits[a.id].version });
+    const text = (await state()).text;
+    assert.match(text, /## Risks/, 'one\'s edit undone');
+    assert.match(text, /The one risk/, 'two\'s edit stays');
+  });
+});
+
+test('no edit lands without a comment: an agent that edits and says nothing gets an empty reply carrying its edits; one that writes no groups, its last comment', { timeout: 30_000 }, async () => {
+  await withDoc(async ({ call, state }) => {
+    const id = await comment(call, '@Clippy quiet replace "extra load" with "extra peak load"');
+    const [empty] = await until(async () => (await repliesIn(state, id)).length && repliesIn(state, id), 'the reply');
+    assert.equal(empty.body, '');
+    assert.ok((await state()).edits[empty.id], 'its edits hang on it, with their Undo');
+    const other = await comment(call, '@Clippy ungrouped replace "week one" with "week 1"');
+    const [said] = await until(async () => (await repliesIn(state, other)).length && repliesIn(state, other), 'the reply');
+    assert.equal(said.body, 'Replaced "week one".');
+    assert.ok((await state()).edits[said.id], 'on its comment');
+  });
+});
+
+test('a failed run says why once in each thread that asks it, not again until someone says more', { timeout: 30_000 }, async () => {
+  await withDoc(async ({ call, edit, state, runs }) => {
+    const id = await comment(call, '@Clippy fail');
+    await until(async () => (await repliesIn(state, id)).length === 1, 'the failure');
+    await edit(`${(await state()).text}\nMore.\n`);
+    await until(async () => (await runs()).length === 2, 'a run on the person\'s edit', 8000);
+    await until(async () => (await state()).agents.find((a) => a.name === 'Clippy').state === 'ready', 'its run to end');
+    assert.equal((await repliesIn(state, id)).length, 1, 'said once');
   });
 });
 
@@ -452,7 +506,7 @@ test('Test runs the picked agent once on an empty doc, with its settings, and sa
   try {
     const works = await call('testAgent');
     assert.equal(works.ok, true);
-    assert.equal(works.out, 'Nothing to change.');
+    assert.equal(works.out, 'Done.');
     const [run] = await fakeRuns(settingsDir);
     assert.deepEqual(run.settings, { PONJO_SETTING_MODEL: 'small', PONJO_SETTING_KEY: 'sk-fake-123' });
     assert.deepEqual(run.files.sort(), ['test.md', 'test.md.comments.jsonl'], 'an empty doc of its own, not this one');
@@ -526,7 +580,7 @@ test('the shipped agents are written when missing, then updated until edited; Re
 test('the prompt says who is in the doc: the paragraph each person\'s cursor is in, and how long since they typed', () => {
   const thread = { id: 'c_thread01', anchor: null, comments: [{ by: { name: 'fzhan', kind: 'human' }, body: 'hi' }] };
   const buddy = { id: 'b_ada', name: 'Ada', about: '' };
-  const base = { buddy, docName: 'a.md', sidecarName: 'a.md.comments.jsonl', thread };
+  const base = { buddy, docName: 'a.md', sidecarName: 'a.md.comments.jsonl', threads: [thread] };
   const prompt = buildPrompt({ ...base, people: [{ name: 'fzhan', lines: [3, 4], edited: 4200 }, { name: 'Ann', lines: [7, 7], edited: null }] });
   assert.match(prompt, /Who is in a\.md now, as the app shows them:\n\nfzhan: cursor in the paragraph at lines 3-4; last edited 4 s ago\nAnn: cursor in the paragraph at line 7; has not edited it since opening it/);
   assert.match(buildPrompt({ ...base, people: [] }), /No one is in a\.md now\./);
@@ -567,21 +621,21 @@ test('a run is told who is in the doc; moving to another paragraph is a change f
 test('the prompt tells a buddy who the other members are, as the app shows them', () => {
   const thread = { id: 'c_thread01', anchor: null, comments: [{ by: { name: 'fzhan', kind: 'human' }, body: 'hi' }] };
   const buddies = [{ id: 'b_ada', name: 'Ada', about: 'Edits for tone.' }, { id: 'b_bo', name: 'Bo', about: '' }, { id: 'b_cy', name: 'Cy', about: 'Checks facts.' }];
-  const prompt = buildPrompt({ buddy: buddies[0], buddies, docName: 'a.md', sidecarName: 'a.md.comments.jsonl', thread });
+  const prompt = buildPrompt({ buddy: buddies[0], buddies, docName: 'a.md', sidecarName: 'a.md.comments.jsonl', threads: [thread] });
   assert.match(prompt, /The other members of the doc:\n\nBo\n\nCy: Checks facts\./);
   assert.doesNotMatch(prompt, /Ada: /, 'not itself');
-  const withUser = buildPrompt({ buddy: buddies[0], buddies, docName: 'a.md', sidecarName: 'a.md.comments.jsonl', thread, human: { name: 'fzhan', about: 'I write novels.' } });
+  const withUser = buildPrompt({ buddy: buddies[0], buddies, docName: 'a.md', sidecarName: 'a.md.comments.jsonl', threads: [thread], human: { name: 'fzhan', about: 'I write novels.' } });
   assert.match(withUser, /The other members of the doc:\n\nfzhan \(owner\): I write novels\.\n\nBo/);
-  assert.match(withUser, /When it does not, start a thread only where a member must decide something, fix small things in the doc instead, and resolve nothing.* \{"thread":"<id>","resolved":true\} to resolve one\./);
-  assert.match(withUser, /The situation now:\n\nThe comment thread you are answering, c_thread01, oldest first/, 'its id in the situation, last');
+  assert.match(withUser, /When it does not, start a thread only where a member must decide something, and fix small things in the doc instead\..* Only people resolve threads\./);
+  assert.match(withUser, /The situation now:\n\nThe threads that ask you, each oldest comment first:\n\nThread c_thread01, on the whole doc:/, 'each by its id, in the situation, last');
   assert.doesNotMatch(prompt, /I write novels/, 'nothing about an owner who wrote nothing');
 });
 
 test('the prompt names files by their paths in the project, a comment\'s from the doc\'s folder', () => {
   const thread = { id: 'c_thread01', anchor: null, comments: [{ by: { name: 'fzhan', kind: 'human' }, body: 'Summarize rule.md' }] };
-  const prompt = (docName, project) => buildPrompt({ buddy: { id: 'b_ada', name: 'Ada', about: '' }, docName, sidecarName: `${docName}.comments.jsonl`, thread, project });
+  const prompt = (docName, project) => buildPrompt({ buddy: { id: 'b_ada', name: 'Ada', about: '' }, docName, sidecarName: `${docName}.comments.jsonl`, threads: [thread], project });
   assert.match(prompt('a.md', true), /every path here is from the project's top folder: .* relative to the doc's folder, the top one\./);
   assert.match(prompt('plans/2026/a.md', true), /relative to the doc's folder, plans\/2026\/: a comment's notes\.md is plans\/2026\/notes\.md/);
-  assert.match(prompt('plans/2026/a.md', true), /First, work out which file the last comment is about\. "The doc" and "this doc" are plans\/2026\/a\.md\. Another file or doc it names .* find it by name/, 'not taken for the doc');
+  assert.match(prompt('plans/2026/a.md', true), /First, work out which file each thread is about\. "The doc" and "this doc" are plans\/2026\/a\.md\. Another file or doc a comment names .* find it by name/, 'not taken for the doc');
   assert.doesNotMatch(prompt('a.md', false), /project/, 'in doc mode, no project');
 });

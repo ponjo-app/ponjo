@@ -2,7 +2,7 @@
 
 An agent of our own, run like Claude Code and Codex: a script in
 `agents/` under the same [contract](agent-config.md#the-contract). Inside,
-an LLM reads and proposes; the program checks and applies.
+an LLM reads and comments; the program checks each comment and applies it.
 
 Claude Code and Codex are black boxes (their prompts, shell and web tools,
 permissions, start-up time) for work that is narrow: read, comment, edit
@@ -12,11 +12,12 @@ laptop runs (an 8B model tried) claim edits they did not make.
 
 ## Principles
 
-1. **Read and propose, never write.** The model's only effect is a
-   proposal; the program checks it and applies it to the copies.
-2. **The tools are the permissions.** `read`, `find`, `grep`, `comment`, `resolve`, `wait` and `propose` only, and
+1. **Read and comment, never write.** The model's only effect is its
+   comments, each with the edits it carries; the program checks each and
+   applies it to the copies.
+2. **The tools are the permissions.** `read`, `find`, `grep` and `comment` only, and
    with Anthropic, its web fetch: no shell, no network but the model's API. Text a teammate wrote can at
-   worst make an undoable proposal.
+   worst make an undoable comment.
 3. **Stateless.** A turn remembers nothing after. Within it, all state is
    the messages, and its trace replays it.
 4. **The doc comes with the prompt; the model asks for the rest.** Nearly
@@ -29,22 +30,24 @@ laptop runs (an 8B model tried) claim edits they did not make.
 
 | Interface | Called by |
 | --- | --- |
-| `turn({ prompt, doc, sidecar, thread }, { infer, readFile, resolve }) → { doc, sidecar, reply }` | the program's `main`; the preview's buddies (`preview/doc-stub.js`) |
+| `turn({ prompt, doc, sidecar }, { infer, readFile, resolve }) → { doc, sidecar, groups, text }` | the program's `main`; the preview's buddies (`preview/doc-stub.js`) |
 | `infer(messages, tools) → { calls: [{ id, name, args }], text, sent, usage }` | `turn`, for each step |
-| `read`, `find`, `grep`, `comment`, `resolve`, `wait`, `propose` | the model, as tools |
+| `read`, `find`, `grep`, `comment` | the model, as tools |
 
 **`main`** is all the I/O, and all of the contract: it reads the prompt on
 stdin, the paths in `PONJO_DOC`, `PONJO_COMMENTS` and `PONJO_PROJECT`,
-the thread in `PONJO_THREAD` and its settings in `PONJO_SETTING_*`, calls `turn`, writes the texts it
-gives back to the copies, prints the reply and exits 0, or, when the turn
-called `wait`, prints nothing and exits 75. A run without a key fails at once,
-saying where to set it.
+and its settings in `PONJO_SETTING_*`, calls `turn`, writes the texts it
+gives back to the copies and the groups to `PONJO_GROUPS`, prints the
+model's last words, for the trace, and exits 0. A run without a key fails
+at once, saying where to set it.
 
-**`turn`** is one buddy answering one thread, with no I/O of its own: it
-thinks, and checks what it proposes. `prompt` is stdin as is; `doc` and
-`sidecar` are the copies' paths in the project, and `resolve` puts a path
-the model wrote in that form. It gives back the copies' new texts and the
-reply, checked once, and throws when the turn fails. It
+**`turn`** is one run of a buddy, on every thread that asks it, with no
+I/O of its own: it thinks, and checks each comment. `prompt` is stdin as
+is; `doc` and `sidecar` are the copies' paths in the project, and
+`resolve` puts a path the model wrote in that form. It gives back the
+copies' new texts, each comment's edits as its group
+([agent config](agent-config.md#groups)), and what the model wrote in its
+last step, and throws when the turn fails. It
 and each `infer` are in `ponjo-core.mjs`, which imports nothing, so a
 browser runs them too; `main` and `readFile` are in `ponjo.mjs`.
 
@@ -77,15 +80,15 @@ call's result), and each `infer` translates them:
 
 All send `tool_choice: "auto"`, the same for every model: current Claude
 models refuse a forced tool call, and Nemotron, forced, answered a question
-with `comment`. A step without one is the model's answer, as for any agent:
-its `text` is the reply.
+with `comment`. A step without one ends the turn; its `text` is only for
+the trace.
 
 A request that failed where the server most likely did no work is sent once
 more, the same body, after its `retry-after` (at most 60 seconds) or 5
 seconds: a 429, 503 or 529, or a connection refused or reset before any
 answer. A repeat is safe: a request has no effect but its answer, a step is
 added to the messages only once its answer arrives, and nothing touches the
-copies before a valid `propose`; a duplicate costs only tokens. Anything
+copies before the turn ends; a duplicate costs only tokens. Anything
 else fails the turn: a 500 may fail the same way again, a name that does not
 resolve is a wrong endpoint, and a timeout has already waited (Node's
 `fetch` gives up on a reply that takes five minutes to start).
@@ -110,29 +113,24 @@ it matches as `read` gives it, cut at 500 characters. Both walk the folders
 with `readFile`, and give at most 100 paths or lines, then how many more,
 saying to narrow the pattern or the path.
 
-**`comment({ on, body })`** starts a thread on `on`, quoted from the doc
-as the edits leave it and found there once, or `""` for the whole doc;
-**`comment({ thread, body })`** replies in a thread, by the id the comments
-file gives it; **`resolve({ thread? })`** resolves a thread, the one the
-turn answers when it names none. A thread not in the doc is refused at once. Each says at once whether it took, and its
-line of the sidecar ([agent config](agent-config.md#comments)) is written
-by the program and added with the proposal. Their own tools, as a member's
-own actions, and not fields of `propose`: a model writing those lines
+**`comment({ thread, body, edits? })`** replies in a thread, by the id the
+comments file gives it; **`comment({ on, body, edits? })`** starts one on
+`on`, quoted from the doc as this comment's edits leave it and found there
+once, or `""` for the whole doc. It is the model's only way to change
+anything, as a member's comment is theirs: a change to the doc is the
+`edits` of the comment that says why, and members undo each comment's
+edits on their own. Each edit replaces `old`, found in the doc exactly
+once, with `new`. A bad call (an edit not found once, a thread not in the
+doc, a quote not found once) is sent back at once, saying what to fix, and
+changes nothing. A good one's edits apply to the doc at once, so what the
+model reads next has them, and its line of the sidecar
+([agent config](agent-config.md#comments)) is written by the program when
+the turn ends. One tool, not fields of another: a model writing the lines
 itself got the path, the JSON or the thread's id wrong, and one filling a
-`resolve` field of its last call resolved each thread it had done what was
-asked in. A comment's text is found as the app finds it: as quoted, else
-with any run of whitespace standing for another, and only once, in the doc
-as the edits leave it. So a comment may quote text the edits write: one not
-in the doc yet says so, and one found more than once is not added. When the
-turn ends its texts are checked again: one the edits change, repeat or never
-write would quietly be on the whole doc, so it is taken back and the turn
-sent back, saying to comment again.
-
-**`wait()`** keeps the comment the turn answers open: what it asks is not
-done yet, or goes on. The edits and comments land, the reply does not, and
-the app runs the turn again when the doc or its comments change, or after a
-while ([architecture](architecture.md#a-buddys-turn)). Its own tool, for
-the same reason as `resolve`.
+field of its last call (a `resolve`, once) set it for every thread. A
+comment's text is found as the app finds it: as quoted, else with any run
+of whitespace standing for another. There is no tool to resolve: only
+people resolve.
 
 **Web pages**, with Anthropic and `web` on: Anthropic's web fetch
 (`web_fetch_20260209`), which runs at Anthropic, not on this computer, so it
@@ -141,26 +139,16 @@ messages: one in the thread or the doc, or on a page it read. So it can send
 nothing out of the doc but which of those links it follows, and a page's
 text, like a doc's, can at worst make an undoable proposal. It is the API's
 own tool, not one of `turn`'s: a step that fetches comes back with the page
-read, and its reply is the text after the last page. A step Anthropic pauses
+read, and its text is what it wrote after the last page. A step Anthropic pauses
 while fetching is asked to go on, as one answer, at most five requests.
-
-**`propose({ edits: [{ old, new }], reply })`** ends the turn. The edits
-change the doc only: `old` must be found in it exactly once. One bad edit
-sends the whole proposal back, saying what to fix. `reply` is printed, and
-may be empty. It runs after the other calls of its step, so a comment sent
-with it is in. In a step that also reads, or with another `propose`, it is
-not run, and says so: it was written before the model saw what the reads
-return.
 
 ## The loop
 
 ```
 step(messages, budget):
   calls = infer(messages, tools)
-  if there are none: return the texts with the comments, and its text as
-    the reply
-  run each call in order, a propose last, and only one in a step with no
-    read, find or grep; a valid one: return the texts, and its reply
+  if there are none: return the texts with the comments, and the groups
+  run each call in order; a comment's edits apply at once
   if budget is 0: fail
   return step(messages + calls + their results, budget - 1)
 ```
@@ -171,9 +159,8 @@ there), so the model knows which docs a comment can mean: every path up to
 200, else the top folder's entries, saying to find the rest. Then the doc
 as `read` gives it: with line numbers, or its outline when it is over
 20,000 characters. The
-tools match the contract it describes: `propose` edits the doc, `comment`
-and `resolve` are its tools to comment and resolve, and the reply is what
-the prompt says to print. Twenty steps, and the turn fails.
+tools match the contract it describes: `comment` is its tool to comment,
+with the edits it carries. Twenty steps, and the turn fails.
 
 ## Architecture
 
@@ -209,8 +196,9 @@ flowchart LR
   runs each case of `scripts/bench-cases.js` a few times on a real model,
   under the contract, and checks what it left: a doc and a thread asking
   Clippy (a question, an instruction, an unclear ask, comments to add, a
-  thread to resolve, a doc that tries to give orders, a comment that means
-  another file in the project). Each check passes
+  thread already answered, a doc that tries to give orders, a comment that
+  means another file in the project). Its replies are its comments in that
+  thread. Each check passes
   right answers and fails wrong ones in `npm test`, without a model; a run
   that fails on the API counts as neither. A failed run's folder and trace
   are kept to read: a model's mistake, or a check's, which then gets that
