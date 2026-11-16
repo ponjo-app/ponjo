@@ -55,7 +55,7 @@ the plain view as source.
   | Table | the table, drawn, with its cells' formatting and alignment; a header with no text left out | the grid, a cell at a time; with the selection in its text, the source, monospace, pipes faded |
   | Mermaid block | its diagram | the source |
   | Footnote (`[^1]`, `[^1]: …`) | a superscript number, in the order of first use; the note small, with its number | a reference touched, a note on its lines: the source |
-  | Paragraph wrapped by hand (a soft break: a line break, not a hard one) | one flowing paragraph, each soft break the space it reads as | on its lines: its lines as written |
+  | Paragraph wrapped by hand (a soft break: a line break, not a hard one) | its lines as written, so the text does not move as the caret comes and goes | the same |
   | Hard break (a line ending in `\` or two spaces) | the break; `\` hidden | touched, `\` shows |
   | Escape (`\*`), entity (`&copy;`) | the character | touched, the source |
   | Front matter, raw HTML | the source, muted | the same |
