@@ -41,7 +41,8 @@ with a way to fix it.
 5. **AI buddies always edit, and every edit can be undone.** See
    [Undoing changes](#undoing-changes).
 6. **Only a person's comment starts a turn:** mine, or a player's who can
-   edit. A turn that keeps its ask open runs again on that same ask.
+   edit. A turn that keeps its ask open runs again on that same ask, when
+the doc next looks.
    Nothing in a shared file makes an AI buddy run, or chooses what
    program runs, on this machine.
 7. **One component does one thing.** If it takes two sentences to say what
@@ -359,7 +360,7 @@ others put in; its result is your typing, merged by character.
 | Store | read, write, watch and move files | `read(path)`, `write(path, text, { ifHash })`, `watch(path, fn)`, `move(from, to)`. Settings, buddies, agent scripts and history are paths and parsers over these, not interfaces of their own |
 | DocService | order every edit to a doc, and write it | `state({ since? })` → text, `{ epoch, rev }`, the `events` missed since, and what this connection may do; `submit({ ops, epoch, rev, id })` → `{ rev }`, or `stale`, or `not_saved`; `comment({ thread?, anchor?, body, resolved? })`; `undo({ id, from? })`, a version (or the versions from `from` to it) undone as above, a turn's from its reply; `cursor({ at, epoch, rev })`; `move(to)`; events `ops` (every landed edit, written), `saved` (`{ error }`: why the file does not hold them, or null), `sidecar`, `room`, `cursors`, `missing`; a window that connects again catches up with `state`. Cursors are never queued behind writes: each is kept at the last rev windows were told of, and moved with every edit told |
 | History | keep the doc as it was at each version | `record`, `list`, `read`; a version may have several authors |
-| Runner | make the running turns equal the asks the sidecar holds | `reconcile()`, `changed(by)`, `statuses()`, `pause(on)`. An ask a turn kept open runs again soon after a change by anyone but its buddy, and every minute until nothing has changed for a while. The asks are people's comments: the owner's and those of players who can edit. A finished turn comes through the door as its buddy, then is logged with its trace |
+| Runner | make the running turns equal the asks the sidecar holds | `reconcile()`, `changed()`, `statuses()`, `loop()`, `pause(on)`. Each look of the doc's one loop runs the unanswered asks: soon after a person's change, and every minute until nothing has changed for a while. The asks are people's comments: the owner's and those of players who can edit. A finished turn comes through the door as its buddy, then is logged with its trace |
 | Room | who plays in the project's room and what each may do, while it is open | for the owner `open()`, `close()`, `lock(locked)`, `setLevel(id, level)` with `level` `read` or `write`, `kick(id)` and `list()` (`{ link, locked, players }`, or null while closed), at the door as `openRoom`, `closeRoom`, `lockRoom`, `setLevel`, `kick` and `room`; a page that opens the link joins as `join({ id, name })`; the host asks it a player's level on each call; event `room` to the owner's windows |
 | ProjectService | the project's files, the same for everyone | `list(path)`, `read(path)`, `open(path)`, for the owner's windows and a teammate's page alike. A path must resolve inside the root and not start with `.`. An agent reads no more than this |
 | Config | own the settings, buddies and agents | `settings.get/patch`, `buddies.save/remove`, `scripts.list/reset` |
@@ -517,19 +518,22 @@ What a comment asks may not be done yet ("once I've finished this
 section") or may go on ("each time I write a line, add the next"). A turn
 then exits 75 ([agent config](agent-config.md#the-contract)): its edits
 and comments land as in step 3, no reply is posted, and its ask stays
-open. It is reconciled as a Kubernetes controller reconciles: the ask is
-the desired state, what a turn is shown the observed state, and each turn
-one stateless look at both. While the doc is open, the ask runs again 3 s
-after the doc or its comments change by anyone but its buddy (an edit
-landing, a comment), and every minute after its last turn until nothing
-has changed for 10 minutes; then not until the next change (Settings >
-Agents: `watchEvery`, `watchFor`). A new comment in its thread runs it at
-once. Its prompt says what the buddy changed in the doc since the comment,
-from the doc's history, so a turn knows its own lines from others'. It
-ends when the buddy replies or a person resolves the thread. Which asks
-are open lives only in memory, as which turns run, and apart from them: a
-buddy's face shows its turns, and the thread a line of its own, "Clippy is
-watching", or "will look again when the doc changes".
+open: unanswered, as any ask. Asks are reconciled as a Kubernetes
+controller reconciles: an ask is the desired state, what a turn is shown
+the observed state, and each turn one stateless look at both. The doc has
+one loop, and no buddy or ask keeps any state of its own: while the doc is
+open, each look runs every unanswered ask not running already, a new one
+as one a turn kept open. The doc looks 3 s after someone changes it or its
+comments (an edit landing, a comment; a buddy's change is none, so no
+buddy wakes itself or another), then every minute until nothing has
+changed for 10 minutes, then at the next change (Settings > Agents:
+`watchEvery`, `watchFor`); and once when it opens. A turn's prompt says
+what its buddy changed in the doc since the comment, from the doc's
+history, so it knows its own lines from others'. An ask ends when its buddy
+replies or a person resolves the thread. The loop lives only in memory, as
+which turns run, and shows apart from them: a buddy's face shows its
+turns, and one line on top of the margin the loop ("Next look in 0:42",
+"Clippy is working…", "Next look when the doc changes").
 
 An AI buddy comments as a person does: new threads, replies in any thread.
 It resolves the thread it answers when the comment asks it to: its reply

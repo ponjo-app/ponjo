@@ -15,6 +15,15 @@ import { agentFace, buddyColor, nameOf, personFace } from './faces.js';
 import { mentionSpans } from '../src/core/mentions.js';
 
 const GAP = 10;
+const SVG = 'http://www.w3.org/2000/svg';
+const RING_R = 6;
+const RING = 2 * Math.PI * RING_R; // the loop's ring, round (app.css: .pj-loop-arc)
+const SOON_MS = 3000; // a look this soon follows a change (src/host/runner.js)
+// `ms` as m:ss.
+const clock = (ms) => {
+  const s = Math.ceil(ms / 1000);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+};
 const MENTION_BEFORE_CARET = /(^|[^A-Za-z0-9._-])@([A-Za-z0-9._-]*)$/;
 
 /**
@@ -33,6 +42,7 @@ const MENTION_BEFORE_CARET = /(^|[^A-Za-z0-9._-])@([A-Za-z0-9._-]*)$/;
 export function createCommentMargin(margin, handlers) {
   let threads = [];
   let agents = []; // the buddies' statuses in this doc: who works on which threads
+  let loop = { waiting: 0, from: null, at: null }; // the doc's loop (src/host/runner.js, loop)
   let me = { id: null, name: '' };
   let edits = {}; // the buddy replies that edited the doc here: { [id]: { state: 'edited' | 'undone', ... } }
   let shownEdits = null; // the reply whose edits the text shows
@@ -61,6 +71,7 @@ export function createCommentMargin(margin, handlers) {
 
     margin.classList.toggle('pj-margin-list', showResolved);
     const cards = [];
+    if (!showResolved && loop.waiting > 0) cards.push(loopRow());
     if (draft) cards.push(draftCard());
     const shown = visibleThreads();
     const aside = beside() ? shown.filter(unplaced) : [];
@@ -117,7 +128,6 @@ export function createCommentMargin(margin, handlers) {
       row.append(avatar(name, 'agent', true, id), el('span', '', `${name} is working…`));
       card.append(row);
     }
-    card.append(...watchNotes(thread));
     if (thread.resolved) {
       const by = thread.comments.findLast((c) => c.resolved).by;
       const row = el('div', 'pj-resolved-row');
@@ -143,7 +153,6 @@ export function createCommentMargin(margin, handlers) {
     const body = el('div', 'pj-body');
     body.append(...withMentions(first.body, handlers.mentionable?.() ?? [], handlers.files?.(), handlers.openFile));
     card.append(messageHead(first, thread.resolved ? null : resolveButton(thread)), body);
-    card.append(...watchNotes(thread));
     const foot = footOf(thread, replies);
     if (foot) card.append(foot);
     return card;
@@ -221,18 +230,47 @@ export function createCommentMargin(margin, handlers) {
   // The buddies at work on a thread not resolved.
   const workingOn = (thread) => (thread.resolved ? [] : agents.filter((a) => a.threadIds.includes(thread.id)));
 
-  // The buddies keeping a thread's ask open, apart from their runs: each
-  // looking, or paused until the doc changes; a line for each, or none.
-  function watchNotes(thread) {
-    if (thread.resolved) return [];
-    const open = agents.flatMap((a) => (a.watching ?? []).filter((w) => w.threadId === thread.id).map((w) => ({ name: a.name, paused: w.paused })));
-    const looking = open.filter((w) => !w.paused).map((w) => w.name);
-    const paused = open.filter((w) => w.paused).map((w) => w.name);
-    return [
-      ...(looking.length ? [el('div', 'pj-card-note', `${listed(looking)} ${looking.length === 1 ? 'is' : 'are'} watching`)] : []),
-      ...(paused.length ? [el('div', 'pj-card-note', `${listed(paused)} will look again when the doc changes`)] : []),
-    ];
+
+  // The buddies' loop, on top while an ask is unanswered: at work, resting
+  // until the next look (its ring fills as the rest runs out), or still
+  // until someone changes the doc. Painted each second while it shows.
+  function loopRow() {
+    const row = el('div', 'pj-loop');
+    const svg = document.createElementNS(SVG, 'svg');
+    svg.setAttribute('class', 'pj-loop-ring');
+    svg.setAttribute('viewBox', '0 0 16 16');
+    svg.setAttribute('aria-hidden', 'true');
+    for (const name of ['pj-loop-track', 'pj-loop-arc']) {
+      const circle = document.createElementNS(SVG, 'circle');
+      Object.entries({ class: name, cx: 8, cy: 8, r: RING_R }).forEach(([k, v]) => circle.setAttribute(k, v));
+      svg.append(circle);
+    }
+    row.append(svg, el('span', 'pj-loop-text'));
+    paintLoop(row);
+    return row;
   }
+  function paintLoop(row = margin.querySelector(':scope > .pj-loop')) {
+    if (!row) return;
+    const working = agents.filter((a) => a.threadIds.length > 0);
+    const now = Date.now();
+    let state = 'resting';
+    let text;
+    let filled = 0;
+    if (working.length > 0) {
+      state = 'working';
+      text = `${listed(working.map((a) => a.name))} ${working.length === 1 ? 'is' : 'are'} working…`;
+    } else if (loop.at === null) {
+      state = 'still';
+      text = 'Next look when the doc changes';
+    } else {
+      filled = Math.min(1, Math.max(0, (now - loop.from) / (loop.at - loop.from)));
+      text = loop.at - loop.from <= SOON_MS ? 'Looking soon' : `Next look in ${clock(loop.at - now)}`;
+    }
+    row.dataset.state = state;
+    row.querySelector('.pj-loop-text').textContent = text;
+    row.querySelector('.pj-loop-arc').style.strokeDashoffset = String(RING * (1 - filled));
+  }
+  setInterval(() => paintLoop(), 1000);
 
   // What a thread shows: a comment that only resolved it shows as the
   // resolved line; a buddy's reply with nothing to say still shows, for what
@@ -455,7 +493,7 @@ export function createCommentMargin(margin, handlers) {
 
   function layout() {
     foldBodies();
-    const placed = [...margin.querySelectorAll(':scope > :is(.pj-card, .pj-unplaced)')];
+    const placed = [...margin.querySelectorAll(':scope > :is(.pj-loop, .pj-card, .pj-unplaced)')];
     if (!beside()) {
       for (const card of placed) card.style.top = '';
       margin.style.height = '';
@@ -529,6 +567,11 @@ export function createCommentMargin(margin, handlers) {
     /** The reply whose edits the text shows, or null. */
     setShownEdits(id) {
       shownEdits = id;
+      render();
+    },
+    /** The doc's loop changed: { waiting, from, at } (src/host/runner.js, loop). */
+    setLoop(next) {
+      loop = next ?? loop;
       render();
     },
     /** The buddies' statuses changed: who works on which threads. */

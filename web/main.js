@@ -291,6 +291,7 @@ async function start() {
   people.render({ agents: initial.agents });
   if (inProject && level === 'owner') api.room().then((room) => people.render({ room }), () => {});
   margin.setAgents(initial.agents);
+  margin.setLoop(initial.loop);
   shownAgents = JSON.stringify(initial.agents);
   applyComments(initial);
   showUnsaved(initial.notSaved);
@@ -406,6 +407,7 @@ async function start() {
     history.changed();
     afterTyping('sidecar', refreshThreads); // a buddy's turn's receipt is read from its version
   });
+  events.on('loop', (data) => margin.setLoop(data));
   events.on('agents', (data) => {
     showAgents(data);
     runs.refresh(); // a run that ended has its trace

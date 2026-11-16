@@ -89,7 +89,10 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
       return { every: watchEvery * 60_000, quiet: watchFor * 60_000 };
     },
     finish: (result) => serial(() => finishRun(result)),
-    onChange: broadcastAgents,
+    onChange: () => {
+      broadcastAgents();
+      emit('loop', runner.loop());
+    },
     log: (entry, trace) => logRun(settingsDir, { doc: docPath, ...entry }, trace),
   });
   let lastSidecarHash = null;
@@ -156,7 +159,7 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
   // Edit `ops` lands on the text, from a window (`id`, the window's name for
   // it) or from here, merged already (merge3): a buddy's turn (buddy `by`,
   // and its `reply` unless its ask stays open), an outside change, an undo.
-  // The buddies' open asks look again (runner.changed).
+  // Anyone's but a buddy's makes the buddies look soon (runner.changed).
   function land(ops, meta = {}) {
     const event = { epoch, rev: rev + 1, ops, id: meta.id ?? null, ...(meta.by ? { by: meta.by } : {}), ...(meta.reply ? { reply: meta.reply } : {}) };
     log.push({ ops, id: meta.id, event });
@@ -168,7 +171,7 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
     text = apply(text, ops);
     rev++;
     told.push(event);
-    runner.changed(meta.by ?? null);
+    if (!meta.by) runner.changed(); // a buddy's edit is no change: a look follows people
   }
 
   // Write what landed, then tell every window: what a window has heard of is
@@ -383,6 +386,7 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
       level: who.level,
       owner: (await me()).id, // whose face wears the crown
       agents: agentStatuses(),
+      loop: runner.loop(),
       cursors: cursorsNow(),
       project: folder !== null, // whether the doc was opened from a project
       // The project's name and the doc's path in it, for a teammate's sidebar.
@@ -418,14 +422,14 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
 
   // Add or remove lines of the sidecar, written whole. Run in `serial`.
   // The comments as `change` makes them, by buddy `by` (its id) or anyone
-  // else (null); the buddies' open asks look again.
+  // else (null), whose change makes the buddies look soon.
   async function changeComments(change, by = null) {
     const current = await readComments();
     if (current.problem) throw new DocError('read_only', `${basename(sidecarPath(docPath))} is read-only here, so it is not changed`);
     const next = await change(current.lines);
     if (next === current.lines) return;
     await writeSidecar(docPath, serializeSidecar(next));
-    runner.changed(by);
+    if (!by) runner.changed();
   }
 
   // A comment by `who`: a first comment (`anchor` on the doc's text, or
@@ -506,14 +510,13 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
     return room?.levelOf(id) ?? null;
   }
 
-  // The buddies the doc reaches, which are at work (`state`, a run's), and
-  // the asks each keeps open (`watching`, apart from its runs).
+  // The buddies the doc reaches, and which are at work.
   let shownBuddies = [];
   function agentStatuses() {
     const statuses = runner.statuses();
     return shownBuddies.map((b) => {
-      const { threadIds = [], watching = [] } = statuses.find((r) => r.id === b.id) ?? {};
-      return { ...b, state: threadIds.length ? 'running' : 'ready', threadIds, watching };
+      const threadIds = statuses.find((r) => r.id === b.id)?.threadIds ?? [];
+      return { ...b, state: threadIds.length ? 'running' : 'ready', threadIds };
     });
   }
 
@@ -542,7 +545,7 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
   // the same, with no reply. The buddy acts with the level of whoever asked it, at most write,
   // asked now: a run whose asker was removed or set to Read meanwhile lands
   // nothing. Run in `serial`. Resolves to its reply's id (null when none was
-  // posted), what landed, in words, for its trace, and whether its ask stays open.
+  // posted) and what landed, in words, for its trace.
   async function finishRun({ threadId, id: buddyId, name, asker, base, seen, edited, comments, body, failed, waiting = false }) {
     if (!can({ level: await levelOf(asker) }, 'write')) return { reply: null, landed: 'Dropped: whoever asked can no longer edit' };
     const latest = (await readComments()).lines.map((l) => l.comment).filter(Boolean);
@@ -587,7 +590,7 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
       posted = false;
     });
     if (!posted) return { reply: null, landed: 'Its reply was not posted' };
-    if (waiting) return { reply: null, landed: 'Landed; its ask stays open', waiting: true };
+    if (waiting) return { reply: null, landed: 'Landed; its ask stays open' };
     return { reply: id, landed: conflict ? 'Posted; where it collided with people twice, their lines stayed' : 'Posted' };
   }
 
@@ -817,6 +820,7 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
   }) ?? (() => {});
   let stopFollowingRoom = followRoom();
   await syncAgents();
+  runner.changed(); // the asks the files hold are looked at once the doc opens
 
   // What a window may ask, by the level it needs (`can`). Each returns what
   // changed, for the window that asked.

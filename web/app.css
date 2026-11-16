@@ -588,6 +588,16 @@ del.pj-buddy-del { margin-right: 0.15em; }
    a buddy at work on one is a dot of its colour on the icon's top left corner, a failed run a red one */
 .pj-unplaced { position: absolute; left: 0; display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 10px 0 8px; border: 0; border-radius: 6px; background: none; font-size: 12px; font-weight: 600; color: var(--text-soft); font-variant-numeric: tabular-nums; transition: top 0.18s ease, background 0.15s; }
 .pj-unplaced .pj-icon { width: 14px; height: 14px; }
+/* the buddies' loop, on top of the margin while an ask is unanswered: one quiet line, its ring the rest until the next look */
+.pj-loop { position: absolute; left: 0; right: 0; display: flex; align-items: center; gap: 7px; height: 26px; padding: 0 8px; font-size: 12px; color: var(--text-soft); font-variant-numeric: tabular-nums; transition: top 0.18s ease; }
+.pj-loop-ring { flex: none; width: 14px; height: 14px; }
+.pj-loop-ring circle { fill: none; stroke-width: 2; }
+.pj-loop-track { stroke: var(--border-strong); }
+.pj-loop-arc { stroke: var(--accent); stroke-linecap: round; stroke-dasharray: 37.7; transform: rotate(-90deg); transform-origin: center; transition: stroke-dashoffset 1s linear; }
+.pj-loop[data-state="working"] .pj-loop-ring { animation: pj-spin 1s linear infinite; }
+.pj-loop[data-state="working"] .pj-loop-arc { stroke-dashoffset: 26 !important; transition: none; }
+.pj-loop[data-state="still"] .pj-loop-arc { stroke: none; }
+@media (prefers-reduced-motion: reduce) { .pj-loop-ring, .pj-loop-arc { animation: none !important; transition: none; } }
 .pj-unplaced:hover { background: var(--hover); color: var(--text); }
 .pj-unplaced[aria-expanded="true"] { visibility: hidden; }
 .pj-unplaced:is(.pj-unplaced-working, .pj-unplaced-failed)::after { content: ""; position: absolute; top: 3px; left: 4px; width: 8px; height: 8px; border-radius: 50%; background: var(--buddy); box-shadow: 0 0 0 2px var(--canvas); }
@@ -899,6 +909,7 @@ label.pj-setting { cursor: pointer; }
   [data-comments-open] .pj-stage { padding-bottom: calc(50vh + 16px); }
   .pj-margin > .pj-empty { margin: 4px 4px 16px; }
   .pj-card { position: static; margin-bottom: 12px; transform: none; }
+  .pj-loop { position: static; margin-bottom: 8px; }
   .pj-card-active { transform: none; }
   .pj-toolbar { margin: 0 8px 8px; }
   .pj-count { display: none; }
