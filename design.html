@@ -6,8 +6,8 @@
   <title>Ponjo Design System</title>
   <!-- A live specimen: the app's own stylesheet and classes, so this page is
        always what the app looks like. Run `npm run build` to view it locally. -->
-  <link rel="stylesheet" href="./dist/web/app.css?v=9658944">
-  <link rel="stylesheet" href="site.css?v=9658944">
+  <link rel="stylesheet" href="./dist/web/app.css?v=b573b3e">
+  <link rel="stylesheet" href="site.css?v=b573b3e">
   <link rel="icon" href="./build/icon.svg" type="image/svg+xml">
 </head>
 <body>
@@ -214,6 +214,7 @@
   <p>A task list item has a box in place of its bullet: a <code>.pj-radio</code>'s outline, square (radius 4); ink with a check when done. Clicking it ticks it.</p>
   <h3>Threads in the margin</h3>
   <p>Each thread is a card beside its text. A thread not open is folded, <code>.pj-card-folded</code>: its first comment cut to two lines, then one line, <code>.pj-foot</code>, on what followed: who replied (their faces), how many replies, how many edits they made and when; or the buddies at work on it, their faces at work; or, in red, that its run failed. The open thread is whole: every reply, its receipts and the reply box, raised (<code>--bg</code>, <code>--shadow-raised</code>). It sits at its text, and the cards above and below give way; one pushed past the top of the margin comes back when it closes.</p>
+  <p>While an ask is unanswered, the buddies' loop is one line on top of the margin, <code>.pj-loop</code>: a 14px ring and 12px text in <code>--text-soft</code>, nothing to press. The ring is the rest until the doc's next look, an <code>--accent</code> arc that fills as it runs out: "Next look in 0:42", or "Looking soon" just after a change. While a buddy's turn runs, a short arc spins: "Clippy is working…". Once nothing has changed for a while, the ring is empty: "Next look when the doc changes". It is the doc's, never a buddy's: faces show turns alone.</p>
   <p>The threads with no place in the text, on the whole doc or whose text was deleted, are one <code>.pj-unplaced</code> at the top of the margin: the comment icon and how many, bare as an icon button, saying which in its tooltip. A buddy at work on one puts a dot of its colour on the icon's top left corner; a failed run, a red one. Opened, they are whole cards at the top, over the cards there, each saying why it has no place, a deleted text quoted and struck through; a click in the doc closes them.</p>
   <div class="ds-row">
     <div class="pj-card pj-card-folded ds-card">
@@ -226,6 +227,9 @@
       <div class="pj-body"><span class="pj-at pj-at-agent" style="--buddy: oklch(0.84 0.17 85)">@Clippy</span> cite the beta numbers</div>
       <div class="pj-foot pj-foot-failed"><span>Clippy's run failed</span><span class="pj-foot-dot">·</span><span>58 min ago</span></div>
     </div>
+    <div style="position: relative; width: 260px; height: 26px"><div class="pj-loop" data-state="resting"><svg class="pj-loop-ring" viewBox="0 0 16 16" aria-hidden="true"><circle class="pj-loop-track" cx="8" cy="8" r="6"/><circle class="pj-loop-arc" cx="8" cy="8" r="6" style="stroke-dashoffset: 26.4"/></svg><span class="pj-loop-text">Next look in 0:42</span></div></div>
+    <div style="position: relative; width: 260px; height: 26px"><div class="pj-loop" data-state="working"><svg class="pj-loop-ring" viewBox="0 0 16 16" aria-hidden="true"><circle class="pj-loop-track" cx="8" cy="8" r="6"/><circle class="pj-loop-arc" cx="8" cy="8" r="6" style="stroke-dashoffset: 26"/></svg><span class="pj-loop-text">Clippy is working…</span></div></div>
+    <div style="position: relative; width: 260px; height: 26px"><div class="pj-loop" data-state="still"><svg class="pj-loop-ring" viewBox="0 0 16 16" aria-hidden="true"><circle class="pj-loop-track" cx="8" cy="8" r="6"/><circle class="pj-loop-arc" cx="8" cy="8" r="6" style="stroke-dashoffset: 37.7"/></svg><span class="pj-loop-text">Next look when the doc changes</span></div></div>
     <div style="position: relative; width: 64px; height: 26px"><button class="pj-unplaced pj-unplaced-working" type="button" style="--buddy: oklch(0.84 0.17 85)" title="1 on the whole document, 2 whose text was deleted"><svg class="pj-icon" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><span>3</span></button></div>
   </div>
   <h3>Tooltip and keys</h3>
@@ -235,6 +239,6 @@
   </div>
 
 </main>
-<script type="module" src="site.js?v=9658944"></script>
+<script type="module" src="site.js?v=b573b3e"></script>
 </body>
 </html>
