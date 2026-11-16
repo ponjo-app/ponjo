@@ -451,10 +451,10 @@ test('the prompt tells a buddy who the other members are, as the app shows them'
   assert.doesNotMatch(prompt, /I write novels/, 'nothing about an owner who wrote nothing');
 });
 
-test('the prompt of a request typed in the doc says to read it there and take it out', () => {
+test('the prompt of a request typed in the doc says to read it there and do only what it means', () => {
   const ada = { id: 'b_ada', name: 'Ada', about: '' };
   const prompt = (exact) => buildPrompt({ buddy: ada, docName: 'a.md', sidecarName: 'a.md.comments.jsonl', thread: { id: 'c_thread01', anchor: exact && { exact }, comments: [{ by: { name: 'fzhan', kind: 'human' }, body: '@Ada' }] } });
-  assert.match(prompt('@ada write an intro'), /typed in the doc itself.*take them out as part of your edit/);
+  assert.match(prompt('@ada write an intro'), /typed in the doc itself.*Asked to comment, review, find or answer: comment or reply, and leave the doc's text as it is, the request too/);
   assert.doesNotMatch(prompt('An intro.'), /typed in the doc itself/, 'a comment on text that does not name it');
   assert.doesNotMatch(prompt(null), /typed in the doc itself/, 'a comment on the whole doc');
 });

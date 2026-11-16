@@ -142,9 +142,9 @@ works, or what went wrong.
   typed out or pasted in the doc's text.
 - A buddy picked from the @ menu in the doc's text is asked without a
   comment box: once the caret has been off its line for 3 seconds
-  (Mod+Enter: at once; Escape: not at all), the buddy reads what the line asks, does
-  it and takes the request out of the text, as a reviewer at work in the
-  doc would: its edits land with its name, and what it has to say is its
+  (Mod+Enter: at once; Escape: not at all), the buddy reads what the line asks and does
+  only that, as a reviewer at work in the doc would (it comments, answers
+  or edits; only text it was asked to write takes the request's place): its edits land with its name, and what it has to say is its
   own comment there. (The ask is a thread of yours that only names the
   buddy; a comment that only names buddies is not shown, only their
   answers.) Each line waits on its own,
