@@ -83,7 +83,7 @@ test('the human edits the same lines during a run: the turn runs once more, on t
     assert.doesNotMatch(first.prompt, /was not applied/);
     assert.match(again.prompt, /your edit was not applied/);
     assert.match(again.prompt, /\n-The main risk is that the `sync` service cannot handle the extra load\.\n\+The main risk is that the `sync` service cannot handle the extra peak load\.\n/);
-    assert.match(again.prompt, /What members changed meanwhile:\n\n-The main risk .* extra load\.\n\+The main risk .* extra traffic\.\n/);
+    assert.match(again.prompt, /What members changed meanwhile:\n\n-The main risk .* extra load\.\n\+The main risk .* extra traffic\.$/);
     const text = await readFile(docPath, 'utf8');
     assert.match(text, /the extra traffic\./);
     assert.doesNotMatch(text, /peak/);
@@ -560,7 +560,8 @@ test('the prompt tells a buddy who the other members are, as the app shows them'
   assert.doesNotMatch(prompt, /Ada: /, 'not itself');
   const withUser = buildPrompt({ buddy: buddies[0], buddies, docName: 'a.md', sidecarName: 'a.md.comments.jsonl', thread, human: { name: 'fzhan', about: 'I write novels.' } });
   assert.match(withUser, /The other members of the doc:\n\nfzhan \(owner\): I write novels\.\n\nBo/);
-  assert.match(withUser, /When it does not, start a thread only where a member must decide something, fix small things in the doc instead, and resolve nothing.* \{"thread":"<id>","resolved":true\} to resolve one \(this one is c_thread01\)/);
+  assert.match(withUser, /When it does not, start a thread only where a member must decide something, fix small things in the doc instead, and resolve nothing.* \{"thread":"<id>","resolved":true\} to resolve one\./);
+  assert.match(withUser, /The situation now:\n\nThe comment thread you are answering, c_thread01, oldest first/, 'its id in the situation, last');
   assert.doesNotMatch(prompt, /I write novels/, 'nothing about an owner who wrote nothing');
 });
 

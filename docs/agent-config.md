@@ -11,7 +11,7 @@ An agent is a filter ([architecture](architecture.md#a-run)):
 | | |
 | --- | --- |
 | Working folder | new and private; holds only copies of the doc and its sidecar, at the doc's path in the project (in doc mode, under their names) |
-| stdin | the prompt: who the buddy is, who is in the doc (the paragraph each person's cursor is in, how long since they typed), the thread, the rules. It names files only by their paths in the project, never where a run keeps them: the script tells its agent that, if it needs to (see [Paths](#paths)) |
+| stdin | the prompt: who the buddy is and the rules, then, under `The situation now:`, what changes from run to run: who is in the doc (the paragraph each person's cursor is in, how long since they typed), the thread, what the buddy did. It names files only by their paths in the project, never where a run keeps them: the script tells its agent that, if it needs to (see [Paths](#paths)) |
 | `PONJO_DOC` | the doc copy's path |
 | `PONJO_COMMENTS` | the sidecar copy's path |
 | `PONJO_PROJECT` | the project folder, to read only (see [Permissions](#permissions)); empty in doc mode |

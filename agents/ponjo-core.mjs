@@ -108,8 +108,13 @@ const TOOLS = [
  */
 export async function turn({ prompt, doc, sidecar, thread }, { infer, readFile, resolve = (path) => path }) {
   // Nearly every turn needs the doc, so it comes with the prompt, as read gives it: a step saved.
-  const opening = [prompt, await listing(readFile, [doc, sidecar]), `The doc, ${doc}, as read gives it:\n\n${await read({ path: doc }, readFile, doc)}`];
-  const messages = [{ role: 'user', content: opening.filter(Boolean).join('\n\n') }];
+  // What stays the same from one run to the next, the prompt's rules and the
+  // doc, is one message, marked to cache; the situation (the prompt's last
+  // part, from SITUATION on) another, after it.
+  const cut = prompt.indexOf(`\n\n${SITUATION}\n\n`);
+  const [rules, situation] = cut < 0 ? [prompt, ''] : [prompt.slice(0, cut), prompt.slice(cut + 2)];
+  const opening = [rules, await listing(readFile, [doc, sidecar]), `The doc, ${doc}, as read gives it:\n\n${await read({ path: doc }, readFile, doc)}`];
+  const messages = [{ role: 'user', content: opening.filter(Boolean).join('\n\n'), cache: true }, ...(situation ? [{ role: 'user', content: situation }] : [])];
   const comments = []; // the sidecar's lines from comment and resolve, as objects, added when the turn ends
   let waiting = false; // wait was called
   const wait = () => { waiting = true; };
@@ -378,6 +383,8 @@ const SETTINGS = 'The provider, endpoint, model and key are in Settings > Agents
 const HINTS = { 401: 'Check the API key.', 404: 'Check the endpoint and the model.' };
 
 const CACHED = { type: 'ephemeral' };
+/** The heading of the app's prompt's last part, which changes from run to run (src/core/prompt.js). */
+export const SITUATION = 'The situation now:';
 
 // Anthropic's web fetch (INFER.anthropic), and how many times a step that
 // pauses while fetching is asked to go on before the turn fails.
@@ -407,7 +414,7 @@ export const INFER = {
       tool_choice: { type: 'auto' },
       tools: [...tools.map(({ name, description, parameters }) => ({ name, description, input_schema: parameters })), ...(web ? [WEB_FETCH] : [])],
       messages: [...messages.map((m, i) => {
-        const last = i === messages.length - 1 && { cache_control: CACHED };
+        const last = (i === messages.length - 1 || m.cache) && { cache_control: CACHED };
         if (m.role === 'assistant') return { role: 'assistant', content: m.sent };
         if (m.role === 'tool') return { role: 'user', content: [{ type: 'tool_result', tool_use_id: m.id, content: m.content, ...last }] };
         return { role: 'user', content: [{ type: 'text', text: m.content, ...last }] };
@@ -437,7 +444,7 @@ export const INFER = {
       reasoning_effort: effort,
       tool_choice: 'auto',
       tools: tools.map((tool) => ({ type: 'function', function: tool })),
-      messages: messages.map((m) => (m.role === 'assistant' ? m.sent : m.role === 'tool' ? { role: 'tool', tool_call_id: m.id, content: m.content } : m)),
+      messages: messages.map((m) => (m.role === 'assistant' ? m.sent : m.role === 'tool' ? { role: 'tool', tool_call_id: m.id, content: m.content } : { role: m.role, content: m.content })),
     });
     const calls = (message.tool_calls ?? []).map(({ id, function: { name, arguments: args } }) => ({ id, name, args }));
     return { calls, text: message.content ?? '', sent: message, usage };

@@ -71,7 +71,7 @@ call's result), and each `infer` translates them:
 
 | `provider` | API | Its own |
 | --- | --- | --- |
-| `anthropic` | Messages (`/v1/messages`) | `output_config.effort`, the model thinking as it needs; its messages sent back as they came, thinking included; prompt caching up to the last message, moved each step, so a step pays in full only for what is new; web fetch, with `web`; a refusal or a cut-off answer fails the turn |
+| `anthropic` | Messages (`/v1/messages`) | `output_config.effort`, the model thinking as it needs; its messages sent back as they came, thinking included; prompt caching up to the last message, moved each step, so a step pays in full only for what is new, and on the first message, the prompt's rules and the doc, which stay the same from one look of the doc's loop to the next (the prompt's situation, from `The situation now:` on, is a message after it); web fetch, with `web`; a refusal or a cut-off answer fails the turn |
 | `openai` | Chat Completions at `endpoint` (OpenAI, OpenRouter and others) | `reasoning_effort`; caching is the API's own |
 | `nebius` | Chat Completions at Nebius Token Factory, for NVIDIA's Nemotron models | no effort |
 
