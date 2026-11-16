@@ -61,8 +61,7 @@ export function createDocBar(bar, { onPause, canPause }) {
       state = 'still';
       text = 'Paused';
     } else if (loop.at === null) {
-      state = 'still';
-      text = 'Next look when the doc changes';
+      text = 'Looking soon'; // between a stop and a look, as the doc moves
     } else {
       filled = Math.min(1, Math.max(0, (now - loop.from) / (loop.at - loop.from)));
       text = loop.at - loop.from <= SOON_MS ? 'Looking soon' : `Next look in ${clock(loop.at - now)}`;

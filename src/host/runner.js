@@ -1,8 +1,8 @@
 // The Runner (docs/architecture.md, A run): runs the asks waiting on a
 // buddy, and ends the run of an ask that is gone. It looks into the files
 // on the doc's one clock (nextLook): soon after someone changes the doc or
-// its comments, then every few minutes until nothing has changed for a
-// while. Each look runs every ask still unanswered, those a run said were
+// its comments, then often, and once nothing has changed for a while,
+// slowly: it never stops by itself, only when a person pauses it. Each look runs every ask still unanswered, those a run said were
 // not done yet (exit WAIT_CODE) as any other; nothing else is kept of an
 // ask. A run copies the doc and its sidecar
 // into a new private folder, runs the agent script there with the prompt on
@@ -31,11 +31,12 @@ const CHANGE_MS = 3000;
 /**
  * When the doc's next look is, in ms from `now`: CHANGE_MS after a change
  * (`changed`), else `every` from now while that is no more than `quiet`
- * after the last change (`quietSince`); null once it is, until the next change.
+ * after the last change (`quietSince`); once it is, slowly: `quiet` from now,
+ * until the next change.
  */
 export function nextLook({ changed, quietSince, now, every, quiet }) {
   if (changed) return CHANGE_MS;
-  return now + every - quietSince <= quiet ? every : null;
+  return now + every - quietSince <= quiet ? every : Math.max(every, quiet);
 }
 
 const keyOf = (threadId, id) => `${threadId}:${id}`;
@@ -94,8 +95,7 @@ export class Runner {
 
   /**
    * The doc's loop: { waiting (the asks unanswered), paused, from, at }, its
-   * next look between `from` and `at` (both null: at the next change, or
-   * once resumed).
+   * next look between `from` and `at` (both null while paused).
    */
   loop() {
     return { waiting: this.waiting, paused: this.paused, from: this.clock.from, at: this.clock.at };

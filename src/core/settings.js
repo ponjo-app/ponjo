@@ -17,8 +17,8 @@ export const SETTINGS_VERSION = 3;
  * one not there takes the default its declaration gives (viewSettings,
  * agentSettings). `trace` keeps each run's trace (src/host/doc-service.js
  * logRun), to read in a doc's Runs. The doc's buddies look again every
- * `watchEvery` seconds, until nothing has changed for `watchFor` seconds
- * (src/host/runner.js).
+ * `watchEvery` seconds, and once nothing has changed for `watchFor` seconds,
+ * every `watchFor` seconds (src/host/runner.js).
  */
 export const DEFAULT_SETTINGS = Object.freeze({
   id: null,
@@ -36,7 +36,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
 /** The seconds `watchEvery` and `watchFor` may be, as Settings > Agents offers them. */
 export const WATCH_FIELDS = Object.freeze([
   { key: 'watchEvery', type: 'number', label: 'Look again every', hint: 'How often the buddies look at the doc again while a comment is unanswered; they also look 3 s after any change.', unit: 's', min: 5, max: 3600, step: 5, default: 10 },
-  { key: 'watchFor', type: 'number', label: 'Stop looking after', hint: 'How long nothing may change before they stop looking; the next change starts them again.', unit: 's', min: 60, max: 14400, step: 60, default: 600 },
+  { key: 'watchFor', type: 'number', label: 'Slow down after', hint: 'Once nothing has changed for this long, they look only this often, until the next change.', unit: 's', min: 60, max: 14400, step: 60, default: 600 },
 ]);
 
 const oneOf = (...values) => (v) => values.includes(v);
