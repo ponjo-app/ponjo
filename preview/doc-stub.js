@@ -1218,9 +1218,10 @@ the plain view as source.
 - **Keys:** Undo, Redo, the formatting above, Comment, Find, and focus mode
   (Ctrl+Shift+.). Enter in a paragraph or a heading starts a new
   paragraph a blank line apart, as in Typora, and Shift+Enter is a new line
-  in it. Enter in a list item continues the list (an empty item ends it,
-  with a blank line), and in a quote the quote; in a code block it is a new
-  line. Backspace right after a list item's marker or a quote's
+  in it; Backspace at the start of that paragraph, or Delete at the end of
+  the one before, takes the whole break and joins them again. Enter in a
+  list item continues the list (an empty item ends it, with a blank line),
+  and in a quote the quote; in a code block it is a new line. Backspace right after a list item's marker or a quote's
   takes the marker away, a blank line keeping the line apart from the
   list or quote above it; after a nested item's marker it moves the item
   out a level. Tab and Shift+Tab indent and outdent the lines of a list item
