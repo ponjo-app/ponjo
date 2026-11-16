@@ -48,9 +48,9 @@ export class Runner {
    * collided with people's edits and runs once more, what the turn changed
    * and what people did ({ mine, theirs }, each [{ before, after }]), `mine`
    * what its buddy changed since the thread's last comment. `doc()` to { path, text,
-   * comments }, `path` the doc's in the project (`/`-separated; its name in
-   * doc mode), where the run's folder holds its copy, and `comments` the
-   * sidecar's text or null.
+   * comments, people }, `path` the doc's in the project (`/`-separated; its name in
+   * doc mode), where the run's folder holds its copy, `comments` the
+   * sidecar's text or null, and `people` who is in the doc (buildPrompt).
    * `agent()` resolves to the agent that runs every buddy: { script (its
    * path), settings ({ <key>: value }, each handed to the run as
    * PONJO_SETTING_<KEY>) }. `folder()` resolves to the project folder
@@ -201,7 +201,7 @@ export class Runner {
   }
 
   async #run(run, thread, buddy, buddies, redo, mine) {
-    const { path: docPath, text: base, comments } = await this.doc();
+    const { path: docPath, text: base, comments, people } = await this.doc();
     const dir = await mkdtemp(join(tmpdir(), 'ponjo-run-'));
     let aside = null; // the folder its trace is in, out of its sight
     try {
@@ -215,7 +215,7 @@ export class Runner {
       const folder = await this.folder();
       aside = await mkdtemp(join(tmpdir(), 'ponjo-trace-'));
       const steps = join(aside, 'trace.jsonl');
-      const prompt = buildPrompt({ buddy, buddies, docName: docPath, sidecarName: docPath + SIDECAR_SUFFIX, thread, project: Boolean(folder), human: await this.human(), redo, mine });
+      const prompt = buildPrompt({ buddy, buddies, docName: docPath, sidecarName: docPath + SIDECAR_SUFFIX, thread, project: Boolean(folder), human: await this.human(), redo, mine, people });
       const at = Date.now();
       const result = await runScript(script, { cwd: dir, prompt, timeoutMs: this.timeoutMs, env: runEnv({ doc: copy, sidecar, folder, thread: thread.id, buddy: buddy.name, settings, trace: steps }), onChild: (child) => {
         run.child = child;

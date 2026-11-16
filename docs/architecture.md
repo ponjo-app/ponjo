@@ -523,13 +523,17 @@ controller reconciles: an ask is the desired state, what a turn is shown
 the observed state, and each turn one stateless look at both. The doc has
 one loop, and no buddy or ask keeps any state of its own: while the doc is
 open, each look runs every unanswered ask not running already, a new one
-as one a turn kept open. The doc looks 3 s after someone changes it or its
-comments (an edit landing, a comment; a buddy's change is none, so no
-buddy wakes itself or another), then every minute until nothing has
+as one a turn kept open. The doc looks 3 s after someone changes what a
+turn is shown (an edit landing, a comment, a person's cursor moving to
+another paragraph, a person coming or going; a buddy's change is none, so
+no buddy wakes itself or another), then every minute until nothing has
 changed for 10 minutes, then at the next change (Settings > Agents:
 `watchEvery`, `watchFor`); and once when it opens. A turn's prompt says
-what its buddy changed in the doc since the comment, from the doc's
-history, so it knows its own lines from others'. An ask ends when its buddy
+who is in the doc, people only: the paragraph each one's cursor is in, as
+lines, and how long since each typed, the signs people go by to tell
+whether someone has finished. It says too what its buddy changed in the
+doc since the comment, from the doc's history, so it knows its own lines
+from others'. An ask ends when its buddy
 replies or a person resolves the thread. The loop lives only in memory, as
 which turns run, and shows apart from them: a buddy's face shows its
 turns, and one line on top of the margin the loop ("Next look in 0:42",

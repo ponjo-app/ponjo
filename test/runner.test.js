@@ -10,7 +10,7 @@ import { mkdir, mkdtemp, readFile, readdir, stat, writeFile } from 'node:fs/prom
 import { tmpdir } from 'node:os';
 import { basename, delimiter, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { buildPrompt } from '../src/core/prompt.js';
+import { buildPrompt, paragraphAt } from '../src/core/prompt.js';
 import { nextLook } from '../src/host/runner.js';
 import { agentScript, agentsDir, installAgents, listAgents } from '../src/store/agents.js';
 import { readSecrets, secretTails, writeSecrets } from '../src/store/secrets.js';
@@ -493,6 +493,47 @@ test('the shipped agents are written when missing, then updated until edited; Re
   assert.equal(await readFile(codex, 'utf8'), await readFile(join(ROOT, 'agents', 'codex'), 'utf8'), 'an unedited older version is replaced');
   await installAgents(dir, { platform: 'linux', reset: 'claude' });
   assert.equal(await readFile(claude, 'utf8'), await readFile(join(ROOT, 'agents', 'claude'), 'utf8'));
+});
+
+test('the prompt says who is in the doc: the paragraph each person\'s cursor is in, and how long since they typed', () => {
+  const thread = { id: 'c_thread01', anchor: null, comments: [{ by: { name: 'fzhan', kind: 'human' }, body: 'hi' }] };
+  const buddy = { id: 'b_ada', name: 'Ada', about: '' };
+  const base = { buddy, docName: 'a.md', sidecarName: 'a.md.comments.jsonl', thread };
+  const prompt = buildPrompt({ ...base, people: [{ name: 'fzhan', lines: [3, 4], edited: 4200 }, { name: 'Ann', lines: [7, 7], edited: null }] });
+  assert.match(prompt, /Who is in a\.md now, as the app shows them:\n\nfzhan: cursor in the paragraph at lines 3-4; last edited 4 s ago\nAnn: cursor in the paragraph at line 7; has not edited it since opening it/);
+  assert.match(buildPrompt({ ...base, people: [] }), /No one is in a\.md now\./);
+  assert.doesNotMatch(buildPrompt(base), /Who is in|No one is in/, 'nothing when the app does not say');
+});
+
+test('a paragraph is the lines around a place up to a blank line', () => {
+  const text = '# Title\n\nOne line,\nand another.\n\nLast.\n';
+  const at = (offset) => { const { from, to } = paragraphAt(text, offset); return text.slice(from, to); };
+  assert.equal(at(0), '# Title');
+  assert.equal(at(text.indexOf('and')), 'One line,\nand another.');
+  assert.equal(at(text.indexOf('\n\nLast') + 1), '', 'a blank line is its own');
+  assert.equal(at(text.length), '', 'the end, after the last line break');
+});
+
+test('a run is told who is in the doc; moving to another paragraph is a change for the loop, moving within one is not', { timeout: 40_000 }, async () => {
+  await withDoc(async ({ call, state, runs }) => {
+    await comment(call, '@Clippy until "never"');
+    await until(async () => (await runs()).length === 1 && (await state()).agents.find((a) => a.name === 'Clippy').state === 'ready', 'the first run to end');
+    assert.match((await runs())[0].prompt, /No one is in plan\.md now\./, 'no cursor yet');
+    const place = async (word) => {
+      const { text, epoch, rev } = await state();
+      await call('cursor', { at: text.indexOf(word), epoch, rev });
+    };
+    await place('We plan'); // someone comes: a change
+    await until(async () => (await runs()).length === 2, 'a run once someone is here', 8000);
+    assert.match((await runs())[1].prompt, /Who is in plan\.md now, as the app shows them:\n\n\S+: cursor in the paragraph at lines 3-4; has not edited it since opening it/);
+    await until(async () => (await state()).agents.find((a) => a.name === 'Clippy').state === 'ready', 'that run to end');
+    await place('six features'); // the same paragraph
+    await new Promise((r) => setTimeout(r, 4000));
+    assert.equal((await runs()).length, 2, 'no run on a move within the paragraph');
+    await place('The main risk'); // another one
+    await until(async () => (await runs()).length === 3, 'a run on a move to another paragraph', 8000);
+    assert.match((await runs())[2].prompt, /cursor in the paragraph at lines 8-9/);
+  });
 });
 
 test('the prompt tells a buddy who the other members are, as the app shows them', () => {

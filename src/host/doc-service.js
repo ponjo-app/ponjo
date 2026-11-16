@@ -18,6 +18,7 @@ import { sameName } from '../core/mentions.js';
 import { BuddyError, buddiesHere, checkBuddyPatch } from '../core/buddies.js';
 import { DEFAULT_SETTINGS, SettingsError } from '../core/settings.js';
 import { lineChanges, merge3 } from '../core/diff.js';
+import { paragraphAt } from '../core/prompt.js';
 import { apply, diffOps, mapOffset, transform } from '../core/ot.js';
 import { PROTOCOL } from '../core/protocol.js';
 import { StoreError, formFor, hashText, moveDoc, readDoc, readSidecarText, sidecarPath, writeAtomic, writeDoc, writeSidecar } from '../store/files.js';
@@ -80,7 +81,7 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
   const placeInFolder = async () => relative(await realpath(folder).catch(() => folder), await realpath(docPath).catch(() => docPath)).split(sep).join('/');
   const runner = new Runner({
     asks: () => asks(),
-    doc: async () => ({ path: folder ? await placeInFolder() : basename(docPath), text, comments: await readSidecarText(docPath) }),
+    doc: async () => ({ path: folder ? await placeInFolder() : basename(docPath), text, comments: await readSidecarText(docPath), people: peopleHere() }),
     agent: pickAgent,
     folder: async () => folder,
     human: async () => ({ name: (await me()).name, about: (await settingsWithId(settingsDir)).about.trim() }),
@@ -146,6 +147,14 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
   const cursorsNow = () => [...cursors.values()].map((cursor) => ({
     ...cursor, at: log.slice(toldRev - logStart, rev - logStart).reduce((at, landed) => mapOffset(at, landed.ops), cursor.at),
   }));
+  const editedAt = new Map(); // person id → when they last typed here
+  // The people in the doc, for a buddy's prompt (src/core/prompt.js): each
+  // by the paragraph their cursor is in, as lines, and how long since they typed.
+  const lineOf = (offset) => text.slice(0, offset).split('\n').length;
+  const peopleHere = () => cursorsNow().map(({ id, name, at }) => {
+    const { from, to } = paragraphAt(text, at);
+    return { name, lines: [lineOf(from), lineOf(to)], edited: editedAt.has(id) ? Date.now() - editedAt.get(id) : null };
+  });
   // Windows' edits the file holds that a service before this one may not
   // have told them of (noteWritten), kept in each note after.
   const landedBefore = await writtenEdits(docPath, settingsDir, opened.hash);
@@ -284,6 +293,7 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
   let typing = null;
   let typists = []; // who typed since the last version, as comments name them
   function typed(who) {
+    editedAt.set(who.id, Date.now());
     if (!typists.some((t) => t.id === who.id)) typists.push(byOf(who));
     clearTimeout(typing);
     typing = setTimeout(() => serial(flushTyping), SAVE_DELAY_MS);
@@ -346,8 +356,11 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
     if (!Number.isInteger(at) || at < 0 || !Number.isInteger(from)) throw new DocError('bad_input', 'expected { at, rev, epoch }');
     if (of !== epoch || from < logStart || from > toldRev) return {};
     const now = log.slice(from - logStart, toldRev - logStart).reduce((offset, landed) => mapOffset(offset, landed.ops), at);
+    const before = cursors.get(who.id);
     cursors.set(who.id, { id: who.id, name: who.name, at: now });
     tellCursors(who.id);
+    // Someone came, or moved to another paragraph: what the buddies see changed.
+    if (!before || paragraphAt(text, before.at).from !== paragraphAt(text, now).from) runner.changed();
     return {};
   }
 
@@ -921,7 +934,9 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
     owner: async () => ({ ...(await me()), level: 'owner' }),
     /** Person `id` has no window or page on the doc any more: their cursor goes. */
     leave(id) {
-      if (cursors.delete(id)) tellCursors();
+      if (!cursors.delete(id)) return;
+      tellCursors();
+      runner.changed(); // someone left: what the buddies see changed
     },
     /** What a window hears first: the version of the messages, whether the doc is missing, and who is at work. */
     hello: () => ({ protocol: PROTOCOL, missing, agents: agentStatuses() }),
