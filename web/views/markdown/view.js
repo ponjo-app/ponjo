@@ -107,7 +107,11 @@ export async function createMarkdownView({
   const { view, editor } = createEditor({
     stage, host, text, editable, onChange, onEdit, onMarkClick, onLayout, keys,
     extensions: [
-      Prec.highest(keymap.of([{ key: 'Enter', run: endBlock }, { key: 'Backspace', run: unmark }])), // before Markdown's own
+      Prec.highest(keymap.of([
+        { key: 'Enter', run: endBlock },
+        { key: 'Backspace', run: () => unmark() || unbreak(-1) },
+        { key: 'Delete', run: () => unbreak(1) },
+      ])), // before Markdown's own
       // CommonMark and GFM only: CodeMirror's markdownLanguage reads ~x~ as subscript, ^x^ and :x: too.
       yamlFrontmatter({ content: markdown({ base: commonmarkLanguage, codeLanguages: languages, extensions: [GFM, singleTilde, footnotes] }) }),
       syntaxHighlighting(codeColours),
@@ -303,6 +307,33 @@ export async function createMarkdownView({
     const apart = line.number > 1 && state.doc.line(line.number - 1).text.trim() ? '\n' : '';
     const changes = [{ from: line.from + marker[1].length, to: main.head }, { from: line.from, insert: apart }];
     view.dispatch({ changes, selection: { anchor: line.from + apart.length + marker[1].length }, userEvent: 'delete.backward' });
+    return true;
+  }
+
+  // Backspace at the start of a paragraph a blank line after a paragraph or
+  // an ATX heading, and Delete at the end of one a blank line before a
+  // paragraph, take the whole break Enter makes (endBlock): the two join, as
+  // Enter split them. The line after the break may be empty, as Enter leaves
+  // it, when nothing joins it to the next block.
+  function unbreak(dir) {
+    const { state } = view;
+    const { doc } = state;
+    const { main } = state.selection;
+    if (!editable || !main.empty) return false;
+    const line = doc.lineAt(main.head);
+    const [above, below] = dir < 0 ? [line.number - 2, line.number] : [line.number, line.number + 2];
+    const blank = (n) => !doc.line(n).text.trim();
+    if (main.head !== (dir < 0 ? line.from : line.to) || above < 1 || below > doc.lines || blank(above) || !blank(above + 1)) return false;
+    if (blank(below) && below < doc.lines && !blank(below + 1)) return false;
+    const names = (pos, side) => [...around(pos, side)].map((node) => node.name);
+    const plain = (all) => !all.some((name) => /^(ListItem|Blockquote|FencedCode|CodeBlock|Table|HTMLBlock)$/.test(name));
+    const top = names(doc.line(above).to, -1);
+    if (!plain(top) || !top.some((name) => /^(Paragraph|ATXHeading\d)$/.test(name))) return false;
+    const after = doc.line(below);
+    const next = blank(below) ? null : names(after.from, 1);
+    if (next && (!plain(next) || !next.includes('Paragraph'))) return false;
+    const from = doc.line(above).to;
+    view.dispatch({ changes: { from, to: after.from + /^\s*/.exec(after.text)[0].length }, selection: { anchor: from }, userEvent: dir < 0 ? 'delete.backward' : 'delete.forward' });
     return true;
   }
 
