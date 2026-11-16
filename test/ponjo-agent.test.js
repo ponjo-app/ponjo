@@ -74,7 +74,7 @@ test('a turn reads the doc by line number, comments, resolves and proposes an ed
     'the copies\' new texts: the program writes the sidecar\'s lines, the thread resolved once',
   );
   assert.deepEqual(infer.messages[0], { role: 'user', content: opening(doc, 'the prompt') }, 'the first message is the prompt as is, then the doc');
-  assert.deepEqual(infer.tools.map((t) => t.name), ['read', 'find', 'grep', 'comment', 'resolve', 'propose']);
+  assert.deepEqual(infer.tools.map((t) => t.name), ['read', 'find', 'grep', 'comment', 'reply', 'resolve', 'propose']);
   assert.deepEqual([infer.messages[1].role, infer.messages[1].sent], ['assistant', 'as the API sent it'], 'the model\'s message, kept as its API sent it');
   assert.deepEqual(infer.messages[2], { role: 'tool', id: infer.messages[1].calls[0].id, content: '8\tThe main risk is that the `sync` service cannot handle the extra load.' });
   assert.deepEqual(results(infer.messages).slice(1), ['Added when your turn ends, on the whole doc.', 'Added when your turn ends, on line 8.', 'This thread is resolved when your turn ends.', 'This thread is resolved when your turn ends.']);
@@ -96,6 +96,25 @@ test('a comment on words that are in the doc more than once says where: in a lon
   assert.match(said[5], /^Not added: on is not in in/);
   const { comments } = appendedComments(HEADER, out.sidecar, { text, by: {}, at: '', threads: new Set(), own: '' });
   assert.deepEqual(comments.map((c) => [c.body, c.anchor.exact, c.anchor.start]), [['1', 'strawberry', 2], ['2', 'strawberry', 29], ['3', 'strawberry', 53]], 'the app anchors each where the turn meant');
+});
+
+test('a turn replies in another thread of the doc, by its first comment\'s id; not in its own, and not in one that is not there', async () => {
+  const { doc, sidecar } = await copies();
+  await writeFile(sidecar, `${HEADER}{"id":"c_asked","by":{"id":"u","name":"fan","kind":"human"},"at":"2026-01-01T00:00:00.000Z","body":"@Clippy answer Noor too"}\n{"id":"c_other","by":{"id":"n","name":"Noor","kind":"human"},"at":"2026-01-01T00:00:00.000Z","body":"When?"}\n{"id":"c_reply","thread":"c_other","by":{"id":"u","name":"fan","kind":"human"},"at":"2026-01-01T00:00:01.000Z","body":"Soon."}\n`);
+  const infer = fake(
+    calling(['reply', { thread: 'c_other', body: 'In week two.' }], ['reply', { thread: 'c_asked', body: 'x' }], ['reply', { thread: 'c_reply', body: 'x' }], ['reply', { thread: 'c_other', body: ' ' }]),
+    calling(['propose', { edits: [], reply: 'Answered there.' }]),
+  );
+  const before = await readFile(sidecar, 'utf8');
+  const out = await turn({ prompt: 'p', doc, sidecar, thread: 'c_asked' }, { infer, readFile: seen({ doc, sidecar }) });
+  const said = infer.messages.filter((message) => message.role === 'tool').map((message) => message.content);
+  assert.match(said[0], /^Added when your turn ends/);
+  assert.match(said[1], /^Not added: in the thread you were asked in, your reply is propose's reply/);
+  assert.match(said[2], /^Not added: no thread c_reply/);
+  assert.match(said[3], /^Not added: reply takes \{ thread, body \}, body not empty/);
+  const { comments } = appendedComments(before, out.sidecar, { text: SAMPLE, by: {}, at: '', threads: new Set(['c_asked', 'c_other']), own: 'c_asked' });
+  assert.deepEqual(comments.map((c) => [c.thread, c.body]), [['c_other', 'In week two.']], 'the app adds it as the buddy\'s reply there');
+  assert.equal(out.reply, 'Answered there.');
 });
 
 test('a bad comment or proposal goes back saying what to fix', async () => {
@@ -380,7 +399,7 @@ test('Anthropic: the Messages API, cached up to the last message, the model\'s c
     assert.equal(first.headers['anthropic-version'], '2023-06-01');
     const { tools, messages, ...rest } = second.body;
     assert.deepEqual(rest, { model: 'claude-opus-5-5', max_tokens: 16_000, output_config: { effort: 'low' }, tool_choice: { type: 'auto' } }, 'no thinking setting: the model thinks as it needs');
-    assert.deepEqual(tools.map((t) => [t.name, Object.keys(t.input_schema.properties).join(), t.cache_control]), [['read', 'path,lines', undefined], ['find', 'pattern,path', undefined], ['grep', 'pattern,path', undefined], ['comment', 'on,in,body', undefined], ['resolve', '', undefined], ['propose', 'edits,reply', undefined]]);
+    assert.deepEqual(tools.map((t) => [t.name, Object.keys(t.input_schema.properties).join(), t.cache_control]), [['read', 'path,lines', undefined], ['find', 'pattern,path', undefined], ['grep', 'pattern,path', undefined], ['comment', 'on,in,body', undefined], ['reply', 'thread,body', undefined], ['resolve', '', undefined], ['propose', 'edits,reply', undefined]]);
     assert.deepEqual(messages, [
       { role: 'user', content: [{ type: 'text', text: opening(doc, 'the prompt') }] },
       { role: 'assistant', content: [thinking, { type: 'tool_use', id: 'toolu_1', name: 'read', input: { path: doc, lines: [1, 1] } }] },
@@ -446,7 +465,7 @@ test('OpenAI-compatible: Chat Completions at the endpoint, with the key and the 
     assert.equal(url, '/v1/chat/completions');
     assert.equal(headers.authorization, 'Bearer sk-test');
     assert.deepEqual([body.model, body.reasoning_effort, body.tool_choice], ['gpt-5', 'medium', 'auto']);
-    assert.deepEqual(body.tools.map((t) => [t.type, t.function.name]), [['function', 'read'], ['function', 'find'], ['function', 'grep'], ['function', 'comment'], ['function', 'resolve'], ['function', 'propose']]);
+    assert.deepEqual(body.tools.map((t) => [t.type, t.function.name]), [['function', 'read'], ['function', 'find'], ['function', 'grep'], ['function', 'comment'], ['function', 'reply'], ['function', 'resolve'], ['function', 'propose']]);
     assert.deepEqual(body.messages, [{ role: 'user', content: opening(doc, 'the prompt') }, read, { role: 'tool', tool_call_id: 'call_a', content: '1\t# Q4 Launch Plan' }]);
     assert.equal((await infer(body.messages, [])).text, 'Fine as is.', 'an answer without a call: its content');
   } finally {

@@ -9,7 +9,7 @@ const MAX_FOUND = 100; // paths find, or lines grep, gives before it asks to nar
 const MAX_LINE = 500; // characters of a line grep shows
 const MAX_LISTED = 200; // the project's files the first message lists; over that, its top folder's
 const SIDECAR = '.comments.jsonl';
-const ANY_TOOL = 'read, find, grep, comment, resolve or propose';
+const ANY_TOOL = 'read, find, grep, comment, reply, resolve or propose';
 const READS = ['read', 'find', 'grep'];
 const NOT_RUN = 'Not run: propose once, in a step with no read, find or grep: it ends your turn, so it comes after what you read.';
 const PATTERN = 'A JavaScript regular expression, not a glob. Case is ignored unless it has a capital letter.';
@@ -63,6 +63,18 @@ const TOOLS = [
         body: { type: 'string', description: 'What the member must decide, or in a few words what the place is.' },
       },
       required: ['on', 'body'],
+    },
+  },
+  {
+    name: 'reply',
+    description: 'Reply in another thread of the doc, as a member does, when what you were asked concerns it. Your answer in the thread you were asked in is propose\'s reply, not this. It is added when your turn ends, with your edits.',
+    parameters: {
+      type: 'object',
+      properties: {
+        thread: { type: 'string', description: 'The id of the thread\'s first comment, as the doc\'s comments file has it: read that file to see the threads.' },
+        body: { type: 'string', description: 'What you say there.' },
+      },
+      required: ['thread', 'body'],
     },
   },
   {
@@ -139,7 +151,7 @@ export async function turn({ prompt, doc, sidecar, thread }, { infer, readFile, 
     const runs = ends.length === 1 && !calls.some((call) => READS.includes(call.name));
     const results = new Map();
     for (const call of [...calls.filter((c) => !ends.includes(c)), ...ends]) {
-      const result = ends.includes(call) && !runs ? NOT_RUN : await use(call, { doc, thread, comments, finish, readFile, resolve });
+      const result = ends.includes(call) && !runs ? NOT_RUN : await use(call, { doc, sidecar, thread, comments, finish, readFile, resolve });
       if (typeof result !== 'string') return result;
       results.set(call, result);
     }
@@ -149,7 +161,7 @@ export async function turn({ prompt, doc, sidecar, thread }, { infer, readFile, 
 }
 
 // What a tool call gives back to the model, or a valid proposal's { doc, sidecar, reply }.
-async function use({ name, args: json }, { doc, thread, comments, finish, readFile, resolve }) {
+async function use({ name, args: json }, { doc, sidecar, thread, comments, finish, readFile, resolve }) {
   let args;
   try {
     args = JSON.parse(json);
@@ -171,6 +183,14 @@ async function use({ name, args: json }, { doc, thread, comments, finish, readFi
     if (count > 1) return within.trim() ? 'Not added: on is in in more than once: quote less around it.' : 'Not added: on is in the doc more than once: give in, a longer quote around this one that is in the doc once, or "" for the whole doc.';
     comments.push({ anchor: { exact: on, ...(within.trim() ? { in: within } : {}) }, body });
     return count ? `Added when your turn ends, on line ${line}.` : 'Added when your turn ends, if your edits write on once: it is not in the doc now.';
+  }
+  if (name === 'reply') {
+    const { thread: to, body } = args;
+    if (typeof to !== 'string' || typeof body !== 'string' || !body.trim()) return 'Not added: reply takes { thread, body }, body not empty.';
+    if (to === thread) return 'Not added: in the thread you were asked in, your reply is propose\'s reply.';
+    if (!threadIds(await readFile(sidecar)).includes(to)) return `Not added: no thread ${to}: a thread goes by the id of its first comment in ${sidecar}.`;
+    comments.push({ thread: to, body });
+    return 'Added when your turn ends.';
   }
   if (name === 'resolve') {
     if (!comments.some((c) => c.resolved)) comments.push({ thread, resolved: true });
@@ -299,6 +319,16 @@ function outline(path, all) {
   const ranges = headings.map(({ at, line }, i) => `${at}-${(headings[i + 1]?.at ?? all.length + 1) - 1}\t${line}`);
   return [about, ...(ranges.length ? ['Its headings, with their lines:', ...ranges] : [])].join('\n');
 }
+
+// The ids of the threads in a sidecar's text: its first comments'.
+const threadIds = (text) => text.split('\n').flatMap((line) => {
+  try {
+    const c = JSON.parse(line);
+    return typeof c.id === 'string' && c.thread === undefined ? [c.id] : [];
+  } catch {
+    return [];
+  }
+});
 
 // A sidecar line the app takes (docs/agent-config.md#comments).
 const isComment = (line) => {

@@ -14,7 +14,7 @@ laptop runs (an 8B model tried) claim edits they did not make.
 
 1. **Read and propose, never write.** The model's only effect is a
    proposal; the program checks it and applies it to the copies.
-2. **The tools are the permissions.** `read`, `find`, `grep`, `comment`, `resolve` and `propose` only, and
+2. **The tools are the permissions.** `read`, `find`, `grep`, `comment`, `reply`, `resolve` and `propose` only, and
    with Anthropic, its web fetch: no shell, no network but the model's API. Text a teammate wrote can at
    worst make an undoable proposal.
 3. **Stateless.** A turn remembers nothing after. Within it, all state is
@@ -31,7 +31,7 @@ laptop runs (an 8B model tried) claim edits they did not make.
 | --- | --- |
 | `turn({ prompt, doc, sidecar, thread }, { infer, readFile, resolve }) → { doc, sidecar, reply }` | the program's `main`; the preview's buddies (`preview/doc-stub.js`) |
 | `infer(messages, tools) → { calls: [{ id, name, args }], text, sent, usage }` | `turn`, for each step |
-| `read`, `find`, `grep`, `comment`, `resolve`, `propose` | the model, as tools |
+| `read`, `find`, `grep`, `comment`, `reply`, `resolve`, `propose` | the model, as tools |
 
 **`main`** is all the I/O, and all of the contract: it reads the prompt on
 stdin, the paths in `PONJO_DOC`, `PONJO_COMMENTS` and `PONJO_PROJECT`,
@@ -109,9 +109,16 @@ it matches as `read` gives it, cut at 500 characters. Both walk the folders
 with `readFile`, and give at most 100 paths or lines, then how many more,
 saying to narrow the pattern or the path.
 
-**`comment({ on, body })`** starts a thread on `on`, quoted from the doc
-as the edits leave it and found there once, or `""` for the whole doc; **`resolve()`** resolves
-the thread the turn answers. Each says at once whether it took, and its
+**`comment({ on, in?, body })`** starts a thread on `on`, quoted from the doc
+as the edits leave it and found there once, or `""` for the whole doc; words
+that are in the doc more than once are found once in `in`, a longer quote
+around them that is in the doc once. **`reply({ thread, body })`** replies
+in another thread, named by its first comment's id as the sidecar has it
+(the turn's own reply is `propose`'s). **`resolve()`** resolves
+the thread the turn answers. With them and `propose`, a buddy does in a doc
+what a member does: comments on any passage, replies in any thread, edits
+any part; what it does of that is the prompt's to say, as a colleague's
+manners are, not the tools'. Each says at once whether it took, and its
 line of the sidecar ([agent config](agent-config.md#comments)) is written
 by the program and added with the proposal. Their own tools, as a member's
 own actions, and not fields of `propose`: a model writing those lines
