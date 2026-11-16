@@ -55,7 +55,7 @@ the plain view as source.
   | Table | the table, drawn, with its cells' formatting and alignment; a header with no text left out | the grid, a cell at a time; with the selection in its text, the source, monospace, pipes faded |
   | Mermaid block | its diagram | the source |
   | Footnote (`[^1]`, `[^1]: …`) | a superscript number, in the order of first use; the note small, with its number | a reference touched, a note on its lines: the source |
-  | Paragraph wrapped by hand (a soft break: a line break, not a hard one) | one flowing paragraph, each soft break the space it reads as | on its lines: its lines as written |
+  | Paragraph wrapped by hand (a soft break: a line break, not a hard one) | its lines as written, so the text does not move as the caret comes and goes | the same |
   | Hard break (a line ending in `\` or two spaces) | the break; `\` hidden | touched, `\` shows |
   | Escape (`\*`), entity (`&copy;`) | the character | touched, the source |
   | Front matter, raw HTML | the source, muted | the same |
@@ -98,9 +98,10 @@ the plain view as source.
 - **Keys:** Undo, Redo, the formatting above, Comment, Find, and focus mode
   (Ctrl+Shift+.). Enter in a paragraph or a heading starts a new
   paragraph a blank line apart, as in Typora, and Shift+Enter is a new line
-  in it. Enter in a list item continues the list (an empty item ends it,
-  with a blank line), and in a quote the quote; in a code block it is a new
-  line. Backspace right after a list item's marker or a quote's
+  in it; Backspace at the start of that paragraph, or Delete at the end of
+  the one before, takes the whole break and joins them again. Enter in a
+  list item continues the list (an empty item ends it, with a blank line),
+  and in a quote the quote; in a code block it is a new line. Backspace right after a list item's marker or a quote's
   takes the marker away, a blank line keeping the line apart from the
   list or quote above it; after a nested item's marker it moves the item
   out a level. Tab and Shift+Tab indent and outdent the lines of a list item
