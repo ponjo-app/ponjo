@@ -717,6 +717,14 @@ label.pj-setting { cursor: pointer; }
 .pj-stepper button { min-width: 28px; font-size: 14px; }
 .pj-stepper button:disabled { color: var(--text-faint); }
 .pj-setting-group { margin: 20px 0 4px; font-size: 12px; font-weight: 600; color: var(--text-faint); }
+/* Settings > Usage: a table per view of the runs, figures right-aligned in tabular digits */
+.pj-usage-table { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+.pj-usage-table :is(th, td) { padding: 6px 8px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--border); }
+.pj-usage-table :is(th, td):first-child { padding-left: 0; text-align: left; }
+.pj-usage-table :is(th, td):last-child { padding-right: 0; }
+.pj-usage-table th { font-size: 12px; font-weight: 500; color: var(--text-soft); }
+.pj-usage-table td:first-child { color: var(--text); font-weight: 500; overflow: hidden; text-overflow: ellipsis; max-width: 180px; }
+.pj-usage-table td { color: var(--text-soft); }
 .pj-switch { appearance: none; width: 32px; height: 18px; margin: 0; border-radius: 999px; background: var(--text-faint); position: relative; cursor: pointer; transition: background 0.15s; flex: none; }
 .pj-switch::after { content: ''; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: var(--canvas); box-shadow: var(--shadow); transition: transform 0.15s; }
 .pj-switch:checked { background: var(--text); }

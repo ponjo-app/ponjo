@@ -157,6 +157,15 @@
       <li><button type="button"><span class="pj-setting-text"><span class="pj-setting-label">Markdown<span class="pj-setting-ext">.md .markdown</span></span><span class="pj-setting-hint">Edit Markdown docs as formatted text.</span></span><span class="pj-setting-state"><span>On</span><svg class="pj-icon" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></span></button></li>
     </ul>
   </div>
+  <h3>A table of figures</h3>
+  <p>Settings > Usage shows figures in <code>.pj-usage-table</code>: 13px, the first column the row's name in <code>--text</code>, the figures right-aligned in tabular digits and <code>--text-soft</code>, headings 12px <code>--text-soft</code>, a hairline <code>--border</code> under each row, no fills. A figure with nothing to count is "—"; tokens are compact ("1.2M"), money in dollars to the cent.</p>
+  <div class="ds-box">
+    <table class="pj-usage-table"><thead><tr><th></th><th>Runs</th><th>Input</th><th>Output</th><th>Cache hit</th><th>Cost</th></tr></thead><tbody>
+      <tr><td>Today</td><td>214</td><td>1.2M</td><td>38K</td><td>87%</td><td>$0.71</td></tr>
+      <tr><td>Last 7 days</td><td>1,306</td><td>7.9M</td><td>241K</td><td>84%</td><td>$4.92</td></tr>
+      <tr><td>Last 30 days</td><td>3,880</td><td>24M</td><td>702K</td><td>81%</td><td>$16.40</td></tr>
+    </tbody></table>
+  </div>
   <h3>One of several, with its settings</h3>
   <p>When exactly one of several is picked, such as the agent that runs every buddy, each is a row of <code>.pj-choices</code>: a <code>.pj-radio</code> (ink when picked), its name and what it is, the whole row its label. The picked one is a resting card (<code>--shadow</code>) holding its settings, in <code>.pj-choice-detail</code> under its name, so they read as its own and not as the next choice; the others stay closed rows. A secret, such as an API key, shows only its last 4 characters after dots; a click empties the field for a new one. Test runs the agent once on an empty doc and says under its buttons whether it works, or what it printed when it failed, in red. Where the agents can't be changed, as in the browser preview, a sentence saying why takes the intro's place and the section is shown as it is, read only: its controls disabled, radios and switches at the 0.45 opacity of a disabled button, fields as a read-only <code>.pj-input</code>.</p>
   <div class="ds-box">

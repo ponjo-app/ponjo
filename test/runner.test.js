@@ -48,6 +48,18 @@ const reply = (call, thread, body) => call('comment', { thread, body });
 const threadOf = async (state, id) => (await state()).threads.find((t) => t.id === id);
 const repliesIn = async (state, id) => (await threadOf(state, id)).comments.filter((c) => c.by.kind === 'ai');
 
+test('a run\'s Claude API usage, from its trace, is in its log line, with Trace runs off; Settings > Usage sums it', { timeout: 30_000 }, async () => {
+  await withDoc(async ({ settingsDir, call, state }) => {
+    const id = await comment(call, '@Clippy usage say Done.');
+    await until(async () => (await repliesIn(state, id)).length === 1, 'the reply');
+    await until(async () => (await runLog(settingsDir).catch(() => [])).length === 1, 'its log line');
+    assert.deepEqual((await runLog(settingsDir))[0].usage, { model: 'claude-opus-5-5', input: 100, output: 10, cacheRead: 900, cacheWrite: 0 });
+    const { periods, models } = await call('usage');
+    assert.deepEqual([periods[0].runs, periods[0].input, periods[0].hit], [1, 1000, 0.9]);
+    assert.equal(models[0].model, 'claude-opus-5-5');
+  });
+});
+
 test('a run edits its copy and prints its reply: the doc has the edit, the thread the reply; the run sees only the copy', { timeout: 30_000 }, async () => {
   await withDoc(async ({ docPath, call, state, runs }) => {
     const id = await comment(call, '@Clippy replace "extra load" with "extra peak load"');

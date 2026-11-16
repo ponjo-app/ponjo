@@ -499,7 +499,10 @@ the ids of those who may ask. AI buddies run only on docs open in a window.
    was given, so a comment the user wrote meanwhile still waits on X.
 4. The private folder is deleted, and the turn gets a line in the config
    folder's `logs/runs.jsonl`: its run id, doc, buddy, thread, reply, start,
-   duration, and `ok`, `failed`, `timedOut` or `stopped` with the exit code.
+   duration, `ok`, `waiting`, `failed`, `timedOut` or `stopped` with the exit
+   code, and, when its agent wrote it to its trace (the Ponjo agent on the
+   Claude API), its tokens and model (`usage`), which Settings > Usage sums by
+   day and model, with their cost at list prices (`src/core/usage.js`).
    A `.jsonl` log there past 10 MB, an agent's too, then keeps its newest
    half. With Settings > Agents > Trace runs on (off by default), the turn
    also leaves its trace in `logs/traces/<run>.json`, the newest 200 kept:
