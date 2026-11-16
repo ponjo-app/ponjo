@@ -87,7 +87,7 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
     human: async () => ({ name: (await me()).name, about: (await settingsWithId(settingsDir)).about.trim() }),
     watch: async () => {
       const { watchEvery, watchFor } = await settingsWithId(settingsDir);
-      return { every: watchEvery * 60_000, quiet: watchFor * 60_000 };
+      return { every: watchEvery * 1000, quiet: watchFor * 1000 };
     },
     finish: (result) => serial(() => finishRun(result)),
     onChange: () => {

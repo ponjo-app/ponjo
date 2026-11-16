@@ -16,8 +16,8 @@ export const SETTINGS_VERSION = 3;
  * settings of each view and agent by its id (`{ <id>: { enabled: false } }`);
  * one not there takes the default its declaration gives (viewSettings,
  * agentSettings). `trace` keeps each run's trace (src/host/doc-service.js
- * logRun), to read in a doc's Runs. A buddy keeping an ask open looks again
- * every `watchEvery` minutes, until nothing has changed for `watchFor`
+ * logRun), to read in a doc's Runs. The doc's buddies look again every
+ * `watchEvery` seconds, until nothing has changed for `watchFor` seconds
  * (src/host/runner.js).
  */
 export const DEFAULT_SETTINGS = Object.freeze({
@@ -29,14 +29,14 @@ export const DEFAULT_SETTINGS = Object.freeze({
   agents: Object.freeze({}),
   agent: 'claude',
   trace: false,
-  watchEvery: 1,
-  watchFor: 10,
+  watchEvery: 10,
+  watchFor: 600,
 });
 
-/** The minutes `watchEvery` and `watchFor` may be, as Settings > Agents offers them. */
+/** The seconds `watchEvery` and `watchFor` may be, as Settings > Agents offers them. */
 export const WATCH_FIELDS = Object.freeze([
-  { key: 'watchEvery', type: 'number', label: 'Look again every', hint: 'How often a buddy keeping a comment open looks at the doc again; it also looks 3 s after any change.', unit: 'min', min: 1, max: 60, default: 1 },
-  { key: 'watchFor', type: 'number', label: 'Stop looking after', hint: 'How long nothing may change before it stops looking; the next change starts it again.', unit: 'min', min: 1, max: 240, default: 10 },
+  { key: 'watchEvery', type: 'number', label: 'Look again every', hint: 'How often the buddies look at the doc again while a comment is unanswered; they also look 3 s after any change.', unit: 's', min: 5, max: 3600, step: 5, default: 10 },
+  { key: 'watchFor', type: 'number', label: 'Stop looking after', hint: 'How long nothing may change before they stop looking; the next change starts them again.', unit: 's', min: 60, max: 14400, step: 60, default: 600 },
 ]);
 
 const oneOf = (...values) => (v) => values.includes(v);

@@ -295,7 +295,7 @@ test('a run that is not done yet (exit 75) posts no reply and its ask stays unan
     await until(async () => (await state()).agents.find((a) => a.name === 'Clippy').state === 'ready', 'the run to end');
     const { loop } = await state();
     assert.equal(loop.waiting, 1, 'one ask unanswered');
-    assert.ok(loop.at - loop.from === 60_000, 'the next look a minute on');
+    assert.ok(loop.at - loop.from === 10_000, 'the next look 10 s on');
     assert.equal((await repliesIn(state, id)).length, 0, 'no reply');
     const edited = Date.now();
     await edit(`${(await state()).text}\nNine, ten.\n`);
