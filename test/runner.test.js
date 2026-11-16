@@ -48,6 +48,18 @@ const reply = (call, thread, body) => call('comment', { thread, body });
 const threadOf = async (state, id) => (await state()).threads.find((t) => t.id === id);
 const repliesIn = async (state, id) => (await threadOf(state, id)).comments.filter((c) => c.by.kind === 'ai');
 
+test('a run\'s Claude API usage, from its trace, is in its log line, with Trace runs off; Settings > Usage sums it', { timeout: 30_000 }, async () => {
+  await withDoc(async ({ settingsDir, call, state }) => {
+    const id = await comment(call, '@Clippy usage say Done.');
+    await until(async () => (await repliesIn(state, id)).length === 1, 'the reply');
+    await until(async () => (await runLog(settingsDir).catch(() => [])).length === 1, 'its log line');
+    assert.deepEqual((await runLog(settingsDir))[0].usage, { model: 'claude-opus-5-5', input: 100, output: 10, cacheRead: 900, cacheWrite: 0 });
+    const { periods, models } = await call('usage');
+    assert.deepEqual([periods[0].runs, periods[0].input, periods[0].hit], [1, 1000, 0.9]);
+    assert.equal(models[0].model, 'claude-opus-5-5');
+  });
+});
+
 test('a run edits its copy and prints its reply: the doc has the edit, the thread the reply; the run sees only the copy', { timeout: 30_000 }, async () => {
   await withDoc(async ({ docPath, call, state, runs }) => {
     const id = await comment(call, '@Clippy replace "extra load" with "extra peak load"');
@@ -83,7 +95,7 @@ test('the human edits the same lines during a run: the turn runs once more, on t
     assert.doesNotMatch(first.prompt, /was not applied/);
     assert.match(again.prompt, /your edit was not applied/);
     assert.match(again.prompt, /\n-The main risk is that the `sync` service cannot handle the extra load\.\n\+The main risk is that the `sync` service cannot handle the extra peak load\.\n/);
-    assert.match(again.prompt, /What members changed meanwhile:\n\n-The main risk .* extra load\.\n\+The main risk .* extra traffic\.\n/);
+    assert.match(again.prompt, /What members changed meanwhile:\n\n-The main risk .* extra load\.\n\+The main risk .* extra traffic\.$/);
     const text = await readFile(docPath, 'utf8');
     assert.match(text, /the extra traffic\./);
     assert.doesNotMatch(text, /peak/);
@@ -560,7 +572,8 @@ test('the prompt tells a buddy who the other members are, as the app shows them'
   assert.doesNotMatch(prompt, /Ada: /, 'not itself');
   const withUser = buildPrompt({ buddy: buddies[0], buddies, docName: 'a.md', sidecarName: 'a.md.comments.jsonl', thread, human: { name: 'fzhan', about: 'I write novels.' } });
   assert.match(withUser, /The other members of the doc:\n\nfzhan \(owner\): I write novels\.\n\nBo/);
-  assert.match(withUser, /When it does not, start a thread only where a member must decide something, fix small things in the doc instead, and resolve nothing.* \{"thread":"<id>","resolved":true\} to resolve one \(this one is c_thread01\)/);
+  assert.match(withUser, /When it does not, start a thread only where a member must decide something, fix small things in the doc instead, and resolve nothing.* \{"thread":"<id>","resolved":true\} to resolve one\./);
+  assert.match(withUser, /The situation now:\n\nThe comment thread you are answering, c_thread01, oldest first/, 'its id in the situation, last');
   assert.doesNotMatch(prompt, /I write novels/, 'nothing about an owner who wrote nothing');
 });
 

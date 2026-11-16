@@ -7,6 +7,7 @@
 //   fail                                print to stderr and exit 1
 //   until "<text>"                      while the copy lacks <text>, change nothing and exit 75: not done yet
 //   keep                                do the rest, then exit 75: the ask stays open
+//   usage                               write a step with the Claude API's usage to the trace
 //   say <text>                          reply <text>
 //   quiet                               reply nothing
 //   append <json>                       append a line to the sidecar's copy
@@ -30,6 +31,8 @@ const settings = Object.fromEntries(Object.entries(process.env).filter(([key]) =
 const onPath = (process.env.PATH ?? '').split(delimiter).some((d) => d && ['ponjo', 'ponjo.cmd'].some((f) => existsSync(join(d, f))));
 appendFileSync(join(dir, 'runs.log'), JSON.stringify({ buddy, ask, threadId, cwd: process.cwd(), files: readdirSync(process.cwd()), doc, comments, project, projectFiles: project ? readdirSync(project).sort() : null, prompt, settings, ponjo: onPath }) + '\n');
 if (process.env.PONJO_TRACE) appendFileSync(process.env.PONJO_TRACE, `${JSON.stringify({ started: ask })}\nnot JSON\n`);
+// `usage`: a step as the Ponjo agent writes it, with the Claude API's count.
+if (/\busage\b/.test(ask)) appendFileSync(process.env.PONJO_TRACE, `${JSON.stringify({ role: 'assistant', model: 'claude-opus-5-5', usage: { input_tokens: 100, output_tokens: 10, cache_read_input_tokens: 900 } })}\n`);
 
 if (/\b(hold|wait)\b/.test(ask)) {
   while (!existsSync(join(dir, `release-${buddy}`))) await new Promise((r) => setTimeout(r, 50));

@@ -34,6 +34,7 @@ export function createChrome({ getView, settings: store, getName, setName }) {
       saveSecret: (id, key, value) => window.ponjoDesktop.saveSecret(id, key, value),
       showFolder: window.ponjoDesktop && (() => window.ponjoDesktop.showAgents()),
     },
+    usage: api.usage,
   });
 
   // Toolbar buttons act without taking the doc's selection.

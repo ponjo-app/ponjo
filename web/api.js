@@ -51,6 +51,8 @@ export const api = {
    * changed, in the preview only }.
    */
   scripts: () => call('scripts'),
+  /** What buddies' runs used of the Claude API (src/core/usage.js, summarizeUsage). */
+  usage: () => call('usage'),
   /** Write shipped agent `name` (its program and manifest) again as it came. */
   resetScript: (name) => call('resetScript', { name }),
   /** One run of the picked agent on an empty doc: { ok, ms, out } (src/host/runner.js testAgent). */

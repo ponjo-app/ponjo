@@ -26,6 +26,7 @@ import { VERSION_ID, moveHistory, noteTaken, noteWritten, readHistory, readTaken
 import { configDir, defaultName, ownerOf, readSettings, settingsWithId, updateSettings, watchSettings } from '../store/settings.js';
 import { firstBuddies, projectBuddiesDir, readBuddies, removeBuddy, userBuddiesDir, writeBuddy } from '../store/buddies.js';
 import { secretTails } from '../store/secrets.js';
+import { readRuns, readUsage } from '../store/runs.js';
 import { watchDoc, watchFolder } from '../store/watch.js';
 import { agentsDir, installAgents, listAgents, pickedAgent, SHIPPED_AGENTS } from '../store/agents.js';
 import { linkURL, projectService, saveImage } from './project-service.js';
@@ -912,6 +913,8 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
       // An image pasted or dropped into the doc: written beside it, the path to write in it.
       saveImage: async (body) => ({ src: await saveImage(dirname(docPath), body) }),
       runs: async () => ({ runs: await tracedRuns(settingsDir, docPath) }),
+      // What buddies' runs used of the Claude API, for Settings > Usage.
+      usage: () => readUsage(settingsDir),
       async trace(body) {
         const trace = await readTrace(settingsDir, body?.run);
         if (!trace) throw new DocError('not_found', 'no trace of that run');
@@ -1072,17 +1075,8 @@ async function keepTrace(folder, trace) {
 
 // The runs of the doc at `docPath` that have a trace, as runs.jsonl has them, newest first.
 async function tracedRuns(dir, docPath) {
-  const logs = join(dir, 'logs');
-  const traced = new Set(await readdir(join(logs, 'traces')).catch(() => []));
-  const lines = (await readFile(join(logs, 'runs.jsonl'), 'utf8').catch(() => '')).split('\n');
-  return lines.flatMap((line) => {
-    try {
-      const entry = JSON.parse(line);
-      return entry.doc === docPath && traced.has(`${entry.run}.json`) ? [entry] : [];
-    } catch {
-      return []; // a line cut when the log was trimmed, or none
-    }
-  }).reverse();
+  const traced = new Set(await readdir(join(dir, 'logs', 'traces')).catch(() => []));
+  return (await readRuns(dir)).filter((entry) => entry.doc === docPath && traced.has(`${entry.run}.json`)).reverse();
 }
 
 // Run `run`'s trace (logRun), or null.

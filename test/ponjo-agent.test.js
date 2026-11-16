@@ -11,9 +11,10 @@ import { mkdir, mkdtemp, readFile, realpath, symlink, writeFile } from 'node:fs/
 import { tmpdir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
 import { text } from 'node:stream/consumers';
-import { INFER, quoted, turn } from '../agents/ponjo-core.mjs';
+import { INFER, SITUATION, quoted, turn } from '../agents/ponjo-core.mjs';
 import { files, inProject } from '../agents/ponjo.mjs';
 import { appendedComments } from '../src/core/comments.js';
+import { SITUATION as APP_SITUATION, buildPrompt } from '../src/core/prompt.js';
 import { projectService } from '../src/host/project-service.js';
 import { agentScript, installAgents } from '../src/store/agents.js';
 import { MAX_TEXT_BYTES, decodeText } from '../src/store/files.js';
@@ -73,7 +74,7 @@ test('a turn reads the doc by line number, comments, resolves and proposes an ed
     left(SAMPLE.replace('extra load', 'extra peak load'), [{ body: 'Is week one too soon?' }, { anchor: { exact: 'cannot handle' }, body: 'Measured?' }, { thread: 'c_asked', resolved: true }], 'Peak load is the risk.'),
     'the copies\' new texts: the program writes the sidecar\'s lines, the thread resolved once',
   );
-  assert.deepEqual(infer.messages[0], { role: 'user', content: opening(doc, 'the prompt') }, 'the first message is the prompt as is, then the doc');
+  assert.deepEqual(infer.messages[0], { role: 'user', content: opening(doc, 'the prompt'), cache: true }, 'the first message is the prompt as is, then the doc, marked to cache');
   assert.deepEqual(infer.tools.map((t) => t.name), ['read', 'find', 'grep', 'comment', 'resolve', 'wait', 'propose']);
   assert.deepEqual([infer.messages[1].role, infer.messages[1].sent], ['assistant', 'as the API sent it'], 'the model\'s message, kept as its API sent it');
   assert.deepEqual(infer.messages[2], { role: 'tool', id: infer.messages[1].calls[0].id, content: '8\tThe main risk is that the `sync` service cannot handle the extra load.' });
@@ -91,6 +92,20 @@ test('a turn comments as a member does: it replies in another thread and resolve
   const done = await turn({ prompt: 'p', doc, sidecar, thread: 'c_asked' }, { infer, readFile: seen({ doc, sidecar }) });
   assert.equal(done.sidecar, `${HEADER}${JSON.stringify(other)}\n${JSON.stringify({ thread: 'c_other1', body: 'Yes: week two.' })}\n${JSON.stringify({ thread: 'c_other1', resolved: true })}\n`);
   assert.deepEqual(results(infer.messages).slice(0, 2), ['Added when your turn ends, as a reply in c_other1.', 'Thread c_other1 is resolved when your turn ends.']);
+});
+
+test('the prompt\'s situation comes after the doc, apart: the rules and the doc are one message, marked to cache', async () => {
+  const { doc, sidecar } = await copies();
+  const infer = fake(calling(['propose', { edits: [], reply: '' }]));
+  const prompt = buildPrompt({ buddy: { id: 'b_c', name: 'Clippy', about: '' }, docName: doc, sidecarName: sidecar, thread: { id: 'c_asked', anchor: null, comments: [{ by: { name: 'Fan' }, body: 'Hi' }] }, people: [] });
+  await turn({ prompt, doc, sidecar, thread: 'c_asked' }, { infer, readFile: seen({ doc, sidecar }) });
+  const [rules, situation] = infer.messages;
+  assert.equal(SITUATION, APP_SITUATION, 'the agent splits where the app\'s prompt does');
+  assert.equal(rules.cache, true);
+  assert.ok(rules.content.startsWith('You are Clippy') && rules.content.includes('as read gives it:\n\n1\t# Q4 Launch Plan'), 'the rules, then the doc');
+  assert.ok(!rules.content.includes(SITUATION) && !rules.content.includes('c_asked'), 'nothing that changes from run to run');
+  assert.ok(situation.content.startsWith(`${SITUATION}\n\nNo one is in plan.md now.`) && situation.content.includes('<thread>\nFan: Hi\n</thread>'));
+  assert.equal(situation.cache, undefined);
 });
 
 test('a bad comment or proposal goes back saying what to fix', async () => {
@@ -380,10 +395,10 @@ test('Anthropic: the Messages API, cached up to the last message, the model\'s c
     assert.deepEqual(rest, { model: 'claude-opus-5-5', max_tokens: 16_000, output_config: { effort: 'low' }, tool_choice: { type: 'auto' } }, 'no thinking setting: the model thinks as it needs');
     assert.deepEqual(tools.map((t) => [t.name, Object.keys(t.input_schema.properties).join(), t.cache_control]), [['read', 'path,lines', undefined], ['find', 'pattern,path', undefined], ['grep', 'pattern,path', undefined], ['comment', 'on,thread,body', undefined], ['resolve', 'thread', undefined], ['wait', '', undefined], ['propose', 'edits,reply', undefined]]);
     assert.deepEqual(messages, [
-      { role: 'user', content: [{ type: 'text', text: opening(doc, 'the prompt') }] },
+      { role: 'user', content: [{ type: 'text', text: opening(doc, 'the prompt'), cache_control: { type: 'ephemeral' } }] },
       { role: 'assistant', content: [thinking, { type: 'tool_use', id: 'toolu_1', name: 'read', input: { path: doc, lines: [1, 1] } }] },
       { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_1', content: '1\t# Q4 Launch Plan', cache_control: { type: 'ephemeral' } }] },
-    ], 'the one cache mark moved to the last message');
+    ], 'a cache mark on the rules and the doc, which stay from run to run, and one moved to the last message');
     await assert.rejects(infer(messages, []), /^Error: The model refused: Not this\.$/);
     assert.equal((await infer(messages, [])).text, 'Fine as is.', 'an answer without a call: its text blocks');
   } finally {

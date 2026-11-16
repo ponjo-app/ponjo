@@ -16,6 +16,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { FORMAT_VERSION, newId } from '../core/comments.js';
 import { buildPrompt } from '../core/prompt.js';
+import { runUsage } from '../core/usage.js';
 import { SIDECAR_SUFFIX, decodeText } from '../store/files.js';
 
 const MAX_OUTPUT = 1024 * 1024;
@@ -66,7 +67,7 @@ export class Runner {
    * id, or null), landed (in words) }. `onChange()` runs when a run starts
    * or ends, or the doc's clock or its count of asks changes. `log(entry, trace)` takes each run that ended: `entry` { run
    * (its id), buddy, thread, reply, at, ms, outcome: ok | waiting | failed | timedOut
-   * | stopped, code }, and `trace` what it was given and did: { script,
+   * | stopped, code, usage? (runUsage: its Claude API tokens, when its agent wrote them to its trace) }, and `trace` what it was given and did: { script,
    * prompt, steps (the lines the agent wrote to PONJO_TRACE), stdout,
    * stderr, base, edited, comments, landed }.
    */
@@ -239,6 +240,7 @@ export class Runner {
       run.ended = true; // its reply is on its way: its ask going away is that reply
       const ms = Date.now() - at;
       const trace = { script, prompt, steps: await traceLines(steps), stdout: result.stdout, stderr: result.stderr, base, edited: null, comments: null, landed: 'Ended without an answer' };
+      const usage = runUsage(trace.steps); // its Claude API tokens, when its agent said
       let answered = null; // what finish made of it
       try {
         if (stopped) return; // ended by stop or cancel: no answer
@@ -253,7 +255,7 @@ export class Runner {
         }
       } finally {
         if (answered) trace.landed = answered.landed;
-        await this.log({ run: run.runId, buddy: buddy.name, thread: run.threadId, reply: answered?.reply ?? null, at: new Date(at).toISOString(), ms, outcome, code: result.code }, trace);
+        await this.log({ run: run.runId, buddy: buddy.name, thread: run.threadId, reply: answered?.reply ?? null, at: new Date(at).toISOString(), ms, outcome, code: result.code, ...(usage ? { usage } : {}) }, trace);
       }
     } finally {
       await rm(dir, { recursive: true, force: true });

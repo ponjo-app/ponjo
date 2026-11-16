@@ -87,7 +87,7 @@ async function main() {
       noted = messages.length;
       const at = Date.now();
       const answer = await infer(messages, tools);
-      await note([{ role: 'assistant', calls: answer.calls, sent: answer.sent, ms: Date.now() - at, usage: answer.usage }]);
+      await note([{ role: 'assistant', calls: answer.calls, sent: answer.sent, ms: Date.now() - at, usage: answer.usage, model }]); // the app sums the usage (src/core/usage.js)
       noted += 1; // the answer, which turn adds next
       return answer;
     };

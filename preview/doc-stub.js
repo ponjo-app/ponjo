@@ -20,6 +20,7 @@ import { apply, diffOps } from '../src/core/ot.js';
 import { appendedComments, askedOf, movedAnchor, newComment, newId, parseSidecar, peopleOf, serializeSidecar, threadsOf } from '../src/core/comments.js';
 import { diffEdits, merge3 } from '../src/core/diff.js';
 import { buildPrompt } from '../src/core/prompt.js';
+import { summarizeUsage } from '../src/core/usage.js';
 import { matches, searchPattern } from '../src/core/search.js';
 import { INFER, turn } from '../agents/ponjo-core.mjs';
 import { buddiesHere, checkBuddyPatch, parseBuddy } from '../src/core/buddies.js';
@@ -270,6 +271,7 @@ const calls = {
     return { settings: s.settings };
   },
   scripts: () => SCRIPTS,
+  usage: () => summarizeUsage([], Date.now()), // the preview's buddies run on Nemotron: no Claude API usage
   createBuddy({ buddy }) {
     const fields = { about: '', ...buddy };
     checkBuddy(fields);

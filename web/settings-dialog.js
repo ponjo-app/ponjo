@@ -26,6 +26,7 @@ const DIALOG = `
     <button type="button" role="tab" data-section="views" data-icon="pencil">Views</button>
     <button type="button" role="tab" data-section="shortcuts" data-icon="keyboard">Shortcuts</button>
     <button type="button" role="tab" data-section="agents" data-icon="settings">Agents</button>
+    <button type="button" role="tab" data-section="usage" data-icon="chart">Usage</button>
   </nav>
   <div class="pj-settings-main">
     <button type="button" class="pj-icon-btn pj-settings-close" data-icon="close" data-action="close" aria-label="Close settings"></button>
@@ -74,6 +75,12 @@ const DIALOG = `
       </fieldset>
     </section>
 
+    <section class="pj-settings-section" role="tabpanel" data-section="usage" hidden>
+      <h2>Usage</h2>
+      <p class="pj-settings-intro">What buddies' runs used of the Claude API, run by the Ponjo agent. The cost is an estimate at list prices, not your bill.</p>
+      <div class="pj-usage"></div>
+    </section>
+
     <section class="pj-settings-section" role="tabpanel" data-section="shortcuts" hidden>
       <h2>Keyboard shortcuts</h2>
       <div class="pj-shortcuts-body"></div>
@@ -101,11 +108,13 @@ export function keyLabel(keys) {
  * the agents, read again each time it shows, one of them picked to run
  * every buddy, its settings open under it; with `fixed`, why they can't
  * be changed here, said in place of the intro, the section read only.
+ * `usage()` resolves to what buddies' runs used (src/core/usage.js,
+ * summarizeUsage), read again each time Usage shows.
  * @param {{ store: ReturnType<typeof import('./settings.js').createSettings>, getName: () => string,
  *           setName: (name: string) => boolean, onApply?: (settings: object) => void, views?: object[],
- *           scripts: object }} options
+ *           scripts: object, usage: () => Promise<object> }} options
  */
-export function setupSettings({ store, getName, setName, onApply = () => {}, views = [], scripts }) {
+export function setupSettings({ store, getName, setName, onApply = () => {}, views = [], scripts, usage }) {
   document.body.insertAdjacentHTML('beforeend', DIALOG);
   const dialog = document.querySelector('.pj-settings');
   // Views is a list of pages: `read(settings, item)` gives an item's settings.
@@ -193,6 +202,7 @@ export function setupSettings({ store, getName, setName, onApply = () => {}, vie
     for (const tab of tabs) tab.setAttribute('aria-selected', String(tab.dataset.section === section));
     for (const panel of sections) panel.hidden = panel.dataset.section !== section;
     if (section === 'agents') listAgents();
+    if (section === 'usage') usage().then((summary) => paintUsage(dialog.querySelector('.pj-usage'), summary), () => {});
     for (const list of lists) showPage(list, null);
   }
 
@@ -499,6 +509,35 @@ function fieldRow(field, id, change) {
   if (field.group) node.append(el('h3', 'pj-setting-group', field.group));
   node.append(line);
   return { node, paint };
+}
+
+// Settings > Usage: by period, then by model over the last 30 days; or, with no run counted, why.
+function paintUsage(box, { periods, models }) {
+  if (periods.at(-1).runs === 0) {
+    box.replaceChildren(el('p', 'pj-empty', 'No usage yet. Runs of the Ponjo agent on the Claude API count here.'));
+    return;
+  }
+  const tokens = new Intl.NumberFormat(undefined, { notation: 'compact', maximumFractionDigits: 1 });
+  const dollars = (cost) => (cost === null ? '—' : cost > 0 && cost < 0.005 ? '<$0.01' : `$${cost.toFixed(2)}`);
+  const table = (first, rows) => {
+    const node = el('table', 'pj-usage-table');
+    const head = el('tr');
+    for (const name of [first, 'Runs', 'Input', 'Output', 'Cache hit', 'Cost']) head.append(el('th', null, name));
+    node.append(el('thead'), el('tbody'));
+    node.tHead.append(head);
+    for (const row of rows) {
+      const line = el('tr');
+      const hit = row.hit === null ? '—' : `${Math.round(row.hit * 100)}%`;
+      for (const cell of [row.name, row.runs.toLocaleString(), tokens.format(row.input), tokens.format(row.output), hit, dollars(row.cost)]) line.append(el('td', null, cell));
+      node.tBodies[0].append(line);
+    }
+    return node;
+  };
+  box.replaceChildren(
+    table('', periods.map((p) => ({ ...p, name: p.label }))),
+    el('h3', 'pj-setting-group', 'By model, last 30 days'),
+    table('Model', models.map((m) => ({ ...m, name: m.model }))),
+  );
 }
 
 function el(tag, className, text) {
