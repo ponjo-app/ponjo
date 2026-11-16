@@ -61,6 +61,7 @@ const margin = () => page.evaluate(`(() => {
   return {
     folded: document.querySelectorAll('.pj-card-folded').length,
     latest: card('c_capacity')?.querySelector('.pj-folded-reply .pj-body')?.textContent,
+    between: card('c_capacity')?.querySelector('.pj-folded-more')?.textContent,
     status: card('c_capacity')?.querySelector('.pj-foot, .pj-typing') ?? null,
     replies: card('c_capacity')?.querySelectorAll('.pj-msg').length ?? 0,
     // How far the capacity card sits below its text, in pixels.
@@ -74,6 +75,7 @@ test('threads not open are folded to their first comment and their latest reply,
   const folded = await margin();
   assert.equal(folded.folded, 6);
   assert.equal(folded.latest, 'Thanks.', 'the latest reply');
+  assert.equal(folded.between, '1 more reply', 'and how many it leaves out');
   assert.equal(folded.status, null, 'no line on who is at work or how many replied');
   assert.equal(folded.replies, 0, 'no message rows when folded');
   assert.ok(folded.drift > 100, `the stacked cards push the folded one down (${folded.drift}px)`);

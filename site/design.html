@@ -215,12 +215,13 @@
   </div>
   <p>A task list item has a box in place of its bullet: a <code>.pj-radio</code>'s outline, square (radius 4); ink with a check when done. Clicking it ticks it.</p>
   <h3>Threads in the margin</h3>
-  <p>Each thread is a card beside its text. A thread not open is folded, <code>.pj-card-folded</code>: its first comment and its latest reply, each its head and its text cut to two lines, the reply in red when its run failed. No line says a buddy is at work: its face does that, and the doc's status bar. The open thread is whole: every reply, its receipts and the reply box, raised (<code>--bg</code>, <code>--shadow-raised</code>). It sits at its text, and the cards above and below give way; one pushed past the top of the margin comes back when it closes.</p>
+  <p>Each thread is a card beside its text. A thread not open is folded, <code>.pj-card-folded</code>: its first comment and its latest reply, each its head and its text cut to two lines, the reply in red when its run failed; between them, when it leaves replies out, a hairline with how many, "2 more replies", 12px <code>--text-faint</code> (<code>.pj-folded-more</code>). No line says a buddy is at work: its face does that, and the doc's status bar. The open thread is whole: every reply, its receipts and the reply box, raised (<code>--bg</code>, <code>--shadow-raised</code>). It sits at its text, and the cards above and below give way; one pushed past the top of the margin comes back when it closes.</p>
   <p>The threads with no place in the text, on the whole doc or whose text was deleted, are one <code>.pj-unplaced</code> at the top of the margin: the comment icon and how many, bare as an icon button, saying which in its tooltip. A failed run on one puts a red dot on the icon's top left corner. Opened, they are whole cards at the top, over the cards there, each saying why it has no place, a deleted text quoted and struck through; a click in the doc closes them.</p>
   <div class="ds-row">
     <div class="pj-card pj-card-folded ds-card">
       <div class="pj-msg-head"><span class="pj-who"><span class="pj-name">Fan</span><span class="pj-time">5 min ago</span></span></div>
       <div class="pj-body">Too vague. <span class="pj-at pj-at-agent" style="--buddy: oklch(0.84 0.17 85)">@Clippy</span> can you make it concrete, with the dates?</div>
+      <div class="pj-folded-more">2 more replies</div>
       <div class="pj-folded-reply"><div class="pj-msg-head"><span class="pj-who"><span class="pj-name">Clippy</span><span class="pj-time">2 min ago</span></span></div><div class="pj-body">Added the dates from the plan: beta on May 15, launch on June 2.</div></div>
     </div>
     <div class="pj-card pj-card-folded ds-card">

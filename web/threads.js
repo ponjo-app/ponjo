@@ -123,7 +123,8 @@ export function createCommentMargin(margin, handlers) {
     return card;
   }
 
-  // A thread folded: its first comment and its latest reply, each cut to two lines.
+  // A thread folded: its first comment and its latest reply, each cut to two
+  // lines, and between them how many replies it leaves out.
   function foldedCard(thread) {
     const card = cardFor(thread, 'pj-card pj-card-folded');
     if (!thread.anchor) card.append(el('div', 'pj-card-note', 'On the whole document'));
@@ -131,6 +132,8 @@ export function createCommentMargin(margin, handlers) {
     const shown = commentsOf(thread);
     const latest = shown.length > 1 ? shown.at(-1) : null;
     card.append(...folded(shown[0], thread.resolved ? null : resolveButton(thread)));
+    const between = shown.length - 2;
+    if (between > 0) card.append(el('div', 'pj-folded-more', `${between} more ${between === 1 ? 'reply' : 'replies'}`));
     if (latest) {
       const reply = el('div', `pj-folded-reply${latest.failed ? ' pj-msg-failed' : ''}`);
       reply.append(...folded(latest, null));
