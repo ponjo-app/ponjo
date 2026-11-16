@@ -60,7 +60,8 @@ const margin = () => page.evaluate(`(() => {
   const button = document.querySelector('.pj-unplaced');
   return {
     folded: document.querySelectorAll('.pj-card-folded').length,
-    foot: card('c_capacity')?.querySelector('.pj-foot')?.textContent,
+    latest: card('c_capacity')?.querySelector('.pj-folded-reply .pj-body')?.textContent,
+    status: card('c_capacity')?.querySelector('.pj-foot, .pj-typing') ?? null,
     replies: card('c_capacity')?.querySelectorAll('.pj-msg').length ?? 0,
     // How far the capacity card sits below its text, in pixels.
     drift: Math.round(card('c_capacity').getBoundingClientRect().top - document.querySelector('.pj-page [data-thread="c_capacity"]').getBoundingClientRect().top),
@@ -69,10 +70,11 @@ const margin = () => page.evaluate(`(() => {
   };
 })()`);
 
-test('threads not open are folded to their first comment and a line on what followed; the open one is whole, at its text, though five cards stack above it', { timeout: 60_000 }, async () => {
+test('threads not open are folded to their first comment and their latest reply, with no status line; the open one is whole, at its text, though five cards stack above it', { timeout: 60_000 }, async () => {
   const folded = await margin();
   assert.equal(folded.folded, 6);
-  assert.match(folded.foot, /^2 replies·/);
+  assert.equal(folded.latest, 'Thanks.', 'the latest reply');
+  assert.equal(folded.status, null, 'no line on who is at work or how many replied');
   assert.equal(folded.replies, 0, 'no message rows when folded');
   assert.ok(folded.drift > 100, `the stacked cards push the folded one down (${folded.drift}px)`);
 

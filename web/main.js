@@ -297,7 +297,6 @@ async function start() {
   setBuddies(initial.agents);
   people.render({ agents: initial.agents });
   if (inProject && level === 'owner') api.room().then((room) => people.render({ room }), () => {});
-  margin.setAgents(initial.agents);
   docBar.setAgents(initial.agents);
   docBar.setLoop(initial.loop);
   shownAgents = JSON.stringify(initial.agents);
@@ -634,7 +633,6 @@ function showAgents(next) {
   standAtWork(next);
   setBuddies(next);
   people.render({ agents: next });
-  margin.setAgents(next);
   docBar.setAgents(next);
   paintMarks();
 }
