@@ -54,20 +54,21 @@ const TOOLS = [
   },
   {
     name: 'comment',
-    description: 'Start a new thread in the doc, as a member does, for a member to decide something: never a mark in the doc itself. It is added when your turn ends, with your edits.',
+    description: 'Comment as a member does: start a thread on `on`, or reply in the thread `thread`. Never a mark in the doc itself. It is added when your turn ends, with your edits.',
     parameters: {
       type: 'object',
       properties: {
-        on: { type: 'string', description: 'The text it is about, quoted exactly from the doc as your edits leave it, text they write included, and found there once; "" for the whole doc.' },
-        body: { type: 'string', description: 'What the member must decide.' },
+        on: { type: 'string', description: 'For a new thread: the text it is about, quoted exactly from the doc as your edits leave it, text they write included, and found there once; "" for the whole doc.' },
+        thread: { type: 'string', description: 'For a reply: the id of the thread, its first comment\'s, as the comments file gives it.' },
+        body: { type: 'string', description: 'What you say.' },
       },
-      required: ['on', 'body'],
+      required: ['body'],
     },
   },
   {
     name: 'resolve',
-    description: 'Resolve the thread you are answering, when your turn ends: only when its last comment asks you to close or resolve it. Doing what it asked is no reason to.',
-    parameters: { type: 'object', properties: {} },
+    description: 'Resolve a thread when your turn ends, as a member does: the one you are answering, or `thread`. Only when the last comment asks you to; doing what a thread asked is no reason to.',
+    parameters: { type: 'object', properties: { thread: { type: 'string', description: 'The id of the thread to resolve, its first comment\'s; the one you are answering if left out.' } } },
   },
   {
     name: 'wait',
@@ -145,7 +146,7 @@ export async function turn({ prompt, doc, sidecar, thread }, { infer, readFile, 
     const runs = ends.length === 1 && !calls.some((call) => READS.includes(call.name));
     const results = new Map();
     for (const call of [...calls.filter((c) => !ends.includes(c)), ...ends]) {
-      const result = ends.includes(call) && !runs ? NOT_RUN : await use(call, { doc, thread, comments, wait, finish, readFile, resolve });
+      const result = ends.includes(call) && !runs ? NOT_RUN : await use(call, { doc, sidecar, thread, comments, wait, finish, readFile, resolve });
       if (typeof result !== 'string') return result;
       results.set(call, result);
     }
@@ -155,7 +156,7 @@ export async function turn({ prompt, doc, sidecar, thread }, { infer, readFile, 
 }
 
 // What a tool call gives back to the model, or a valid proposal's { doc, sidecar, reply, waiting }.
-async function use({ name, args: json }, { doc, thread, comments, wait, finish, readFile, resolve }) {
+async function use({ name, args: json }, { doc, sidecar, thread, comments, wait, finish, readFile, resolve }) {
   let args;
   try {
     args = JSON.parse(json);
@@ -164,9 +165,23 @@ async function use({ name, args: json }, { doc, thread, comments, wait, finish, 
   }
   if (name === 'read') return read(args, readFile, doc);
   if (name === 'find' || name === 'grep') return search(name, args, readFile, resolve);
+  // A thread of the doc, by the id of its first comment, as the comments file has it.
+  const isThread = async (id) => (await readFile(sidecar) ?? '').split('\n').some((line) => {
+    try {
+      const c = JSON.parse(line);
+      return c?.id === id && c.thread === undefined;
+    } catch {
+      return false;
+    }
+  });
   if (name === 'comment') {
-    const { on, body } = args;
-    if (typeof on !== 'string' || typeof body !== 'string' || !body.trim()) return 'Not added: comment takes { on, body }, body not empty.';
+    const { on, thread: to, body } = args;
+    if (typeof body !== 'string' || !body.trim() || (typeof on !== 'string') === (typeof to !== 'string')) return 'Not added: comment takes { on, body } for a new thread or { thread, body } for a reply, body not empty.';
+    if (to !== undefined) {
+      if (!(await isThread(to))) return `Not added: no thread ${to}. Its id is its first comment's, in the comments file.`;
+      comments.push({ thread: to, body });
+      return `Added when your turn ends, as a reply in ${to}.`;
+    }
     if (!on.trim()) {
       comments.push({ body });
       return 'Added when your turn ends, on the whole doc.';
@@ -177,8 +192,10 @@ async function use({ name, args: json }, { doc, thread, comments, wait, finish, 
     return count ? `Added when your turn ends, on line ${line}.` : 'Added when your turn ends, if your edits write on once: it is not in the doc now.';
   }
   if (name === 'resolve') {
-    if (!comments.some((c) => c.resolved)) comments.push({ thread, resolved: true });
-    return 'This thread is resolved when your turn ends.';
+    const which = args.thread ?? thread;
+    if (typeof which !== 'string' || (which !== thread && !(await isThread(which)))) return `Not resolved: no thread ${which}. Its id is its first comment's, in the comments file.`;
+    if (!comments.some((c) => c.resolved && c.thread === which)) comments.push({ thread: which, resolved: true });
+    return which === thread ? 'This thread is resolved when your turn ends.' : `Thread ${which} is resolved when your turn ends.`;
   }
   if (name === 'wait') {
     wait();

@@ -107,12 +107,14 @@ export function newComment({ thread, anchor = null, body, resolved }, { by, at }
  * `threads`, and a quote found other than once in `text` (the buddy's copy
  * of the doc as it left it, the text it quoted) is on the whole doc.
  * `resolves` is whether a line `{ thread: own, resolved: true }` resolves
- * the thread of the run, `own`. Anything else is ignored.
+ * the thread of the run, `own`, and `resolved` the other threads of
+ * `threads` such a line resolves, as a member may. Anything else is ignored.
  */
 export function appendedComments(before, after, { text, by, at, threads, own }) {
   const had = new Set(before.split('\n'));
   const comments = [];
   let resolves = false;
+  const resolved = new Set();
   for (const raw of after.split('\n')) {
     if (!raw.trim() || had.has(raw)) continue;
     let line;
@@ -123,6 +125,7 @@ export function appendedComments(before, after, { text, by, at, threads, own }) 
     }
     if (!isObject(line) || line.id !== undefined) continue;
     if (line.resolved === true && line.thread === own) resolves = true;
+    else if (line.resolved === true && threads.has(line.thread)) resolved.add(line.thread);
     if (typeof line.body !== 'string' || !line.body.trim()) continue;
     if (line.thread !== undefined && !threads.has(line.thread)) continue;
     comments.push(newComment({
@@ -131,7 +134,7 @@ export function appendedComments(before, after, { text, by, at, threads, own }) 
       body: line.body.trim(),
     }, { by, at }));
   }
-  return { comments, resolves };
+  return { comments, resolves, resolved: [...resolved] };
 }
 
 // The anchor of `exact` when it is in `text` once, else null. An agent may

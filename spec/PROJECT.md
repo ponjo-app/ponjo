@@ -59,8 +59,8 @@ is `Clippy`. Then it is the user's like any other.
 
 ## 3. What a buddy may do
 
-It edits the doc it answers in, and comments there as a human does, but
-cannot resolve; each run's edits can be undone. On the machine, it
+It edits the doc it answers in, and comments there as a member does: new
+threads, replies and resolving, when asked; each run's edits can be undone. On the machine, it
 does whatever its agent CLI's own config allows; Ponjo only tells it
 where the project folder is
 ([agent config](../docs/agent-config.md#permissions)).

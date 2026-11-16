@@ -271,7 +271,7 @@ test('in project mode a run gets the project folder, and its copies at the doc\'
     assert.ok(!run.prompt.includes(run.project) && !run.prompt.includes(folder) && !run.prompt.includes(run.cwd), 'no path but the project\'s');
     assert.match(run.prompt, /a member of the doc drafts\/plan\.md\./);
     assert.match(run.prompt, /A file path in a comment is relative to the doc's folder, drafts\/: a comment's notes\.md is drafts\/notes\.md, not notes\.md at the top\./);
-    assert.match(run.prompt, /append lines to drafts\/plan\.md\.comments\.jsonl, which holds the doc's comments/);
+    assert.match(run.prompt, /drafts\/plan\.md\.comments\.jsonl holds the doc's threads[\s\S]*append lines to drafts\/plan\.md\.comments\.jsonl, one JSON object per line/);
     await until(() => !existsSync(run.cwd), 'its copies to be gone after', 5000);
   }, { folder });
 });
@@ -544,7 +544,7 @@ test('the prompt tells a buddy who the other members are, as the app shows them'
   assert.doesNotMatch(prompt, /Ada: /, 'not itself');
   const withUser = buildPrompt({ buddy: buddies[0], buddies, docName: 'a.md', sidecarName: 'a.md.comments.jsonl', thread, human: { name: 'fzhan', about: 'I write novels.' } });
   assert.match(withUser, /The other members of the doc:\n\nfzhan \(owner\): I write novels\.\n\nBo/);
-  assert.match(withUser, /Resolve this thread only when its last comment asks you to close or resolve it: doing what it asked is no reason.* \{"thread":"c_thread01","resolved":true\} to resolve this one/);
+  assert.match(withUser, /When it does not, start a thread only where a member must decide something, fix small things in the doc instead, and resolve nothing.* \{"thread":"<id>","resolved":true\} to resolve one \(this one is c_thread01\)/);
   assert.doesNotMatch(prompt, /I write novels/, 'nothing about an owner who wrote nothing');
 });
 

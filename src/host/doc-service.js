@@ -586,11 +586,16 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
     const by = { id: buddyId, name, kind: 'ai' };
     const at = Date.parse(seen) + 1;
     // Its comments are anchored on its copy as it left it, the text it
-    // quoted; readers find them in the doc as it is now.
+    // quoted; readers find them in the doc as it is now. In another thread,
+    // a reply or a resolve comes after that thread's latest comment.
     await changeComments((lines) => {
       if (!lines.some((l) => l.comment?.id === threadId)) return lines;
       const threads = new Set(lines.filter((l) => l.comment && l.comment.thread === undefined).map((l) => l.comment.id));
-      const added = comments ? appendedComments(comments.before, comments.after, { text: edited, by, at: new Date(at).toISOString(), threads, own: threadId }) : { comments: [], resolves: false };
+      const added = comments ? appendedComments(comments.before, comments.after, { text: edited, by, at: new Date(at).toISOString(), threads, own: threadId }) : { comments: [], resolves: false, resolved: [] };
+      const after = (other) => new Date(lines.reduce((last, { comment: c }) => (c && (c.id === other || c.thread === other) ? Math.max(last, Date.parse(c.at) + 1) : last), at)).toISOString();
+      for (const c of added.comments) if (c.thread !== undefined && c.thread !== threadId) c.at = after(c.thread);
+      const last = (other) => new Date(Date.parse(after(other)) + 1).toISOString(); // after its reply there, if any
+      added.comments.push(...added.resolved.map((other) => newComment({ thread: other, body: '', resolved: true }, { by, at: last(other) })));
       const reply = {
         id, thread: threadId, by, at: new Date(at + 1).toISOString(), body, // after its comments, so it ends its thread
         ...(anchor ? { anchor } : {}), ...(failed ? { failed: true } : {}), ...(added.resolves ? { resolved: true } : {}),

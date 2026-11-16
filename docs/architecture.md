@@ -539,10 +539,11 @@ which turns run, and shows apart from them: a buddy's face shows its
 turns, and one line on top of the margin the loop ("Next look in 0:42",
 "Clippy is working…", "Next look when the doc changes").
 
-An AI buddy comments as a person does: new threads, replies in any thread.
-It resolves the thread it answers when the comment asks it to: its reply
-carries `resolved`. Anything else is ignored
-([agent config](agent-config.md#comments)). Its comments start no turns
+An AI buddy comments as a member does: new threads, replies in any thread,
+and resolving any thread when the comment asks it to (the thread it
+answers: its reply carries `resolved`). Anything else is ignored
+([agent config](agent-config.md#comments)). The rules keep restraint as the
+default when the comment asks nothing of comments, not as a ban. Its comments start no turns
 (principle 6).
 
 ### What the user sees after a turn

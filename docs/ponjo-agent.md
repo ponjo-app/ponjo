@@ -111,8 +111,10 @@ with `readFile`, and give at most 100 paths or lines, then how many more,
 saying to narrow the pattern or the path.
 
 **`comment({ on, body })`** starts a thread on `on`, quoted from the doc
-as the edits leave it and found there once, or `""` for the whole doc; **`resolve()`** resolves
-the thread the turn answers. Each says at once whether it took, and its
+as the edits leave it and found there once, or `""` for the whole doc;
+**`comment({ thread, body })`** replies in a thread, by the id the comments
+file gives it; **`resolve({ thread? })`** resolves a thread, the one the
+turn answers when it names none. A thread not in the doc is refused at once. Each says at once whether it took, and its
 line of the sidecar ([agent config](agent-config.md#comments)) is written
 by the program and added with the proposal. Their own tools, as a member's
 own actions, and not fields of `propose`: a model writing those lines
