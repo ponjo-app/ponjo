@@ -8,7 +8,7 @@ import { DEFAULT_SETTINGS, SettingsError, agentOf, agentSettings, checkSettingsP
 import { configDir, readSettings, settingsPath, updateSettings, watchSettings } from '../src/store/settings.js';
 import { markdown } from '../web/views/markdown/index.js';
 
-const MARKDOWN_DEFAULTS = { font: 'sans', width: 'normal', outline: true, focus: false, wordCount: false };
+const MARKDOWN_DEFAULTS = { font: 'sans', width: 'normal', outline: true, focus: false };
 const tempDir = () => mkdtemp(join(tmpdir(), 'ponjo-settings-'));
 
 test('configDir follows each OS convention and the override', () => {

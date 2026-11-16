@@ -147,11 +147,11 @@ kbd { font: 500 11px/1 var(--ui-font); padding: 2px 6px; border-radius: 4px; bor
    in this doc). A failed run is a moment: the face shakes and flashes red,
    once. A face in the header you point at grows a little, and nothing else. */
 :where(.pj-agent-face, .pj-me):hover .pj-avatar { transform: scale(1.1); }
-:is([data-presence="working"], .pj-typing, .pj-foot-working) .pj-avatar { transform: scale(1.12); }
-:is([data-presence="working"], .pj-typing, .pj-foot-working) .pj-face-body { animation: pj-spin 2.4s linear infinite; }
-:is([data-presence="working"], .pj-typing, .pj-foot-working) .pj-face-look { animation: pj-bob 0.8s ease-in-out infinite alternate; }
-:is([data-presence="working"], .pj-typing, .pj-foot-working) .pj-face-eyes { display: none; }
-:is([data-presence="working"], .pj-typing, .pj-foot-working) .pj-face-focused { display: inline; }
+[data-presence="working"] .pj-avatar { transform: scale(1.12); }
+[data-presence="working"] .pj-face-body { animation: pj-spin 2.4s linear infinite; }
+[data-presence="working"] .pj-face-look { animation: pj-bob 0.8s ease-in-out infinite alternate; }
+[data-presence="working"] .pj-face-eyes { display: none; }
+[data-presence="working"] .pj-face-focused { display: inline; }
 [data-presence="away"] .pj-avatar { filter: grayscale(1); opacity: 0.45; }
 .pj-avatar.pj-failed { animation: pj-shake 0.45s ease-in-out; }
 .pj-failed .pj-face-body { animation: pj-red 1s; }
@@ -258,7 +258,6 @@ kbd { font: 500 11px/1 var(--ui-font); padding: 2px 6px; border-radius: 4px; bor
 .pj-toolbar button, .pj-bubble button { border: 0; background: none; border-radius: 6px; height: 28px; min-width: 28px; padding: 0 6px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; font-size: 13px; color: var(--text); flex: none; }
 .pj-toolbar button:hover:not(:disabled), .pj-bubble button:hover:not(:disabled) { background: var(--hover); }
 .pj-toolbar button[aria-pressed="true"], .pj-bubble button[aria-pressed="true"] { background: var(--active); color: var(--text); }
-.pj-toolbar .pj-count { padding: 0 8px; }
 /* the save state (main.js, paintSave): one at a time, a problem in red */
 .pj-save { display: inline-flex; align-items: center; gap: 4px; padding: 0 8px; min-width: 0; max-width: 40ch; font-size: 12px; color: var(--text-faint); white-space: nowrap; }
 .pj-save-icon { display: flex; }
@@ -440,10 +439,14 @@ kbd { font: 500 11px/1 var(--ui-font); padding: 2px 6px; border-radius: 4px; bor
 .pj-guides { background: repeating-linear-gradient(to right, var(--border-strong) 0 1px, transparent 1px calc(var(--indent) * 1ch)); }
 .pj-guides-blank { background: repeating-linear-gradient(to right, var(--border-strong) 0 1px, transparent 1px calc(var(--indent) * 1ch)) 0 0 / calc(var(--width) * 1ch) 100% no-repeat; }
 
-/* the plain view's status bar, under the page */
+/* the doc's status bar, under the page in every view (web/docbar.js): the view's part and the word count, then the buddies' loop and the view's buttons */
 .pj-statusbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; height: 28px; padding: 0 16px; flex: none; background: var(--bg-soft); border-top: 1px solid var(--border); font-size: 12px; color: var(--text-soft); font-variant-numeric: tabular-nums; }
 .pj-statusbar .pj-block-menu { color: var(--text); }
 .pj-status-actions { display: flex; align-items: center; gap: 2px; }
+.pj-status-info { display: flex; align-items: center; gap: 12px; min-width: 0; white-space: nowrap; overflow: hidden; }
+.pj-status-view:empty { display: none; }
+.pj-status-view-actions { display: contents; }
+:is([data-preview], [data-folder-only], [data-history], [data-runs]) .pj-docbar { display: none; }
 .pj-statusbar button { height: 22px; padding: 0 8px; border: 0; border-radius: 6px; background: none; font-size: 12px; color: var(--text-soft); }
 .pj-statusbar button:hover, .pj-statusbar button[aria-expanded="true"] { background: var(--hover); color: var(--text); }
 .pj-statusbar button[aria-pressed="true"] { background: var(--active); color: var(--text); }
@@ -578,18 +581,21 @@ del.pj-buddy-del { margin-right: 0.15em; }
 /* a thread not open: its first comment in two lines, then one line on what followed */
 .pj-card-folded { padding: 10px 14px 12px; }
 .pj-card-folded .pj-body { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; margin-top: 2px; }
+.pj-folded-reply { margin-top: 10px; }
+.pj-folded-more { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 12px; color: var(--text-faint); }
+.pj-folded-more::before, .pj-folded-more::after { content: ""; flex: 1; border-top: 1px solid var(--border); }
 .pj-card-folded .pj-quote { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 6px; }
-.pj-foot { display: flex; align-items: center; gap: 6px; margin-top: 8px; font-size: 12px; color: var(--text-soft); font-variant-numeric: tabular-nums; }
-.pj-foot-faces { display: inline-flex; gap: 2px; } /* side by side, not stacked: a ring cut around a buddy's blob would bite into the next */
-.pj-foot .pj-avatar { --size: 16px; }
-.pj-foot-dot { color: var(--text-faint); }
-.pj-foot-failed { color: var(--red); }
 /* the threads with no place in the text, at the top: the comment icon and how many, bare as an icon button;
    a buddy at work on one is a dot of its colour on the icon's top left corner, a failed run a red one */
 .pj-unplaced { position: absolute; left: 0; display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 10px 0 8px; border: 0; border-radius: 6px; background: none; font-size: 12px; font-weight: 600; color: var(--text-soft); font-variant-numeric: tabular-nums; transition: top 0.18s ease, background 0.15s; }
 .pj-unplaced .pj-icon { width: 14px; height: 14px; }
-/* the buddies' loop, on top of the margin while an ask is unanswered: one quiet line, its ring the rest until the next look */
-.pj-loop { position: absolute; left: 0; right: 0; display: flex; align-items: center; gap: 7px; height: 26px; padding: 0 8px; font-size: 12px; color: var(--text-soft); font-variant-numeric: tabular-nums; transition: top 0.18s ease; }
+/* the buddies' loop, in the status bar while an ask is unanswered or the loop is paused: its ring the rest until the next look */
+.pj-loop { display: flex; align-items: center; gap: 7px; margin-right: 6px; }
+.pj-loop[hidden] { display: none; }
+.pj-statusbar .pj-loop-pause { display: inline-flex; align-items: center; justify-content: center; width: 22px; padding: 0; background: var(--hover); color: var(--text); }
+.pj-statusbar .pj-loop-pause:hover { background: var(--active); }
+.pj-loop-pause[hidden] { display: none; }
+.pj-loop-pause .pj-icon { width: 14px; height: 14px; }
 .pj-loop-ring { flex: none; width: 14px; height: 14px; }
 .pj-loop-ring circle { fill: none; stroke-width: 2; }
 .pj-loop-track { stroke: var(--border-strong); }
@@ -600,10 +606,7 @@ del.pj-buddy-del { margin-right: 0.15em; }
 @media (prefers-reduced-motion: reduce) { .pj-loop-ring, .pj-loop-arc { animation: none !important; transition: none; } }
 .pj-unplaced:hover { background: var(--hover); color: var(--text); }
 .pj-unplaced[aria-expanded="true"] { visibility: hidden; }
-.pj-unplaced:is(.pj-unplaced-working, .pj-unplaced-failed)::after { content: ""; position: absolute; top: 3px; left: 4px; width: 8px; height: 8px; border-radius: 50%; background: var(--buddy); box-shadow: 0 0 0 2px var(--canvas); }
-.pj-unplaced-working::after { animation: pj-pulse 1.2s ease-in-out infinite alternate; }
-.pj-unplaced-failed:not(.pj-unplaced-working)::after { background: var(--red); }
-@keyframes pj-pulse { from { opacity: 0.35; } }
+.pj-unplaced-failed::after { content: ""; position: absolute; top: 3px; left: 4px; width: 8px; height: 8px; border-radius: 50%; background: var(--red); box-shadow: 0 0 0 2px var(--canvas); }
 /* opened, they are whole threads at the top, over the cards there */
 .pj-card-aside { background: var(--bg); border-color: transparent; box-shadow: var(--shadow-raised); z-index: 3; }
 .pj-card-aside.pj-card-active { transform: none; }
@@ -637,7 +640,6 @@ del.pj-buddy-del { margin-right: 0.15em; }
 @media (hover: none) { .pj-resolve { opacity: 1; } }
 .pj-check { width: 18px; height: 18px; fill: currentColor; flex: none; }
 
-.pj-typing { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 13px; color: var(--text-soft); }
 
 .pj-resolved-row { display: flex; align-items: center; gap: 6px; margin-top: 12px; padding-top: 8px; border-top: 1px solid var(--border); font-size: 13px; color: var(--text-soft); }
 .pj-resolved-row span { flex: 1; }
@@ -903,13 +905,12 @@ label.pj-setting { cursor: pointer; }
   .pj-stage { grid-template-columns: minmax(0, 1fr); padding: 0 0 80px; }
   .pj-page { padding-top: 24px; padding-bottom: 48px; min-height: 0; }
   /* the comments rise from the bottom over the page, opened by the Comments button or commented text */
-  .pj-margin { position: fixed; z-index: 24; left: max(8px, 50% - 320px); right: max(8px, 50% - 320px); bottom: 8px; max-height: 50vh; overflow-y: auto; overscroll-behavior: contain; padding: 12px 12px 2px; border-radius: 14px; background: var(--bg); box-shadow: var(--shadow-raised); height: auto !important; animation: pj-rise 0.18s ease-out; }
+  .pj-margin { position: fixed; z-index: 24; left: max(8px, 50% - 320px); right: max(8px, 50% - 320px); bottom: 36px; /* over the status bar */ max-height: 50vh; overflow-y: auto; overscroll-behavior: contain; padding: 12px 12px 2px; border-radius: 14px; background: var(--bg); box-shadow: var(--shadow-raised); height: auto !important; animation: pj-rise 0.18s ease-out; }
   :root:not([data-comments-open]) .pj-margin { display: none; }
   [data-comments-open] .pj-canvas { scroll-padding-bottom: calc(50vh + 16px); }
   [data-comments-open] .pj-stage { padding-bottom: calc(50vh + 16px); }
   .pj-margin > .pj-empty { margin: 4px 4px 16px; }
   .pj-card { position: static; margin-bottom: 12px; transform: none; }
-  .pj-loop { position: static; margin-bottom: 8px; }
   .pj-card-active { transform: none; }
   .pj-toolbar { margin: 0 8px 8px; }
   .pj-count { display: none; }

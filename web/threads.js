@@ -15,15 +15,6 @@ import { agentFace, buddyColor, nameOf, personFace } from './faces.js';
 import { mentionSpans } from '../src/core/mentions.js';
 
 const GAP = 10;
-const SVG = 'http://www.w3.org/2000/svg';
-const RING_R = 6;
-const RING = 2 * Math.PI * RING_R; // the loop's ring, round (app.css: .pj-loop-arc)
-const SOON_MS = 3000; // a look this soon follows a change (src/host/runner.js)
-// `ms` as m:ss.
-const clock = (ms) => {
-  const s = Math.ceil(ms / 1000);
-  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
-};
 const MENTION_BEFORE_CARET = /(^|[^A-Za-z0-9._-])@([A-Za-z0-9._-]*)$/;
 
 /**
@@ -41,8 +32,6 @@ const MENTION_BEFORE_CARET = /(^|[^A-Za-z0-9._-])@([A-Za-z0-9._-]*)$/;
  */
 export function createCommentMargin(margin, handlers) {
   let threads = [];
-  let agents = []; // the buddies' statuses in this doc: who works on which threads
-  let loop = { waiting: 0, from: null, at: null }; // the doc's loop (src/host/runner.js, loop)
   let me = { id: null, name: '' };
   let edits = {}; // the buddy replies that edited the doc here: { [id]: { state: 'edited' | 'undone', ... } }
   let shownEdits = null; // the reply whose edits the text shows
@@ -71,7 +60,6 @@ export function createCommentMargin(margin, handlers) {
 
     margin.classList.toggle('pj-margin-list', showResolved);
     const cards = [];
-    if (!showResolved && loop.waiting > 0) cards.push(loopRow());
     if (draft) cards.push(draftCard());
     const shown = visibleThreads();
     const aside = beside() ? shown.filter(unplaced) : [];
@@ -110,7 +98,6 @@ export function createCommentMargin(margin, handlers) {
   function threadCard(thread) {
     const card = cardFor(thread, 'pj-card');
     const active = thread.id === activeId;
-    const working = workingOn(thread);
     card.classList.toggle('pj-card-active', active);
     card.classList.toggle('pj-card-aside', beside() && unplaced(thread));
 
@@ -122,12 +109,6 @@ export function createCommentMargin(margin, handlers) {
       card.append(commentRow(comment, i === 0 && !thread.resolved ? resolveButton(thread) : null));
     });
 
-    // Each buddy working on it, its face at work; several can at once.
-    for (const { id, name } of working) {
-      const row = el('div', 'pj-typing');
-      row.append(avatar(name, 'agent', true, id), el('span', '', `${name} is working…`));
-      card.append(row);
-    }
     if (thread.resolved) {
       const by = thread.comments.findLast((c) => c.resolved).by;
       const row = el('div', 'pj-resolved-row');
@@ -142,46 +123,30 @@ export function createCommentMargin(margin, handlers) {
     return card;
   }
 
-  // A thread folded: its first comment, cut to two lines, and one line on
-  // what followed: the buddies at work on it, a run that failed, or who
-  // replied, the edits they made and when.
+  // A thread folded: its first comment and its latest reply, each cut to two
+  // lines, and between them how many replies it leaves out.
   function foldedCard(thread) {
     const card = cardFor(thread, 'pj-card pj-card-folded');
     if (!thread.anchor) card.append(el('div', 'pj-card-note', 'On the whole document'));
     else if (showResolved || thread.detached) card.append(quote(thread));
-    const [first, ...replies] = commentsOf(thread);
-    const body = el('div', 'pj-body');
-    body.append(...withMentions(first.body, handlers.mentionable?.() ?? [], handlers.files?.(), handlers.openFile));
-    card.append(messageHead(first, thread.resolved ? null : resolveButton(thread)), body);
-    const foot = footOf(thread, replies);
-    if (foot) card.append(foot);
+    const shown = commentsOf(thread);
+    const latest = shown.length > 1 ? shown.at(-1) : null;
+    card.append(...folded(shown[0], thread.resolved ? null : resolveButton(thread)));
+    const between = shown.length - 2;
+    if (between > 0) card.append(el('div', 'pj-folded-more', `${between} more ${between === 1 ? 'reply' : 'replies'}`));
+    if (latest) {
+      const reply = el('div', `pj-folded-reply${latest.failed ? ' pj-msg-failed' : ''}`);
+      reply.append(...folded(latest, null));
+      card.append(reply);
+    }
     return card;
   }
 
-  function footOf(thread, replies) {
-    const working = workingOn(thread);
-    const last = replies.at(-1);
-    const foot = el('div', 'pj-foot');
-    const faces = (people) => {
-      const row = el('span', 'pj-foot-faces');
-      for (const { id, name, kind } of people) row.append(avatar(name, kind, true, id));
-      return row;
-    };
-    const dot = () => el('span', 'pj-foot-dot', '·');
-    if (working.length > 0) {
-      foot.classList.add('pj-foot-working');
-      foot.append(faces(working.map(({ id, name }) => ({ id, name, kind: 'agent' }))), el('span', '', `${listed(working.map((a) => a.name))} ${working.length === 1 ? 'is' : 'are'} working…`));
-    } else if (last?.failed) {
-      foot.classList.add('pj-foot-failed');
-      foot.append(el('span', '', `${nameOf(last.by.id, last.by.name)}'s run failed`), dot(), el('time', '', relativeTime(last.at)));
-    } else if (last) {
-      const who = [...new Map(replies.map((c) => [c.by.id, { id: c.by.id, name: kindOf(c) === 'agent' ? nameOf(c.by.id, c.by.name) : c.by.name, kind: kindOf(c) }])).values()];
-      const changes = replies.reduce((n, c) => n + (edits[c.id]?.state === 'edited' ? edits[c.id].changes : 0), 0);
-      foot.append(faces(who.slice(0, 3)), el('span', '', `${replies.length} ${replies.length === 1 ? 'reply' : 'replies'}`));
-      if (changes > 0) foot.append(dot(), el('span', '', `${changes} ${changes === 1 ? 'edit' : 'edits'}`));
-      foot.append(dot(), el('time', '', relativeTime(last.at)));
-    } else return null;
-    return foot;
+  // A comment as a folded card shows it: its head, and its text unless it has none.
+  function folded(comment, action) {
+    const body = el('div', 'pj-body');
+    body.append(...withMentions(comment.body, handlers.mentionable?.() ?? [], handlers.files?.(), handlers.openFile));
+    return comment.body.trim() ? [messageHead(comment, action), body] : [messageHead(comment, action)];
   }
 
   // The threads with no place in the text, as one: the comment icon and how
@@ -195,11 +160,6 @@ export function createCommentMargin(margin, handlers) {
     button.title = [whole && `${whole} on the whole document`, gone && `${gone} whose text was deleted`].filter(Boolean).join(', ');
     button.setAttribute('aria-label', button.title);
     button.setAttribute('aria-expanded', String(asideOpen));
-    const busy = list.flatMap(workingOn)[0];
-    if (busy) {
-      button.classList.add('pj-unplaced-working');
-      button.style.setProperty('--buddy', buddyColor(busy.id));
-    }
     button.classList.toggle('pj-unplaced-failed', list.some((t) => commentsOf(t).at(-1)?.failed));
     button.append(icon('comments'), el('span', '', String(list.length)));
     button.addEventListener('click', () => {
@@ -227,50 +187,8 @@ export function createCommentMargin(margin, handlers) {
     return el('blockquote', `pj-quote${thread.detached ? ' pj-quote-gone' : ''}`, truncate(thread.anchor.exact, 120));
   }
 
-  // The buddies at work on a thread not resolved.
-  const workingOn = (thread) => (thread.resolved ? [] : agents.filter((a) => a.threadIds.includes(thread.id)));
 
 
-  // The buddies' loop, on top while an ask is unanswered: at work, resting
-  // until the next look (its ring fills as the rest runs out), or still
-  // until someone changes the doc. Painted each second while it shows.
-  function loopRow() {
-    const row = el('div', 'pj-loop');
-    const svg = document.createElementNS(SVG, 'svg');
-    svg.setAttribute('class', 'pj-loop-ring');
-    svg.setAttribute('viewBox', '0 0 16 16');
-    svg.setAttribute('aria-hidden', 'true');
-    for (const name of ['pj-loop-track', 'pj-loop-arc']) {
-      const circle = document.createElementNS(SVG, 'circle');
-      Object.entries({ class: name, cx: 8, cy: 8, r: RING_R }).forEach(([k, v]) => circle.setAttribute(k, v));
-      svg.append(circle);
-    }
-    row.append(svg, el('span', 'pj-loop-text'));
-    paintLoop(row);
-    return row;
-  }
-  function paintLoop(row = margin.querySelector(':scope > .pj-loop')) {
-    if (!row) return;
-    const working = agents.filter((a) => a.threadIds.length > 0);
-    const now = Date.now();
-    let state = 'resting';
-    let text;
-    let filled = 0;
-    if (working.length > 0) {
-      state = 'working';
-      text = `${listed(working.map((a) => a.name))} ${working.length === 1 ? 'is' : 'are'} working…`;
-    } else if (loop.at === null) {
-      state = 'still';
-      text = 'Next look when the doc changes';
-    } else {
-      filled = Math.min(1, Math.max(0, (now - loop.from) / (loop.at - loop.from)));
-      text = loop.at - loop.from <= SOON_MS ? 'Looking soon' : `Next look in ${clock(loop.at - now)}`;
-    }
-    row.dataset.state = state;
-    row.querySelector('.pj-loop-text').textContent = text;
-    row.querySelector('.pj-loop-arc').style.strokeDashoffset = String(RING * (1 - filled));
-  }
-  setInterval(() => paintLoop(), 1000);
 
   // What a thread shows: a comment that only resolved it shows as the
   // resolved line; a buddy's reply with nothing to say still shows, for what
@@ -493,7 +411,7 @@ export function createCommentMargin(margin, handlers) {
 
   function layout() {
     foldBodies();
-    const placed = [...margin.querySelectorAll(':scope > :is(.pj-loop, .pj-card, .pj-unplaced)')];
+    const placed = [...margin.querySelectorAll(':scope > :is(.pj-card, .pj-unplaced)')];
     if (!beside()) {
       for (const card of placed) card.style.top = '';
       margin.style.height = '';
@@ -567,16 +485,6 @@ export function createCommentMargin(margin, handlers) {
     /** The reply whose edits the text shows, or null. */
     setShownEdits(id) {
       shownEdits = id;
-      render();
-    },
-    /** The doc's loop changed: { waiting, from, at } (src/host/runner.js, loop). */
-    setLoop(next) {
-      loop = next ?? loop;
-      render();
-    },
-    /** The buddies' statuses changed: who works on which threads. */
-    setAgents(statuses) {
-      agents = statuses ?? [];
       render();
     },
     startDraft(anchor) {
@@ -753,7 +661,6 @@ function el(tag, className, text) {
 const truncate = (s, n) => (s.length > n ? s.slice(0, n - 1) + '…' : s);
 
 // "Ada", "Ada and Ben", "Ada, Ben and Clippy".
-const listed = (names) => (names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names.at(-1)}` : names[0]);
 
 // A comment's author as faces and name cards know them: 'agent' for a buddy.
 const kindOf = (comment) => (comment.by.kind === 'ai' ? 'agent' : 'human');

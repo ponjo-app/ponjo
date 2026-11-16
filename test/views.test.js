@@ -663,20 +663,20 @@ test('markdown view: a task list item shows its box; clicking it ticks the item,
   assert.equal(await getText(), '* [x] one\n* [ ] two\n\nAfter.\n');
 });
 
-test('plain view: line numbers and font size follow the settings; the status bar follows the caret', async () => {
+test('plain view: line numbers and font size follow the settings; its part of the status bar follows the caret', async () => {
   await make('plain', 'ab\ncd\n');
   assert.equal(await run(`document.querySelectorAll('.cm-lineNumbers').length`), 1);
   await select('cd', 1, 1);
-  await waitFor(async () => (await run(`document.querySelector('.pj-status-position').textContent`)) === 'Ln 2, Col 2', 5_000, 'the caret place');
+  await waitFor(async () => (await run(`document.querySelector('.pj-status-view').textContent`)) === 'Ln 2, Col 2', 5_000, 'the caret place');
   await select('cd', 0, 2);
-  await waitFor(async () => (await run(`document.querySelector('.pj-status-position').textContent`)).endsWith('2 selected'), 5_000, 'the selection size');
+  await waitFor(async () => (await run(`document.querySelector('.pj-status-view').textContent`)).endsWith('2 selected'), 5_000, 'the selection size');
   await run(`view.applySettings({ lineNumbers: false, wrap: false, fontSize: 18 })`);
   assert.equal(await run(`document.querySelectorAll('.cm-lineNumbers').length`), 0);
   assert.equal(await run(`getComputedStyle(document.querySelector('.cm-scroller')).fontSize`), '18px');
   await make('plain', 'x\n');
-  assert.equal(await run(`document.querySelectorAll('.pj-statusbar').length`), 1, 'destroy takes the status bar away');
+  assert.equal(await run(`document.querySelectorAll('.pj-status-indent').length`), 1, 'destroy takes its part of the status bar away');
   await make('plain', 'x\n', { editable: false });
-  assert.equal(await run(`document.querySelectorAll('.pj-statusbar').length`), 0, 'a read-only view has none');
+  assert.deepEqual(await run(`[document.querySelectorAll('.pj-status-indent').length, document.querySelector('.pj-status-view').textContent]`), [0, ''], 'a read-only view fills none in');
 });
 
 test('plain view: whitespace marks and guides draw over the text without changing it', async () => {

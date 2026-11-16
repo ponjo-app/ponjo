@@ -319,13 +319,29 @@ test('a buddy\'s own edit is no change for the loop: only a person\'s is; a run 
   });
 });
 
-test('the doc looks again every watchEvery minutes, until nothing has changed for watchFor; then at the next change', () => {
+test('a paused loop starts no run, for anyone\'s change; resumed, it looks soon', { timeout: 30_000 }, async () => {
+  await withDoc(async ({ call, edit, state, runs }) => {
+    await call('pauseLoop', { paused: true });
+    assert.equal((await state()).loop.paused, true);
+    await comment(call, '@Clippy until "ten"');
+    await edit(`${(await state()).text}\nMore.\n`);
+    await new Promise((r) => setTimeout(r, 4000));
+    assert.equal((await runs()).length, 0, 'no run while paused');
+    assert.deepEqual([(await state()).loop.from, (await state()).loop.at], [null, null], 'no look scheduled');
+    const { loop } = await call('pauseLoop', { paused: false });
+    assert.equal(loop.paused, false);
+    await until(async () => (await runs()).length === 1, 'the run once resumed', 8000);
+  });
+});
+
+test('the doc looks every watchEvery, and once nothing has changed for watchFor, every watchFor: it never stops by itself', () => {
   const [every, quiet, at] = [60_000, 600_000, 1_000_000];
   assert.equal(nextLook({ changed: true, quietSince: at, now: at, every, quiet }), 3000, 'soon after a change');
   assert.equal(nextLook({ changed: false, quietSince: at, now: at, every, quiet }), every);
   assert.equal(nextLook({ changed: false, quietSince: at, now: at + 9 * every, every, quiet }), every, 'the tenth look, 10 min after the change');
-  assert.equal(nextLook({ changed: false, quietSince: at, now: at + 9.5 * every, every, quiet }), null, 'then none');
-  assert.equal(nextLook({ changed: false, quietSince: at, now: at, every: quiet * 2, quiet }), null, 'none when it is longer than watchFor');
+  assert.equal(nextLook({ changed: false, quietSince: at, now: at + 9.5 * every, every, quiet }), quiet, 'then slowly');
+  assert.equal(nextLook({ changed: false, quietSince: at, now: at + 50 * quiet, every, quiet }), quiet, 'however long it is quiet');
+  assert.equal(nextLook({ changed: false, quietSince: at, now: at, every: quiet * 2, quiet }), quiet * 2, 'never faster than watchEvery');
 });
 
 test('resolving the thread of an unanswered ask ends it; a new comment in it is a change, and runs it soon', { timeout: 30_000 }, async () => {

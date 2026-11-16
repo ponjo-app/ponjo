@@ -18,12 +18,12 @@ import { indentGuides, whitespaceMarks } from './whitespace.js';
  * web/views/markdown/view.js). It has no tools, so `toolbar` is not used; given
  * `onComment`, a bubble over a selection offers Comment. `settings` are the
  * view's (web/views/plain/index.js), changed through `saveSettings`; an editable
- * view also has a status bar.
+ * view also fills its part of the doc's status bar, `statusbar` (web/docbar.js).
  *
- * @param {{ stage: HTMLElement, text: string, name: string, settings: object, saveSettings?: (patch: object) => void, editable?: boolean, color?: boolean, onChange?: () => void, onEdit?: () => void,
+ * @param {{ stage: HTMLElement, statusbar?: HTMLElement, text: string, name: string, settings: object, saveSettings?: (patch: object) => void, editable?: boolean, color?: boolean, onChange?: () => void, onEdit?: () => void,
  *           onMarkClick?: (id: string) => void, onLayout?: () => void, onComment?: () => void }} options
  */
-export async function createPlainView({ stage, text, name, settings, saveSettings = () => {}, editable = true, color = true, onChange, onEdit, onMarkClick, onLayout, onComment = null }) {
+export async function createPlainView({ stage, statusbar = null, text, name, settings, saveSettings = () => {}, editable = true, color = true, onChange, onEdit, onMarkClick, onLayout, onComment = null }) {
   const host = stage.querySelector('.pj-editor');
   stage.dataset.plain = ''; // the page runs edge to edge (app.css)
   let destroyed = false;
@@ -68,8 +68,8 @@ export async function createPlainView({ stage, text, name, settings, saveSetting
     if (!destroyed) view.dispatch({ effects: syntax.reconfigure([support, syntaxHighlighting(defaultHighlightStyle)]) });
   }, () => {});
 
-  if (editable) {
-    status = createStatusBar(view, stage.parentElement, saveSettings);
+  if (editable && statusbar) {
+    status = createStatusBar(view, statusbar, saveSettings);
     status.paint(own, indent);
   }
 

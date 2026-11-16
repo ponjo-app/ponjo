@@ -368,7 +368,7 @@ others put in; its result is your typing, merged by character.
 | Shell | windows, menus, dialogs, recent docs | an open doc's files only through `DocService` (renaming through `DocService.move`), the sidebar through ProjectService (a folder window with no doc: the folder's own, `list`, `read` and `open` only); the settings and agent scripts through Store and Config |
 | Agent | edit its copy, append to its sidecar, print a reply | none: it cannot call anything |
 
-The page's calls: `state`, `submit`, `comment`, `undo`, `cursor`, `history`,
+The page's calls: `state`, `submit`, `comment`, `undo`, `cursor`, `pauseLoop`, `history`,
 `version`, ProjectService's three, and for the owner settings, buddies,
 agent scripts and Room. `reply`, `resolve`, `reopen`, `saveDoc` and
 `restoreVersion` go: a reply, a resolve and a reopen are each `comment`; a
@@ -526,18 +526,21 @@ open, each look runs every unanswered ask not running already, a new one
 as one a turn kept open. The doc looks 3 s after someone changes what a
 turn is shown (an edit landing, a comment, a person's cursor moving to
 another paragraph, a person coming or going; a buddy's change is none, so
-no buddy wakes itself or another), then every 10 s until nothing has
-changed for 10 minutes, then at the next change (Settings > Agents:
-`watchEvery`, `watchFor`); and once when it opens. A turn's prompt says
+no buddy wakes itself or another), then every 10 s; once nothing has
+changed for 10 minutes it slows down to every 10 minutes, until the next
+change (Settings > Agents: `watchEvery`, `watchFor`); and once when it
+opens. It never stops by itself, only when a person pauses it. A turn's prompt says
 who is in the doc, people only: the paragraph each one's cursor is in, as
 lines, and how long since each typed, the signs people go by to tell
 whether someone has finished. It says too what its buddy changed in the
 doc since the comment, from the doc's history, so it knows its own lines
 from others'. An ask ends when its buddy
-replies or a person resolves the thread. The loop lives only in memory, as
-which turns run, and shows apart from them: a buddy's face shows its
-turns, and one line on top of the margin the loop ("Next look in 0:42",
-"Clippy is working…", "Next look when the doc changes").
+replies or a person resolves the thread. Anyone who may edit can pause the
+doc's loop, for everyone in it (`pauseLoop`): no look starts a run until
+they resume it, and turns on then finish. The loop lives only in memory, as
+which turns run, and shows apart from them: a buddy's face shows its turns,
+and the doc's status bar, under the page in every view, the loop ("Next
+look in 0:07", "Clippy is working…", "Paused") with a pause or play button, beside the Markdown view's word count.
 
 An AI buddy comments as a member does: new threads, replies in any thread,
 and resolving any thread when the comment asks it to (the thread it

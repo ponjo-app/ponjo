@@ -34,7 +34,7 @@ const contract = {
     const settings = viewSettings({ views: {} }, toolbar ? markdown : plain);
     // A view calls onLayout once it is made: the page lays its margin out by it (web/main.js).
     const onLayout = () => { if (!view) contract.early = true; };
-    view = await VIEWS[name]({ stage, text, settings, toolbar: bar, image: async (src) => contract.images[src] ?? null, saveImage: async (image) => (contract.savedImages.push(image), `assets/${image.name}`), onLayout, ...options, onMarkClick: (id) => contract.clicked.push(id), onEdit: () => contract.edits.push(view.getText()), onChange: () => contract.changes++, saveSettings: (patch) => contract.saved.push(patch) });
+    view = await VIEWS[name]({ stage, statusbar: document.querySelector('.pj-docbar'), text, settings, toolbar: bar, image: async (src) => contract.images[src] ?? null, saveImage: async (image) => (contract.savedImages.push(image), `assets/${image.name}`), onLayout, ...options, onMarkClick: (id) => contract.clicked.push(id), onEdit: () => contract.edits.push(view.getText()), onChange: () => contract.changes++, saveSettings: (patch) => contract.saved.push(patch) });
     window.view = view;
   },
   // Press toolbar button `command`, as a click does.

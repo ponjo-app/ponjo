@@ -10,6 +10,7 @@ import { api } from './api.js';
 import { markdown } from './views/markdown/index.js';
 import { viewFor } from './views/index.js';
 import { createCommentMargin } from './threads.js';
+import { createDocBar } from './docbar.js';
 import { WORKING_MS, createPeople, modeOf } from './agent.js';
 import { nameOf, setBuddies, setOwner } from './faces.js';
 import { createNameCards } from './namecard.js';
@@ -52,6 +53,7 @@ let editor;
 let made; // what `editor` was made from: viewFor's { id, createView, settings }
 let chrome;
 let margin;
+let docBar; // the status bar under the page (web/docbar.js)
 let people;
 let history;
 let runs;
@@ -208,7 +210,12 @@ async function start() {
   openedText = initial.text;
   made = chooseView(openedText);
   showSize(made, openedText);
+  docBar = createDocBar(document.querySelector('.pj-docbar'), {
+    canPause: () => !reading(),
+    onPause: (paused) => api.pauseLoop(paused).then(({ loop }) => docBar.setLoop(loop), () => {}),
+  });
   editor = await makeView(made, initial.text);
+  countWords();
   performance.mark('ponjo:editor');
   client = createClient({
     view: { getText: () => editor.getText(), selection: () => editor.selection(), composing: () => editor.composing() },
@@ -290,8 +297,8 @@ async function start() {
   setBuddies(initial.agents);
   people.render({ agents: initial.agents });
   if (inProject && level === 'owner') api.room().then((room) => people.render({ room }), () => {});
-  margin.setAgents(initial.agents);
-  margin.setLoop(initial.loop);
+  docBar.setAgents(initial.agents);
+  docBar.setLoop(initial.loop);
   shownAgents = JSON.stringify(initial.agents);
   applyComments(initial);
   showUnsaved(initial.notSaved);
@@ -401,13 +408,14 @@ async function start() {
   // Where you are in the text, for the others; a reader has no caret.
   document.addEventListener('selectionchange', () => {
     if (!reading()) client.moved();
+    countSelection();
   });
   events.on('sidecar', () => afterTyping('sidecar', refreshThreads));
   events.on('history', () => {
     history.changed();
     afterTyping('sidecar', refreshThreads); // a buddy's turn's receipt is read from its version
   });
-  events.on('loop', (data) => margin.setLoop(data));
+  events.on('loop', (data) => docBar.setLoop(data));
   events.on('agents', (data) => {
     showAgents(data);
     runs.refresh(); // a run that ended has its trace
@@ -456,10 +464,28 @@ async function loadPaths() {
 
 // ---- the doc's view ----
 
+// The doc's words, in the status bar, in the Markdown view only (not code
+// or plain text): once typing pauses, the whole doc's; as the selection
+// moves, the selection's.
+const counted = () => made.id === markdown.id;
+function countWords() {
+  afterTyping('words', () => docBar.setWords(counted() ? editor.getText() : null, editor.selection()));
+}
+// Reading the selection's words reads the doc, so a few times a second at most.
+let counting = 0;
+function countSelection() {
+  if (counting) return;
+  counting = setTimeout(() => {
+    counting = 0;
+    if (editor && counted()) docBar.setSelection(editor.getText(), editor.selection());
+  }, 300);
+}
+
 // The doc's text in the view `chosen` (from viewFor), in the page's stage.
 function makeView(chosen, text) {
   return chosen.createView({
     stage: document.querySelector('.pj-stage'),
+    statusbar: document.querySelector('.pj-docbar'),
     text,
     name: docName,
     toolbar: document.querySelector('.pj-toolbar'),
@@ -472,6 +498,7 @@ function makeView(chosen, text) {
       hideRun();
       leaveIdle();
       paintMarks();
+      countWords();
     },
     // Clicking commented text selects its thread but keeps the caret in the doc.
     onMarkClick: (id) => {
@@ -508,6 +535,7 @@ function followViews() {
       await history.viewChanged(); // an open history view follows too
     }
     made = chosen;
+    countWords(); // a view of plain text counts none
   }).catch((error) => setStatus(`Could not switch the view: ${error.message}`, 'error'));
 }
 
@@ -531,6 +559,7 @@ async function swapView(chosen) {
   if (old.getText() !== text) next.applyText(old.getText(), { by: ON_DISK });
   editor = next;
   await old.destroy();
+  countWords();
   paintMarks();
   margin.layout();
   await history.viewChanged();
@@ -604,7 +633,7 @@ function showAgents(next) {
   standAtWork(next);
   setBuddies(next);
   people.render({ agents: next });
-  margin.setAgents(next);
+  docBar.setAgents(next);
   paintMarks();
 }
 

@@ -22,6 +22,7 @@ export async function openViews() {
   await copyFile(join(root, 'web', 'app.css'), join(dir, 'app.css'));
   await writeFile(join(dir, 'index.html'), `<!doctype html><meta charset="utf-8"><title>views</title><link rel="stylesheet" href="app.css">
 <main class="pj-canvas"><div class="pj-stage"><article class="pj-page"><div class="pj-editor"></div></article></div></main>
+<footer class="pj-statusbar pj-docbar"><span class="pj-status-info"><span class="pj-status-view"></span><span class="pj-status-words"></span></span><span class="pj-status-actions"><span class="pj-status-view-actions"></span></span></footer>
 <script src="page.js"></script>`);
   const electron = createRequire(import.meta.url)('electron');
   const env = { ...process.env, VIEWS_PAGE: join(dir, 'index.html') };
