@@ -214,7 +214,7 @@ and 30 days, and by model.
   their name beside it while they work or type; otherwise it is a plain line.
   A person's stands where they are typing. An AI buddy asked to work stays
   in the doc until it is closed or the AI buddy is gone: at the passage it was
-  asked about, and at the end of its last edit when its run lands, until you
+  last asked about, and at the end of its last edit when its run lands, until you
   type. A cursor follows the text as it changes, and is hidden where its text
   is gone. It is only drawn: never in the file, and it takes no clicks.
 
