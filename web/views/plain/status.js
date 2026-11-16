@@ -1,35 +1,28 @@
-// The plain view's status bar, under the page: where the caret is and the
-// selection's size on the left; on the right the indent Tab types, which
-// opens a menu of others (they change the view's settings, so only what is
-// typed later, never the file), and toggles for wrapping and whitespace.
-// Only an editable view has one.
+// The plain view's part of the doc's status bar (web/docbar.js): where the
+// caret is and the selection's size on the left; on the right the indent
+// Tab types, which opens a menu of others (they change the view's settings,
+// so only what is typed later, never the file), and toggles for wrapping
+// and whitespace. Only an editable view has it.
 
 const INDENTS = [['tabs', 'Tab'], [2, '2 spaces'], [4, '4 spaces'], [8, '8 spaces']];
 const indentName = ({ tabs, size }) => (tabs ? 'Tab' : `${size} spaces`);
 
-const BAR = `
-<div class="pj-statusbar" aria-label="Editor status">
-  <span class="pj-status-position"></span>
-  <span class="pj-status-actions">
-    <button type="button" class="pj-status-indent" aria-haspopup="listbox" aria-expanded="false"></button>
-    <button type="button" data-setting="wrap" aria-pressed="false" data-tip="Wrap long lines">Wrap</button>
-    <button type="button" data-setting="whitespace" aria-pressed="false" data-tip="Show all whitespace">Whitespace</button>
-    <ul class="pj-block-menu" role="listbox" aria-label="Indent with" hidden></ul>
-  </span>
-</div>`;
+const ACTIONS = `
+<button type="button" class="pj-status-indent" aria-haspopup="listbox" aria-expanded="false"></button>
+<button type="button" data-setting="wrap" aria-pressed="false" data-tip="Wrap long lines">Wrap</button>
+<button type="button" data-setting="whitespace" aria-pressed="false" data-tip="Show all whitespace">Whitespace</button>
+<ul class="pj-block-menu" role="listbox" aria-label="Indent with" hidden></ul>`;
 
 /**
- * Put a status bar after `canvas` for `view` (a CodeMirror EditorView).
- * `save(patch)` saves a change to the view's settings. `update()` repaints
- * the caret's place; `paint(settings, indent)` what depends on the settings;
- * `destroy()` takes the bar away.
+ * Fill the view's part of the doc's status bar `docbar` for `view` (a
+ * CodeMirror EditorView). `save(patch)` saves a change to the view's
+ * settings. `update()` repaints the caret's place; `paint(settings,
+ * indent)` what depends on the settings; `destroy()` takes the part away.
  */
-export function createStatusBar(view, canvas, save) {
-  const template = document.createElement('template');
-  template.innerHTML = BAR;
-  const bar = template.content.firstElementChild;
-  canvas.after(bar);
-  const position = bar.querySelector('.pj-status-position');
+export function createStatusBar(view, docbar, save) {
+  const position = docbar.querySelector('.pj-status-view');
+  const bar = docbar.querySelector('.pj-status-view-actions');
+  bar.innerHTML = ACTIONS;
   const indentButton = bar.querySelector('.pj-status-indent');
   const menu = bar.querySelector('.pj-block-menu');
   const toggles = [...bar.querySelectorAll('[data-setting]')];
@@ -80,7 +73,7 @@ export function createStatusBar(view, canvas, save) {
     const { setting } = event.target.closest('[data-setting]')?.dataset ?? {};
     if (setting === 'wrap') save({ wrap: !own.wrap });
     else if (setting === 'whitespace') save({ whitespace: own.whitespace === 'all' ? 'selection' : 'all' });
-  });
+  }, { signal: done.signal }); // the slot is the page's: it outlives this view
 
   function update() {
     const { state } = view;
@@ -103,7 +96,8 @@ export function createStatusBar(view, canvas, save) {
     paint,
     destroy() {
       done.abort();
-      bar.remove();
+      bar.replaceChildren();
+      position.textContent = '';
     },
   };
 }

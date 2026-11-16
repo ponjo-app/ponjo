@@ -110,8 +110,8 @@ function elements(markup) {
  * `editor`: the Markdown view's own commands and queries. The tools go first
  * in `toolbar`, the bubble in `stage`, the outline before it.
  * `onComment` is the bubble's Comment button. `settings` are the view's:
- * the page's font and width, whether the outline and the word count show and
- * focus mode is on; Mod+Shift+. changes focus mode through `saveSettings`.
+ * the page's font and width, whether the outline shows and focus mode is on
+ * (the doc's word count is in its status bar, web/docbar.js); Mod+Shift+. changes focus mode through `saveSettings`.
  *
  * @param {object} editor
  * A read-only view (`editable` false) has no tools and no bubble.
@@ -128,13 +128,11 @@ export function createChrome(editor, { toolbar, stage, host, onComment, files = 
   const [outlineNav] = elements(OUTLINE);
   const [card, popover] = elements(LINK);
   const [languagePopover] = elements(LANGUAGE);
-  const count = Object.assign(document.createElement('span'), { className: 'pj-count', title: 'Word count' });
   if (editable) toolbar.prepend(...tools); // a read-only view has nothing to format or comment on
-  toolbar.querySelector('.pj-spacer').after(count);
   if (editable) stage.append(bubble);
   stage.before(outlineNav);
   document.body.append(card, popover, languagePopover);
-  const made = [...tools, count, bubble, outlineNav, card, popover, languagePopover];
+  const made = [...tools, bubble, outlineNav, card, popover, languagePopover];
 
   const canvas = stage.parentElement; // scrolls the page
   const page = host.closest('.pj-page');
@@ -185,24 +183,6 @@ export function createChrome(editor, { toolbar, stage, host, onComment, files = 
     placeBubble();
     link.refresh(pointerDown);
     outline.refresh();
-    if (settings.wordCount) recount();
-  }
-
-  // Counting words reads the whole doc, so it runs a few times a second at
-  // most, not on every keystroke or every frame of an agent's replay.
-  const COUNT_MS = 300;
-  let countTimer = 0;
-  let countedAt = -Infinity;
-  function recount() {
-    if (!countTimer) countTimer = setTimeout(refreshCount, Math.max(0, COUNT_MS - (performance.now() - countedAt)));
-  }
-  function refreshCount() {
-    countTimer = 0;
-    countedAt = performance.now();
-    const text = editor.getText();
-    const selection = editor.selection();
-    const selected = selection ? words(text.slice(selection.from, selection.to)) : 0;
-    count.textContent = selected ? `${selected.toLocaleString()} of ${plural(words(text), 'word')}` : plural(words(text), 'word');
   }
 
   // ---- selection bubble ----
@@ -244,15 +224,13 @@ export function createChrome(editor, { toolbar, stage, host, onComment, files = 
     if (!bubble.hidden) placeBubble();
   }, { passive: true, signal });
 
-  // ---- the view's settings: the page's font and width, the outline, the word count and focus mode (app.css) ----
+  // ---- the view's settings: the page's font and width, the outline and focus mode (app.css) ----
 
   const root = document.documentElement;
   function applySettings(next) {
     settings = next;
     root.dataset.font = next.font;
     root.dataset.width = next.width;
-    count.hidden = !next.wordCount;
-    if (next.wordCount) recount();
     root.toggleAttribute('data-focus', next.focus);
     root.toggleAttribute('data-no-outline', !next.outline);
     fade();
@@ -289,7 +267,6 @@ export function createChrome(editor, { toolbar, stage, host, onComment, files = 
     destroy() {
       done.abort();
       cancelAnimationFrame(frame);
-      clearTimeout(countTimer);
       for (const el of made) el.remove();
       delete root.dataset.font;
       delete root.dataset.width;
@@ -678,10 +655,3 @@ function decoded(text) {
   }
 }
 
-function words(text) {
-  return (text.match(/[\p{L}\p{N}][\p{L}\p{N}'’-]*/gu) ?? []).length;
-}
-
-function plural(n, word) {
-  return `${n.toLocaleString()} ${word}${n === 1 ? '' : 's'}`;
-}

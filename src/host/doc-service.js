@@ -880,6 +880,11 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
       comment: (body, who) => comment({ thread: body?.thread, anchor: body?.anchor ?? null, body: body?.body, resolved: body?.resolved }, who),
       restoreVersion: (body, who) => serial(() => restoreVersion(body, who)),
       undo: (body, who) => serial(() => undo(body, who)),
+      // Pause the buddies' loop in this doc, or resume it, for everyone in it.
+      pauseLoop: (body) => {
+        runner.pause(body?.paused === true);
+        return { loop: runner.loop() };
+      },
     },
     owner: {
       async saveSettings(patch) {

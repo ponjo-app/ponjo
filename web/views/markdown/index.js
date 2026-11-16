@@ -14,6 +14,5 @@ export const markdown = {
     { key: 'width', type: 'choice', label: 'Text width', options: [['normal', 'Normal'], ['wide', 'Wide']], default: 'normal' },
     { key: 'outline', type: 'switch', label: 'Outline', default: true, group: 'Tools' },
     { key: 'focus', type: 'switch', label: 'Focus mode', default: false },
-    { key: 'wordCount', type: 'switch', label: 'Word count', default: false },
   ],
 };
