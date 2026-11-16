@@ -30,7 +30,7 @@ async function ask(call, state, body) {
 const BY = { id: 'Clippy', name: 'Clippy', kind: 'ai' };
 const AT = '2026-10-17T10:00:00.000Z';
 
-test('appended lines are comments, and resolve the run\'s thread; changed lines, unknown threads and bad lines are not', () => {
+test('appended lines are comments, and resolve the run\'s thread or another; changed lines, unknown threads and bad lines are not', () => {
   const before = '{"comments":3}\n{"id":"c_first01","by":{"id":"u_1","name":"fzhan","kind":"human"},"at":"2026-10-17T09:00:00Z","body":"Hi"}\n';
   const after = before.replace('"Hi"', '"Changed"') + [
     '{"anchor":{"exact":"beta cohort"},"body":"Who is in it?"}',
@@ -45,8 +45,9 @@ test('appended lines are comments, and resolve the run\'s thread; changed lines,
   ].join('\n') + '\n';
   const text = 'We gather feedback from the beta cohort before the release.';
   const added = appendedComments(before, after, { text, by: BY, at: AT, threads: new Set(['c_first01']), own: 'c_first01' });
-  assert.equal(added.resolves, true);
-  assert.equal(appendedComments(before, after, { text, by: BY, at: AT, threads: new Set(['c_first01']), own: 'c_mine001' }).resolves, false, 'only the run\'s own thread');
+  assert.deepEqual([added.resolves, added.resolved], [true, []]);
+  const elsewhere = appendedComments(before, after, { text, by: BY, at: AT, threads: new Set(['c_first01']), own: 'c_mine001' });
+  assert.deepEqual([elsewhere.resolves, elsewhere.resolved], [false, ['c_first01']], 'another thread, as a member may; one not in the doc, not');
   assert.deepEqual(added.comments.map(({ id, ...c }) => c), [
     { by: BY, at: AT, body: 'Who is in it?', anchor: { exact: 'beta cohort', prefix: 'We gather feedback from the ', suffix: ' before the release.', start: 28 } },
     { by: BY, at: AT, body: 'From whom?', anchor: { exact: 'gather feedback', prefix: 'We ', suffix: ' from the beta cohort before the', start: 3 } },
@@ -62,7 +63,7 @@ test('a run appends a thread on a quote, one on the whole doc and a reply, and p
     const { id, threads } = await ask(call, state, '@Clippy quiet append {"anchor":{"exact":"beta cohort"},"body":"Who is in it?"};; append {"body":"Reads well."};; reply-first Yes, make it week two.');
     const [run] = await fakeRuns(settingsDir);
     assert.deepEqual(run.files.sort(), ['plan.md', 'plan.md.comments.jsonl'], 'its folder holds the copies');
-    assert.match(run.prompt, /append lines to plan\.md\.comments\.jsonl, which holds the doc's comments/);
+    assert.match(run.prompt, /plan\.md\.comments\.jsonl holds the doc's threads[\s\S]*append lines to plan\.md\.comments\.jsonl, one JSON object per line/);
 
     const asked = threads.find((t) => t.id === id);
     assert.deepEqual(asked.comments.map((c) => [c.by.name, c.body]), [['fzhan', asked.comments[0].body], ['Clippy', '']], 'the reply is empty');
@@ -76,14 +77,14 @@ test('a run appends a thread on a quote, one on the whole doc and a reply, and p
   });
 });
 
-test('a run that rewrites a line, resolves another thread or quotes text found twice changes nothing it may not', { timeout: 30_000 }, async () => {
+test('a run that rewrites a line or quotes text found twice changes nothing it may not; it resolves another thread as a member does, after that thread\'s last comment', { timeout: 30_000 }, async () => {
   await withDoc(async ({ call, state, docPath }) => {
     const { id: earlier } = await call('comment', { anchor: null, body: 'Keep this.' });
     const { threads } = await ask(call, state, '@Clippy tamper;; append {"anchor":{"exact":"the"},"body":"Which one?"}');
     const kept = threads.find((t) => t.id === earlier);
     assert.equal(kept.comments[0].body, 'Keep this.', 'the line it changed is not taken');
-    assert.ok(!kept.resolved, 'it resolves only the thread it answers');
-    assert.equal(kept.comments.at(-1).body, 'Closing.');
+    assert.deepEqual(kept.comments.map((c) => [c.by.name, c.body, Boolean(c.resolved)]), [['fzhan', 'Keep this.', false], ['Clippy', 'Closing.', false], ['Clippy', '', true]]);
+    assert.ok(kept.resolved, 'resolved, its reply before');
     assert.equal(threads.find((t) => t.comments[0].body === 'Which one?').anchor, null, 'a quote found twice is on the whole doc');
     assert.ok(!(await readFile(sidecarPath(docPath), 'utf8')).includes('Tampered.'));
   });

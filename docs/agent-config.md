@@ -11,7 +11,7 @@ An agent is a filter ([architecture](architecture.md#a-run)):
 | | |
 | --- | --- |
 | Working folder | new and private; holds only copies of the doc and its sidecar, at the doc's path in the project (in doc mode, under their names) |
-| stdin | the prompt: who the buddy is, the thread, the rules. It names files only by their paths in the project, never where a run keeps them: the script tells its agent that, if it needs to (see [Paths](#paths)) |
+| stdin | the prompt: who the buddy is, who is in the doc (the paragraph each person's cursor is in, how long since they typed), the thread, the rules. It names files only by their paths in the project, never where a run keeps them: the script tells its agent that, if it needs to (see [Paths](#paths)) |
 | `PONJO_DOC` | the doc copy's path |
 | `PONJO_COMMENTS` | the sidecar copy's path |
 | `PONJO_PROJECT` | the project folder, to read only (see [Permissions](#permissions)); empty in doc mode |
@@ -20,7 +20,9 @@ An agent is a filter ([architecture](architecture.md#a-run)):
 | `PONJO_TRACE` | a file, out of the working folder, the agent may write its steps to (see [Traces](#traces)) |
 | `PONJO_SETTING_<KEY>` | each of the agent's [settings](#settings) |
 | stdout | the reply; may be empty |
-| Exit 0 | success; the app merges the doc copy's edits into the doc and adds the appended comments. Otherwise the reply is marked `failed`, with the end of the output. |
+| Exit 0 | success; the app merges the doc copy's edits into the doc and adds the appended comments. |
+| Exit 75 | not done yet: the same, but no reply is posted, and the ask stays open, to run again when the doc or its comments change, or after a while ([architecture](architecture.md#a-buddys-turn)). Only the Ponjo agent exits so (its `wait` tool); the shipped Claude Code and Codex scripts always answer at once. |
+| Any other exit | the reply is marked `failed`, with the end of the output. |
 
 The program needs no Ponjo tool: it reads files, edits them and prints.
 
@@ -46,18 +48,20 @@ app fills in `id`, `by` and `at`.
 | `{"anchor":{"exact":"…"},"body":"…"}` | a thread on that text |
 | `{"body":"…"}` | a thread on the whole doc |
 | `{"thread":"c_…","body":"…"}` | a reply in that thread |
-| `{"thread":"c_…","resolved":true}` | the run's reply resolves its thread; only the thread the run answers |
+| `{"thread":"c_…","resolved":true}` | resolves that thread: the run's reply resolves its own; another is resolved after its last comment |
 
 - `exact` quotes the doc copy as the agent left it, as written in the file
   (markup included), and must be found exactly once (any run of whitespace
   may stand for another); the app makes the rest of the anchor. Otherwise
   the thread is on the whole doc.
-- Any other change to the copy is ignored: changed or removed lines,
-  `resolved` on another thread, lines that are not valid.
+- A reply in another thread comes after that thread's last comment.
+- Any other change to the copy is ignored: changed or removed lines, a
+  thread not in the doc, lines that are not valid.
 
-The rules on stdin tell the agent to comment only where the user has
-something to decide, to resolve only when asked to, and not to repeat in its reply what the app shows: its
-edits and comments.
+A buddy comments as a member does. The rules on stdin tell the agent to do
+what the comment asks of comments; when it asks nothing of them, to comment
+only where the user has something to decide and to resolve nothing; and not
+to repeat in its reply what the app shows: its edits and comments.
 
 ## Agents
 

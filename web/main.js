@@ -291,6 +291,7 @@ async function start() {
   people.render({ agents: initial.agents });
   if (inProject && level === 'owner') api.room().then((room) => people.render({ room }), () => {});
   margin.setAgents(initial.agents);
+  margin.setLoop(initial.loop);
   shownAgents = JSON.stringify(initial.agents);
   applyComments(initial);
   showUnsaved(initial.notSaved);
@@ -406,6 +407,7 @@ async function start() {
     history.changed();
     afterTyping('sidecar', refreshThreads); // a buddy's turn's receipt is read from its version
   });
+  events.on('loop', (data) => margin.setLoop(data));
   events.on('agents', (data) => {
     showAgents(data);
     runs.refresh(); // a run that ended has its trace
@@ -562,10 +564,11 @@ window.addEventListener('beforeunload', (event) => {
 
 // Others' edits landed and the view's text is now `text` (web/client.js).
 // A person's typing (an edit with an `id`) shows by their cursor alone;
-// anything else glows, a buddy's in its colour.
+// anything else glows, a buddy's in its colour (`by`; with its `reply`
+// unless its ask stays open).
 function showLanded(text, ops, event) {
   const reply = event?.reply;
-  editor.applyText(text, { by: reply ? event.by : event?.id ? null : asking ?? ON_DISK, buddy: Boolean(reply), ops });
+  editor.applyText(text, { by: event?.by ?? (event?.id ? null : asking ?? ON_DISK), buddy: Boolean(event?.by), ops });
   paintMarks();
   if (reply) {
     runLanded = reply;

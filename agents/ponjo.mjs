@@ -14,6 +14,7 @@ import { fileURLToPath } from 'node:url';
 import { INFER, turn } from './ponjo-core.mjs';
 
 const MAX_TEXT_BYTES = 20 * 1024 * 1024; // the largest text file the app opens (src/store/files.js)
+const WAIT_CODE = 75; // the exit of a run whose comment stays open (src/host/runner.js)
 
 /**
  * A path the model wrote as the project names it: relative, `/` between
@@ -61,7 +62,8 @@ export function files({ doc, sidecar, project }) {
 }
 
 // The contract: the prompt on stdin, the copies' paths and the settings in
-// the environment, the edits applied to the copies, the reply on stdout.
+// the environment, the edits applied to the copies, the reply on stdout,
+// or exit WAIT_CODE when the comment stays open.
 // Each message of the turn but the prompt goes to the trace, a line each, as
 // it comes: the model's with how long it took and its usage.
 async function main() {
@@ -92,7 +94,8 @@ async function main() {
     const texts = await turn({ prompt: await text(process.stdin), doc, sidecar, thread }, { infer: step, readFile: readable, resolve: inProject });
     await writeFile(docCopy, texts.doc);
     await writeFile(sidecarCopy, texts.sidecar);
-    process.stdout.write(texts.reply);
+    if (texts.waiting) process.exitCode = WAIT_CODE; // the comment stays open: no reply
+    else process.stdout.write(texts.reply);
   } catch (failure) {
     await note(messages.slice(noted)); // the last step's results
     process.stderr.write(`${failure.message}\n`);
