@@ -44,8 +44,19 @@ class DocError extends Error {
   }
 }
 
+// The settings that choose and set up the agent (settings.js), of settings as JSON.
+const agentOf = (json) => JSON.stringify((({ agent, agents }) => ({ agent, agents }))(JSON.parse(json ?? '{}')));
+
 // What a call may need, each level allowing the ones before it.
 const LEVELS = ['read', 'write', 'owner'];
+
+/**
+ * The buddies' statuses as someone at `level` sees them: why a run failed
+ * is the owner's machine's, so only the owner hears it.
+ */
+export function agentsFor(level, agents) {
+  return level === 'owner' ? agents : agents.map((a) => ({ ...a, failed: a.failed.map(({ thread, at }) => ({ thread, at })) }));
+}
 
 // Whether `who` ({ id, name, kind, level }) may make a call that needs `level`.
 const can = (who, level) => LEVELS.indexOf(who?.level) >= LEVELS.indexOf(level);
@@ -377,7 +388,7 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
       me: owner ? await me() : byOf(who),
       level: who.level,
       owner: (await me()).id, // whose face wears the crown
-      agents: agentStatuses(),
+      agents: agentsFor(who.level, agentStatuses()),
       cursors: cursorsNow(),
       project: folder !== null, // whether the doc was opened from a project
       // The project's name and the doc's path in it, for a teammate's sidebar.
@@ -469,8 +480,10 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
     const taken = await readTaken(docPath, settingsDir);
     const all = lines.map((l) => l.comment).filter(Boolean);
     const inboxes = new Map(); // buddy id → { threads, askers }
+    const asking = new Set(); // `${buddy} ${thread}` of each ask
     for (const thread of threadsOf(all, here.map(({ id, name }) => ({ id, name })), text)) {
       for (const [id, ask] of askedBy(thread, askers, taken)) {
+        asking.add(`${id} ${thread.id}`);
         if (Date.parse(ask.at) <= (looked.get(id)?.get(thread.id) ?? -Infinity)) continue;
         const inbox = inboxes.get(id) ?? { threads: [], askers: new Set() };
         inbox.threads.push(thread);
@@ -478,6 +491,10 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
         inboxes.set(id, inbox);
       }
     }
+    // A failure is shown while its thread still asks the buddy.
+    let gone = false;
+    for (const [id, failed] of failures) for (const thread of failed.keys()) if (!asking.has(`${id} ${thread}`)) gone = failed.delete(thread);
+    if (gone) broadcastAgents();
     return [...inboxes].map(([id, inbox]) => ({ buddy: here.find((b) => b.id === id), buddies: here, threads: inbox.threads, askers: [...inbox.askers] }))
       .filter((inbox) => inbox.buddy); // a thread's opener may be gone
   }
@@ -487,6 +504,18 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
   // writes more, so a sidecar that cannot be written never makes runs land
   // edits again and again.
   const looked = new Map();
+  // The threads where each buddy's last run failed: buddy → Map(thread → {
+  // at, why }), in memory only: a failure is this machine's, not the doc's.
+  const failures = new Map();
+
+  // The agent or its settings changed: the failed asks run again.
+  function retryFailed(buddy = null) {
+    for (const [id, failed] of failures) {
+      if (buddy !== null && id !== buddy) continue;
+      for (const thread of failed.keys()) looked.get(id)?.delete(thread);
+    }
+    runner.reconcile();
+  }
 
   // The level of the person with id `id` now: the owner's, a player's, or null.
   async function levelOf(id) {
@@ -494,13 +523,16 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
     return room?.levelOf(id) ?? null;
   }
 
-  // The buddies the doc reaches, and which are at work.
+  // The buddies the doc reaches, which are at work, and the threads where
+  // each one's last run failed: [{ thread, at, why }], `why` for the owner
+  // alone (agentsFor).
   let shownBuddies = [];
   function agentStatuses() {
     const statuses = runner.statuses();
     return shownBuddies.map((b) => {
       const threadIds = statuses.find((r) => r.id === b.id)?.threadIds ?? [];
-      return { ...b, state: threadIds.length ? 'running' : 'ready', threadIds };
+      const failed = [...(failures.get(b.id) ?? [])].map(([thread, { at, why }]) => ({ thread, at, why }));
+      return { ...b, state: threadIds.length ? 'running' : 'ready', threadIds, failed };
     });
   }
 
@@ -528,10 +560,12 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
   // comments come just after the last comment it saw, so one written while
   // it worked is after them, still to answer; elsewhere, after the latest.
   // Only people resolve: a line's `resolved` is ignored (appendedComments).
-  // A failed run says why in each thread that asked it. The buddy acts with
-  // the level of whoever asked it, at most write, asked now: a run one of
-  // whose askers was removed or set to Read meanwhile lands nothing. Run in
-  // `serial`. Resolves to the ids of the comments it posted and what
+  // A failed run posts nothing: it is kept as this buddy's failure in each
+  // thread that asked it (failures), and asks again only when someone
+  // writes there, Retry is pressed, or the agent or its settings change.
+  // The buddy acts with the level of whoever asked it, at most write, asked
+  // now: a run one of whose askers was removed or set to Read meanwhile
+  // lands nothing. Run in `serial`. Resolves to the ids of the comments it posted and what
   // landed, in words, for its trace.
   async function finishRun({ id: buddyId, name, threadIds, askers, seen, base, edited, comments, groups = [], failed, body }) {
     const saw = looked.get(buddyId) ?? new Map();
@@ -544,21 +578,25 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
     const open = new Map(threads.filter((t) => !t.resolved).map((t) => [t.id, t]));
     const asking = threadIds.filter((id) => open.has(id));
     const kept = (c) => c.thread === undefined || open.has(c.thread);
-    let posts; // the comments to post, in order
-    let carried = []; // [{ comment, doc (the doc after its edits) }], in order
+    const failedHere = failures.get(buddyId) ?? new Map();
+    failures.set(buddyId, failedHere);
+    for (const thread of threadIds) failedHere.delete(thread);
     if (failed) {
-      posts = asking.map((thread) => ({ ...newComment({ thread, body }, { by, at: '' }), failed: true }));
-    } else {
-      const added = appendedComments(comments.before, comments.after, { text: edited, by, at: '', threads: new Set(threads.map((t) => t.id)) });
-      posts = added.map((a) => a.comment);
-      const byLine = new Map(added.map((a) => [a.line, a.comment]));
-      if (groups.length && groups.every((g) => byLine.has(g?.comment) && typeof g.doc === 'string') && groups.at(-1).doc === edited) {
-        carried = groups.map((g) => ({ comment: byLine.get(g.comment), doc: g.doc }));
-      } else if (edited !== base) {
-        if (!posts.length && asking.length) posts.push(newComment({ thread: asking[0], body: '' }, { by, at: '' }));
-        if (!posts.length) return { comments: [], landed: 'Dropped: the threads that asked it were resolved meanwhile' };
-        carried = [{ comment: posts.at(-1), doc: edited }];
-      }
+      const at = new Date().toISOString();
+      for (const thread of asking) failedHere.set(thread, { at, why: body });
+      broadcastAgents();
+      return { comments: [], landed: 'Failed' };
+    }
+    const added = appendedComments(comments.before, comments.after, { text: edited, by, at: '', threads: new Set(threads.map((t) => t.id)) });
+    let posts = added.map((a) => a.comment); // the comments to post, in order
+    let carried = []; // [{ comment, doc (the doc after its edits) }], in order
+    const byLine = new Map(added.map((a) => [a.line, a.comment]));
+    if (groups.length && groups.every((g) => byLine.has(g?.comment) && typeof g.doc === 'string') && groups.at(-1).doc === edited) {
+      carried = groups.map((g) => ({ comment: byLine.get(g.comment), doc: g.doc }));
+    } else if (edited !== base) {
+      if (!posts.length && asking.length) posts.push(newComment({ thread: asking[0], body: '' }, { by, at: '' }));
+      if (!posts.length) return { comments: [], landed: 'Dropped: the threads that asked it were resolved meanwhile' };
+      carried = [{ comment: posts.at(-1), doc: edited }];
     }
     posts = posts.filter(kept);
     let prev = base;
@@ -577,7 +615,7 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
       }
       prev = doc;
     }
-    if (!posts.length) return { comments: [], landed: failed ? 'Failed; the threads that asked it were resolved meanwhile' : 'Nothing to do' };
+    if (!posts.length) return { comments: [], landed: 'Nothing to do' };
     let posted = true;
     await changeComments((lines) => {
       // Each after the one before it in its thread, though written in the same millisecond (SPEC §4).
@@ -595,7 +633,7 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
       posted = false;
     });
     if (!posted) return { comments: [], landed: 'Its comments were not posted' };
-    return { comments: posts.map((c) => c.id), landed: failed ? 'Failed: it said why' : conflict ? 'Posted; where it collided with people, their lines stayed' : 'Posted' };
+    return { comments: posts.map((c) => c.id), landed: conflict ? 'Posted; where it collided with people, their lines stayed' : 'Posted' };
   }
 
   // ---- undo ----
@@ -767,8 +805,10 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
       const { settings } = await readSettings(settingsDir);
       const json = JSON.stringify(settings);
       if (json === lastSettings) return;
+      const agent = agentOf(lastSettings);
       lastSettings = json;
       emit('settings', settings);
+      if (agentOf(json) !== agent) retryFailed();
       await syncAgents();
     } catch (error) {
       console.error(error);
@@ -865,6 +905,12 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
       comment: (body, who) => comment({ thread: body?.thread, anchor: body?.anchor ?? null, body: body?.body, resolved: body?.resolved }, who),
       restoreVersion: (body, who) => serial(() => restoreVersion(body, who)),
       undo: (body, who) => serial(() => undo(body, who)),
+      // Run a buddy again where its last run failed.
+      retry: (body) => {
+        if (typeof body?.buddy !== 'string') throw new DocError('bad_input', 'expected { buddy }');
+        retryFailed(body.buddy);
+        return {};
+      },
     },
     owner: {
       async saveSettings(patch) {
@@ -931,6 +977,8 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
     },
     /** What a window hears first: the version of the messages, whether the doc is missing, and who is at work. */
     hello: () => ({ protocol: PROTOCOL, missing, agents: agentStatuses() }),
+    /** The agents' secrets changed: the failed asks run again. */
+    agentChanged: () => retryFailed(),
     runner,
     docPath: () => docPath,
     moveTo,

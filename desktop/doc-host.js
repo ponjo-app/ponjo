@@ -33,7 +33,7 @@
 import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { realpath } from 'node:fs/promises';
-import { openDoc } from '../src/host/doc-service.js';
+import { agentsFor, openDoc } from '../src/host/doc-service.js';
 import { projectService } from '../src/host/project-service.js';
 import { createRoom } from '../src/host/room.js';
 import { renameFile } from './files.js';
@@ -96,7 +96,9 @@ function docAt(docPath, folder) {
     const docId = ++nextId;
     const entry = { service: null, folder, ports: new Map(), opens: 0 };
     entry.service = await openDoc(docPath, { folder, room: folder && roomOf(folder), secrets: () => secrets, emit: (event, data) => {
-      for (const [port, { level }] of entry.ports) if ((event !== 'settings' && event !== 'room') || level === 'owner') port.postMessage({ event, data });
+      for (const [port, { level }] of entry.ports) {
+        if ((event !== 'settings' && event !== 'room') || level === 'owner') port.postMessage({ event, data: event === 'agents' ? agentsFor(level, data) : data });
+      }
     } });
     docs.set(docId, entry);
     return docId;
@@ -163,6 +165,7 @@ const handlers = {
   },
   secrets({ secrets: next }) {
     secrets = next;
+    for (const { service } of docs.values()) service.agentChanged();
   },
   async call({ docId, call, arg }) {
     const { service } = docOf(docId);
@@ -208,7 +211,8 @@ async function serve(entry, port, who) {
     tellHere(entry.folder);
   });
   port.start();
-  port.postMessage({ event: 'hello', data: entry.service.hello() });
+  const hello = entry.service.hello();
+  port.postMessage({ event: 'hello', data: { ...hello, agents: agentsFor(person.level, hello.agents) } });
 }
 
 /**

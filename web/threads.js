@@ -23,6 +23,7 @@ const MENTION_BEFORE_CARET = /(^|[^A-Za-z0-9._-])@([A-Za-z0-9._-]*)$/;
  *           onReply: (threadId: string, body: string) => Promise<void>,
  *           onResolve: (threadId: string) => Promise<void>, onReopen: (threadId: string) => Promise<void>,
  *           onUndo: (replyId: string) => Promise<void>, onRedo: (replyId: string) => Promise<void>,
+ *           onRetry: (buddyId: string) => Promise<void>,
  *           onShowEdits: (replyId: string | null) => void,
  *           onSelect: (threadId: string | null) => void, onHover: (threadId: string | null) => void,
  *           anchorTops: (items: { id: string, anchor: object }[]) => Map<string, number>,
@@ -219,8 +220,14 @@ export function createCommentMargin(margin, handlers) {
     body.append(...withMentions(comment.body, handlers.mentionable?.() ?? [], handlers.files?.(), handlers.openFile));
     if (comment.body.trim()) row.append(head, body, foldButton(comment.id, open));
     else row.append(head);
-    // To retry, or to redo what was dropped, the human asks again.
-    if (comment.failed) row.append(el('div', 'pj-card-note pj-msg-note', `The run failed. @mention ${shown} again to retry.`));
+    // To retry, or to redo what was dropped, the human asks again; a run
+    // that failed on the host (its reply says why, or that it failed) has
+    // Retry, for whoever may ask (`retry`, its buddy).
+    if (comment.retry) {
+      const note = el('div', 'pj-card-note pj-msg-note');
+      note.append(linkButton('Retry', () => handlers.onRetry(comment.retry)));
+      row.append(note);
+    } else if (comment.failed && !comment.host) row.append(el('div', 'pj-card-note pj-msg-note', `The run failed. @mention ${shown} again to retry.`));
     if (edits[comment.id]?.conflict) row.append(el('div', 'pj-card-note pj-msg-note', `People changed some of the same lines while it worked, so its edit there was not applied. @mention ${shown} again to redo it.`));
     if (edits[comment.id]) row.append(receipt(comment.id, edits[comment.id]));
     row.classList.toggle('pj-msg-failed', Boolean(comment.failed));

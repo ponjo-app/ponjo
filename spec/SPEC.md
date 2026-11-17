@@ -44,7 +44,7 @@ MUST keep fields it does not understand.
 | `at` | string | When it was written, RFC 3339 UTC. A buddy's comments in a thread that asked it: just after that thread's latest comment as its run saw it. |
 | `body` | string | Plain text; may be empty on a reply (it resolves or reopens), or when `resolved` is set. |
 | `resolved` | `true`, optional | Resolves the thread. Who may is not in the file: the app that writes it decides (Ponjo: only people). |
-| `failed` | `true`, optional | Buddies only: its run failed; `body` is the end of the program's output. |
+| `failed` | `true`, optional | Buddies only: its run failed; `body` is the end of the program's output. Ponjo no longer writes it (a failure is the host's, not the doc's) and shows it where an older version did. |
 
 A comment never changes once written.
 

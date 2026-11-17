@@ -80,8 +80,11 @@ for a window), **e2e** (the packaged app, under xvfb on Linux).
   again; a comment written while it runs is answered by a run right after,
   with only the threads not answered; a run that posts nothing in a thread
   is not run again for it until someone writes there.
-- Exit non-zero: the reply is marked `failed` with the end of the output;
-  @mentioning again runs again; after a restart, unanswered asks run again.
+- Exit non-zero, or a run the host cannot start: nothing is written to the
+  sidecar; the buddy's status says the thread failed, with why for the
+  owner alone; it is not run again on its own, but on Retry, a new comment
+  in the thread, or a change of the settings; after a restart, unanswered
+  asks run again.
 - Runs only on docs open in a window.
 - The shipped scripts, as text: each passes the project folder only when
   there is one, on `sh` and `.cmd`.

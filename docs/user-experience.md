@@ -189,8 +189,11 @@ and 30 days, and by model.
   by undoing that undo.
   **Undo this change** in history undoes any version, or a burst of typing.
   It works in every window of the team.
-- **A failed run** says so in each thread that asked it, with the end of
-  its output, marked failed. It is tried again when someone asks again.
+- **A failed run** changes nothing in the doc or its comments: each thread
+  that asked it shows it as the buddy's reply in red, with **Retry**. You
+  see why (the end of its output); a teammate sees only that it failed. It
+  runs again on Retry, when someone writes in the thread, or once you fix
+  the agent's settings or key.
 
 ## Seeing teammates work
 

@@ -11,6 +11,8 @@ import { tmpdir } from 'node:os';
 import { basename, delimiter, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildPrompt } from '../src/core/prompt.js';
+import { agentsFor } from '../src/host/doc-service.js';
+import { Runner } from '../src/host/runner.js';
 import { agentScript, agentsDir, installAgents, listAgents } from '../src/store/agents.js';
 import { readSecrets, secretTails, writeSecrets } from '../src/store/secrets.js';
 import { SAMPLE, fakeConfig, fakeRuns, openTestDoc, readOnly, tempDoc, until } from './helpers.js';
@@ -155,25 +157,60 @@ test('two buddies run at once on one doc; both edits land', { timeout: 30_000 },
   }, { buddies });
 });
 
-test('a script that exits 1 is answered with a reply marked failed; @mentioning the buddy again runs it again', { timeout: 30_000 }, async () => {
+test('a script that exits 1 writes nothing: the buddy\'s status says the thread failed, and why; it runs again on Retry, a settings change or a new comment, never on its own', { timeout: 30_000 }, async () => {
   await withDoc(async ({ docPath, settingsDir, call, state, runs }) => {
     const id = await comment(call, '@Clippy fail');
-    const [failed] = await until(async () => (await repliesIn(state, id)).length && repliesIn(state, id), 'the reply');
-    assert.equal(failed.failed, true);
-    assert.match(failed.body, /some output/);
-    assert.match(failed.body, /fake agent: something went wrong/);
-    assert.ok(failed.body.includes(agentScript('fake', settingsDir)), 'it names the script, to run by hand');
+    const failedIn = async () => (await state()).agents.find((a) => a.name === 'Clippy').failed;
+    const [failed] = await until(async () => (await failedIn()).length && failedIn(), 'the failure');
+    assert.equal(failed.thread, id);
+    assert.match(failed.why, /some output/);
+    assert.match(failed.why, /fake agent: something went wrong/);
+    assert.ok(failed.why.includes(agentScript('fake', settingsDir)), 'it names the script, to run by hand');
+    assert.equal((await repliesIn(state, id)).length, 0, 'no reply');
+    assert.equal((await readFile(`${docPath}.comments.jsonl`, 'utf8')).trim().split('\n').length, 2, 'the header and the ask: nothing of the failure in the comments\' file');
     await sleep(500);
     assert.equal((await runs()).length, 1, 'not retried on its own');
 
+    await call('retry', { buddy: 'Clippy' });
+    await until(async () => (await runs()).length === 2, 'the run on Retry');
+    await until(async () => (await state()).agents.find((a) => a.name === 'Clippy').state === 'ready' && (await failedIn()).length === 1, 'it failed again');
+    await call('saveSettings', { agents: { fake: { model: 'another' } } });
+    await until(async () => (await runs()).length === 3, 'the run once the agent\'s settings change');
+    await until(async () => (await state()).agents.find((a) => a.name === 'Clippy').state === 'ready' && (await failedIn()).length === 1, 'it failed again');
+
     await reply(call, id, '@Clippy replace "week one" with "week 1"');
-    await until(async () => (await repliesIn(state, id)).length === 2, 'the second reply');
-    assert.equal((await runs()).length, 2);
-    assert.ok(!(await repliesIn(state, id))[1].failed);
+    await until(async () => (await repliesIn(state, id)).length === 1, 'the reply to the new comment');
+    assert.deepEqual(await failedIn(), [], 'answered: no failure');
     const logged = await runLog(settingsDir);
-    assert.deepEqual(logged.map((l) => [l.doc, l.buddy, l.threads, l.outcome, l.code]), [[docPath, 'Clippy', [id], 'failed', 1], [docPath, 'Clippy', [id], 'ok', 0]], 'each run is logged');
+    assert.deepEqual(logged.map((l) => [l.doc, l.buddy, l.threads, l.outcome, l.code]), [...Array(3)].map(() => [docPath, 'Clippy', [id], 'failed', 1]).concat([[docPath, 'Clippy', [id], 'ok', 0]]), 'each run is logged');
     assert.ok(logged.every((l) => Number.isInteger(l.ms) && !Number.isNaN(Date.parse(l.at))));
   });
+});
+
+test('a run the host cannot start fails once: it is not run again until asked again', async () => {
+  let asked = 0;
+  const finished = [];
+  const inbox = { buddy: { id: 'b_x', name: 'X', about: '' }, buddies: [], threads: [{ id: 'c_t', comments: [{ at: '2026-11-17T10:00:00.000Z' }] }], askers: ['u_me'] };
+  const runner = new Runner({
+    asks: async () => (asked++, finished.length ? [] : [inbox]),
+    doc: async () => { throw new Error('no doc'); },
+    agent: async () => ({ script: 'none', settings: {} }),
+    finish: async (result) => { finished.push(result); return null; },
+  });
+  await runner.reconcile();
+  await until(() => finished.length === 1 && runner.statuses().length === 0, 'its failure');
+  await sleep(200);
+  assert.equal(finished.length, 1);
+  assert.deepEqual([finished[0].failed, finished[0].threadIds, finished[0].seen], [true, ['c_t'], { c_t: '2026-11-17T10:00:00.000Z' }]);
+  assert.match(finished[0].body, /Ponjo could not run X: no doc/);
+  assert.ok(asked < 5, 'no loop');
+});
+
+test('a teammate hears that a run failed, not why', () => {
+  const agents = [{ id: 'b_x', name: 'X', state: 'ready', threadIds: [], failed: [{ thread: 'c_t', at: 'now', why: '/home/me/agents/claude: no key' }] }];
+  assert.deepEqual(agentsFor('owner', agents), agents);
+  assert.deepEqual(agentsFor('write', agents)[0].failed, [{ thread: 'c_t', at: 'now' }]);
+  assert.deepEqual(agentsFor('read', agents)[0].failed, [{ thread: 'c_t', at: 'now' }]);
 });
 
 test('a log past 10 MB keeps its newest half, from a line\'s start: runs.jsonl and an agent\'s', { timeout: 30_000 }, async () => {

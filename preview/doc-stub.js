@@ -126,7 +126,8 @@ const epoch = newId('e');
 let rev = 0;
 
 const running = new Map(); // buddy id → thread ids
-const agents = () => buddies().map((b) => ({ ...b, state: running.has(b.id) ? 'running' : 'ready', threadIds: running.get(b.id) ?? [] }));
+const failures = new Map(); // buddy id → Map(thread id → { at, why }): a failed run posts nothing, as in the app
+const agents = () => buddies().map((b) => ({ ...b, state: running.has(b.id) ? 'running' : 'ready', threadIds: running.get(b.id) ?? [], failed: [...(failures.get(b.id) ?? [])].map(([thread, f]) => ({ thread, ...f })) }));
 
 function view() {
   const text = s.files[current];
@@ -191,8 +192,11 @@ async function run(id, threads) {
   const open = new Set(threadsOf(comments()).filter((t) => !t.resolved).map((t) => t.id));
   const kept = (c) => c.thread === undefined || open.has(c.thread);
   const at = new Date().toISOString();
+  const failed = failures.get(id) ?? new Map();
+  failures.set(id, failed);
+  for (const t of threads) failed.delete(t.id);
   if (failure) {
-    comments().push(...threads.filter((t) => open.has(t.id)).map((t) => ({ ...newComment({ thread: t.id, body: failure }, { by, at }), failed: true })));
+    for (const t of threads.filter((t) => open.has(t.id))) failed.set(t.id, { at, why: failure });
   } else {
     const added = appendedComments(copies[sidecar], texts.sidecar, { text: texts.doc, by, at, threads: new Set(comments().filter((c) => c.thread === undefined).map((c) => c.id)) });
     let prev = copies[doc];
@@ -265,6 +269,11 @@ const calls = {
     return { rev };
   },
   comment: ({ thread, anchor, body, resolved }) => add({ thread, anchor, body, resolved }),
+  retry({ buddy }) {
+    failures.delete(buddy);
+    setTimeout(answer);
+    return {};
+  },
   saveSettings(patch) {
     checkSettingsPatch(patch);
     s.settings = mergeSettings(s.settings, patch);

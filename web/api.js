@@ -28,6 +28,8 @@ export const api = {
    * empty reply. The comments now, and its `id`.
    */
   comment: ({ thread, anchor, body, resolved }) => call('comment', { thread, anchor, body, resolved }),
+  /** Run buddy `buddy` again where its last run failed. */
+  retry: (buddy) => call('retry', { buddy }),
   /**
    * The doc's events: `on(name, fn)`, fn getting the event's data. Those
    * that came before are handed over once the handlers set up with it, in

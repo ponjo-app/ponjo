@@ -365,7 +365,7 @@ others put in; its result is your typing, merged by character.
 | Shell | windows, menus, dialogs, recent docs | an open doc's files only through `DocService` (renaming through `DocService.move`), the sidebar through ProjectService (a folder window with no doc: the folder's own, `list`, `read` and `open` only); the settings and agent scripts through Store and Config |
 | Agent | edit its copy, append its comments to its sidecar | none: it cannot call anything |
 
-The page's calls: `state`, `submit`, `comment`, `undo`, `cursor`, `history`,
+The page's calls: `state`, `submit`, `comment`, `retry`, `undo`, `cursor`, `history`,
 `version`, ProjectService's three, and for the owner settings, buddies,
 agent scripts and Room. `reply`, `resolve`, `reopen`, `saveDoc` and
 `restoreVersion` go: a reply, a resolve and a reopen are each `comment`; a
@@ -557,11 +557,21 @@ the versions are on the host.
 
 ### Failures, retries and restarts
 
-A turn that fails says so: a comment marked `failed`, with the end of the
-program's output, in each thread that asked it, which answers it: it runs
-again when someone asks again. To redo what was not applied, ask the buddy
-again. Which turns are working lives only in memory: after a restart,
-unanswered asks run again.
+A turn that fails (an exit other than 0, a timeout, or a run the host
+could not start or take back) lands nothing and writes nothing: a failure
+is this machine's, not the doc's, so it never reaches the sidecar. The
+host keeps it in memory, by buddy and thread, and tells every window with
+the buddies' statuses; the thread shows it as the buddy's last reply, in
+red, with Retry (`retry({ buddy })`). The owner's say why, the end of the
+program's output and the script that ran; a teammate's say only that the
+run failed. The ask stays open but is not run again on its own, for a run
+that failed once may well fail again at the same cost: it runs again when
+someone writes in the thread, on Retry, when the agent, its settings or
+its secrets change (a key set), and after a restart. Errors an agent can
+outlast, such as a busy API, it retries itself
+([Ponjo agent](ponjo-agent.md)). To redo what was not applied, ask the
+buddy again. Which turns are working and which failed lives only in
+memory: after a restart, unanswered asks run again.
 Buddies' turns go on at the same time; their merges are applied one at a
 time.
 

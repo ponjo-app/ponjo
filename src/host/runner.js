@@ -54,7 +54,7 @@ export class Runner {
    */
   constructor({ asks, doc, agent, folder = async () => null, human = async () => null, finish, onChange = () => {}, log = async () => {}, timeoutMs = RUN_TIMEOUT_MS }) {
     Object.assign(this, { asks, doc, agent, folder, human, finish, onChange, log, timeoutMs });
-    // buddy id → { runId, id, name, threadIds, askers, child, done, cancelled, ended, over }.
+    // buddy id → { runId, id, name, threadIds, askers, out, child, done, cancelled, ended, answered, over }.
     // A run that is `over` stays until the next look into the asks, so a
     // look that read them before its answer was posted does not run it again.
     this.runs = new Map();
@@ -121,10 +121,20 @@ export class Runner {
   }
 
   #start({ buddy, buddies, threads, askers }) {
-    const run = { runId: newId('r'), id: buddy.id, name: buddy.name, threadIds: threads.map((t) => t.id), askers, child: null, done: null, cancelled: false, ended: false, over: false };
+    const run = { runId: newId('r'), id: buddy.id, name: buddy.name, threadIds: threads.map((t) => t.id), askers, child: null, done: null, cancelled: false, ended: false, answered: false, over: false };
+    // What `finish` is told of it, whatever became of it.
+    const seen = Object.fromEntries(threads.map((t) => [t.id, t.comments.at(-1).at]));
+    run.out = { id: buddy.id, name: buddy.name, threadIds: run.threadIds, askers, seen };
     this.runs.set(buddy.id, run);
     run.done = this.#run(run, threads, buddy, buddies)
-      .catch((error) => console.error(`Run of ${buddy.name} failed to finish:`, error))
+      .catch(async (error) => {
+        console.error(`Run of ${buddy.name} failed to finish:`, error);
+        // One that could not run, or whose end could not be taken, failed
+        // too: not run again until it is asked again.
+        if (run.answered || this.stopped || run.cancelled) return;
+        await this.finish({ ...run.out, base: null, edited: null, failed: true, body: `Ponjo could not run ${buddy.name}: ${error.message}` })
+          .catch((again) => console.error(`Run of ${buddy.name} failed to finish:`, again));
+      })
       .finally(() => {
         run.over = true;
         this.onChange();
@@ -164,8 +174,7 @@ export class Runner {
       let answered = null; // what finish made of it
       try {
         if (stopped) return; // ended by stop or cancel: no answer
-        const seen = Object.fromEntries(threads.map((t) => [t.id, t.comments.at(-1).at]));
-        const out = { id: buddy.id, name: buddy.name, threadIds: run.threadIds, askers: run.askers, seen, base };
+        const out = { ...run.out, base };
         if (result.code === 0) {
           const bytes = await readFile(copy).catch(() => null);
           trace.edited = (bytes && decodeText(bytes)?.text) ?? base; // as text, like the doc
@@ -174,6 +183,7 @@ export class Runner {
         } else {
           answered = await this.finish({ ...out, edited: null, body: failure(script, result), failed: true });
         }
+        run.answered = true;
       } finally {
         if (answered) trace.landed = answered.landed;
         await this.log({ run: run.runId, buddy: buddy.name, threads: run.threadIds, comments: answered?.comments ?? [], at: new Date(at).toISOString(), ms, outcome, code: result.code, ...(usage ? { usage } : {}) }, trace);

@@ -21,7 +21,7 @@ An agent is a filter ([architecture](architecture.md#a-run)):
 | `PONJO_SETTING_<KEY>` | each of the agent's [settings](#settings) |
 | stdout | anything; kept in the trace, never posted |
 | Exit 0 | success; the app adds the appended comments and merges the doc copy's edits into the doc, each with the comment it comes with. |
-| Any other exit | a comment marked `failed`, with the end of the output, in each thread that asked it. |
+| Any other exit | nothing lands and nothing is written: the threads that asked it show that it failed, with the end of the output to the owner. |
 
 A buddy acts only by commenting: an answer, a question or a change to the
 doc is a comment, and an edit comes with one. It runs when a person's
@@ -179,10 +179,12 @@ keeps the steps it took. The Ponjo agent writes each message of its turn
 
 ## Errors
 
-A run that does not exit 0 says so with a comment marked `failed` in each
-thread that asked it: the end of the program's own output, as is, and the
-script that ran, to run yourself. That comment answers the thread: it runs
-again when someone asks again.
+A run that does not exit 0 writes nothing to the doc or its sidecar. Each
+thread that asked it shows that it failed, with Retry; the owner also sees
+the end of the program's own output, as is, and the script that ran, to run
+yourself. It runs again on Retry, when someone writes in the thread, when
+the agent or its settings change, or after a restart; never on its own, so
+an agent should retry what it can outlast (a busy API) itself.
 
 ## Open
 
