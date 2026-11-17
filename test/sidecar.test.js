@@ -5,7 +5,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { askedBy, askedOf, newComment, parseSidecar, peopleOf, serializeSidecar, threadsOf } from '../src/core/comments.js';
+import { askedBy, askedOf, movedAnchor, newComment, parseSidecar, peopleOf, serializeSidecar, threadsOf } from '../src/core/comments.js';
+import { createAnchor, locate } from '../src/core/anchor.js';
 import { parseMentions } from '../src/core/mentions.js';
 
 const { reading, mentions } = JSON.parse(readFileSync(new URL('../spec/conformance/sidecar.json', import.meta.url), 'utf8'));
@@ -141,4 +142,24 @@ test('a new comment: whoever writes it may resolve, with or without a body', () 
   const { id: _, ...done } = newComment({ thread: 'c_first01', body: 'Done.', resolved: true }, { by: buddy, at });
   assert.deepEqual(done, { thread: 'c_first01', by: buddy, at, body: 'Done.', resolved: true });
   assert.equal(newComment({ body: 'On the doc' }, { by: human, at }).anchor, null, 'a first comment without an anchor is on the whole doc');
+});
+
+test('a buddy\'s rewrite moves its thread onto all it rewrote, in whole words; undone, the thread is back on the quote', () => {
+  const quote = 'Writing with AI today mostly means going back and forth';
+  const base = `# Why\n\n${quote} between a chat and a doc, where you find it changed.\n\nFiles stored in the cloud.\n`;
+  const edited = base.replace('mostly means going back and forth between a chat and a doc, where you', 'means copying into a chat, only to').replace('stored in the cloud', 'on disk');
+  const asked = createAnchor(base, base.indexOf(quote), base.indexOf(quote) + quote.length);
+  const moved = movedAnchor(asked, base, edited, edited);
+  assert.equal(moved.exact, 'Writing with AI today means copying into a chat, only to', 'the whole change over the quote, not a word cut, nor the change elsewhere');
+  assert.equal(movedAnchor(createAnchor(base, base.indexOf('Files'), base.indexOf('Files') + 5), base, edited, edited), null, 'a quote the edit left as it was stays');
+
+  const by = { id: 'u_me000001', name: 'Me', kind: 'human' };
+  const first = { id: 'c_first01', anchor: asked, by, at: '2026-01-01T00:00:00.000Z', body: 'Shorter?' };
+  const reply = { id: 'c_reply01', thread: 'c_first01', anchor: moved, by: { id: 'Clippy', name: 'Clippy', kind: 'ai' }, at: '2026-01-01T00:00:01.000Z', body: 'Halved.' };
+  const on = (text) => {
+    const found = locate(text, threadsOf([first, reply], [], text)[0].anchor);
+    return text.slice(found.start, found.end);
+  };
+  assert.equal(on(edited), moved.exact);
+  assert.equal(on(base), quote, 'undone: back on the quote asked about, not on the moved anchor found between its context');
 });

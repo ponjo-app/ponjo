@@ -6,7 +6,7 @@
 
 import { NAME_PATTERN, parseMentions } from './mentions.js';
 import { createAnchor, locate } from './anchor.js';
-import { diffOps, mapOffset } from './ot.js';
+import { diffEdits } from './diff.js';
 
 export const FORMAT_VERSION = 3;
 const COMMENT_ID = /^c_[A-Za-z0-9_-]{6,}$/;
@@ -170,26 +170,27 @@ const byTime = (a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : a.id < b.id ? -1 
 
 /**
  * Where a thread's `anchor`, on text `base`, is once `base` was edited into
- * `edited` and that edit landed, the doc now `text` (§3): the text the edit
- * put in place of its quote, when it changed it; else null, and it stays.
+ * `edited` and that edit landed, the doc now `text` (§3): its quote with
+ * the whole of each change the edit made over it, in whole words; null
+ * when the edit left its quote as it was.
  */
 export function movedAnchor(anchor, base, edited, text) {
   const found = anchor && locate(base, anchor);
   if (!found) return null;
-  const ops = diffOps(base, edited);
-  // Its start goes before what the edit put at it or over it, its end after.
-  let shift = 0;
   let start = null;
-  for (const op of ops) {
-    if (op.from >= found.start) break;
-    if (op.to > found.start) {
-      start = op.from + shift;
-      break;
-    }
-    shift += op.insert.length - (op.to - op.from);
+  let end = null;
+  let shift = 0;
+  for (const { from, to, edit } of diffEdits(base, edited)) {
+    const after = edit.start + edit.after.length;
+    if (start === null && from > found.start) start = found.start + shift;
+    if (start === null && (from === found.start || to > found.start)) start = edit.start;
+    if (from >= found.end) break;
+    end = to >= found.end ? after : null;
+    shift = after - to;
+    if (end !== null) break;
   }
   start ??= found.start + shift;
-  const end = mapOffset(found.end, ops);
+  end ??= found.end + shift;
   if (start >= end || edited.slice(start, end) === base.slice(found.start, found.end)) return null;
   const now = locate(text, createAnchor(edited, start, end));
   return now && createAnchor(text, now.start, now.end);
@@ -202,17 +203,20 @@ export function movedAnchor(anchor, base, edited, text) {
  * comment says so: any comment without `resolved` reopens it. A reply whose
  * first comment is missing is left out. `mentionable` ([{ id, name }]) is who an @name can mean (§6); each comment
  * gets `mentions`, the ids it mentions. A thread's `anchor` is the latest of
- * its comments' anchors found in the doc's `text`, when given (§3); else,
- * or when none is, the latest.
+ * its comments' anchors whose quote is in the doc's `text`, when given (§3);
+ * else the latest found there; else the latest.
  */
 export function threadsOf(comments, mentionable = [], text = null) {
   const firsts = comments.filter((c) => c.thread === undefined).sort(byTime);
   return firsts.map((first) => {
     const all = [first, ...comments.filter((c) => c.thread === first.id).sort(byTime)]
       .map((c) => ({ ...c, mentions: parseMentions(c.body, mentionable) }));
-    // A buddy's reply that rewrote the thread's text moves it; undoing that edit moves it back (§3).
+    // A buddy's reply that rewrote the thread's text moves it; undoing that edit moves it back (§3):
+    // the latest anchor whose quote is in the text as it is wins over a later one only found near it.
     const anchors = all.filter((c) => c.anchor).map((c) => c.anchor);
-    const anchor = first.anchor ? (text !== null && anchors.findLast((a) => locate(text, a))) || anchors.at(-1) : null;
+    const found = text === null ? [] : anchors.map((a) => locate(text, a));
+    const latest = (ok) => anchors[found.findLastIndex(ok)];
+    const anchor = first.anchor ? latest((f) => f?.method === 'exact') ?? latest(Boolean) ?? anchors.at(-1) : null;
     return { id: first.id, anchor, resolved: all.at(-1).resolved === true, comments: all };
   });
 }

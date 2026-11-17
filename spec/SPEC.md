@@ -57,12 +57,13 @@ Annotation `TextQuoteSelector` plus a `TextPositionSelector` start hint.
 
 An anchor is never rewritten. Each reader finds it in the doc's text as
 it is now, in its own way: the format does not say how. A thread is on
-the latest of its comments' anchors that is found: a buddy's reply whose
-edit rewrote the thread's text carries one on the text it put there, as
-found right after its edit, since its quote alone may no longer be found;
-once that text is gone, as when the edit is undone, an earlier anchor is
-found again. A thread none of whose anchors is found stays, shown as
-detached.
+the latest of its comments' anchors whose quote is in the text as it is,
+else the latest that is found: a buddy's reply whose edit rewrote the
+thread's text carries one on the text it put there, as found right after
+its edit, since its quote alone may no longer be found; once that text is
+gone, as when the edit is undone, the earlier quote is there again and the
+thread is back on it. A thread none of whose anchors is found stays, shown
+as detached.
 
 ### 3.1 Creating an anchor
 
