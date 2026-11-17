@@ -16,9 +16,7 @@ export const SETTINGS_VERSION = 3;
  * settings of each view and agent by its id (`{ <id>: { enabled: false } }`);
  * one not there takes the default its declaration gives (viewSettings,
  * agentSettings). `trace` keeps each run's trace (src/host/doc-service.js
- * logRun), to read in a doc's Runs. The doc's buddies look again every
- * `watchEvery` seconds, and once nothing has changed for `watchFor` seconds,
- * every `watchFor` seconds (src/host/runner.js).
+ * logRun), to read in a doc's Runs.
  */
 export const DEFAULT_SETTINGS = Object.freeze({
   id: null,
@@ -29,19 +27,10 @@ export const DEFAULT_SETTINGS = Object.freeze({
   agents: Object.freeze({}),
   agent: 'claude',
   trace: false,
-  watchEvery: 10,
-  watchFor: 600,
 });
-
-/** The seconds `watchEvery` and `watchFor` may be, as Settings > Agents offers them. */
-export const WATCH_FIELDS = Object.freeze([
-  { key: 'watchEvery', type: 'number', label: 'Look again every', hint: 'How often the buddies look at the doc again while a comment is unanswered; they also look 3 s after any change.', unit: 's', min: 5, max: 3600, step: 5, default: 10 },
-  { key: 'watchFor', type: 'number', label: 'Slow down after', hint: 'Once nothing has changed for this long, they look only this often, until the next change.', unit: 's', min: 60, max: 14400, step: 60, default: 600 },
-]);
 
 const oneOf = (...values) => (v) => values.includes(v);
 const boolean = (v) => typeof v === 'boolean';
-const minutes = (key) => (v) => FIELD_RULES.number(WATCH_FIELDS.find((f) => f.key === key), v);
 const scalar = (v) => boolean(v) || typeof v === 'string' || typeof v === 'number';
 
 export const USER_ID = /^u_[A-Za-z0-9_-]{6,40}$/;
@@ -55,8 +44,6 @@ const VALID = {
   agents: perId,
   agent: (v) => typeof v === 'string' && NAME_PATTERN.test(v),
   trace: boolean,
-  watchEvery: minutes('watchEvery'),
-  watchFor: minutes('watchFor'),
 };
 
 export class SettingsError extends Error {

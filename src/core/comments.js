@@ -218,22 +218,22 @@ export function threadsOf(comments, mentionable = [], text = null) {
 }
 
 /**
- * The ids the open `thread` (from threadsOf) asks: each X that a comment
- * by one of `askers` (the ids that may ask) asks, until the thread is
- * resolved: X's comments there do not end it. A comment asks whom it @mentions; one that mentions no one
- * asks the thread's others: the one that opened it and each that an asker
- * @mentioned there before, never an asker. An empty one (it reopened the
- * thread) asks no one (docs/architecture.md, Who answers). Resolving drops
- * what was asked before it, so reopening asks no one.
+ * The ids the open `thread` (from threadsOf) waits on: each X that a comment
+ * by one of `askers` (the ids that may ask) asks, newer than X's last
+ * comment there: X's comment answers it. A comment asks whom it @mentions;
+ * one that mentions no one asks the thread's others: the one that opened it
+ * and each that an asker @mentioned there before, never an asker. An empty
+ * one (it reopened the thread) asks no one (docs/architecture.md, Who
+ * answers). Resolving drops what was asked before it, so reopening asks no one.
  */
 export function askedOf(thread, askers) {
   return [...askedBy(thread, askers).keys()];
 }
 
 /**
- * The same, each with who asked it: Map(buddy id → the id of the latest of
- * `askers` who asks it). `taken(comment)` says whether a comment of theirs
- * may ask: one that does not is skipped.
+ * The same, each with the comment that asks it: Map(buddy id → the latest
+ * comment of `askers` that asks it). `taken(comment)` says whether a comment
+ * of theirs may ask: one that does not is skipped.
  */
 export function askedBy(thread, askers, taken = () => true) {
   const asked = new Map();
@@ -241,8 +241,9 @@ export function askedBy(thread, askers, taken = () => true) {
   const theirs = [thread.comments[0].by.id].filter((id) => !askers.includes(id));
   thread.comments.forEach((c) => {
     if (c.resolved) asked.clear();
+    asked.delete(c.by.id); // its comment answers what was asked before it
     if (!askers.includes(c.by.id) || c.body.trim() === '' || !taken(c)) return;
-    for (const id of c.mentions.length > 0 ? c.mentions : theirs) if (!askers.includes(id)) asked.set(id, c.by.id);
+    for (const id of c.mentions.length > 0 ? c.mentions : theirs) if (!askers.includes(id)) asked.set(id, c);
     for (const id of c.mentions) if (!theirs.includes(id) && !askers.includes(id)) theirs.push(id);
   });
   return asked;

@@ -73,7 +73,7 @@ test('writing: the whole file, bad lines kept as they are, unknown fields kept, 
   assert.deepEqual(comments(again)[0].future, { x: 1 });
 });
 
-test('who is asked: whom an asker\'s comment @mentions, or with no mention the thread\'s buddies, until the thread is resolved; anyone else\'s comment asks no one', () => {
+test('who is asked: whom an asker\'s comment @mentions, or with no mention the thread\'s buddies, until each replies; anyone else\'s comment asks no one', () => {
   const by = (id, name, kind = 'human') => ({ id, name, kind });
   const me = by('u_me000001', 'me');
   const other = by('u_other001', 'other');
@@ -81,11 +81,11 @@ test('who is asked: whom an asker\'s comment @mentions, or with no mention the t
   const thread = (...list) => threadsOf(list.map(([who, body, extra = {}], i) => ({ id: i === 0 ? 'c_thread01' : `c_reply0${i}`, ...(i ? { thread: 'c_thread01' } : {}), by: who, at: `2026-10-01T10:0${i}:00Z`, body, ...extra })), [{ id: 'Clippy', name: 'Clippy' }, { id: 'Ada', name: 'Ada' }])[0];
   assert.deepEqual(askedOf(thread([me, '@Clippy look']), ['u_me000001']), ['Clippy']);
   assert.deepEqual(askedOf(thread([me, '@clippy look'], [me, 'and this too']), ['u_me000001']), ['Clippy'], 'a later comment of mine without a mention still waits');
-  assert.deepEqual(askedOf(thread([me, '@Clippy look'], [clippy, 'Done. @Ada?']), ['u_me000001']), ['Clippy'], "its reply does not end it; a buddy's @mention asks no one");
+  assert.deepEqual(askedOf(thread([me, '@Clippy look'], [clippy, 'Done. @Ada?']), ['u_me000001']), [], "answered; a buddy's @mention asks no one");
   assert.deepEqual(askedOf(thread([me, '@Clippy look'], [clippy, 'Done.'], [me, '@Clippy again']), ['u_me000001']), ['Clippy']);
   assert.deepEqual(askedOf(thread([other, '@Clippy look']), ['u_me000001']), [], 'only my comments start runs');
   assert.deepEqual(askedOf(thread([me, 'no one']), ['u_me000001']), []);
-  assert.deepEqual(askedOf(thread([me, '@Clippy @Ada'], [clippy, 'Mine']), ['u_me000001']), ['Clippy', 'Ada']);
+  assert.deepEqual(askedOf(thread([me, '@Clippy @Ada'], [clippy, 'Mine']), ['u_me000001']), ['Ada']);
   assert.deepEqual(askedOf(thread([me, '@Clippy look'], [me, '', { resolved: true }]), ['u_me000001']), [], 'a resolved thread asks no one');
   assert.deepEqual(askedOf(thread([me, '@Clippy look'], [clippy, 'Done.'], [me, '', { resolved: true }], [me, '']), ['u_me000001']), [], 'reopening asks no one');
   assert.deepEqual(askedOf(thread([me, '@Clippy look'], [me, '', { resolved: true }], [me, '']), ['u_me000001']), [], 'resolving drops an unanswered ask');
@@ -95,7 +95,7 @@ test('who is asked: whom an asker\'s comment @mentions, or with no mention the t
   assert.deepEqual(askedOf(thread([other, '@Clippy look']), ['u_me000001', 'u_other001']), ['Clippy'], 'each who may ask asks');
   const ada = by('Ada', 'Ada', 'ai');
   assert.deepEqual(askedOf(thread([me, '@Clippy look'], [clippy, 'Done.'], [me, 'and now this']), ['u_me000001']), ['Clippy'], 'a follow-up with no mention asks the thread\'s buddies');
-  assert.deepEqual(askedOf(thread([me, '@Clippy @Ada look'], [clippy, 'A'], [ada, 'B'], [me, '@Ada only you']), ['u_me000001']), ['Clippy', 'Ada'], 'each it asked once, until resolved');
+  assert.deepEqual(askedOf(thread([me, '@Clippy @Ada look'], [clippy, 'A'], [ada, 'B'], [me, '@Ada only you']), ['u_me000001']), ['Ada'], 'a mention asks only whom it names');
   assert.deepEqual(askedOf(thread([me, '@Clippy @Ada look'], [clippy, 'A'], [ada, 'B'], [me, '@Ada only you'], [ada, 'C'], [me, 'both again']), ['u_me000001']), ['Clippy', 'Ada']);
   assert.deepEqual(askedOf(thread([ada, 'This is stale.'], [me, 'Update it']), ['u_me000001']), ['Ada'], 'the buddy that opened the thread is one of its buddies');
   assert.deepEqual(askedOf(thread([me, '@Clippy look'], [other, '@Ada and this']), ['u_me000001']), ['Clippy'], "another user's comment asks no one");
@@ -107,11 +107,11 @@ test('a comment that was not taken asks no one; the others ask as before', () =>
   const clippy = { id: 'Clippy', name: 'Clippy', kind: 'ai' };
   const thread = (...list) => threadsOf(list.map(([who, body], i) => ({ id: `c_comment${i}`, ...(i ? { thread: 'c_comment0' } : {}), by: who, at: `2026-10-01T10:0${i}:00Z`, body })), [{ id: 'Clippy', name: 'Clippy' }, { id: 'Ada', name: 'Ada' }])[0];
   const notFirst = (c) => c.id !== 'c_comment0';
-  const asked = (t, taken) => [...askedBy(t, ['u_me000001'], taken)];
+  const asked = (t, taken) => [...askedBy(t, ['u_me000001'], taken)].map(([id, c]) => [id, c.by.id]);
   assert.deepEqual(asked(thread([me, '@Clippy look']), (c) => false), []);
   assert.deepEqual(asked(thread([me, '@Clippy look'], [me, '@Ada too']), notFirst), [['Ada', 'u_me000001']]);
   assert.deepEqual(asked(thread([me, '@Clippy look'], [me, 'and this']), notFirst), [], 'nor is one it @mentioned a buddy of the thread');
-  assert.deepEqual(asked(thread([me, '@Clippy look'], [clippy, 'Done.'], [me, 'and this']), (c) => c.id !== 'c_comment2'), [['Clippy', 'u_me000001']], 'the first asks it, until resolved');
+  assert.deepEqual(asked(thread([me, '@Clippy look'], [clippy, 'Done.'], [me, 'and this']), (c) => c.id !== 'c_comment2'), [], 'its answer stands');
   assert.deepEqual(asked(thread([me, '@Clippy look'], [clippy, 'Done.'], [me, 'and this']), () => true), [['Clippy', 'u_me000001']]);
 });
 
@@ -126,7 +126,7 @@ test('a renamed buddy is still the one asked and the one who answered: ids, not 
   const [asked] = threadsOf([first, ask], bea);
   assert.deepEqual(asked.comments[1].mentions, ['b_ada00001'], '@Bea is Ada\'s id under its new name');
   assert.deepEqual(askedOf(asked, ['u_me000001']), ['b_ada00001']);
-  assert.deepEqual(askedOf(threadsOf([first, ask, reply], bea)[0], ['u_me000001']), ['b_ada00001'], 'still asked after its reply under the old name');
+  assert.deepEqual(askedOf(threadsOf([first, ask, reply], bea)[0], ['u_me000001']), [], 'its reply under the old name still answers');
   assert.deepEqual(threadsOf([first, { ...ask, body: '@Ada more' }], bea)[0].comments[1].mentions, [], 'the old name is no longer a mention');
 });
 

@@ -66,9 +66,8 @@ AI buddies.
    top of the margin, opened in place.
 4. **Someone answers.** A person replies in the thread. `@Clippy` in a
    comment asks the AI buddy Clippy: it replies in the thread, with the
-   edits its reply says why it made, and may comment on other passages. It
-   keeps an eye on the thread while it is open: "each time I write a line,
-   add the next" goes on until you resolve it.
+   edits its reply says why it made, and may comment on other passages. Its
+   reply answers you: it runs again when you write in the thread again.
 5. **Anyone allowed decides.** Keep an edit, undo it from the comment it
    came with, reply again, or resolve the thread, whoever asked and
    whoever answered.
@@ -140,10 +139,11 @@ and 30 days, and by model.
 - `@name` in a comment asks that AI buddy.
 - A reply with no `@` asks the AI buddies already in its **thread**: a first
   comment on a passage and the replies under it.
-- A thread asks its AI buddies until it is resolved: their replies do not
-  end it, and they look at it again whenever the doc or its comments
-  change, and every while. Resolving it, which only people do, stops them
-  at once, and nothing they did there lands. Reopening asks no one.
+- A comment asks until the AI buddy replies in its thread: it runs once,
+  answers, and runs again only when someone writes there again, never on
+  its own, on an edit or on a clock. Resolving the thread, which only
+  people do, stops a buddy working on it at once, and nothing it did there
+  lands. Reopening asks no one.
 - Only people's comments ask: yours, and a teammate's who can edit. A
   turn acts as whoever asked it may when it ends: if they were removed or
   set to Read meanwhile, nothing it did lands. An AI buddy's reply asks no one, and neither does an `@name`
@@ -192,8 +192,7 @@ and 30 days, and by model.
   **Undo this change** in history undoes any version, or a burst of typing.
   It works in every window of the team.
 - **A failed run** says so in each thread that asked it, with the end of
-  its output, marked failed. It is tried again on the doc's next look, and
-  says so again only where someone has written since.
+  its output, marked failed. It is tried again when someone asks again.
 
 ## Seeing teammates work
 
@@ -275,8 +274,7 @@ and 30 days, and by model.
   toggles that change the same settings. The Markdown view's: the page's font
   and width, Outline and Focus mode. Every doc has a status bar under the
   page: in the Markdown view the doc's word count (of the selection too,
-  when there is one), and the buddies' loop while a thread asks them,
-  with a pause or play button.
+  when there is one), and which buddies are working while their turns run.
   Switching a view applies at once to every open doc: a Markdown doc turns to
   plain text and back, comments still in the margin, and nothing is written.
 - **Files.** New Doc and Rename (the comments move too). Opening an already

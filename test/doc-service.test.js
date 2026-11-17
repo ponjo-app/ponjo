@@ -338,14 +338,15 @@ test('an image the doc shows, at the door: from the doc\'s place or the project\
   }
 });
 
-test('a buddy asked to resolve cannot: each buddy asked replies, and the thread stays open, asking them', { timeout: 30_000 }, async () => {
-  await withDoc(async ({ call, state }) => {
+test('a buddy asked to resolve cannot: each buddy asked replies, and the thread stays open', { timeout: 30_000 }, async () => {
+  await withDoc(async ({ call, state, settingsDir }) => {
     const { id } = await call('comment', { anchor: null, body: '@Clippy @Pilot resolve' });
     await until(async () => (await threadOf(state, id)).comments.length === 3, 'both replies');
     const thread = await threadOf(state, id);
     assert.equal(thread.resolved, false);
     assert.deepEqual(thread.comments.slice(1).map((c) => [c.body, c.resolved ?? false]), [['Nothing to change.', false], ['Nothing to change.', false]]);
-    assert.equal((await state()).loop.waiting, 2, 'both still asked');
+    await pause(500);
+    assert.equal((await fakeRuns(settingsDir)).length, 2, 'each answered once');
   });
 });
 

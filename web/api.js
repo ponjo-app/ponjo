@@ -28,8 +28,6 @@ export const api = {
    * empty reply. The comments now, and its `id`.
    */
   comment: ({ thread, anchor, body, resolved }) => call('comment', { thread, anchor, body, resolved }),
-  /** Pause the buddies' loop in this doc (`paused`), or resume it: { loop }. */
-  pauseLoop: (paused) => call('pauseLoop', { paused }),
   /**
    * The doc's events: `on(name, fn)`, fn getting the event's data. Those
    * that came before are handed over once the handlers set up with it, in

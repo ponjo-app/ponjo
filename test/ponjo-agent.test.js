@@ -105,14 +105,14 @@ test('a turn replies in another thread by the id the comments file gives, each c
 test('the prompt\'s situation comes after the doc, apart: the rules and the doc are one message, marked to cache', async () => {
   const { doc, sidecar } = await copies();
   const infer = fake(DONE);
-  const prompt = buildPrompt({ buddy: { id: 'b_c', name: 'Clippy', about: '' }, docName: doc, sidecarName: sidecar, threads: [{ id: 'c_asked', anchor: null, comments: [{ by: { name: 'Fan' }, body: 'Hi' }] }], people: [] });
+  const prompt = buildPrompt({ buddy: { id: 'b_c', name: 'Clippy', about: '' }, docName: doc, sidecarName: sidecar, threads: [{ id: 'c_asked', anchor: null, comments: [{ by: { name: 'Fan' }, body: 'Hi' }] }] });
   await turn({ prompt, doc, sidecar }, { infer, readFile: seen({ doc, sidecar }) });
   const [rules, situation] = infer.messages;
   assert.equal(SITUATION, APP_SITUATION, 'the agent splits where the app\'s prompt does');
   assert.equal(rules.cache, true);
   assert.ok(rules.content.startsWith('You are Clippy') && rules.content.includes('as read gives it:\n\n1\t# Q4 Launch Plan'), 'the rules, then the doc');
   assert.ok(!rules.content.includes(SITUATION) && !rules.content.includes('c_asked'), 'nothing that changes from run to run');
-  assert.ok(situation.content.startsWith(`${SITUATION}\n\nNo one is in plan.md now.`) && situation.content.includes('<thread>\nFan: Hi\n</thread>'));
+  assert.ok(situation.content.startsWith(`${SITUATION}\n\nThe threads that ask you`) && situation.content.includes('<thread>\nFan: Hi\n</thread>'));
   assert.equal(situation.cache, undefined);
 });
 

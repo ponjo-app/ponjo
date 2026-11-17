@@ -146,8 +146,8 @@ const emit = (event, data) => listener?.(event, data);
 // picks the model (MODEL, as relay/wrangler.toml names it) and holds the key.
 const infer = INFER.openai({ endpoint: 'https://infer.ponjo.app/infer', model: 'nemotron', key: 'preview' });
 
-// The buddies this user's comments ask, each with the open threads that
-// ask it, as the runner starts them on a look: one run a buddy at a time.
+// The buddies this user's comments ask, each with the threads that ask it
+// and it has not answered, as the runner starts them: one run a buddy at a time.
 function answer() {
   const inboxes = new Map(); // buddy id → its threads
   for (const thread of threadsOf(comments(), buddies().map(({ id, name }) => ({ id, name })), s.files[current])) {

@@ -77,6 +77,10 @@ for a window), **e2e** (the packaged app, under xvfb on Linux).
   changed; colliding again, it lands where no one changed its lines, and
   its version says `conflict`; nothing asks the user.
 - Two runs on one doc at once: both edits land, merged one at a time.
+- A buddy's reply answers its ask: neither it nor a person's edit runs it
+  again; a comment written while it runs is answered by a run right after,
+  with only the threads not answered; a run that posts nothing in a thread
+  is not run again for it until someone writes there.
 - Exit non-zero: the reply is marked `failed` with the end of the output;
   @mentioning again runs again; after a restart, unanswered asks run again.
 - Runs only on docs open in a window.

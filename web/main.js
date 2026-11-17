@@ -210,10 +210,7 @@ async function start() {
   openedText = initial.text;
   made = chooseView(openedText);
   showSize(made, openedText);
-  docBar = createDocBar(document.querySelector('.pj-docbar'), {
-    canPause: () => !reading(),
-    onPause: (paused) => api.pauseLoop(paused).then(({ loop }) => docBar.setLoop(loop), () => {}),
-  });
+  docBar = createDocBar(document.querySelector('.pj-docbar'));
   editor = await makeView(made, initial.text);
   countWords();
   performance.mark('ponjo:editor');
@@ -298,7 +295,6 @@ async function start() {
   people.render({ agents: initial.agents });
   if (inProject && level === 'owner') api.room().then((room) => people.render({ room }), () => {});
   docBar.setAgents(initial.agents);
-  docBar.setLoop(initial.loop);
   shownAgents = JSON.stringify(initial.agents);
   applyComments(initial);
   showUnsaved(initial.notSaved);
@@ -415,7 +411,6 @@ async function start() {
     history.changed();
     afterTyping('sidecar', refreshThreads); // a buddy's turn's receipt is read from its version
   });
-  events.on('loop', (data) => docBar.setLoop(data));
   events.on('agents', (data) => {
     showAgents(data);
     runs.refresh(); // a run that ended has its trace

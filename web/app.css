@@ -590,20 +590,13 @@ del.pj-buddy-del { margin-right: 0.15em; }
 .pj-unplaced { position: absolute; left: 0; display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 10px 0 8px; border: 0; border-radius: 6px; background: none; font-size: 12px; font-weight: 600; color: var(--text-soft); font-variant-numeric: tabular-nums; transition: top 0.18s ease, background 0.15s; }
 .pj-unplaced .pj-icon { width: 14px; height: 14px; }
 /* the buddies' loop, in the status bar while an ask is unanswered or the loop is paused: its ring the rest until the next look */
-.pj-loop { display: flex; align-items: center; gap: 7px; margin-right: 6px; }
-.pj-loop[hidden] { display: none; }
-.pj-statusbar .pj-loop-pause { display: inline-flex; align-items: center; justify-content: center; width: 22px; padding: 0; background: var(--hover); color: var(--text); }
-.pj-statusbar .pj-loop-pause:hover { background: var(--active); }
-.pj-loop-pause[hidden] { display: none; }
-.pj-loop-pause .pj-icon { width: 14px; height: 14px; }
-.pj-loop-ring { flex: none; width: 14px; height: 14px; }
-.pj-loop-ring circle { fill: none; stroke-width: 2; }
-.pj-loop-track { stroke: var(--border-strong); }
-.pj-loop-arc { stroke: var(--accent); stroke-linecap: round; stroke-dasharray: 37.7; transform: rotate(-90deg); transform-origin: center; transition: stroke-dashoffset 1s linear; }
-.pj-loop[data-state="working"] .pj-loop-ring { animation: pj-spin 1s linear infinite; }
-.pj-loop[data-state="working"] .pj-loop-arc { stroke-dashoffset: 26 !important; transition: none; }
-.pj-loop[data-state="still"] .pj-loop-arc { stroke: none; }
-@media (prefers-reduced-motion: reduce) { .pj-loop-ring, .pj-loop-arc { animation: none !important; transition: none; } }
+.pj-working { display: flex; align-items: center; gap: 7px; margin-right: 6px; }
+.pj-working[hidden] { display: none; }
+.pj-working-ring { flex: none; width: 14px; height: 14px; animation: pj-spin 1s linear infinite; }
+.pj-working-ring circle { fill: none; stroke-width: 2; }
+.pj-working-track { stroke: var(--border-strong); }
+.pj-working-arc { stroke: var(--accent); stroke-linecap: round; stroke-dasharray: 37.7; stroke-dashoffset: 26; transform: rotate(-90deg); transform-origin: center; }
+@media (prefers-reduced-motion: reduce) { .pj-working-ring { animation: none; } }
 .pj-unplaced:hover { background: var(--hover); color: var(--text); }
 .pj-unplaced[aria-expanded="true"] { visibility: hidden; }
 .pj-unplaced-failed::after { content: ""; position: absolute; top: 3px; left: 4px; width: 8px; height: 8px; border-radius: 50%; background: var(--red); box-shadow: 0 0 0 2px var(--canvas); }
