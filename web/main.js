@@ -629,6 +629,8 @@ function showAgents(next) {
   const json = JSON.stringify(next);
   if (json === shownAgents) return;
   shownAgents = json;
+  // A watch run failed since the last statuses: its buddy flinches.
+  for (const a of next) if (a.watchFailed && a.watchFailed.at !== agents.find((b) => b.id === a.id)?.watchFailed?.at) people?.failed(a.id);
   agents = next;
   standAtWork(next);
   setBuddies(next);

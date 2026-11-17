@@ -551,8 +551,16 @@ told it watches the doc, what changed since it last looked (from the doc
 as its last run started; on its first run since the app started, to read
 the doc), and its watch thread: the first thread on the whole doc it
 opens, where it comments and where its edits hang, each to undo on its
-own; resolved, it opens another. With nothing due it posts nothing.
-Unset, it starts no more runs, and one running ends with no answer. The
+own; resolved, it opens another. With nothing due it posts nothing. A
+person editing again while a run only its watch started is on ends that
+run with no answer, for it saw the doc as it was; it runs again once they
+pause. Its runs are timed by a clock that never goes back
+(`performance.now()`), so no pause is missed when the system's clock is
+set back. A watch run that fails shows on the buddy, for it may have no
+thread yet: its card says "Watch failed", why to the owner alone, and
+Retry; it also runs again the next time people pause, or once its agent
+or key changes. Unset, it starts no more runs, and one running ends with
+no answer. The
 watch is the host's, `{ by, thread }` noted with the doc's history on this
 machine and never in the sidecar, for nothing in a shared file makes a
 buddy run here; it runs as whoever set it may, while they may ask. Its

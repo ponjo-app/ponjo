@@ -17,7 +17,8 @@
 //   tamper                              change the first comment's line, and append one that resolves its thread
 // Watching the doc, it says "Watching." on the whole doc when it has no watch
 // thread, else "Saw <n> new lines." there, n the lines the changes put in;
-// nothing when one of them says quiet.
+// nothing when one of them says quiet. Watching a doc that says fail-watch,
+// it fails; one that says hold-watch, it waits for release-<buddy> first.
 // Commands after the first may follow `;;`. It prints Done. A reply is `say`'s text, else
 // what it replaced, else "Nothing to change.". A reply that carries edits
 // writes them, as its group, to PONJO_GROUPS.
@@ -44,6 +45,14 @@ if (process.env.PONJO_TRACE) appendFileSync(process.env.PONJO_TRACE, `${JSON.str
 // `usage`: a step as the Ponjo agent writes it, with the Claude API's count.
 if (/\busage\b/.test(ask)) appendFileSync(process.env.PONJO_TRACE, `${JSON.stringify({ role: 'assistant', model: 'claude-opus-5-5', usage: { input_tokens: 100, output_tokens: 10, cache_read_input_tokens: 900 } })}\n`);
 
+if (/You watch this doc:/.test(prompt)) {
+  const now = readFileSync(doc, 'utf8');
+  if (now.includes('fail-watch')) {
+    console.error('fake agent: the watch run failed');
+    process.exit(1);
+  }
+  if (now.includes('hold-watch')) while (!existsSync(join(dir, `release-${buddy}`))) await new Promise((r) => setTimeout(r, 50));
+}
 if (/\bhold\b/.test(ask)) {
   while (!existsSync(join(dir, `release-${buddy}`))) await new Promise((r) => setTimeout(r, 50));
 }

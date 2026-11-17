@@ -33,13 +33,15 @@ const LOOK_AGAIN_MAX_MS = 30_000;
 export class Runner {
   /**
    * `asks()` resolves to the buddies asked now, each with its inbox: [{
-   * buddy: { id, name, about }, buddies, threads, askers, watch, due }],
+   * buddy: { id, name, about }, buddies, threads, askers, watch, due,
+   * watchOnly }],
    * `buddies` all those the doc reaches, `threads` those that ask it and it
    * has not answered (and its watch thread), `askers` the ids of whoever
    * asked, `watch` null or, when it watches the doc, { thread (its watch
    * thread's id, or null), changes (what changed since it last looked, or
-   * null) }, and `due` whether to run it now: a buddy watching the doc is
-   * in, so its run on now goes on, though not due. `doc()` to { path, text,
+   * null) }, `due` whether to run it now: a buddy watching the doc is in,
+   * so its run on now goes on, though not due, and `watchOnly` whether only
+   * its watch has it run (interrupt ends such a run). `doc()` to { path, text,
    * comments }, `path` the doc's in the project (`/`-separated; its name in
    * doc mode), where the run's folder holds its copy, and `comments` the
    * sidecar's text or null. `agent()` resolves to the agent that runs every
@@ -49,7 +51,8 @@ export class Runner {
    * about }. `finish(result)` takes a run that ended: { id, name,
    * threadIds, askers, seen, from, base, edited, comments, groups, failed,
    * body }, `seen` the `at` of each of its threads' last comment it was
-   * given, by thread, `from` when it started, `edited` the doc's copy at the end (null when the run failed),
+   * given, by thread, `from` when it started (performance.now(), a clock
+   * that never goes back), `watched` whether it watched the doc, `edited` the doc's copy at the end (null when the run failed),
    * `comments` { before, after } the sidecar's copy at the start and end,
    * `groups` the lines it wrote to PONJO_GROUPS, parsed, and `body` why a
    * failed run failed; it resolves, while the doc is open, to what became
@@ -64,7 +67,7 @@ export class Runner {
    */
   constructor({ asks, doc, agent, folder = async () => null, human = async () => null, finish, onChange = () => {}, log = async () => {}, timeoutMs = RUN_TIMEOUT_MS }) {
     Object.assign(this, { asks, doc, agent, folder, human, finish, onChange, log, timeoutMs });
-    // buddy id → { runId, id, name, threadIds, askers, watch, out, child, done, cancelled, ended, answered, over }.
+    // buddy id → { runId, id, name, threadIds, askers, watch, watchOnly, out, child, done, cancelled, ended, answered, over }.
     // A run that is `over` stays until the next look into the asks, so a
     // look that read them before its answer was posted does not run it again.
     this.runs = new Map();
@@ -128,6 +131,17 @@ export class Runner {
     killTree(run.child);
   }
 
+  /**
+   * People are editing again: end each run its watch alone started, with no
+   * answer. It saw the doc as it was; it runs again once they pause.
+   * Returns those ended, [{ id, from }], `from` when each started.
+   */
+  interrupt() {
+    const ended = [...this.runs.values()].filter((run) => run.watchOnly && !run.ended && !run.over && !run.cancelled);
+    for (const run of ended) this.#end(run);
+    return ended.map((run) => ({ id: run.id, from: run.out.from }));
+  }
+
   /** End every run without an answer (an open ask runs again next time) and start no more. */
   async stop() {
     this.stopped = true;
@@ -144,12 +158,13 @@ export class Runner {
     return this.reconcile();
   }
 
-  #start({ buddy, buddies, threads, askers, watch = null }) {
+  #start({ buddy, buddies, threads, askers, watch = null, watchOnly = false }) {
     const run = { runId: newId('r'), id: buddy.id, name: buddy.name, threadIds: threads.map((t) => t.id), askers, child: null, done: null, cancelled: false, ended: false, answered: false, over: false };
     // What `finish` is told of it, whatever became of it.
     const seen = Object.fromEntries(threads.map((t) => [t.id, t.comments.at(-1).at]));
-    run.out = { id: buddy.id, name: buddy.name, threadIds: run.threadIds, askers, seen, from: Date.now() };
+    run.out = { id: buddy.id, name: buddy.name, threadIds: run.threadIds, askers, seen, from: performance.now(), watched: Boolean(watch) };
     run.watch = watch;
+    run.watchOnly = watchOnly;
     this.runs.set(buddy.id, run);
     run.done = this.#run(run, threads, buddy, buddies)
       .catch(async (error) => {
