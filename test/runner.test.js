@@ -375,6 +375,44 @@ test('a buddy a person sets watching looks at once and opens its watch thread, t
   });
 });
 
+test('a watch run is ended when a person types again, with no answer, and runs again once they pause', { timeout: 60_000 }, async () => {
+  await withDoc(async ({ settingsDir, call, edit, state, runs, release }) => {
+    await call('watch', { buddy: 'Clippy', on: true });
+    await until(async () => (await state()).threads.some((t) => !t.anchor && t.comments[0].by.name === 'Clippy'), 'its watch thread');
+    await until(async () => (await state()).agents.find((a) => a.name === 'Clippy').state === 'ready', 'that run to end');
+    await edit(`${(await state()).text}\nhold-watch\n`);
+    await until(async () => (await runs()).length === 2, 'a run once the edits pause', 10_000);
+    await edit(`${(await state()).text}More.\n`);
+    await until(async () => (await runLog(settingsDir)).length === 2, 'the run ended');
+    assert.equal((await runLog(settingsDir))[1].outcome, 'stopped', 'ended with no answer: it saw the doc as it was');
+    await sleep(2000);
+    assert.equal((await runs()).length, 2, 'not again while the edits may go on');
+    await release('Clippy');
+    await until(async () => (await runs()).length === 3, 'a run once they pause', 10_000);
+    assert.match((await runs())[2].prompt, /^\+More\.$/m, 'what changed since its last finished look, the edit that ended it too');
+  });
+});
+
+test('a watch run that fails, before its buddy has a thread, shows on the buddy, why to the owner alone, and Retry runs it again', { timeout: 30_000 }, async () => {
+  await withDoc(async ({ call, edit, state, runs }) => {
+    await edit(`${(await state()).text}\nfail-watch\n`);
+    await call('watch', { buddy: 'Clippy', on: true });
+    const failure = async () => (await state()).agents.find((a) => a.name === 'Clippy').watchFailed;
+    const failed = await until(failure, 'its failure');
+    assert.match(failed.why, /fake agent: the watch run failed/);
+    assert.deepEqual((await state()).agents.find((a) => a.name === 'Clippy').failed, [], 'on no thread: it has none yet');
+    assert.deepEqual(agentsFor('write', (await state()).agents).find((a) => a.name === 'Clippy').watchFailed, { at: failed.at }, 'a teammate hears that it failed, not why');
+    await sleep(500);
+    assert.equal((await runs()).length, 1, 'not retried on its own');
+    await call('retry', { buddy: 'Clippy' });
+    await until(async () => (await runs()).length === 2, 'the run on Retry');
+    await edit((await state()).text.replace('fail-watch', 'fine'));
+    await until(async () => (await runs()).length === 3, 'a run once the edits pause', 10_000);
+    await until(async () => (await failure()) === null, 'no failure once a run goes well');
+    assert.equal((await state()).agents.find((a) => a.name === 'Clippy').watching, true, 'still watching all along');
+  });
+});
+
 test('only a person changes a watch: it outlives its thread resolved, a new one opened, and a restart, with no run on opening', { timeout: 60_000 }, async () => {
   await withDoc(async ({ call, edit, state, runs, restart }) => {
     await call('watch', { buddy: 'Clippy', on: true });

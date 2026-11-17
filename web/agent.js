@@ -468,6 +468,7 @@ export function createPeople({ root, invite, panel, me, getName, getId = () => n
     const parts = [cardHead(name)];
     if (status && !viewOnly) parts.push(aboutField(status));
     if (status && !viewOnly && mayAsk()) parts.push(watchSwitch(status));
+    if (status?.watching && status.watchFailed && !viewOnly) parts.push(watchProblem(status));
     if (status && !viewOnly && owner()) {
       const remove = el('button', 'pj-secondary pj-danger', 'Delete');
       remove.type = 'button';
@@ -495,9 +496,26 @@ export function createPeople({ root, invite, panel, me, getName, getId = () => n
     // Click the name to edit it right there.
     who.append(status && !viewOnly ? inPlace(status, 'Name') : el('div', 'pj-profile-name', name));
     if (viewOnly && introOf(name)) who.append(el('div', 'pj-profile-slogan', introOf(name)));
-    who.append(el('div', 'pj-profile-sub pj-profile-standing', status ? (STANDING[modeOf(status)] ?? WHERE[status.where]) : 'Not in this doc'));
+    const standing = status?.watching && status.watchFailed && modeOf(status) === 'watching' ? 'Watch failed' : status ? (STANDING[modeOf(status)] ?? WHERE[status.where]) : 'Not in this doc';
+    who.append(el('div', 'pj-profile-sub pj-profile-standing', standing));
     head.append(pic, who);
     return head;
+  }
+
+  // Its last watch run failed: why, for the owner (src/host/doc-service.js,
+  // agentsFor), and Retry, for whoever may ask; it also runs again the next
+  // time people pause, or once its agent or key changes.
+  function watchProblem(agent) {
+    const problem = el('div', 'pj-profile-problem');
+    problem.append(el('div', 'pj-profile-problem-text', 'Its last run while watching failed.'));
+    if (agent.watchFailed.why) problem.append(el('div', 'pj-profile-why', agent.watchFailed.why));
+    if (mayAsk()) {
+      const retry = el('button', 'pj-link-button', 'Retry');
+      retry.type = 'button';
+      retry.addEventListener('click', () => api.retry(agent.id).catch(() => {}));
+      problem.append(retry);
+    }
+    return problem;
   }
 
   // Whether `agent` watches this doc: only a person turns it on or off,

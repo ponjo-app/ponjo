@@ -72,7 +72,10 @@ AI buddies.
    write, a proofreader) can watch the doc instead: turn on **Watch this
    doc** in its card. It looks at once, then each time you pause, and
    comments in a thread of its own on the whole doc; it wears glasses
-   while it watches, and stops only when you turn it off.
+   while it watches, and stops only when you turn it off. If you start
+   typing again while it works, it stops and looks again at your next
+   pause. If a run fails, its card says "Watch failed", with why and
+   **Retry**.
 5. **Anyone allowed decides.** Keep an edit, undo it from the comment it
    came with, reply again, or resolve the thread, whoever asked and
    whoever answered.

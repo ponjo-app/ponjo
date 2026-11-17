@@ -213,7 +213,7 @@ test('a project cloned on another machine, or moved, has the same buddies and th
   const cloned = await opening(join(clone, 'plan.md'), { settingsDir: there, folder: clone }, (opened) => opened.state());
   assert.deepEqual(cloned.agents, seen.agents);
   // A face is drawn from the name alone: a buddy carries nothing else to draw it from.
-  assert.deepEqual(Object.keys(seen.agents[1]).sort(), ['about', 'failed', 'id', 'name', 'state', 'threadIds', 'watching', 'where']);
+  assert.deepEqual(Object.keys(seen.agents[1]).sort(), ['about', 'failed', 'id', 'name', 'state', 'threadIds', 'watchFailed', 'watching', 'where']);
 
   const moved = `${folder}-moved`;
   await rename(folder, moved);

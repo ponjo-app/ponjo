@@ -87,7 +87,10 @@ for a window), **e2e** (the packaged app, under xvfb on Linux).
   told what changed, saying nothing when nothing is due; set off, it runs
   no more. Only a person changes the watch: it outlives its thread
   resolved (it opens another) and a restart (no run on opening); it is
-  never in the sidecar, and its runs say `watched` in the log.
+  never in the sidecar, and its runs say `watched` in the log. A watch run
+  is ended when a person types again, with no answer, and runs again once
+  they pause. A watch run that fails, before its buddy has a thread, shows
+  on the buddy, why to the owner alone, and Retry runs it again.
 - Exit non-zero, or a run the host cannot start: nothing is written to the
   sidecar; the buddy's status says the thread failed, with why for the
   owner alone; it is not run again on its own, but on Retry, a new comment
