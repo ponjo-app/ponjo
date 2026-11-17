@@ -299,7 +299,7 @@ function regionsOf(base, side) {
 const lines = (text) => (text ? text.split(/(?<=\n)/) : []);
 
 // Runs of lines that differ: [aStart, aEnd, bStart, bEnd].
-function changedRegions(map, n, m) {
+export function changedRegions(map, n, m) {
   const regions = [];
   let i = 0;
   let k = 0;

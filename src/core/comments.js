@@ -6,7 +6,7 @@
 
 import { NAME_PATTERN, parseMentions } from './mentions.js';
 import { createAnchor, locate } from './anchor.js';
-import { diffEdits } from './diff.js';
+import { changedRegions, diffEdits, lineMatches } from './diff.js';
 
 export const FORMAT_VERSION = 3;
 const COMMENT_ID = /^c_[A-Za-z0-9_-]{6,}$/;
@@ -194,6 +194,57 @@ export function movedAnchor(anchor, base, edited, text) {
   if (start >= end || edited.slice(start, end) === base.slice(found.start, found.end)) return null;
   const now = locate(text, createAnchor(edited, start, end));
   return now && createAnchor(text, now.start, now.end);
+}
+
+/**
+ * A reply's edits, from `base` to `edited`, split by place (docs/user-experience.md,
+ * No edit without a comment): `inside`, `base` with only the edits to the
+ * paragraphs its thread's `anchor` is on; then `elsewhere`, each other
+ * place in turn, `{ doc, anchor }`: the text once its edits are made too,
+ * and an anchor on what they wrote there, in whole words, or null (the
+ * whole doc) where they only removed. A place is a paragraph changed where
+ * it was; paragraphs added or removed next to each other are one place. A
+ * thread on the whole doc, or not found, keeps them all.
+ */
+export function editsByPlace(base, edited, anchor) {
+  const found = anchor && locate(base, anchor);
+  if (!found) return { inside: edited, elsewhere: [] };
+  const a = paragraphs(base);
+  const b = paragraphs(edited);
+  const map = lineMatches(a.map((p) => p.text), b.map((p) => p.text));
+  const regions = map ? changedRegions(map, a.length, b.length) : [[0, a.length, 0, b.length]];
+  const at = (list, i, text) => (i < list.length ? list[i].from : text.length);
+  // Each place: [from, to) of `base`, paragraphs and the breaks after them, and what replaces it.
+  const places = regions.flatMap(([i, j, k, l]) => (j - i === l - k ? [...Array(j - i).keys()].map((n) => [i + n, i + n + 1, k + n, k + n + 1]) : [[i, j, k, l]]))
+    .map(([i, j, k, l]) => ({ from: at(a, i, base), to: at(a, j, base), insert: edited.slice(at(b, k, edited), at(b, l, edited)) }));
+  const near = (place) => place.from <= found.end && found.start < Math.max(place.to, place.from + 1);
+  const apply = (picked) => picked.reduceRight((text, p) => text.slice(0, p.from) + p.insert + text.slice(p.to), base);
+  const made = places.filter(near);
+  const inside = apply(made);
+  const elsewhere = places.filter((p) => !near(p)).map((place) => {
+    made.push(place);
+    made.sort((x, y) => x.from - y.from);
+    const doc = apply(made);
+    const start = made.filter((p) => p.from < place.from).reduce((x, p) => x + p.insert.length - (p.to - p.from), place.from);
+    const changes = diffEdits(base.slice(place.from, place.to), place.insert);
+    if (!changes.some((c) => c.edit.after.trim())) return { doc, anchor: null };
+    const first = changes.find((c) => c.edit.after.trim());
+    const last = changes.findLast((c) => c.edit.after.trim());
+    const quote = doc.slice(start + first.edit.start, start + last.edit.start + last.edit.after.length);
+    const from = start + first.edit.start + (quote.length - quote.trimStart().length);
+    return { doc, anchor: createAnchor(doc, from, from + quote.trim().length) };
+  });
+  return { inside, elsewhere };
+}
+
+// A text's paragraphs, split at blank lines: each { text, from }.
+function paragraphs(text) {
+  let from = 0;
+  return text.split('\n\n').map((part) => {
+    const paragraph = { text: part, from };
+    from += part.length + 2;
+    return paragraph;
+  });
 }
 
 /**

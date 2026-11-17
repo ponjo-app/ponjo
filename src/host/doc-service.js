@@ -13,7 +13,7 @@ import { appendFile, mkdir, open, readFile, readdir, realpath, rm, stat } from '
 import { basename, dirname, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createAnchor, locate } from '../core/anchor.js';
-import { appendedComments, askedBy, movedAnchor, newComment, newId, parseSidecar, peopleOf, serializeSidecar, threadsOf, validAnchor } from '../core/comments.js';
+import { appendedComments, askedBy, editsByPlace, movedAnchor, newComment, newId, parseSidecar, peopleOf, serializeSidecar, threadsOf, validAnchor } from '../core/comments.js';
 import { sameName } from '../core/mentions.js';
 import { BuddyError, buddiesHere, checkBuddyPatch } from '../core/buddies.js';
 import { DEFAULT_SETTINGS, SettingsError } from '../core/settings.js';
@@ -595,6 +595,20 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
         }
       }
     }
+    // Each edit beside its comment: a reply's edits outside its thread's
+    // paragraphs become the buddy's own comments on what they wrote there.
+    let from = base;
+    carried = carried.flatMap(({ comment, doc }) => {
+      const before = from;
+      from = doc;
+      const thread = comment.thread !== undefined && open.get(comment.thread);
+      if (!thread?.anchor) return [{ comment, doc }];
+      const { inside, elsewhere } = editsByPlace(before, doc, thread.anchor);
+      const quote = thread.anchor.exact.length > 40 ? `${thread.anchor.exact.slice(0, 39).trimEnd()}…` : thread.anchor.exact;
+      const own = elsewhere.map((place) => ({ comment: newComment({ anchor: place.anchor, body: `Edited this along with my reply on “${quote}”.` }, { by, at: '' }), doc: place.doc }));
+      posts.splice(posts.indexOf(comment) + 1, 0, ...own.map((o) => o.comment));
+      return [{ comment, doc: inside }, ...own];
+    });
     posts = posts.filter(kept);
     let prev = base;
     let conflict = false;

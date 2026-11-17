@@ -9,6 +9,7 @@ import { dirname, join } from 'node:path';
 import { sidecarPath } from '../src/store/files.js';
 import { openDoc } from '../src/host/doc-service.js';
 import { apply } from '../src/core/ot.js';
+import { createAnchor } from '../src/core/anchor.js';
 import { readHistory } from '../src/store/history.js';
 import { SAMPLE, fakeConfig, fakeRuns, openTestDoc, tempDoc, until } from './helpers.js';
 
@@ -218,6 +219,25 @@ test('an edit after a buddy\'s, on the same text: undoing the buddy\'s keeps wha
     await call('undo', { id: (await state()).edits[replyId].version });
     assert.match((await state()).text, /handle the traffic\./, 'the buddy\'s change there was the person\'s to keep');
     assert.match((await state()).text, /Q1 Launch Plan/);
+  });
+});
+
+test('a reply\'s edit in another paragraph sits beside its own comment there, and undoes on its own', { timeout: 30_000 }, async () => {
+  await withDoc(async ({ call, state }) => {
+    const anchor = createAnchor(SAMPLE, SAMPLE.indexOf('beta cohort'), SAMPLE.indexOf('beta cohort') + 'beta cohort'.length);
+    const { id } = await call('comment', { anchor, body: '@Pilot replace "beta cohort" with "beta group";; replace "extra load" with "peak load"' });
+    const there = await until(async () => (await state()).threads.find((t) => t.id !== id && t.comments[0].by.kind === 'ai'), 'its comment by the other edit');
+    assert.equal(there.anchor.exact, 'peak', 'on what it wrote there');
+    assert.equal(there.comments[0].body, 'Edited this along with my reply on “beta cohort”.');
+    const reply = (await threadOf(state, id)).comments.at(-1);
+    const { edits, text } = await state();
+    assert.match(text, /beta group/);
+    assert.match(text, /peak load/);
+    await call('undo', { id: edits[reply.id].version });
+    assert.match((await state()).text, /beta cohort/, 'the reply\'s edit undone');
+    assert.match((await state()).text, /peak load/, 'the other one stays, for its own Undo');
+    await call('undo', { id: edits[there.comments[0].id].version });
+    assert.equal((await state()).text, SAMPLE);
   });
 });
 

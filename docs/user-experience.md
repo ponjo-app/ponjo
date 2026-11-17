@@ -167,8 +167,11 @@ and 30 days, and by model.
   comes with a comment, its own reply or one the app posts for it, empty,
   when its agent said nothing; and it sits beside that comment. A reply's
   edits outside the paragraph its thread is on are not left in it: each
-  becomes a comment of the AI buddy's on the text it wrote there (a reply's
-  edits in a thread on the whole doc stay in it). So each place it changed
+  other paragraph it changed becomes a comment of the AI buddy's on the text
+  it wrote there, saying which reply it came with (paragraphs it added or
+  removed next to the thread's stay with the reply, and so do a reply's
+  edits in a thread on the whole doc). Its agent is asked to comment there
+  itself, saying why. So each place it changed
   has its own comment beside it, and its own Undo. Under that comment the
   app shows how many places it edited; clicking it shows them in the text
   as a revision (and scrolls to them): new text in its color, removed text

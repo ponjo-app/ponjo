@@ -5,7 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { askedBy, askedOf, movedAnchor, newComment, parseSidecar, peopleOf, serializeSidecar, threadsOf } from '../src/core/comments.js';
+import { askedBy, askedOf, editsByPlace, movedAnchor, newComment, parseSidecar, peopleOf, serializeSidecar, threadsOf } from '../src/core/comments.js';
 import { createAnchor, locate } from '../src/core/anchor.js';
 import { parseMentions } from '../src/core/mentions.js';
 
@@ -162,4 +162,19 @@ test('a buddy\'s rewrite moves its thread onto all it rewrote, in whole words; u
   };
   assert.equal(on(edited), moved.exact);
   assert.equal(on(base), quote, 'undone: back on the quote asked about, not on the moved anchor found between its context');
+});
+
+test('a reply\'s edits split by place: its thread\'s paragraph, then each other paragraph changed where it was; added or removed ones next to each other stay together', () => {
+  const base = '# Why\n\nWriting with AI today mostly means going back.\n\nFiles stored in the cloud.\n\nKeep.\n\nDrop this line.\n\nEnd.\n';
+  const anchor = createAnchor(base, 7, 28);
+  const both = base.replace('mostly ', '').replace('stored in the cloud', 'on disk').replace('Keep.', 'Keep it.');
+  const { inside, elsewhere } = editsByPlace(base, both, anchor);
+  assert.equal(inside, base.replace('mostly ', ''));
+  assert.deepEqual(elsewhere.map((e) => e.anchor.exact), ['on disk', 'it'], 'on what each wrote, in whole words');
+  assert.equal(elsewhere.at(-1).doc, both);
+  assert.equal(editsByPlace(base, base.replace('Drop this line.\n\n', '')).inside, base.replace('Drop this line.\n\n', ''), 'no thread\'s place: all together');
+  const removed = editsByPlace(base, base.replace('Drop this line.\n\n', ''), anchor);
+  assert.deepEqual(removed.elsewhere.map((e) => e.anchor), [null], 'only removed: on the whole doc');
+  const tangled = base.replace('mostly ', '').replace('stored in the cloud', 'on disk').replace('Keep.\n\n', '');
+  assert.equal(editsByPlace(base, tangled, anchor).inside, tangled, 'a paragraph removed next to the changed ones: one place, the thread\'s');
 });
