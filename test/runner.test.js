@@ -375,6 +375,27 @@ test('a buddy a person sets watching looks at once and opens its watch thread, t
   });
 });
 
+test('a watcher runs on people\'s edits once they pause, unless a run since already saw them', { timeout: 60_000 }, async () => {
+  await withDoc(async ({ call, edit, state, runs }) => {
+    const of = async (buddy) => (await runs()).filter((r) => r.buddy === buddy).length;
+    const idle = () => until(async () => (await state()).agents.every((a) => a.state === 'ready'), 'the runs to end');
+    await call('watch', { buddy: 'Ada', on: true });
+    await until(async () => (await of('Ada')) === 1, 'its first look');
+    await idle();
+    await edit(`${(await state()).text}One.\n`);
+    await sleep(1000);
+    const id = await comment(call, '@Ben replace "extra load" with "extra peak load"');
+    await until(async () => (await repliesIn(state, id)).length, 'Ben\'s edit');
+    await until(async () => (await of('Ada')) === 2, 'Ada on Ben\'s edit, seeing One. too');
+    assert.match((await runs()).filter((r) => r.buddy === 'Ada')[1].prompt, /^\+One\.$/m);
+    await idle();
+    await sleep(6000);
+    assert.equal(await of('Ada'), 2, 'not again at the pause: it saw those edits');
+    await edit(`${(await state()).text}Two.\n`);
+    await until(async () => (await of('Ada')) === 3, 'a run once new edits pause', 10_000);
+  }, { buddies: { Ada: 'Watches.\n', Ben: 'Answers.\n' } });
+});
+
 test('a watch run is ended when a person types again, with no answer, and runs again once they pause', { timeout: 60_000 }, async () => {
   await withDoc(async ({ settingsDir, call, edit, state, runs, release }) => {
     await call('watch', { buddy: 'Clippy', on: true });
