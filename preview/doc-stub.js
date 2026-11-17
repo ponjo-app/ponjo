@@ -126,7 +126,9 @@ const epoch = newId('e');
 let rev = 0;
 
 const running = new Map(); // buddy id → thread ids
-const agents = () => buddies().map((b) => ({ ...b, state: running.has(b.id) ? 'running' : 'ready', threadIds: running.get(b.id) ?? [] }));
+const failures = new Map(); // buddy id → Map(thread id → { at, why }): a failed run posts nothing, as in the app
+const watching = new Set(); // the buddies a person turned watch on for: shown, never run here (the preview runs only on comments)
+const agents = () => buddies().map((b) => ({ ...b, state: running.has(b.id) ? 'running' : 'ready', threadIds: running.get(b.id) ?? [], failed: [...(failures.get(b.id) ?? [])].map(([thread, f]) => ({ thread, ...f })), watching: watching.has(b.id) }));
 
 function view() {
   const text = s.files[current];
@@ -146,8 +148,8 @@ const emit = (event, data) => listener?.(event, data);
 // picks the model (MODEL, as relay/wrangler.toml names it) and holds the key.
 const infer = INFER.openai({ endpoint: 'https://infer.ponjo.app/infer', model: 'nemotron', key: 'preview' });
 
-// The buddies this user's comments ask, each with the open threads that
-// ask it, as the runner starts them on a look: one run a buddy at a time.
+// The buddies this user's comments ask, each with the threads that ask it
+// and it has not answered, as the runner starts them: one run a buddy at a time.
 function answer() {
   const inboxes = new Map(); // buddy id → its threads
   for (const thread of threadsOf(comments(), buddies().map(({ id, name }) => ({ id, name })), s.files[current])) {
@@ -191,8 +193,11 @@ async function run(id, threads) {
   const open = new Set(threadsOf(comments()).filter((t) => !t.resolved).map((t) => t.id));
   const kept = (c) => c.thread === undefined || open.has(c.thread);
   const at = new Date().toISOString();
+  const failed = failures.get(id) ?? new Map();
+  failures.set(id, failed);
+  for (const t of threads) failed.delete(t.id);
   if (failure) {
-    comments().push(...threads.filter((t) => open.has(t.id)).map((t) => ({ ...newComment({ thread: t.id, body: failure }, { by, at }), failed: true })));
+    for (const t of threads.filter((t) => open.has(t.id))) failed.set(t.id, { at, why: failure });
   } else {
     const added = appendedComments(copies[sidecar], texts.sidecar, { text: texts.doc, by, at, threads: new Set(comments().filter((c) => c.thread === undefined).map((c) => c.id)) });
     let prev = copies[doc];
@@ -265,6 +270,17 @@ const calls = {
     return { rev };
   },
   comment: ({ thread, anchor, body, resolved }) => add({ thread, anchor, body, resolved }),
+  watch({ buddy, on }) {
+    if (on) watching.add(buddy);
+    else watching.delete(buddy);
+    emit('agents', agents());
+    return {};
+  },
+  retry({ buddy }) {
+    failures.delete(buddy);
+    setTimeout(answer);
+    return {};
+  },
   saveSettings(patch) {
     checkSettingsPatch(patch);
     s.settings = mergeSettings(s.settings, patch);

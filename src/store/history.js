@@ -8,6 +8,7 @@
 //   <config>/history/<key>/index.json   the versions, oldest first
 //   <config>/history/<key>/<sha256>.md  each version's text, by content
 //   <config>/history/<key>/taken.json   the comments this host took (noteTaken)
+//   <config>/history/<key>/watching.json the buddies watching the doc here (noteWatching)
 // `key` is derived from the doc's absolute path; renaming a doc in Ponjo
 // moves its history along (moveHistory).
 //
@@ -49,8 +50,8 @@ export function historyDir(docPath, root) {
  * unknown, the first of `authors` when several typed it; `added` and
  * `removed` count the characters changed since the parent. A buddy's edit
  * has the `thread` it answered and the id of its `reply`, and `conflict`
- * when it collided with people's lines again when run once more, and theirs
- * stayed there; an undo has the version it `undid`.
+ * when it collided with people's lines, and theirs stayed there; an undo
+ * has the version it `undid`.
  */
 export async function readHistory(docPath, root) {
   return (await readIndex(historyDir(docPath, root))).versions;
@@ -167,6 +168,26 @@ async function readTakenFile(dir) {
 }
 
 const takenHash = (c) => hashText(JSON.stringify([c.thread ?? null, c.by.id, c.body]));
+
+/**
+ * The buddies watching the doc on this host, for a restart: { <buddy>: {
+ * by, thread } } (src/host/doc-service.js). Kept here, never in the
+ * sidecar: what makes a buddy run on this machine is this machine's.
+ */
+export async function noteWatching(docPath, root, watching) {
+  const dir = historyDir(docPath, root);
+  await mkdir(dir, { recursive: true });
+  await writeAtomic(join(dir, 'watching.json'), JSON.stringify(watching));
+}
+
+/** The buddies noted by noteWatching, or none. */
+export async function readWatching(docPath, root) {
+  try {
+    return JSON.parse(await readFile(join(historyDir(docPath, root), 'watching.json'), 'utf8')) ?? {};
+  } catch {
+    return {};
+  }
+}
 
 /**
  * The doc was renamed from `fromPath` to `toPath`: its history follows. A

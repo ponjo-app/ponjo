@@ -73,6 +73,7 @@ let activeId = null; // the selected thread
 let hoverId = null; // the thread whose card is under the pointer
 let typedAt = -Infinity; // when the human last typed in the doc
 let shownAgents = ''; // the agent statuses on screen, as JSON
+let agents = []; // the agent statuses on screen
 let shownComments = ''; // the comments on screen, as JSON
 let missing = false; // the doc was moved or deleted on disk: nothing is saved
 let offline = false; // the line to the doc host is down (client.onLine)
@@ -210,10 +211,7 @@ async function start() {
   openedText = initial.text;
   made = chooseView(openedText);
   showSize(made, openedText);
-  docBar = createDocBar(document.querySelector('.pj-docbar'), {
-    canPause: () => !reading(),
-    onPause: (paused) => api.pauseLoop(paused).then(({ loop }) => docBar.setLoop(loop), () => {}),
-  });
+  docBar = createDocBar(document.querySelector('.pj-docbar'));
   editor = await makeView(made, initial.text);
   countWords();
   performance.mark('ponjo:editor');
@@ -254,6 +252,7 @@ async function start() {
     onReopen: (thread) => send(api.comment({ thread, body: '' })),
     onUndo: undoReply,
     onRedo: redoReply,
+    onRetry: (buddy) => api.retry(buddy).catch(() => {}),
     onShowEdits: (id) => (id ? showRun(id) : hideRun()),
     onSelect: (id) => {
       select(id);
@@ -285,6 +284,7 @@ async function start() {
     getAbout: () => settings.get().about,
     setAbout: (about) => settings.set({ about }),
     owner: () => level === 'owner',
+    mayAsk: () => !reading(),
     onResult: takeAgentResult,
   });
   const who = (chip) => [chip.dataset.mention, chip.dataset.mentionKind, chip];
@@ -298,8 +298,8 @@ async function start() {
   people.render({ agents: initial.agents });
   if (inProject && level === 'owner') api.room().then((room) => people.render({ room }), () => {});
   docBar.setAgents(initial.agents);
-  docBar.setLoop(initial.loop);
   shownAgents = JSON.stringify(initial.agents);
+  agents = initial.agents;
   applyComments(initial);
   showUnsaved(initial.notSaved);
   setInterval(() => margin.rerender(), 30_000); // relative times, stale "working"
@@ -415,7 +415,6 @@ async function start() {
     history.changed();
     afterTyping('sidecar', refreshThreads); // a buddy's turn's receipt is read from its version
   });
-  events.on('loop', (data) => docBar.setLoop(data));
   events.on('agents', (data) => {
     showAgents(data);
     runs.refresh(); // a run that ended has its trace
@@ -630,11 +629,13 @@ function showAgents(next) {
   const json = JSON.stringify(next);
   if (json === shownAgents) return;
   shownAgents = json;
+  agents = next;
   standAtWork(next);
   setBuddies(next);
   people.render({ agents: next });
   docBar.setAgents(next);
   paintMarks();
+  if (comments) paintThreads();
 }
 
 // What a request about buddies answers with.
@@ -738,22 +739,38 @@ noticeBanner.querySelector('[data-action="any-size"]').addEventListener('click',
   followViews();
 });
 
+// The threads in the margin: the doc's, each with its buddies' failed runs
+// there as their last reply, from their statuses, never from the comments'
+// file (a failure is the host's, not the doc's). The owner's say why; a
+// failure new since the last time makes its buddy flinch.
+let failedShown = null; // ids of the failed replies on screen; null until the first update
+function paintThreads() {
+  const failures = new Map(); // thread → its failed replies
+  for (const a of agents) {
+    for (const { thread, at, why } of a.failed ?? []) {
+      if (a.threadIds.includes(thread)) continue; // running there again
+      const reply = { id: `failed-${a.id}-${thread}-${at}`, thread, by: { id: a.id, name: a.name, kind: 'ai' }, at, body: why ?? 'The run failed.', failed: true, host: true, retry: reading() ? null : a.id };
+      failures.set(thread, [...(failures.get(thread) ?? []), reply]);
+    }
+  }
+  const threads = comments.threads.map((t) => (failures.has(t.id) ? { ...t, comments: [...t.comments, ...failures.get(t.id)] } : t));
+  const failed = threads.flatMap((t) => t.comments).filter((c) => c.failed);
+  if (failedShown) for (const c of failed.filter((c) => !failedShown.has(c.id))) people?.failed(c.by.id);
+  failedShown = new Set(failed.map((c) => c.id));
+  margin.update(threads, { id: myId, name: me }, comments.edits);
+}
+
 // Show the doc's comments (from state() or a comment request). Redrawing
 // every card for the same ones would stall typing.
-let failedShown = null; // ids of the failed replies on screen; null until the first update
 function applyComments({ threads, people: writers, edits, notice, readOnly }) {
   const json = JSON.stringify({ threads, writers, edits, notice, readOnly });
   if (json === shownComments) return;
   shownComments = json;
-  // A failed run's reply that is new since the last update: its buddy flinches.
-  const failed = threads.flatMap((t) => t.comments).filter((c) => c.failed);
-  if (failedShown) for (const c of failed.filter((c) => !failedShown.has(c.id))) people?.failed(c.by.id);
-  failedShown = new Set(failed.map((c) => c.id));
   comments = { threads, people: writers, edits, notice, readOnly };
   showReadOnly(readOnly);
   paintMarks();
   people?.render({ people: writers }); // first: who is here sets the colours
-  margin.update(threads, { id: myId, name: me }, edits);
+  paintThreads();
   paintNotice();
   const open = threads.filter((t) => !t.resolved).length;
   commentsToggle.querySelector('.pj-comment-count').textContent = open > 0 ? String(open) : '';

@@ -10,8 +10,9 @@ import { mkdir, mkdtemp, readFile, readdir, stat, writeFile } from 'node:fs/prom
 import { tmpdir } from 'node:os';
 import { basename, delimiter, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { buildPrompt, paragraphAt } from '../src/core/prompt.js';
-import { nextLook } from '../src/host/runner.js';
+import { buildPrompt } from '../src/core/prompt.js';
+import { agentsFor } from '../src/host/doc-service.js';
+import { Runner } from '../src/host/runner.js';
 import { agentScript, agentsDir, installAgents, listAgents } from '../src/store/agents.js';
 import { readSecrets, secretTails, writeSecrets } from '../src/store/secrets.js';
 import { SAMPLE, fakeConfig, fakeRuns, openTestDoc, readOnly, tempDoc, until } from './helpers.js';
@@ -33,7 +34,7 @@ async function withDoc(fn, { buddies = null, folder = null, content = SAMPLE, se
     await fn({
       docPath, settingsDir, release, restart,
       call: (type, arg) => opened.call(type, arg),
-      edit: opened.edit,
+      edit: (...args) => opened.edit(...args),
       state: () => opened.state(),
       runs: () => fakeRuns(settingsDir),
     });
@@ -84,42 +85,21 @@ test('a run edits its copy and appends its reply: the doc has the edit, the thre
   });
 });
 
-test('the human edits the same lines during a run: the turn runs once more, on the doc as it is now, told what it and they changed', { timeout: 30_000 }, async () => {
+test('the human edits the same lines during a run: their lines stay, the rest lands, its version says conflict, and it does not run again', { timeout: 30_000 }, async () => {
   await withDoc(async ({ docPath, call, edit, state, runs, release }) => {
-    const id = await comment(call, '@Clippy hold replace "extra load" with "extra peak load"');
+    const id = await comment(call, '@Clippy hold replace "extra load" with "extra peak load" replace "## Risks" with "## Open risks"');
     await until(async () => (await runs()).length === 1, 'the run to start');
     await edit((await state()).text.replace('extra load', 'extra traffic'));
     await release('Clippy');
-    await until(async () => (await repliesIn(state, id)).length, 'the reply');
-    const [first, again] = await runs();
-    assert.doesNotMatch(first.prompt, /was applied/);
-    assert.match(again.prompt, /none of it was applied/);
-    assert.match(again.prompt, /\n-The main risk is that the `sync` service cannot handle the extra load\.\n\+The main risk is that the `sync` service cannot handle the extra peak load\.\n/);
-    assert.match(again.prompt, /What members changed meanwhile:\n\n-The main risk .* extra load\.\n\+The main risk .* extra traffic\.$/);
+    const [reply] = await until(async () => (await repliesIn(state, id)).length && repliesIn(state, id), 'the reply');
     const text = await readFile(docPath, 'utf8');
     assert.match(text, /the extra traffic\./);
     assert.doesNotMatch(text, /peak/);
-  });
-});
-
-test('a turn that collides again when run once more lands where no one changed its lines, and its version says conflict', { timeout: 30_000 }, async () => {
-  await withDoc(async ({ docPath, call, edit, state, runs, release }) => {
-    const id = await comment(call, '@Clippy wait replace "extra load" with "extra peak load" replace "week one" with "week two" replace "## Risks" with "## Open risks"');
-    await until(async () => (await runs()).length === 1, 'the run to start');
-    await edit((await state()).text.replace('extra load', 'extra traffic'));
-    await release('Clippy');
-    await until(async () => (await runs()).length === 2, 'the run once more');
-    await edit((await state()).text.replace('week one', 'week 1'));
-    await release('Clippy');
-    await until(async () => (await repliesIn(state, id)).length, 'the reply');
-    const text = await readFile(docPath, 'utf8');
-    assert.match(text, /in week 1,/);
     assert.match(text, /## Open risks/);
-    assert.match(text, /the extra traffic\./);
-    assert.equal((await runs()).length, 2, 'once more, no more');
-    const [reply] = await repliesIn(state, id);
     assert.equal((await state()).edits[reply.id].conflict, true);
     assert.equal(reply.conflict, undefined, 'nothing of it in the comments\' file');
+    await sleep(500);
+    assert.equal((await runs()).length, 1);
   });
 });
 
@@ -177,25 +157,84 @@ test('two buddies run at once on one doc; both edits land', { timeout: 30_000 },
   }, { buddies });
 });
 
-test('a script that exits 1 is answered with a reply marked failed; @mentioning the buddy again runs it again', { timeout: 30_000 }, async () => {
+test('a script that exits 1 writes nothing: the buddy\'s status says the thread failed, and why; it runs again on Retry, a settings change or a new comment, never on its own', { timeout: 30_000 }, async () => {
   await withDoc(async ({ docPath, settingsDir, call, state, runs }) => {
     const id = await comment(call, '@Clippy fail');
-    const [failed] = await until(async () => (await repliesIn(state, id)).length && repliesIn(state, id), 'the reply');
-    assert.equal(failed.failed, true);
-    assert.match(failed.body, /some output/);
-    assert.match(failed.body, /fake agent: something went wrong/);
-    assert.ok(failed.body.includes(agentScript('fake', settingsDir)), 'it names the script, to run by hand');
+    const failedIn = async () => (await state()).agents.find((a) => a.name === 'Clippy').failed;
+    const [failed] = await until(async () => (await failedIn()).length && failedIn(), 'the failure');
+    assert.equal(failed.thread, id);
+    assert.match(failed.why, /some output/);
+    assert.match(failed.why, /fake agent: something went wrong/);
+    assert.ok(failed.why.includes(agentScript('fake', settingsDir)), 'it names the script, to run by hand');
+    assert.equal((await repliesIn(state, id)).length, 0, 'no reply');
+    assert.equal((await readFile(`${docPath}.comments.jsonl`, 'utf8')).trim().split('\n').length, 2, 'the header and the ask: nothing of the failure in the comments\' file');
     await sleep(500);
     assert.equal((await runs()).length, 1, 'not retried on its own');
 
+    await call('retry', { buddy: 'Clippy' });
+    await until(async () => (await runs()).length === 2, 'the run on Retry');
+    await until(async () => (await state()).agents.find((a) => a.name === 'Clippy').state === 'ready' && (await failedIn()).length === 1, 'it failed again');
+    await call('saveSettings', { agents: { fake: { model: 'another' } } });
+    await until(async () => (await runs()).length === 3, 'the run once the agent\'s settings change');
+    await until(async () => (await state()).agents.find((a) => a.name === 'Clippy').state === 'ready' && (await failedIn()).length === 1, 'it failed again');
+
     await reply(call, id, '@Clippy replace "week one" with "week 1"');
-    await until(async () => (await repliesIn(state, id)).length === 2, 'the second reply');
-    assert.equal((await runs()).length, 2);
-    assert.ok(!(await repliesIn(state, id))[1].failed);
+    await until(async () => (await repliesIn(state, id)).length === 1, 'the reply to the new comment');
+    assert.deepEqual(await failedIn(), [], 'answered: no failure');
     const logged = await runLog(settingsDir);
-    assert.deepEqual(logged.map((l) => [l.doc, l.buddy, l.threads, l.outcome, l.code]), [[docPath, 'Clippy', [id], 'failed', 1], [docPath, 'Clippy', [id], 'ok', 0]], 'each run is logged');
+    assert.deepEqual(logged.map((l) => [l.doc, l.buddy, l.threads, l.outcome, l.code]), [...Array(3)].map(() => [docPath, 'Clippy', [id], 'failed', 1]).concat([[docPath, 'Clippy', [id], 'ok', 0]]), 'each run is logged');
     assert.ok(logged.every((l) => Number.isInteger(l.ms) && !Number.isNaN(Date.parse(l.at))));
   });
+});
+
+test('a run the host cannot start fails once: it is not run again until asked again', async () => {
+  let asked = 0;
+  const finished = [];
+  const inbox = { buddy: { id: 'b_x', name: 'X', about: '' }, buddies: [], threads: [{ id: 'c_t', comments: [{ at: '2026-11-17T10:00:00.000Z' }] }], askers: ['u_me'] };
+  const runner = new Runner({
+    asks: async () => (asked++, finished.length ? [] : [inbox]),
+    doc: async () => { throw new Error('no doc'); },
+    agent: async () => ({ script: 'none', settings: {} }),
+    finish: async (result) => { finished.push(result); return null; },
+  });
+  await runner.reconcile();
+  await until(() => finished.length === 1 && runner.statuses().length === 0, 'its failure');
+  await sleep(200);
+  assert.equal(finished.length, 1);
+  assert.deepEqual([finished[0].failed, finished[0].threadIds, finished[0].seen], [true, ['c_t'], { c_t: '2026-11-17T10:00:00.000Z' }]);
+  assert.match(finished[0].body, /Ponjo could not run X: no doc/);
+  assert.ok(asked < 5, 'no loop');
+});
+
+test('a look that could not read the asks is tried again, later each time, until one can: no event need come', async () => {
+  let asked = 0;
+  const started = [];
+  const inbox = { buddy: { id: 'b_x', name: 'X', about: '' }, buddies: [], threads: [{ id: 'c_t', comments: [{ at: '2026-11-17T10:00:00.000Z' }] }], askers: ['u_me'] };
+  const runner = new Runner({
+    asks: async () => {
+      asked += 1;
+      if (asked <= 2) throw Object.assign(new Error('EBUSY: the sidecar is locked'), { code: 'EBUSY' });
+      return started.length ? [] : [inbox];
+    },
+    doc: async () => { throw new Error('no doc'); },
+    agent: async () => ({ script: 'none', settings: {} }),
+    finish: async (result) => { started.push(Date.now()); return null; },
+  });
+  const from = Date.now();
+  await runner.reconcile();
+  assert.equal(asked, 1);
+  await until(() => started.length === 1, 'the run, once the asks could be read', 6000);
+  assert.ok(started[0] - from >= 2900, 'after 1 s, then 2 s');
+  await sleep(1500);
+  assert.ok(asked <= 5, 'once it could read them, not again on its own');
+  await runner.stop();
+});
+
+test('a teammate hears that a run failed, not why', () => {
+  const agents = [{ id: 'b_x', name: 'X', state: 'ready', threadIds: [], failed: [{ thread: 'c_t', at: 'now', why: '/home/me/agents/claude: no key' }] }];
+  assert.deepEqual(agentsFor('owner', agents), agents);
+  assert.deepEqual(agentsFor('write', agents)[0].failed, [{ thread: 'c_t', at: 'now' }]);
+  assert.deepEqual(agentsFor('read', agents)[0].failed, [{ thread: 'c_t', at: 'now' }]);
 });
 
 test('a log past 10 MB keeps its newest half, from a line\'s start: runs.jsonl and an agent\'s', { timeout: 30_000 }, async () => {
@@ -230,7 +269,7 @@ test('with Trace runs on, each run leaves its trace, read by the doc\'s runs: wh
     const id = await comment(call, '@Clippy replace "week one" with "week 1"');
     const [answer] = await until(async () => (await repliesIn(state, id)).length && repliesIn(state, id), 'the reply');
     const [run] = await traced(1);
-    assert.deepEqual([run.buddy, run.threads, run.comments, run.outcome], ['Clippy', [off, id], [answer.id], 'ok'], 'every thread that asks it, the answered one too');
+    assert.deepEqual([run.buddy, run.threads, run.comments, run.outcome], ['Clippy', [id], [answer.id], 'ok'], 'only the thread it has not answered');
     const { trace } = await call('trace', { run: run.run });
     assert.match(trace.prompt, /fzhan: @Clippy replace "week one"/);
     assert.deepEqual(trace.steps, [{ started: 'fzhan: @Clippy replace "week one" with "week 1"' }, 'not JSON'], 'the lines it wrote to PONJO_TRACE');
@@ -241,13 +280,13 @@ test('with Trace runs on, each run leaves its trace, read by the doc\'s runs: wh
 
     const failed = await comment(call, '@Clippy fail');
     const [last] = await traced(2);
-    assert.deepEqual([last.threads, last.outcome], [[off, id, failed], 'failed']);
+    assert.deepEqual([last.threads, last.outcome], [[failed], 'failed']);
     assert.match((await call('trace', { run: last.run })).trace.stderr, /fake agent: something went wrong/);
 
     // A run ended without an answer, once no thread asks it, keeps what it wrote before it was ended.
     const held = await comment(call, '@Clippy hold');
     await until(async () => (await runs()).length === 4, 'the run to start');
-    for (const thread of [off, id, failed, held]) await call('comment', { thread, body: '', resolved: true });
+    await call('comment', { thread: held, body: '', resolved: true });
     const [ended] = await traced(3);
     const { trace: cut } = await call('trace', { run: ended.run });
     assert.deepEqual([ended.outcome, ended.comments, cut.landed, cut.steps[0]], ['stopped', [], 'Ended without an answer', { started: 'fzhan: @Clippy hold' }]);
@@ -300,92 +339,103 @@ test('a buddy\'s new comment is anchored on the text it quoted, though a person 
   });
 });
 
-test('an ask whose time has not come changes nothing, stays open on the doc\'s loop, and a person\'s edit runs it again 3 s later', { timeout: 30_000 }, async () => {
+test('a buddy a person sets watching looks at once and opens its watch thread, then runs each time people\'s edits pause, saying nothing when nothing is due; set off, it stops', { timeout: 60_000 }, async () => {
+  await withDoc(async ({ docPath, settingsDir, call, edit, state, runs }) => {
+    const watching = async () => (await state()).agents.find((a) => a.name === 'Clippy').watching;
+    await assert.rejects(call('watch', { buddy: 'Nobody', on: true }), { code: 'not_found' });
+    await call('watch', { buddy: 'Clippy', on: true });
+    assert.equal(await watching(), true);
+    await until(async () => (await runs()).length === 1, 'a run at once');
+    assert.match((await runs())[0].prompt, /You watch this doc: .* You have no watch thread yet/);
+    const opened = async () => (await state()).threads.find((t) => !t.anchor && t.comments[0].by.name === 'Clippy');
+    const thread = await until(opened, 'its watch thread, on the whole doc');
+    assert.equal(thread.comments[0].body, 'Watching.');
+    assert.doesNotMatch(await readFile(`${docPath}.comments.jsonl`, 'utf8'), /watch/, 'nothing of the watch in the comments\' file');
+    await until(async () => (await state()).agents.find((a) => a.name === 'Clippy').state === 'ready', 'that run to end');
+
+    await edit(`${(await state()).text}\nOne.\n`);
+    await sleep(2000);
+    assert.equal((await runs()).length, 1, 'not while the edits may go on');
+    await until(async () => (await runs()).length === 2, 'a run once they pause', 10_000);
+    assert.match((await runs())[1].prompt, new RegExp(`Your watch thread is Thread ${thread.id}: comment there\\.`));
+    assert.match((await runs())[1].prompt, /^\+One\.$/m, 'what changed since it last looked');
+    await until(async () => (await opened()).comments.at(-1).body === 'Saw 2 new lines.', 'its comment there: the blank line and One.');
+
+    await edit(`${(await state()).text}A quiet line.\n`);
+    await until(async () => (await runs()).length === 3, 'a run once they pause', 10_000);
+    await until(async () => (await state()).agents.find((a) => a.name === 'Clippy').state === 'ready', 'that run to end');
+    assert.equal((await opened()).comments.length, 2, 'nothing due: nothing said');
+
+    await call('watch', { buddy: 'Clippy', on: false });
+    assert.equal(await watching(), false);
+    await edit(`${(await state()).text}Two.\n`);
+    await sleep(6500);
+    assert.equal((await runs()).length, 3, 'no run once set off');
+    assert.deepEqual((await runLog(settingsDir)).map((l) => l.watched ?? false), [true, true, true]);
+  });
+});
+
+test('only a person changes a watch: it outlives its thread resolved, a new one opened, and a restart, with no run on opening', { timeout: 60_000 }, async () => {
+  await withDoc(async ({ call, edit, state, runs, restart }) => {
+    await call('watch', { buddy: 'Clippy', on: true });
+    const first = await until(async () => (await state()).threads.find((t) => !t.anchor && t.comments[0].by.name === 'Clippy'), 'its watch thread');
+    await until(async () => (await state()).agents.find((a) => a.name === 'Clippy').state === 'ready', 'its run to end');
+    await call('comment', { thread: first.id, body: '', resolved: true });
+    await edit(`${(await state()).text}\nOne.\n`);
+    await until(async () => (await runs()).length === 2, 'a run once the edits pause', 10_000);
+    assert.match((await runs())[1].prompt, /You have no watch thread yet/, 'its thread resolved, it starts another');
+    await until(async () => (await state()).threads.filter((t) => !t.anchor && t.comments[0].by.name === 'Clippy').length === 2, 'a second watch thread');
+    await until(async () => (await state()).agents.find((a) => a.name === 'Clippy').state === 'ready', 'that run to end');
+
+    await restart();
+    assert.equal((await state()).agents.find((a) => a.name === 'Clippy').watching, true, 'noted on this machine');
+    await sleep(1500);
+    assert.equal((await runs()).length, 2, 'no run on opening');
+    await edit(`${(await state()).text}Two.\n`);
+    await until(async () => (await runs()).length === 3, 'a run once the edits pause', 10_000);
+    assert.match((await runs())[2].prompt, /This is your first look since the app started/);
+  });
+});
+
+test('a run that answers nothing in a thread is not run again for it until someone writes there; a person\'s edit runs nothing', { timeout: 30_000 }, async () => {
   await withDoc(async ({ settingsDir, call, edit, state, runs }) => {
     const id = await comment(call, '@Clippy until "ten" replace "extra load" with "extra peak load"');
     await until(async () => (await runLog(settingsDir).catch(() => []))[0]?.outcome === 'ok', 'a run that did nothing');
-    await until(async () => (await state()).agents.find((a) => a.name === 'Clippy').state === 'ready', 'the run to end');
-    const { loop } = await state();
-    assert.equal(loop.waiting, 1, 'one ask open');
-    assert.ok(loop.at - loop.from === 10_000, 'the next look 10 s on');
-    assert.equal((await repliesIn(state, id)).length, 0, 'no reply');
-    const edited = Date.now();
     await edit(`${(await state()).text}\nNine, ten.\n`);
-    await until(async () => (await repliesIn(state, id)).length === 1, 'the reply once the doc says ten');
-    assert.ok(Date.now() - edited >= 2500, 'not before 3 s');
+    await sleep(1500);
+    assert.equal((await runs()).length, 1, 'no run on an edit');
+    assert.equal((await repliesIn(state, id)).length, 0, 'no reply');
+    await reply(call, id, '@Clippy now: replace "extra load" with "extra peak load"');
+    await until(async () => (await repliesIn(state, id)).length === 1, 'the reply to the new comment');
     assert.match((await state()).text, /extra peak load/);
-    assert.equal((await runs()).length, 2, 'one run more, on the edit');
-    assert.equal((await state()).loop.waiting, 1, 'still open: only a person ends it, by resolving');
-  }, { settings: { watchEvery: 10 } });
+    assert.equal((await runs()).length, 2);
+  });
 });
-
-test('a buddy\'s own edit is no change for the loop: only a person\'s is, and its next run sees what it said', { timeout: 30_000 }, async () => {
+test('a buddy\'s reply answers its ask: neither it nor a person\'s edit runs it again; a new comment in the thread does, and its run sees what it said', { timeout: 30_000 }, async () => {
   await withDoc(async ({ call, edit, state, runs }) => {
     const id = await comment(call, '@Clippy replace "extra load" with "extra peak load"');
     await until(async () => (await repliesIn(state, id)).length === 1, 'its reply');
-    await new Promise((r) => setTimeout(r, 4000));
-    assert.equal((await runs()).length, 1, 'not run again on its own edit and reply');
     await edit(`${(await state()).text}\nMore.\n`);
-    await until(async () => (await runs()).length === 2, 'the run after the person\'s edit', 8000);
+    await sleep(1500);
+    assert.equal((await runs()).length, 1, 'not run again on its own reply or a person\'s edit');
+    await reply(call, id, 'replace "week one" with "week 1"');
+    await until(async () => (await repliesIn(state, id)).length === 2, 'the second reply');
     assert.match((await runs())[1].prompt, /Clippy: Replaced "extra load"\./, 'its reply, in the thread');
-    await new Promise((r) => setTimeout(r, 500));
-    assert.equal((await repliesIn(state, id)).length, 1, 'nothing more to say');
+    assert.deepEqual((await runs())[1].threadIds, [id]);
   });
 });
-
-test('a paused loop starts no run, for anyone\'s change; resumed, it looks soon', { timeout: 30_000 }, async () => {
-  await withDoc(async ({ call, edit, state, runs }) => {
-    await call('pauseLoop', { paused: true });
-    assert.equal((await state()).loop.paused, true);
-    await comment(call, '@Clippy until "ten"');
-    await edit(`${(await state()).text}\nMore.\n`);
-    await new Promise((r) => setTimeout(r, 4000));
-    assert.equal((await runs()).length, 0, 'no run while paused');
-    assert.deepEqual([(await state()).loop.from, (await state()).loop.at], [null, null], 'no look scheduled');
-    const { loop } = await call('pauseLoop', { paused: false });
-    assert.equal(loop.paused, false);
-    await until(async () => (await runs()).length === 1, 'the run once resumed', 8000);
-  });
-});
-
-test('the doc looks every watchEvery, and once nothing has changed for watchFor, every watchFor: it never stops by itself', () => {
-  const [every, quiet, at] = [60_000, 600_000, 1_000_000];
-  assert.equal(nextLook({ changed: true, quietSince: at, now: at, every, quiet }), 3000, 'soon after a change');
-  assert.equal(nextLook({ changed: false, quietSince: at, now: at, every, quiet }), every);
-  assert.equal(nextLook({ changed: false, quietSince: at, now: at + 9 * every, every, quiet }), every, 'the tenth look, 10 min after the change');
-  assert.equal(nextLook({ changed: false, quietSince: at, now: at + 9.5 * every, every, quiet }), quiet, 'then slowly');
-  assert.equal(nextLook({ changed: false, quietSince: at, now: at + 50 * quiet, every, quiet }), quiet, 'however long it is quiet');
-  assert.equal(nextLook({ changed: false, quietSince: at, now: at, every: quiet * 2, quiet }), quiet * 2, 'never faster than watchEvery');
-});
-
-test('an ask lives until a person resolves its thread: the buddy\'s reply does not end it, resolving does', { timeout: 30_000 }, async () => {
-  await withDoc(async ({ call, edit, state, runs }) => {
-    const id = await comment(call, '@Clippy say Hi.');
-    await until(async () => (await repliesIn(state, id)).length === 1, 'its reply');
-    assert.equal((await state()).loop.waiting, 1, 'answered, and still open');
-    await edit(`${(await state()).text}\nMore.\n`);
-    await until(async () => (await runs()).length === 2, 'a run on the person\'s edit', 8000);
-    await until(async () => (await state()).agents.find((a) => a.name === 'Clippy').state === 'ready', 'its run to end');
-    await call('comment', { thread: id, body: '', resolved: true });
-    await until(async () => (await state()).loop.waiting === 0, 'nothing open');
-    await edit(`${(await state()).text}\nMore still.\n`);
-    await new Promise((r) => setTimeout(r, 4000));
-    assert.equal((await runs()).length, 2, 'no run once its thread is resolved');
-  });
-});
-
 test('one run a buddy, with every thread that asks it: each reply carries its own edits, as its own version, undone on its own', { timeout: 30_000 }, async () => {
   await withDoc(async ({ call, state, runs, release }) => {
     const first = await comment(call, '@Clippy hold replace "extra load" with "extra peak load"');
     await until(async () => (await runs()).length === 1, 'the run to start');
     const second = await comment(call, '@Clippy replace "week one" with "week 1"');
-    await new Promise((r) => setTimeout(r, 3500));
+    await sleep(1000);
     assert.equal((await runs()).length, 1, 'no second run while the first is on');
     await release('Clippy');
     await until(async () => (await repliesIn(state, first)).length === 1, 'the first reply');
-    await until(async () => (await repliesIn(state, second)).length === 1, 'the second reply, in a run of its own after the first', 8000);
+    await until(async () => (await repliesIn(state, second)).length === 1, 'the second reply, in a run of its own right after the first', 8000);
     await until(async () => (await state()).agents.find((a) => a.name === 'Clippy').state === 'ready', 'its runs to end');
-    assert.deepEqual((await runs()).map((r) => r.threadIds), [[first], [first, second]], 'the second run has both threads');
+    assert.deepEqual((await runs()).map((r) => r.threadIds), [[first], [second]], 'the second run has only the thread not answered');
 
     const one = await comment(call, '@Clippy hold replace "## Risks" with "## Open risks"');
     const two = await comment(call, '@Clippy replace "The main risk" with "The one risk"');
@@ -411,17 +461,6 @@ test('no edit lands without a comment: an agent that edits and says nothing gets
     const [said] = await until(async () => (await repliesIn(state, other)).length && repliesIn(state, other), 'the reply');
     assert.equal(said.body, 'Replaced "week one".');
     assert.ok((await state()).edits[said.id], 'on its comment');
-  });
-});
-
-test('a failed run says why once in each thread that asks it, not again until someone says more', { timeout: 30_000 }, async () => {
-  await withDoc(async ({ call, edit, state, runs }) => {
-    const id = await comment(call, '@Clippy fail');
-    await until(async () => (await repliesIn(state, id)).length === 1, 'the failure');
-    await edit(`${(await state()).text}\nMore.\n`);
-    await until(async () => (await runs()).length === 2, 'a run on the person\'s edit', 8000);
-    await until(async () => (await state()).agents.find((a) => a.name === 'Clippy').state === 'ready', 'its run to end');
-    assert.equal((await repliesIn(state, id)).length, 1, 'said once');
   });
 });
 
@@ -575,47 +614,6 @@ test('the shipped agents are written when missing, then updated until edited; Re
   assert.equal(await readFile(codex, 'utf8'), await readFile(join(ROOT, 'agents', 'codex'), 'utf8'), 'an unedited older version is replaced');
   await installAgents(dir, { platform: 'linux', reset: 'claude' });
   assert.equal(await readFile(claude, 'utf8'), await readFile(join(ROOT, 'agents', 'claude'), 'utf8'));
-});
-
-test('the prompt says who is in the doc: the paragraph each person\'s cursor is in, and how long since they typed', () => {
-  const thread = { id: 'c_thread01', anchor: null, comments: [{ by: { name: 'fzhan', kind: 'human' }, body: 'hi' }] };
-  const buddy = { id: 'b_ada', name: 'Ada', about: '' };
-  const base = { buddy, docName: 'a.md', sidecarName: 'a.md.comments.jsonl', threads: [thread] };
-  const prompt = buildPrompt({ ...base, people: [{ name: 'fzhan', lines: [3, 4], edited: 4200 }, { name: 'Ann', lines: [7, 7], edited: null }] });
-  assert.match(prompt, /Who is in a\.md now, as the app shows them:\n\nfzhan: cursor in the paragraph at lines 3-4; last edited 4 s ago\nAnn: cursor in the paragraph at line 7; has not edited it since opening it/);
-  assert.match(buildPrompt({ ...base, people: [] }), /No one is in a\.md now\./);
-  assert.doesNotMatch(buildPrompt(base), /Who is in|No one is in/, 'nothing when the app does not say');
-});
-
-test('a paragraph is the lines around a place up to a blank line', () => {
-  const text = '# Title\n\nOne line,\nand another.\n\nLast.\n';
-  const at = (offset) => { const { from, to } = paragraphAt(text, offset); return text.slice(from, to); };
-  assert.equal(at(0), '# Title');
-  assert.equal(at(text.indexOf('and')), 'One line,\nand another.');
-  assert.equal(at(text.indexOf('\n\nLast') + 1), '', 'a blank line is its own');
-  assert.equal(at(text.length), '', 'the end, after the last line break');
-});
-
-test('a run is told who is in the doc; moving to another paragraph is a change for the loop, moving within one is not', { timeout: 40_000 }, async () => {
-  await withDoc(async ({ call, state, runs }) => {
-    await comment(call, '@Clippy until "never"');
-    await until(async () => (await runs()).length === 1 && (await state()).agents.find((a) => a.name === 'Clippy').state === 'ready', 'the first run to end');
-    assert.match((await runs())[0].prompt, /No one is in plan\.md now\./, 'no cursor yet');
-    const place = async (word) => {
-      const { text, epoch, rev } = await state();
-      await call('cursor', { at: text.indexOf(word), epoch, rev });
-    };
-    await place('We plan'); // someone comes: a change
-    await until(async () => (await runs()).length === 2, 'a run once someone is here', 8000);
-    assert.match((await runs())[1].prompt, /Who is in plan\.md now, as the app shows them:\n\n\S+: cursor in the paragraph at lines 3-4; has not edited it since opening it/);
-    await until(async () => (await state()).agents.find((a) => a.name === 'Clippy').state === 'ready', 'that run to end');
-    await place('six features'); // the same paragraph
-    await new Promise((r) => setTimeout(r, 4000));
-    assert.equal((await runs()).length, 2, 'no run on a move within the paragraph');
-    await place('The main risk'); // another one
-    await until(async () => (await runs()).length === 3, 'a run on a move to another paragraph', 8000);
-    assert.match((await runs())[2].prompt, /cursor in the paragraph at lines 8-9/);
-  });
 });
 
 test('the prompt tells a buddy who the other members are, as the app shows them', () => {

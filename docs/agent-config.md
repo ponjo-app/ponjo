@@ -11,7 +11,7 @@ An agent is a filter ([architecture](architecture.md#a-run)):
 | | |
 | --- | --- |
 | Working folder | new and private; holds only copies of the doc and its sidecar, at the doc's path in the project (in doc mode, under their names) |
-| stdin | the prompt: who the buddy is and the rules, then, under `The situation now:`, what changes from run to run: who is in the doc (the paragraph each person's cursor is in, how long since they typed), and every open thread that asks the buddy, each by its id. It names files only by their paths in the project, never where a run keeps them: the script tells its agent that, if it needs to (see [Paths](#paths)) |
+| stdin | the prompt: who the buddy is and the rules, then, under `The situation now:`, what changes from run to run: every thread that asks the buddy and it has not answered, each by its id, and, for a buddy watching the doc, what it is to do, its watch thread and what changed in the doc since it last looked. It names files only by their paths in the project, never where a run keeps them: the script tells its agent that, if it needs to (see [Paths](#paths)) |
 | `PONJO_DOC` | the doc copy's path |
 | `PONJO_COMMENTS` | the sidecar copy's path |
 | `PONJO_PROJECT` | the project folder, to read only (see [Permissions](#permissions)); empty in doc mode |
@@ -21,14 +21,14 @@ An agent is a filter ([architecture](architecture.md#a-run)):
 | `PONJO_SETTING_<KEY>` | each of the agent's [settings](#settings) |
 | stdout | anything; kept in the trace, never posted |
 | Exit 0 | success; the app adds the appended comments and merges the doc copy's edits into the doc, each with the comment it comes with. |
-| Any other exit | a comment marked `failed`, with the end of the output, in each thread that asked it. |
+| Any other exit | nothing lands and nothing is written: the threads that asked it show that it failed, with the end of the output to the owner. |
 
 A buddy acts only by commenting: an answer, a question or a change to the
-doc is a comment, and an edit comes with one. It is run again on each look
-of the doc's loop while a thread asks it, until a person resolves the
-thread ([architecture](architecture.md#a-buddys-turn)), so a run with
-nothing to do changes nothing. The program needs no Ponjo tool: it reads
-files and edits them.
+doc is a comment, and an edit comes with one. It runs when a person's
+comment asks it, and its comment in that thread answers it
+([architecture](architecture.md#a-buddys-turn)); a run that posts nothing
+there is not run again for it until someone writes there. The program
+needs no Ponjo tool: it reads files and edits them.
 
 ### Paths
 
@@ -179,10 +179,12 @@ keeps the steps it took. The Ponjo agent writes each message of its turn
 
 ## Errors
 
-A run that does not exit 0 says so with a comment marked `failed` in each
-thread that asked it: the end of the program's own output, as is, and the
-script that ran, to run yourself. It runs again on the next look, but says
-so again only in a thread where someone has written since.
+A run that does not exit 0 writes nothing to the doc or its sidecar. Each
+thread that asked it shows that it failed, with Retry; the owner also sees
+the end of the program's own output, as is, and the script that ran, to run
+yourself. It runs again on Retry, when someone writes in the thread, when
+the agent or its settings change, or after a restart; never on its own, so
+an agent should retry what it can outlast (a busy API) itself.
 
 ## Open
 

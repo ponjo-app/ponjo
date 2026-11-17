@@ -35,16 +35,15 @@ with a way to fix it.
    a window (typing, a paste) is merged by character, and nothing typed is
    dropped. A whole text that arrives late (an AI buddy's turn, a change
    from outside, an undo) is merged by line (`merge3`): where it changed
-   the same lines as what landed meanwhile, what landed stays. A turn that
-   collides is run once more first. What does not land is redone (ask the
-   buddy again) or restored (history).
+   the same lines as what landed meanwhile, what landed stays. What does
+   not land is redone (ask the buddy again) or restored (history).
 5. **AI buddies always edit, and every edit can be undone.** See
    [Undoing changes](#undoing-changes).
-6. **Only a person's comment starts a turn:** mine, or a player's who can
-   edit. A turn that keeps its ask open runs again on that same ask, when
-the doc next looks.
-   Nothing in a shared file makes an AI buddy run, or chooses what
-   program runs, on this machine.
+6. **Only a person starts a turn:** a comment, mine or a player's who can
+   edit, which the buddy's reply answers; or, for a buddy a person set
+   watching the doc, that setting and people's edits. Nothing in a shared
+   file makes an AI buddy run, or chooses what program runs, on this
+   machine.
 7. **One component does one thing.** If it takes two sentences to say what
    a component does, it is two components.
 8. **The fewest interfaces.** A new call is the last resort: first reuse one
@@ -360,7 +359,7 @@ others put in; its result is your typing, merged by character.
 | Store | read, write, watch and move files | `read(path)`, `write(path, text, { ifHash })`, `watch(path, fn)`, `move(from, to)`. Settings, buddies, agent scripts and history are paths and parsers over these, not interfaces of their own |
 | DocService | order every edit to a doc, and write it | `state({ since? })` → text, `{ epoch, rev }`, the `events` missed since, and what this connection may do; `submit({ ops, epoch, rev, id })` → `{ rev }`, or `stale`, or `not_saved`; `comment({ thread?, anchor?, body, resolved? })`; `undo({ id, from? })`, a version (or the versions from `from` to it) undone as above, a turn's from its reply; `cursor({ at, epoch, rev })`; `move(to)`; events `ops` (every landed edit, written), `saved` (`{ error }`: why the file does not hold them, or null), `sidecar`, `room`, `cursors`, `missing`; a window that connects again catches up with `state`. Cursors are never queued behind writes: each is kept at the last rev windows were told of, and moved with every edit told |
 | History | keep the doc as it was at each version | `record`, `list`, `read`; a version may have several authors |
-| Runner | make the running turns equal the asks the sidecar holds | `reconcile()`, `changed()`, `statuses()`, `loop()`, `pause(on)`. Each look of the doc's one loop runs each buddy asked, one turn at a time, with every open thread that asks it: soon after a person's change, every 10 s, and slowly once nothing has changed for a while. The asks are people's comments: the owner's and those of players who can edit. A finished turn comes through the door as its buddy, then is logged with its trace |
+| Runner | make the running turns equal the asks the sidecar holds | `reconcile()`, `statuses()`. Each time the asks may have changed (a comment, the doc opening, a turn ending, a watch set on, people's edits pausing while a buddy watches), it runs each buddy asked or watching, one turn at a time, with every thread that asks it and it has not answered; never on a clock. The asks are people's comments: the owner's and those of players who can edit. A finished turn comes through the door as its buddy, then is logged with its trace |
 | Room | who plays in the project's room and what each may do, while it is open | for the owner `open()`, `close()`, `lock(locked)`, `setLevel(id, level)` with `level` `read` or `write`, `kick(id)` and `list()` (`{ link, locked, players }`, or null while closed), at the door as `openRoom`, `closeRoom`, `lockRoom`, `setLevel`, `kick` and `room`; a page that opens the link joins as `join({ id, name })`; the host asks it a player's level on each call; event `room` to the owner's windows |
 | ProjectService | the project's files, the same for everyone | `list(path)`, `read(path)`, `open(path)`, for the owner's windows and a teammate's page alike. A path must resolve inside the root and not start with `.`. An agent reads no more than this |
 | Config | own the settings, buddies and agents | `settings.get/patch`, `buddies.save/remove`, `scripts.list/reset` |
@@ -368,7 +367,7 @@ others put in; its result is your typing, merged by character.
 | Shell | windows, menus, dialogs, recent docs | an open doc's files only through `DocService` (renaming through `DocService.move`), the sidebar through ProjectService (a folder window with no doc: the folder's own, `list`, `read` and `open` only); the settings and agent scripts through Store and Config |
 | Agent | edit its copy, append its comments to its sidecar | none: it cannot call anything |
 
-The page's calls: `state`, `submit`, `comment`, `undo`, `cursor`, `pauseLoop`, `history`,
+The page's calls: `state`, `submit`, `comment`, `retry`, `watch`, `undo`, `cursor`, `history`,
 `version`, ProjectService's three, and for the owner settings, buddies,
 agent scripts and Room. `reply`, `resolve`, `reopen`, `saveDoc` and
 `restoreVersion` go: a reply, a resolve and a reopen are each `comment`; a
@@ -387,7 +386,7 @@ merges never knows the writer (principle 8).
 | Edit | Comes as | Merged | Where it collides |
 | --- | --- | --- | --- |
 | A window's: typing, a paste, a cut | operations on the revision the window last heard, milliseconds old | by character (`transform`) | both stay, in the order they reached the host |
-| A whole text: a buddy's turn, an outside change (another editor, `git pull`), an undo | the text it ended on, from a base that may be minutes old | by line (`merge3(base, doc, late)`) | the doc as it is stays; the late text is in history. A turn first runs once more |
+| A whole text: a buddy's turn, an outside change (another editor, `git pull`), an undo | the text it ended on, from a base that may be minutes old | by line (`merge3(base, doc, late)`) | the doc as it is stays; the late text is in history |
 
 Why two ways: an edit from a window says what it does, on text its writer
 saw a moment ago, so it can move over others' edits character by
@@ -396,7 +395,7 @@ guessed by a diff, against edits it never saw, and merged by character
 they splice two rewrites of one sentence into words neither wrote. By
 line, the collision shows. The doc as it is wins because people have
 seen what landed and keep working on it, while a late text can be made
-again (the turn runs once more) or found in history.
+again (ask the buddy again) or found in history.
 
 So a person's edit saved in another editor gives way where it collides,
 as a buddy's turn does, and a buddy's turn that landed first holds
@@ -468,22 +467,20 @@ written only by the app.
 
 ## A buddy's turn
 
-A thread asks AI buddy X (by id) from a person's comment that asks X until
-a person resolves the thread: the owner's, or a player's who can edit. X's
-own comments there do not end it. A comment asks whom it @mentions; one
+A person's comment asks AI buddy X (by id) until X comments in its thread
+after it: the owner's, or a player's who can edit. A comment asks whom it @mentions; one
 that mentions no one asks the thread's AI buddies: the one that opened it,
 and each @mentioned there before. An empty one (resolving, reopening) asks
 no one. That is computed from the sidecar, the comments this host took,
 and the ids of those who may ask. AI buddies run only on docs open in a
-window. An open thread is what a buddy watches, and resolving it, which
-only people do, is how they stop it.
+window. Resolving a thread, which only people do, drops what it asked.
 
 ### How a turn works
 
 1. Runner copies the doc and its sidecar into a new private folder, at the
    doc's path in the project, which is how the prompt names them, and runs
    the [agent script](agent-config.md) there, with the prompt (who the
-   buddy is, the rules, every open thread that asks it) on stdin and the
+   buddy is, the rules, every thread that asks it) on stdin and the
    buddy's name in `PONJO_BUDDY` (the name is for the script; the app goes
    by id). A buddy has one turn at a time in a doc: its inbox. In project
    mode it is given the project folder, to read only; what it may read
@@ -496,11 +493,9 @@ only people do, is how they stop it.
    the copy as it started (`merge3`, see Interfaces). Where people changed
    none of the same lines meanwhile, each comment's edits land as their own
    version, hung on it, and its comments are added as the buddy's: no edit
-   lands without a comment. Where they did, nothing lands and nothing is
-   posted: the buddy runs once more, on the doc as it is then, and its
-   prompt says what the turn changed and what people did. Run once more
-   and colliding again, it lands with the doc's lines kept there, and its
-   versions say `conflict`. The turn lands as the buddy's. In a thread
+   lands without a comment. Where they did, the doc's lines stay there, the
+   rest lands, and its versions say `conflict`. The turn lands as the
+   buddy's. In a thread
    that asked it, its comments are dated just after the last comment the
    turn was given, so one the user wrote meanwhile comes after them, still
    to answer.
@@ -523,33 +518,46 @@ Resolving every thread that asks a buddy ends its turn at once, with no
 answer; a reply in a thread resolved before its turn is merged is dropped,
 with its edits. Deleting a buddy ends its turns too.
 
-### The doc's loop
+### When a buddy runs
 
-What a comment asks may not be done yet ("once I've finished this
-section") or may go on ("each time I write a line, add the next"). So an
-ask stays open until a person resolves it, and the buddy looks at it again
-and again. Asks are reconciled as a Kubernetes controller reconciles: an
-ask is the desired state, what a turn is shown the observed state, and
-each turn one stateless look at both. The doc has one loop, and no buddy
-or ask keeps any state of its own: while the doc is open, each look runs
-each buddy asked that is not running already. The doc looks 3 s after
-someone changes what a turn is shown (an edit landing, a comment, a
-person's cursor moving to another paragraph, a person coming or going; a
-buddy's change is none, so no buddy wakes itself or another), then every
-10 s; once nothing has changed for 10 minutes it slows down to every 10
-minutes, until the next change (Settings > Agents: `watchEvery`,
-`watchFor`); and once when it opens. It never stops by itself, only when
-a person pauses it. A turn's prompt says who is in the doc, people only:
-the paragraph each one's cursor is in, as lines, and how long since each
-typed, the signs people go by to tell whether someone has finished. Its
-own comments in each thread tell it what it did already. Anyone who may
-edit can pause the doc's loop, for everyone in it (`pauseLoop`): no look
-starts a run until they resume it, and turns on then finish. The loop
-lives only in memory, as which turns run, and shows apart from them: a
-buddy's face shows its turns, and the doc's status bar, under the page in
-every view, the loop ("Next look in 0:07", "Clippy is working…",
-"Paused") with a pause or play button, beside the Markdown view's word
-count.
+A buddy runs when it is asked, and only then. The Runner looks at the asks
+the files hold each time they may have changed: a comment written (a
+buddy's too), the sidecar changed outside, the doc opening, who may ask
+changing, a turn ending. It never looks on a clock, on an edit, or on a
+cursor or a person coming or going: those are what a turn reads, not what
+starts one. Each look starts a turn for each buddy asked that is not
+running, with every thread that asks it and it has not answered, so a
+comment written while its turn runs is answered by the next turn, which
+starts as soon as that one ends. A look that cannot read the asks (the
+sidecar locked by a sync tool, a buddy file gone as it is read) is tried
+again 1 s later, twice as long each time up to 30 s, until one can: no
+event may come to try it. A comment a turn was given asks no more,
+though the turn posted nothing there; after a restart it asks again. So a
+buddy costs a turn per comment that asks it, and nothing while people
+write or the doc sits open. What a comment asks that cannot be done yet
+("once I've finished this section"), the buddy says so, and it waits for a
+person to ask again: the app keeps no clock. A buddy's face, and the doc's
+status bar under the page in every view ("Clippy is working…"), show its
+turns.
+
+A buddy can also watch a doc, for a buddy whose part is to follow what
+people write (one that chats as you write, a proofreader), its persona
+saying what to do. Only a person sets it, in the buddy's card ("Watch this
+doc"), and only a person unsets it: nothing the buddy or the app does
+changes it. Setting it is an event: the buddy looks at once. Then people's
+edits to the doc, anywhere, once they pause for 5 s, run it again; a
+buddy's edit never does, so no buddy wakes itself or another. Each run is
+told it watches the doc, what changed since it last looked (from the doc
+as its last run started; on its first run since the app started, to read
+the doc), and its watch thread: the first thread on the whole doc it
+opens, where it comments and where its edits hang, each to undo on its
+own; resolved, it opens another. With nothing due it posts nothing.
+Unset, it starts no more runs, and one running ends with no answer. The
+watch is the host's, `{ by, thread }` noted with the doc's history on this
+machine and never in the sidecar, for nothing in a shared file makes a
+buddy run here; it runs as whoever set it may, while they may ask. Its
+face wears glasses meanwhile, and the status bar says "Bob is watching"
+while no one works; Settings > Usage counts its runs.
 
 An AI buddy comments as a member does: new threads and replies in any
 thread. It does not resolve: a line that would is ignored
@@ -573,11 +581,21 @@ the versions are on the host.
 
 ### Failures, retries and restarts
 
-A turn that fails says so: a comment marked `failed`, with the end of the
-program's output, in each thread that asked it. The next look runs it
-again, but it says so again only in a thread where someone has written
-since. To redo what was not applied, ask the buddy again. Which turns are
-working lives only in memory: after a restart, open asks run again.
+A turn that fails (an exit other than 0, a timeout, or a run the host
+could not start or take back) lands nothing and writes nothing: a failure
+is this machine's, not the doc's, so it never reaches the sidecar. The
+host keeps it in memory, by buddy and thread, and tells every window with
+the buddies' statuses; the thread shows it as the buddy's last reply, in
+red, with Retry (`retry({ buddy })`). The owner's say why, the end of the
+program's output and the script that ran; a teammate's say only that the
+run failed. The ask stays open but is not run again on its own, for a run
+that failed once may well fail again at the same cost: it runs again when
+someone writes in the thread, on Retry, when the agent, its settings or
+its secrets change (a key set), and after a restart. Errors an agent can
+outlast, such as a busy API, it retries itself
+([Ponjo agent](ponjo-agent.md)). To redo what was not applied, ask the
+buddy again. Which turns are working and which failed lives only in
+memory: after a restart, unanswered asks run again.
 Buddies' turns go on at the same time; their merges are applied one at a
 time.
 

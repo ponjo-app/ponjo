@@ -1,14 +1,14 @@
-// The Runner (docs/architecture.md, A run): runs each buddy that open
-// threads ask, one run at a time, and ends the run of a buddy no thread
-// asks any more. It looks into the files on the doc's one clock
-// (nextLook): soon after someone changes the doc or its comments, then
-// often, and once nothing has changed for a while, slowly: it never stops
-// by itself, only when a person pauses it. Each look runs every buddy asked,
-// with every thread that asks it; nothing else is kept of an ask. A run
+// The Runner (docs/architecture.md, A buddy's turn): runs each buddy that
+// a comment asks and it has not answered yet, or that watches the doc,
+// one run at a time, and ends the run of a buddy nothing asks any more. It
+// looks at the asks each time they may have changed (reconcile): a
+// comment, the doc opening, a run ending, a watch turned on or people's
+// edits pausing while a buddy watches; never on a clock. A run
 // copies the doc and its sidecar into a new private folder, runs the agent
 // script there with the prompt on stdin, and hands back the copies and the
-// comments' groups of edits when it exits. The agent knows nothing of Ponjo. Which runs are working lives only here, in memory; what
-// each did goes to `log`, with its trace.
+// comments' groups of edits when it exits. The agent knows nothing of
+// Ponjo. Which runs are working lives only here, in memory; what each did
+// goes to `log`, with its trace.
 
 import { spawn } from 'node:child_process';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
@@ -24,146 +24,100 @@ const TAIL_LINES = 20;
 const RUN_TIMEOUT_MS = 30 * 60 * 1000; // no one can stop a run by hand: one that hangs fails
 const TEST_TIMEOUT_MS = 2 * 60 * 1000;
 const TEST_PROMPT = 'Ponjo is testing that you run. Edit no file and reply only: OK';
-// The doc's next look is this long after a change.
-const CHANGE_MS = 3000;
-
-/**
- * When the doc's next look is, in ms from `now`: CHANGE_MS after a change
- * (`changed`), else `every` from now while that is no more than `quiet`
- * after the last change (`quietSince`); once it is, slowly: `quiet` from now,
- * until the next change.
- */
-export function nextLook({ changed, quietSince, now, every, quiet }) {
-  if (changed) return CHANGE_MS;
-  return now + every - quietSince <= quiet ? every : Math.max(every, quiet);
-}
+// A look that could not read the asks (a sidecar locked or unreadable, a
+// buddy file gone as it was read) is tried again this long after, twice as
+// long each time, up to LOOK_AGAIN_MAX_MS: no event may come to try it.
+const LOOK_AGAIN_MS = 1000;
+const LOOK_AGAIN_MAX_MS = 30_000;
 
 export class Runner {
   /**
    * `asks()` resolves to the buddies asked now, each with its inbox: [{
-   * buddy: { id, name, about }, buddies, threads, askers, redo }], `buddies`
-   * all those the doc reaches, `threads` those that ask it (threadsOf),
-   * `askers` the ids of whoever asked, `redo` null or, when its last run
-   * collided with people's edits, what that run changed and what people
-   * did ({ mine, theirs }, each [{ before, after }]). `doc()` to { path, text,
-   * comments, people }, `path` the doc's in the project (`/`-separated; its name in
-   * doc mode), where the run's folder holds its copy, `comments` the
-   * sidecar's text or null, and `people` who is in the doc (buildPrompt).
-   * `agent()` resolves to the agent that runs every buddy: { script (its
-   * path), settings ({ <key>: value }, each handed to the run as
-   * PONJO_SETTING_<KEY>) }. `folder()` resolves to the project folder
-   * the agent is given, or null, `human()` the user, { name, about },
-   * `watch()` how the doc keeps looking, { every, quiet } in ms (nextLook). `finish(result)` takes a run
-   * that ended: { id, name, threadIds, askers, seen, again, base, edited, comments, groups, failed, body },
-   * `seen` the `at` of each of its threads' last comment it was given, by
-   * thread, `again` whether it was run once more (`redo`), `edited` the doc's copy
-   * at the end (null when the run failed), `comments` { before, after } the
-   * sidecar's copy at the start and end, `groups` the lines it wrote to
-   * PONJO_GROUPS, parsed, and `body` why a failed run failed; it resolves,
-   * while the doc is open, to what became of it: { comments (the ids it
-   * posted), landed (in words) }. `onChange()` runs when a run starts
-   * or ends, or the doc's clock or its count of asks changes. `log(entry, trace)` takes each run that ended: `entry` { run
-   * (its id), buddy, threads, comments, at, ms, outcome: ok | failed | timedOut
-   * | stopped, code, usage? (runUsage: its Claude API tokens, when its agent wrote them to its trace) }, and `trace` what it was given and did: { script,
-   * prompt, steps (the lines the agent wrote to PONJO_TRACE), stdout,
-   * stderr, base, edited, comments, landed }.
+   * buddy: { id, name, about }, buddies, threads, askers, watch, due }],
+   * `buddies` all those the doc reaches, `threads` those that ask it and it
+   * has not answered (and its watch thread), `askers` the ids of whoever
+   * asked, `watch` null or, when it watches the doc, { thread (its watch
+   * thread's id, or null), changes (what changed since it last looked, or
+   * null) }, and `due` whether to run it now: a buddy watching the doc is
+   * in, so its run on now goes on, though not due. `doc()` to { path, text,
+   * comments }, `path` the doc's in the project (`/`-separated; its name in
+   * doc mode), where the run's folder holds its copy, and `comments` the
+   * sidecar's text or null. `agent()` resolves to the agent that runs every
+   * buddy: { script (its path), settings ({ <key>: value }, each handed to
+   * the run as PONJO_SETTING_<KEY>) }. `folder()` resolves to the project
+   * folder the agent is given, or null, and `human()` the user, { name,
+   * about }. `finish(result)` takes a run that ended: { id, name,
+   * threadIds, askers, seen, from, base, edited, comments, groups, failed,
+   * body }, `seen` the `at` of each of its threads' last comment it was
+   * given, by thread, `from` when it started, `edited` the doc's copy at the end (null when the run failed),
+   * `comments` { before, after } the sidecar's copy at the start and end,
+   * `groups` the lines it wrote to PONJO_GROUPS, parsed, and `body` why a
+   * failed run failed; it resolves, while the doc is open, to what became
+   * of it: { comments (the ids it posted), landed (in words) }. `onChange()`
+   * runs when a run starts or ends. `log(entry, trace)` takes each run that
+   * ended: `entry` { run (its id), buddy, threads, watched? (true for a
+   * watcher's), comments, at, ms, outcome: ok | failed | timedOut | stopped, code, usage? (runUsage: its
+   * Claude API tokens, when its agent wrote them to its trace) }, and
+   * `trace` what it was given and did: { script, prompt, steps (the lines
+   * the agent wrote to PONJO_TRACE), stdout, stderr, base, edited,
+   * comments, landed }.
    */
-  constructor({ asks, doc, agent, folder = async () => null, human = async () => null, watch, finish, onChange = () => {}, log = async () => {}, timeoutMs = RUN_TIMEOUT_MS }) {
-    Object.assign(this, { asks, doc, agent, folder, human, watch, finish, onChange, log, timeoutMs });
-    this.runs = new Map(); // buddy id → { runId, id, name, threadIds, askers, from, child, done, cancelled, ended }
-    this.waiting = 0; // the asks (thread × buddy) open at the last look into the files
-    // The doc's clock: when someone last changed it, and the next look, from
-    // `from` to `at` (null: at the next change).
-    this.clock = { quietSince: Date.now(), from: null, at: null, timer: null };
+  constructor({ asks, doc, agent, folder = async () => null, human = async () => null, finish, onChange = () => {}, log = async () => {}, timeoutMs = RUN_TIMEOUT_MS }) {
+    Object.assign(this, { asks, doc, agent, folder, human, finish, onChange, log, timeoutMs });
+    // buddy id → { runId, id, name, threadIds, askers, watch, out, child, done, cancelled, ended, answered, over }.
+    // A run that is `over` stays until the next look into the asks, so a
+    // look that read them before its answer was posted does not run it again.
+    this.runs = new Map();
     this.stopped = false;
-    this.paused = false; // a person paused the loop: no look until they resume it
     this.checking = null;
     this.again = false;
-    this.againLook = false; // a look asked for while one was on
+    this.lookAgain = { ms: LOOK_AGAIN_MS, timer: null }; // after a look that could not read the asks
   }
 
   /** The buddies at work: [{ id, name, threadIds }]. */
   statuses() {
-    return [...this.runs.values()].map(({ id, name, threadIds }) => ({ id, name, threadIds }));
-  }
-
-  /**
-   * The doc's loop: { waiting (the asks open), paused, from, at }, its
-   * next look between `from` and `at` (both null while paused).
-   */
-  loop() {
-    return { waiting: this.waiting, paused: this.paused, from: this.clock.from, at: this.clock.at };
-  }
-
-  /** Pause the loop (`on`): no look starts a run until it is resumed, which looks soon; runs on now finish. */
-  pause(on) {
-    this.paused = on;
-    if (on) this.#lookIn(null);
-    else this.changed();
-  }
-
-  /** Someone changed the doc or its comments (a buddy's change is none): the next look is soon. */
-  changed() {
-    this.clock.quietSince = Date.now();
-    this.#lookIn(CHANGE_MS);
-  }
-
-  // The next look `delay` ms from now, or at the next change (null). One
-  // soon already on (typing) moves on quietly: its windows know it is soon.
-  #lookIn(delay) {
-    const soon = (clock) => clock.at !== null && clock.at - clock.from === CHANGE_MS;
-    const quietly = delay === CHANGE_MS && soon(this.clock);
-    clearTimeout(this.clock.timer);
-    const now = Date.now();
-    Object.assign(this.clock, delay === null || this.stopped || this.paused ? { from: null, at: null, timer: null } : { from: now, at: now + delay, timer: setTimeout(() => this.#look(), delay) });
-    this.clock.timer?.unref?.();
-    if (!quietly) this.onChange();
-  }
-
-  // Run every buddy asked, then wait for the next look.
-  async #look() {
-    const since = this.clock.quietSince;
-    await this.reconcile({ look: true });
-    const { every, quiet } = await this.watch();
-    if (this.clock.quietSince === since) this.#lookIn(nextLook({ changed: false, quietSince: since, now: Date.now(), every, quiet })); // else a change set it
+    return [...this.runs.values()].filter((run) => !run.over).map(({ id, name, threadIds }) => ({ id, name, threadIds }));
   }
 
   /**
    * Make the runs the asks the files hold: end (without an answer) the run
-   * of each buddy no thread asks any more, such as one whose threads were
-   * resolved, or a deleted buddy, and on a look (`look`), start a run for
-   * each buddy asked without one. Call on any change of the sidecar, the
-   * buddies or the settings.
+   * of each buddy no comment asks any more, such as one whose threads were
+   * resolved, or a deleted buddy, and start a run for each buddy asked
+   * without one. Call on any change of the sidecar, the buddies, the
+   * settings or who may ask. One look at a time: one asked for meanwhile
+   * follows it. One that could not read the asks is tried again, later
+   * each time (LOOK_AGAIN_MS), until one can.
    */
-  reconcile({ look = false } = {}) {
+  reconcile() {
     if (this.stopped) return Promise.resolve();
     if (this.checking) {
       this.again = true;
-      this.againLook ||= look;
       return this.checking;
     }
     this.checking = (async () => {
-      let looking = look;
+      let read;
       do {
         this.again = false;
+        for (const [id, run] of this.runs) if (run.over) this.runs.delete(id);
         try {
           const asked = await this.asks();
+          read = true;
           const wanted = new Set(asked.map((inbox) => inbox.buddy.id));
           for (const [id, run] of this.runs) if (!wanted.has(id) && !run.ended) this.#end(run);
-          if (looking) {
-            for (const inbox of asked) if (!this.runs.has(inbox.buddy.id) && !this.stopped) this.#start(inbox);
-          }
-          const waiting = asked.reduce((n, inbox) => n + inbox.threads.length, 0);
-          if (waiting !== this.waiting) {
-            this.waiting = waiting;
-            this.onChange();
-          }
+          for (const inbox of asked) if (inbox.due !== false && !this.runs.has(inbox.buddy.id) && !this.stopped) this.#start(inbox);
         } catch (error) {
+          read = false;
           console.error('Could not look for asks:', error);
         }
-        looking = this.againLook;
-        this.againLook = false;
       } while (this.again && !this.stopped);
+      clearTimeout(this.lookAgain.timer);
+      if (read || this.stopped) {
+        this.lookAgain.ms = LOOK_AGAIN_MS;
+        return;
+      }
+      this.lookAgain.timer = setTimeout(() => this.reconcile(), this.lookAgain.ms);
+      this.lookAgain.timer.unref?.();
+      this.lookAgain.ms = Math.min(this.lookAgain.ms * 2, LOOK_AGAIN_MAX_MS);
     })().finally(() => { this.checking = null; });
     return this.checking;
   }
@@ -177,36 +131,45 @@ export class Runner {
   /** End every run without an answer (an open ask runs again next time) and start no more. */
   async stop() {
     this.stopped = true;
-    this.#lookIn(null);
     await this.checking;
+    clearTimeout(this.lookAgain.timer);
     const runs = [...this.runs.values()];
     for (const run of runs) killTree(run.child);
     await Promise.all(runs.map((r) => r.done));
   }
 
-  /** Let runs start again after `stop`: the asks are looked at soon. */
+  /** Let runs start again after `stop`. */
   resume() {
     this.stopped = false;
-    this.changed();
+    return this.reconcile();
   }
 
-  #start({ buddy, buddies, threads, askers, redo }) {
-    const run = { runId: newId('r'), id: buddy.id, name: buddy.name, threadIds: threads.map((t) => t.id), askers, from: Date.now(), child: null, done: null, cancelled: false, ended: false };
+  #start({ buddy, buddies, threads, askers, watch = null }) {
+    const run = { runId: newId('r'), id: buddy.id, name: buddy.name, threadIds: threads.map((t) => t.id), askers, child: null, done: null, cancelled: false, ended: false, answered: false, over: false };
+    // What `finish` is told of it, whatever became of it.
+    const seen = Object.fromEntries(threads.map((t) => [t.id, t.comments.at(-1).at]));
+    run.out = { id: buddy.id, name: buddy.name, threadIds: run.threadIds, askers, seen, from: Date.now() };
+    run.watch = watch;
     this.runs.set(buddy.id, run);
-    run.done = this.#run(run, threads, buddy, buddies, redo)
-      .catch((error) => console.error(`Run of ${buddy.name} failed to finish:`, error))
+    run.done = this.#run(run, threads, buddy, buddies)
+      .catch(async (error) => {
+        console.error(`Run of ${buddy.name} failed to finish:`, error);
+        // One that could not run, or whose end could not be taken, failed
+        // too: not run again until it is asked again.
+        if (run.answered || this.stopped || run.cancelled) return;
+        await this.finish({ ...run.out, base: null, edited: null, failed: true, body: `Ponjo could not run ${buddy.name}: ${error.message}` })
+          .catch((again) => console.error(`Run of ${buddy.name} failed to finish:`, again));
+      })
       .finally(() => {
-        this.runs.delete(buddy.id);
+        run.over = true;
         this.onChange();
-        // Someone changed the doc while it ran, and the look then passed it by: look again soon.
-        const soon = this.clock.at !== null && this.clock.at - Date.now() <= CHANGE_MS;
-        if (this.clock.quietSince > run.from && !this.stopped && !soon) this.#lookIn(CHANGE_MS);
+        this.reconcile(); // what was asked while it ran
       });
     this.onChange();
   }
 
-  async #run(run, threads, buddy, buddies, redo) {
-    const { path: docPath, text: base, comments, people } = await this.doc();
+  async #run(run, threads, buddy, buddies) {
+    const { path: docPath, text: base, comments } = await this.doc();
     const dir = await mkdtemp(join(tmpdir(), 'ponjo-run-'));
     let aside = null; // the folder its trace is in, out of its sight
     try {
@@ -221,7 +184,7 @@ export class Runner {
       aside = await mkdtemp(join(tmpdir(), 'ponjo-trace-'));
       const steps = join(aside, 'trace.jsonl');
       const groups = join(aside, 'groups.jsonl');
-      const prompt = buildPrompt({ buddy, buddies, docName: docPath, sidecarName: docPath + SIDECAR_SUFFIX, threads, project: Boolean(folder), human: await this.human(), redo, people });
+      const prompt = buildPrompt({ buddy, buddies, docName: docPath, sidecarName: docPath + SIDECAR_SUFFIX, threads, watch: run.watch, project: Boolean(folder), human: await this.human() });
       const at = Date.now();
       const result = await runScript(script, { cwd: dir, prompt, timeoutMs: this.timeoutMs, env: runEnv({ doc: copy, sidecar, folder, buddy: buddy.name, settings, trace: steps, groups }), onChild: (child) => {
         run.child = child;
@@ -236,8 +199,7 @@ export class Runner {
       let answered = null; // what finish made of it
       try {
         if (stopped) return; // ended by stop or cancel: no answer
-        const seen = Object.fromEntries(threads.map((t) => [t.id, t.comments.at(-1).at]));
-        const out = { id: buddy.id, name: buddy.name, threadIds: run.threadIds, askers: run.askers, seen, again: Boolean(redo), base };
+        const out = { ...run.out, base };
         if (result.code === 0) {
           const bytes = await readFile(copy).catch(() => null);
           trace.edited = (bytes && decodeText(bytes)?.text) ?? base; // as text, like the doc
@@ -246,9 +208,10 @@ export class Runner {
         } else {
           answered = await this.finish({ ...out, edited: null, body: failure(script, result), failed: true });
         }
+        run.answered = true;
       } finally {
         if (answered) trace.landed = answered.landed;
-        await this.log({ run: run.runId, buddy: buddy.name, threads: run.threadIds, comments: answered?.comments ?? [], at: new Date(at).toISOString(), ms, outcome, code: result.code, ...(usage ? { usage } : {}) }, trace);
+        await this.log({ run: run.runId, buddy: buddy.name, threads: run.threadIds, ...(run.watch ? { watched: true } : {}), comments: answered?.comments ?? [], at: new Date(at).toISOString(), ms, outcome, code: result.code, ...(usage ? { usage } : {}) }, trace);
       }
     } finally {
       await rm(dir, { recursive: true, force: true });

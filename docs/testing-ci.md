@@ -73,12 +73,26 @@ for a window), **e2e** (the packaged app, under xvfb on Linux).
   stdin and `PONJO_DOC`, `PONJO_PROJECT`, `PONJO_GROUPS` and `PONJO_BUDDY`, and the lines it
   appends to its sidecar copy become its comments; the folder is gone after.
 - **The human edits the same lines during a run**: the human's text stays,
-  and the turn runs once more on the doc as it is, told what it and they
-  changed; colliding again, it lands where no one changed its lines, and
-  its version says `conflict`; nothing asks the user.
+  the turn lands where no one changed its lines, and its version says
+  `conflict`; it does not run again, and nothing asks the user.
 - Two runs on one doc at once: both edits land, merged one at a time.
-- Exit non-zero: the reply is marked `failed` with the end of the output;
-  @mentioning again runs again; after a restart, unanswered asks run again.
+- A buddy's reply answers its ask: neither it nor a person's edit runs it
+  again; a comment written while it runs is answered by a run right after,
+  with only the threads not answered; a run that posts nothing in a thread
+  is not run again for it until someone writes there.
+- A look that cannot read the asks is tried again, later each time, with
+  no event, and not again once one can.
+- A buddy a person sets watching looks at once and opens its watch thread
+  on the whole doc; then it runs once people's edits pause 5 s, not before,
+  told what changed, saying nothing when nothing is due; set off, it runs
+  no more. Only a person changes the watch: it outlives its thread
+  resolved (it opens another) and a restart (no run on opening); it is
+  never in the sidecar, and its runs say `watched` in the log.
+- Exit non-zero, or a run the host cannot start: nothing is written to the
+  sidecar; the buddy's status says the thread failed, with why for the
+  owner alone; it is not run again on its own, but on Retry, a new comment
+  in the thread, or a change of the settings; after a restart, unanswered
+  asks run again.
 - Runs only on docs open in a window.
 - The shipped scripts, as text: each passes the project folder only when
   there is one, on `sh` and `.cmd`.
