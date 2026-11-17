@@ -17,7 +17,7 @@ ${s.map(Et).join(`
 ${t.map(({before:s,after:r})=>[...Se(s,"-"),...Se(r,"+")].join(`
 `)).join(`
 
-`)}`:"Nothing in the doc changed since you last looked.";return`You watch this doc: a member turned your watch on, and the app runs you each time members' edits to it pause, as well as when a member asks you. Do what who you are says to do with what they write; when nothing is due, post nothing. ${o} Comment on a passage only where a member must decide something.
+`)}`:"Nothing in the doc changed since you last looked.";return`You watch this doc: a member turned your watch on, and the app runs you each time members' edits to it pause or another buddy changes it, as well as when a member asks you. Do what who you are says to do with what they write; when nothing is due, post nothing. ${o} Comment on a passage only where a member must decide something.
 
 ${n}`}var Se=(e,t)=>e?e.replace(/\n$/,"").split(`
 `).map(o=>`${t}${o}`):[];function Et(e){let t=e.anchor?.exact,o=e.comments.map(n=>`${n.by.name}: ${n.resolved?"(resolved the thread)":n.body}`).join(`
