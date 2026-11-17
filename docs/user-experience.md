@@ -222,8 +222,10 @@ and 30 days, and by model.
   hidden where its text is gone. It is only drawn: never in the file, and it
   takes no clicks.
 - **An AI buddy at work** has no cursor: it works on threads, not at a place.
-  Each thread it works on shows it, its text underlined in the AI buddy's
-  color and, in the open card, "Clippy is working…" with its face; the doc's
+  Each thread where a person's comment waits for its answer shows it (on a
+  run that only looks again, each thread it keeps an eye on), its text
+  underlined in the AI buddy's color and, in the open card, "Clippy is
+  working…" with its face; the doc's
   status bar says so too, and clicking it there goes to its thread. When its
   run lands, its edits glow with its name as anyone's do.
 

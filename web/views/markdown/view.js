@@ -46,14 +46,16 @@ const PREFIXES = /^(\s*(#{1,6} |> ?|[-*+] \[[ xX]\] |[-*+] |\d+[.)] ))*/;
  * (web/views/codemirror.js), with these options:
  *
  * A mark is drawn over a range of the doc's text:
- * - { kind: 'comment', id, from, to, active }: commented text, `id` its
- *   thread's (or 'draft'); clicking it calls onMarkClick(id).
+ * - { kind: 'comment', id, from, to, active, busy }: commented text, `id` its
+ *   thread's (or 'draft'); clicking it calls onMarkClick(id); `busy`, the
+ *   id of a buddy at work on the thread, underlines it in its colour.
  * - { kind: 'edit', from, to, removed, by, replay }: part of a revision,
  *   [from, to) new text and `removed` the text it replaced, shown struck
  *   through before it; `by` shows it as that buddy's, and a new `replay`
  *   number (0: none) animates it once.
- * - { kind: 'cursor', at, by, name, working }: buddy `by`'s cursor after
- *   the character before text offset `at`; `working` shows its `name`.
+ * - { kind: 'cursor', at, by, name, working }: a person's cursor, in the
+ *   colour of `by`, after the character before text offset `at`; `working`
+ *   shows their `name`.
  *
  * @param {{ stage: HTMLElement, text: string, editable?: boolean, onChange?: () => void, onEdit?: () => void,
  *           onMarkClick?: (id: string) => void, onLayout?: () => void,

@@ -1,9 +1,8 @@
-// Where a buddy's cursor stands in the doc (web/main.js): at the passage it
-// was asked about while it works, after its last edit when its run lands,
-// and gone once the person types while it is not at work; its edit flagged
-// by its name, not its id, and its cursor renamed with it. The desktop app
-// on a folder with the fake agent, so it needs the page built (npm run
-// build).
+// A buddy at work shows on the threads it works on (docs/user-experience.md,
+// Seeing teammates work): their text underlined in its colour, the open
+// card saying so, and the status bar's loop going there; it has no cursor.
+// The desktop app on a folder with the fake agent, so it needs the page
+// built (npm run build).
 
 import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -23,7 +22,7 @@ let page;
 let config;
 
 before(async () => {
-  const folder = join(await mkdtemp(join(tmpdir(), 'ponjo-buddy-cursor-')), 'project');
+  const folder = join(await mkdtemp(join(tmpdir(), 'ponjo-buddy-at-work-')), 'project');
   await mkdir(join(folder, '.ponjo', 'buddies'), { recursive: true });
   await writeFile(join(folder, 'plan.md'), SAMPLE);
   await writeFile(join(folder, '.ponjo', 'buddies', 'Ada.md'), '---\nid: b_ada\n---\n'); // an id that is not its name
@@ -69,51 +68,36 @@ const ask = async (quote, body) => {
   })()`);
 };
 
-// The doc's text just before Ada's cursor, or null when it has none; what
-// the view draws in it (names, cursors) left out.
-const cursorAfter = () => page.evaluate(`(() => {
-  const cursor = document.querySelector('.pj-cursor');
-  if (!cursor) return null;
-  const range = document.createRange();
-  range.setStart(document.querySelector('.cm-content'), 0);
-  range.setEndBefore(cursor);
-  const text = range.cloneContents();
-  for (const drawn of text.querySelectorAll('[contenteditable="false"], .cm-widgetBuffer')) drawn.remove();
-  return text.textContent;
-})()`);
-
 // Type `text` right after `quote`, as the person does.
 const typeAfter = async (quote, text) => {
   await select(quote, quote.length, quote.length);
   await page.send('Input.insertText', { text });
 };
 
-test('a buddy at work keeps its cursor at the passage while the person types; once it is done, typing takes it away', { timeout: 60_000 }, async () => {
+// The text of each thread a buddy is at work on, underlined in the doc.
+const busyText = () => page.evaluate(`[...document.querySelectorAll('.pj-hl-busy')].map((n) => n.textContent).join('|')`);
+// What the open card says of a buddy at work on its thread, or null.
+const busyLine = () => page.evaluate(`document.querySelector('.pj-card-active .pj-busy')?.textContent ?? null`);
+
+test('a buddy at work shows on its thread, not by a cursor: its text underlined, its card saying so, until it is done', { timeout: 60_000 }, async () => {
   await ask('beta cohort', 'hold');
-  await waitFor(async () => (await cursorAfter())?.endsWith('beta cohort'), 30_000, 'Ada at the passage');
+  await waitFor(async () => (await busyText()) === 'beta cohort', 30_000, 'the thread underlined');
+  assert.equal(await busyLine(), 'Ada is working…', 'by its name, not its id');
   await typeAfter('week one', ',');
-  await new Promise((resolve) => setTimeout(resolve, 600)); // past the view's pause after typing
-  assert.ok((await cursorAfter())?.endsWith('beta cohort'), 'still there while Ada works');
+  assert.equal(await page.evaluate(`document.querySelector('.pj-cursor')`), null, 'no cursor of its own, while the person types');
 
   await writeFile(join(config, 'release-Ada'), '');
-  await waitFor(() => page.evaluate(`!document.querySelector('.pj-cursor-working')`), 30_000, 'Ada done');
-  assert.ok((await cursorAfter())?.endsWith('beta cohort'), 'still there once done, until the person types');
-  await typeAfter('week one,', ' then');
-  await waitFor(async () => (await cursorAfter()) === null, 10_000, 'the cursor gone');
+  await waitFor(async () => (await busyText()) === '', 30_000, 'Ada done');
+  assert.equal(await busyLine(), null);
 });
 
-test('a buddy\'s cursor stands after its last edit when its run lands, and goes when the person types there', { timeout: 60_000 }, async () => {
-  await ask('extra load', 'replace "extra load" with "extra peak load"');
-  const flag = await waitFor(() => page.evaluate(`document.querySelector('.pj-flag-label')?.textContent ?? null`), 30_000, 'its edit flagged');
-  assert.equal(flag, 'Ada');
-  await waitFor(async () => (await cursorAfter())?.endsWith('extra peak '), 30_000, 'Ada after its edit, the "peak " it put in');
-  await typeAfter('peak ', 'hour ');
-  await waitFor(async () => (await cursorAfter()) === null, 10_000, 'the cursor gone, not left inside the typing');
-});
-
-test('a buddy renamed while its cursor stays after its run: the cursor says its new name', { timeout: 60_000 }, async () => {
-  await ask('week one', 'hold'); // released already: it is done at once
-  await waitFor(async () => (await cursorAfter())?.endsWith('week one') && page.evaluate(`!document.querySelector('.pj-cursor-working')`), 30_000, 'Ada done, at the passage');
-  await page.evaluate(`window.ponjoHost.call('updateBuddy', { id: 'b_ada', patch: { name: 'Bea' } })`);
-  await waitFor(() => page.evaluate(`document.querySelector('.pj-cursor')?.textContent === 'Bea'`), 10_000, 'its cursor renamed');
+test('only the thread waiting for its answer shows it at work; the status bar\'s "is working…" goes there', { timeout: 60_000 }, async () => {
+  await ask('extra load', 'wait');
+  await waitFor(async () => (await busyText()) === 'extra load', 30_000, 'the new ask underlined, not the thread Ada answered already');
+  await page.evaluate(`[...document.querySelectorAll('.pj-card')].find((c) => c.textContent.includes('hold')).click()`);
+  await waitFor(async () => (await busyLine()) === null, 10_000, 'the other thread open');
+  await page.evaluate(`document.querySelector('.pj-loop').click()`);
+  await waitFor(busyLine, 10_000, 'back on the thread Ada works on');
+  await writeFile(join(config, 'release-Ada'), '');
+  await waitFor(async () => (await busyText()) === '', 30_000, 'Ada done');
 });

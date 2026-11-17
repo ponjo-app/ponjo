@@ -12,14 +12,14 @@ import { viewFor } from './views/index.js';
 import { createCommentMargin } from './threads.js';
 import { createDocBar } from './docbar.js';
 import { WORKING_MS, createPeople, modeOf } from './agent.js';
-import { nameOf, setBuddies, setOwner } from './faces.js';
+import { setBuddies, setOwner } from './faces.js';
 import { createNameCards } from './namecard.js';
 import { createChrome } from './ui.js';
 import { createSettings } from './settings.js';
 import { icon } from './icons.js';
 import { viewSettings } from '../src/core/settings.js';
 import { createAnchor, locate } from '../src/core/anchor.js';
-import { diffEdits, findEdit } from '../src/core/diff.js';
+import { diffEdits } from '../src/core/diff.js';
 import { createClient } from './client.js';
 import { createHistory } from './history.js';
 import { createRuns } from './runs.js';
@@ -66,7 +66,6 @@ let myId; // your id, which your comments carry
 let comments; // the doc's threads, who wrote in them, and a notice about its sidecar (state())
 let client; // the doc in the doc host's order (web/client.js)
 let asking = null; // what the page asked the doc host to change (Undo, Redo, Restore), while it does
-let runLanded = null; // the reply whose buddy's edit just landed: its cursor moves once its comments arrive
 let docName; // the doc's file name
 let pendingSelection = null; // an anchor on the doc's text while a comment is written on it
 let activeId = null; // the selected thread
@@ -213,6 +212,7 @@ async function start() {
   docBar = createDocBar(document.querySelector('.pj-docbar'), {
     canPause: () => !reading(),
     onPause: (paused) => api.pauseLoop(paused).then(({ loop }) => docBar.setLoop(loop), () => {}),
+    onGo: () => goToThread(busy.keys().next().value),
   });
   editor = await makeView(made, initial.text);
   countWords();
@@ -496,7 +496,6 @@ function makeView(chosen, text) {
     },
     onChange: () => {
       hideRun();
-      leaveIdle();
       paintMarks();
       countWords();
     },
@@ -599,10 +598,7 @@ function showLanded(text, ops, event) {
   const reply = event?.reply;
   editor.applyText(text, { by: event?.by ?? (event?.id ? null : asking ?? ON_DISK), buddy: Boolean(event?.by), ops });
   paintMarks();
-  if (reply) {
-    runLanded = reply;
-    afterTyping('sidecar', refreshThreads);
-  }
+  if (reply) afterTyping('sidecar', refreshThreads);
 }
 
 // Run `fn` once the human pauses typing (or WAIT_FOR_PAUSE_MS after it was
@@ -630,7 +626,8 @@ function showAgents(next) {
   const json = JSON.stringify(next);
   if (json === shownAgents) return;
   shownAgents = json;
-  standAtWork(next);
+  statuses = next;
+  paintBusy();
   setBuddies(next);
   people.render({ agents: next });
   docBar.setAgents(next);
@@ -750,6 +747,7 @@ function applyComments({ threads, people: writers, edits, notice, readOnly }) {
   if (failedShown) for (const c of failed.filter((c) => !failedShown.has(c.id))) people?.failed(c.by.id);
   failedShown = new Set(failed.map((c) => c.id));
   comments = { threads, people: writers, edits, notice, readOnly };
+  paintBusy();
   showReadOnly(readOnly);
   paintMarks();
   people?.render({ people: writers }); // first: who is here sets the colours
@@ -758,10 +756,6 @@ function applyComments({ threads, people: writers, edits, notice, readOnly }) {
   const open = threads.filter((t) => !t.resolved).length;
   commentsToggle.querySelector('.pj-comment-count').textContent = open > 0 ? String(open) : '';
   paintEmpty();
-  if (edits?.[runLanded]) {
-    standAfterRun(runLanded);
-    runLanded = null;
-  }
 }
 
 // A sidecar this app must not write (spec/SPEC.md §2): its comments show,
@@ -914,50 +908,35 @@ async function undoAs(what, version) {
   }
 }
 
-// ---- where each buddy stands in the text ----
+// ---- buddies at work ----
 
-// A buddy asked to work in this window stays in the doc with its cursor, at
-// the end of its last edit, or at the passage it was last asked about until
-// it edits. The place is an anchor, so it follows the text; the cursor goes with
-// the page, with the buddy once it is no longer here, and, once it is done,
-// when the human types.
-const cursors = new Map(); // buddy id -> anchor of the character before its cursor
-let working = new Set();
+// A buddy has no cursor: it works on threads (docs/user-experience.md), each
+// of which shows it, its text underlined in its colour and its card saying so.
+let busy = new Map(); // thread id → the buddy at work on it ({ id, name })
+let statuses = []; // the doc's buddies, as the host last said
 // People's cursors are the host's (client.cursorsShown); each is named for
 // a while after it moves.
 let settleCarets = null;
 
-function standAtWork(statuses) {
-  const ids = new Set(statuses.map((a) => a.id));
-  for (const id of cursors.keys()) if (!ids.has(id)) cursors.delete(id);
-  const now = new Set(statuses.filter((a) => modeOf(a) === 'working').map((a) => a.id));
-  for (const a of statuses) {
-    // Of the threads it works on, the one with the latest comment: most likely the one it acts on.
-    const thread = !working.has(a.id) && now.has(a.id) && comments?.threads.filter((t) => a.threadIds.includes(t.id) && t.anchor && !t.detached)
-      .reduce((latest, t) => (!latest || t.comments.at(-1).at > latest.comments.at(-1).at ? t : latest), null);
-    if (thread) cursors.set(a.id, thread.anchor);
-  }
-  working = now;
+// A run takes every open thread that asks its buddy; it is at work on those
+// where a person's comment waits for its answer, or, when none does (it only
+// looks again), on them all.
+function paintBusy() {
+  const threads = new Map((comments?.threads ?? []).map((t) => [t.id, t]));
+  const waiting = (id) => threads.get(id)?.comments.at(-1).by.kind === 'human';
+  busy = new Map(statuses.filter((a) => modeOf(a) === 'working').flatMap((a) => {
+    const asked = a.threadIds.filter(waiting);
+    return (asked.length > 0 ? asked : a.threadIds).map((thread) => [thread, a]);
+  }));
+  margin.setBusy(busy);
 }
 
-// The human typed: a buddy not at work leaves the text, so its cursor does
-// not stay behind in what they write next.
-function leaveIdle() {
-  for (const id of cursors.keys()) if (!working.has(id)) cursors.delete(id);
-}
-
-// The buddy of the run that wrote reply `id` stands after its last edit.
-async function standAfterRun(id) {
-  const run = comments?.edits?.[id];
-  if (run?.state !== 'edited') return;
-  const found = await api.version(run.version).catch(() => null);
-  if (!found?.before) return;
-  const last = diffEdits(found.before, found.text).at(-1);
-  const text = editor.getText();
-  const range = last && findEdit(text, last.edit);
-  if (!range || !text) return;
-  cursors.set(run.by, createAnchor(text, Math.max(range.end, 1) - 1, Math.max(range.end, 1)));
-  paintMarks();
+// Thread `id` in view, its text and its card (the status bar's loop goes to it).
+function goToThread(id) {
+  const thread = comments?.threads.find((t) => t.id === id);
+  const found = thread?.anchor && !thread.detached && where(editor.getText(), thread.anchor);
+  if (found) editor.scrollTo(found.start);
+  if (thread) select(id, { focus: false });
 }
 
 // ---- a buddy's run as a revision in the text ----
@@ -1044,17 +1023,13 @@ function paintMarks() {
   const marks = [];
   const comment = (id, anchor, active) => {
     const found = where(text, anchor);
-    if (found) marks.push({ kind: 'comment', id, from: found.start, to: found.end, active });
+    if (found) marks.push({ kind: 'comment', id, from: found.start, to: found.end, active, busy: busy.get(id)?.id });
   };
   for (const t of comments?.threads ?? []) {
     if (t.anchor && !t.detached && !t.resolved) comment(t.id, t.anchor, t.id === activeId || t.id === hoverId);
   }
   if (pendingSelection) comment('draft', pendingSelection, true);
   if (preview) marks.push(...revisionMarks(text, preview.edits, preview));
-  for (const [by, anchor] of cursors) {
-    const found = where(text, anchor);
-    if (found) marks.push({ kind: 'cursor', at: found.end, by, name: nameOf(by), working: working.has(by) });
-  }
   // People's, named while they move or type.
   for (const { id, name, at } of client?.cursorsShown() ?? []) {
     if (id !== myId && at <= text.length) marks.push({ kind: 'cursor', at, by: name, name, working: people?.atWork(id) });

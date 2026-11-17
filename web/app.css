@@ -462,6 +462,8 @@ kbd { font: 500 11px/1 var(--ui-font); padding: 2px 6px; border-radius: 4px; bor
 /* a selection inside commented text has to read over its grey */
 .pj-editor .pj-hl::selection, .pj-editor .pj-hl *::selection { background: color-mix(in srgb, var(--accent) 45%, transparent); }
 .pj-hl-active { background: var(--highlight-active); }
+/* a thread a buddy is at work on: its text underlined in the buddy's colour, deeper (--buddy-line) */
+.pj-hl-busy { box-shadow: inset 0 -2px 0 var(--buddy-line); }
 /* a proposal or a past edit shown in the text; .pj-replay plays it once: removal first, then the new text */
 .pj-mark-del { color: var(--red); text-decoration: line-through; text-decoration-color: var(--red); background: color-mix(in srgb, var(--red) 8%, transparent); }
 .pj-mark-ins { color: var(--green); text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--green) 50%, transparent); background: color-mix(in srgb, var(--green) 10%, transparent); }
@@ -484,7 +486,7 @@ del.pj-flash-del:empty { margin-right: 0; }
 .pj-flag::before { content: ''; position: absolute; top: -0.1em; bottom: -0.1em; left: -1px; border-left: 2px solid var(--buddy, var(--text)); animation: pj-fade 6s ease-out forwards; }
 @keyframes pj-fade { 0%, 70% { opacity: 1; } 100% { opacity: 0; } }
 
-/* a buddy in the doc: its cursor stays where it last wrote; its name shows while it works */
+/* a person in the doc: their cursor, named while they move or type (a buddy has none: its threads show it at work) */
 .pj-cursor { position: relative; display: inline-block; width: 0; height: 1.1em; vertical-align: text-bottom; pointer-events: none; }
 .pj-cursor::before { content: ''; position: absolute; top: 0; bottom: 0; left: -1px; border-left: 2px solid var(--buddy); }
 .pj-cursor-working::before { animation: pj-blink 1s steps(1) infinite; }
@@ -590,7 +592,8 @@ del.pj-buddy-del { margin-right: 0.15em; }
 .pj-unplaced { position: absolute; left: 0; display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 10px 0 8px; border: 0; border-radius: 6px; background: none; font-size: 12px; font-weight: 600; color: var(--text-soft); font-variant-numeric: tabular-nums; transition: top 0.18s ease, background 0.15s; }
 .pj-unplaced .pj-icon { width: 14px; height: 14px; }
 /* the buddies' loop, in the status bar while an ask is unanswered or the loop is paused: its ring the rest until the next look */
-.pj-loop { display: flex; align-items: center; gap: 7px; margin-right: 6px; }
+.pj-statusbar .pj-loop { display: flex; align-items: center; gap: 7px; margin-right: -2px; padding: 0 8px 0 6px; }
+.pj-statusbar .pj-loop:disabled { opacity: 1; background: none; color: inherit; } /* a button only while a buddy works: it goes to its thread */
 .pj-loop[hidden] { display: none; }
 .pj-statusbar .pj-loop-pause { display: inline-flex; align-items: center; justify-content: center; width: 22px; padding: 0; background: var(--hover); color: var(--text); }
 .pj-statusbar .pj-loop-pause:hover { background: var(--active); }
@@ -618,6 +621,10 @@ del.pj-buddy-del { margin-right: 0.15em; }
 .pj-msg + .pj-msg { margin-top: 16px; }
 .pj-msg-head { display: flex; align-items: center; gap: 6px; min-height: 24px; }
 .pj-msg-head .pj-avatar { --size: 18px; }
+/* the open thread's last line while a buddy works on it: its face at work and "Clippy is working…" */
+.pj-busy { display: flex; align-items: center; gap: 6px; margin-top: 14px; font-size: 13px; color: var(--text-soft); }
+.pj-busy .pj-avatar { --size: 18px; }
+.pj-busy b { font-weight: 500; color: var(--text); }
 .pj-who { display: flex; align-items: baseline; flex-wrap: wrap; column-gap: 6px; min-width: 0; flex: 1; line-height: 1.3; }
 .pj-name { font-weight: 500; font-size: 12px; color: var(--text-soft); display: inline-flex; align-items: center; gap: 4px; }
 .pj-ai { font-size: 11px; font-weight: 600; color: var(--text-soft); background: var(--hover); border-radius: 4px; padding: 0 4px; line-height: 1.6; }

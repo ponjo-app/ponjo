@@ -3,8 +3,8 @@
 // first comment and a line on what followed; the open one is whole and sits
 // at its text, the others giving way. The threads with no place in the text
 // are one comment icon at the top, opened in place. A buddy shows up like
-// any other collaborator: an avatar, its replies, and its face at work while
-// it works. A reply whose run failed, or whose edit was partly dropped for
+// any other collaborator: an avatar and its replies; while it works on a
+// thread, the open card ends saying so, its face at work. A reply whose run failed, or whose edit was partly dropped for
 // the human's text, says so; one that
 // edited the doc on this machine shows its edits in the text and offers
 // Undo, and once undone, Redo; one whose run left a trace links to it. Only
@@ -34,6 +34,7 @@ export function createCommentMargin(margin, handlers) {
   let threads = [];
   let me = { id: null, name: '' };
   let edits = {}; // the buddy replies that edited the doc here: { [id]: { state: 'edited' | 'undone', ... } }
+  let busy = new Map(); // thread id → the buddy at work on it ({ id, name })
   let shownEdits = null; // the reply whose edits the text shows
   let activeId = null;
   let draft = null; // { anchor } while composing a comment on the selected text
@@ -115,6 +116,15 @@ export function createCommentMargin(margin, handlers) {
       row.append(checkIcon(), el('span', '', `Resolved by ${by.id === me.id ? 'you' : by.name}`));
       row.append(linkButton('Reopen', () => handlers.onReopen(thread.id)));
       card.append(row);
+    }
+    const worker = !thread.resolved && busy.get(thread.id);
+    if (worker) {
+      const line = el('div', 'pj-busy');
+      line.dataset.presence = 'working';
+      const shown = nameOf(worker.id, worker.name);
+      line.append(avatar(shown, 'agent', true, worker.id), el('span', '', ''));
+      line.lastChild.append(el('b', '', shown), ' is working…');
+      card.append(line);
     }
     if (active && !thread.resolved) card.append(composer(`reply:${thread.id}`, 'Reply…', 'Reply', async (body) => {
       await handlers.onReply(thread.id, body);
@@ -480,6 +490,12 @@ export function createCommentMargin(margin, handlers) {
       threads = nextThreads;
       me = nextMe;
       edits = nextEdits;
+      render();
+    },
+    /** The threads buddies are at work on: thread id → { id, name }. */
+    setBusy(next) {
+      if (JSON.stringify([...next]) === JSON.stringify([...busy])) return;
+      busy = next;
       render();
     },
     /** The reply whose edits the text shows, or null. */

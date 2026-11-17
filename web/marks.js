@@ -12,7 +12,7 @@ export function revisionMarks(text, edits, { by = null, replay = 0 } = {}) {
   });
 }
 
-/** The node of a buddy's cursor mark (kind 'cursor'): a line in its colour, with its `name` while it works. */
+/** The node of a person's cursor mark (kind 'cursor'): a line in their colour, with their `name` while they move or type. */
 export function cursorNode({ by, name, working }) {
   const node = document.createElement('span');
   node.className = working ? 'pj-cursor pj-cursor-working' : 'pj-cursor';

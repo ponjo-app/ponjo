@@ -30,9 +30,10 @@ const listed = (names) => (names.length > 1 ? `${names.slice(0, -1).join(', ')} 
  * `setWords(text, selection)` counts the doc's words, and the selection's
  * ({ from, to }) when there is one, or with `text` null shows none (a view
  * of code or plain text); `setLoop(loop)` and `setAgents(statuses)`
- * repaint the loop, which is painted each second while it shows.
+ * repaint the loop, which is painted each second while it shows. While a
+ * buddy works, the loop is a button: `onGo()` goes to its thread.
  */
-export function createDocBar(bar, { onPause, canPause }) {
+export function createDocBar(bar, { onPause, canPause, onGo }) {
   const count = bar.querySelector('.pj-status-words');
   const loopPart = bar.querySelector('.pj-loop');
   const loopText = loopPart.querySelector('.pj-loop-text');
@@ -43,6 +44,7 @@ export function createDocBar(bar, { onPause, canPause }) {
   let total = null; // the doc's words, null when none are counted
 
   pause.addEventListener('click', () => onPause(!loop.paused));
+  loopPart.addEventListener('click', () => onGo());
 
   function paintLoop() {
     const working = agents.filter((a) => a.threadIds.length > 0);
@@ -67,6 +69,7 @@ export function createDocBar(bar, { onPause, canPause }) {
       text = loop.at - loop.from <= SOON_MS ? 'Looking soon' : `Next look in ${clock(loop.at - now)}`;
     }
     loopPart.dataset.state = state;
+    loopPart.disabled = state !== 'working';
     loopText.textContent = text;
     arc.style.strokeDashoffset = String(RING * (1 - filled));
     const label = loop.paused ? 'Resume the buddies' : 'Pause the buddies';

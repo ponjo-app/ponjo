@@ -381,7 +381,9 @@ function decorations(marks, toDoc) {
     const to = toDoc(mark.to);
     if (mark.kind === 'comment') {
       if (from < to) {
-        ranges.push(Decoration.mark({ class: mark.active ? 'pj-hl pj-hl-active' : 'pj-hl', attributes: { 'data-thread': mark.id } }).range(from, to));
+        // A buddy at work on it underlines it in its colour, deeper to read on the highlight (site/design.html).
+        const busy = mark.busy ? { style: `--buddy-line: ${buddyColor(mark.busy, -0.24)}` } : {};
+        ranges.push(Decoration.mark({ class: `pj-hl${mark.active ? ' pj-hl-active' : ''}${mark.busy ? ' pj-hl-busy' : ''}`, attributes: { 'data-thread': mark.id, ...busy } }).range(from, to));
       }
       continue;
     }
@@ -452,7 +454,7 @@ class Erased extends Removed {
   }
 }
 
-// A buddy's cursor (see cursorNode), drawn again once the buddy is renamed.
+// A person's cursor (see cursorNode), drawn again once they are renamed.
 class Cursor extends WidgetType {
   constructor(mark) {
     super();
