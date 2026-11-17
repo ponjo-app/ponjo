@@ -1019,8 +1019,16 @@ told it watches the doc, what changed since it last looked (from the doc
 as its last run started; on its first run since the app started, to read
 the doc), and its watch thread: the first thread on the whole doc it
 opens, where it comments and where its edits hang, each to undo on its
-own; resolved, it opens another. With nothing due it posts nothing.
-Unset, it starts no more runs, and one running ends with no answer. The
+own; resolved, it opens another. With nothing due it posts nothing. A
+person editing again while a run only its watch started is on ends that
+run with no answer, for it saw the doc as it was; it runs again once they
+pause. Its runs are timed by a clock that never goes back
+(\`performance.now()\`), so no pause is missed when the system's clock is
+set back. A watch run that fails shows on the buddy, for it may have no
+thread yet: its card says "Watch failed", why to the owner alone, and
+Retry; it also runs again the next time people pause, or once its agent
+or key changes. Unset, it starts no more runs, and one running ends with
+no answer. The
 watch is the host's, \`{ by, thread }\` noted with the doc's history on this
 machine and never in the sidecar, for nothing in a shared file makes a
 buddy run here; it runs as whoever set it may, while they may ask. Its
@@ -1968,7 +1976,10 @@ for a window), **e2e** (the packaged app, under xvfb on Linux).
   told what changed, saying nothing when nothing is due; set off, it runs
   no more. Only a person changes the watch: it outlives its thread
   resolved (it opens another) and a restart (no run on opening); it is
-  never in the sidecar, and its runs say \`watched\` in the log.
+  never in the sidecar, and its runs say \`watched\` in the log. A watch run
+  is ended when a person types again, with no answer, and runs again once
+  they pause. A watch run that fails, before its buddy has a thread, shows
+  on the buddy, why to the owner alone, and Retry runs it again.
 - Exit non-zero, or a run the host cannot start: nothing is written to the
   sidecar; the buddy's status says the thread failed, with why for the
   owner alone; it is not run again on its own, but on Retry, a new comment
@@ -2195,7 +2206,10 @@ AI buddies.
    write, a proofreader) can watch the doc instead: turn on **Watch this
    doc** in its card. It looks at once, then each time you pause, and
    comments in a thread of its own on the whole doc; it wears glasses
-   while it watches, and stops only when you turn it off.
+   while it watches, and stops only when you turn it off. If you start
+   typing again while it works, it stops and looks again at your next
+   pause. If a run fails, its card says "Watch failed", with why and
+   **Retry**.
 5. **Anyone allowed decides.** Keep an edit, undo it from the comment it
    came with, reply again, or resolve the thread, whoever asked and
    whoever answered.

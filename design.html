@@ -6,8 +6,8 @@
   <title>Ponjo Design System</title>
   <!-- A live specimen: the app's own stylesheet and classes, so this page is
        always what the app looks like. Run `npm run build` to view it locally. -->
-  <link rel="stylesheet" href="./dist/web/app.css?v=c14a99d">
-  <link rel="stylesheet" href="site.css?v=c14a99d">
+  <link rel="stylesheet" href="./dist/web/app.css?v=fd688e1">
+  <link rel="stylesheet" href="site.css?v=fd688e1">
   <link rel="icon" href="./build/icon.svg" type="image/svg+xml">
 </head>
 <body>
@@ -201,7 +201,7 @@
   <h3>Team panel</h3>
   <p>The Team button opens an <code>.pj-panel</code>, 360px: a head with its title and, for the owner of a project, Open room, the panel's one primary button, while no room is open; once one is, Copy link, Lock (or Unlock) and Close room (secondary, Close room red). Then <code>.pj-people-row</code>s in groups headed <code>.pj-setting-group</code>: you, Players (Players · locked while locked), AI buddies, ending with New AI buddy. A player's row says Can read or Can edit, greyed while away; its card has Read or Edit (a <code>.pj-segmented</code>) and Kick (secondary, red). A player's page in a browser first asks their name in a card in the middle of the page; a page turned away shows only why, in that card.</p>
   <h3>A buddy's card</h3>
-  <p>A face in the header, or a buddy's name, opens its card, an <code>.pj-panel</code>: its face at 44px, its name, and under it where it stands, 12px <code>--text-faint</code> ("Working…", "Watching this doc", "In all your docs"); then who it is, a field; then, for whoever may ask it, one <code>.pj-setting</code> row, "Watch this doc" and a <code>.pj-switch</code>, no hint: only a person turns it on or off; for the owner, Delete.</p>
+  <p>A face in the header, or a buddy's name, opens its card, an <code>.pj-panel</code>: its face at 44px, its name, and under it where it stands, 12px <code>--text-faint</code> ("Working…", "Watching this doc", "In all your docs"); then who it is, a field; then, for whoever may ask it, one <code>.pj-setting</code> row, "Watch this doc" and a <code>.pj-switch</code>, no hint: only a person turns it on or off; when its last run while watching failed, a <code>.pj-profile-problem</code> under it, "Its last run while watching failed.", the program's output for the owner in <code>.pj-profile-why</code> (12px, its lines kept, scrolling past 8), and Retry, a <code>.pj-link-button</code>, for whoever may ask, its standing "Watch failed"; for the owner, Delete.</p>
   <h3>Status bar</h3>
   <p>The plain view runs edge to edge; while comments show beside it, a hairline <code>--border</code> on its right edge is where its text ends, lines that do not wrap scrolling inside it.</p>
   <p>Every doc has a status bar under the page: <code>.pj-statusbar</code>, 28px, 12px text in <code>--text-soft</code> on <code>--bg-soft</code>, a hairline <code>--border</code> on top, for everyone in the doc. On the left what the view says (the plain view: the caret's place and the selection's size); in the Markdown view, the doc's words, "1,234 words", or with a selection "56 of 1,234 words" (plain text and code count none). On the right, while a buddy's turn runs, <code>.pj-working</code>: a 14px ring, a short <code>--accent</code> arc spinning on a <code>--border-strong</code> track (still for reduced motion), and the text ("Clippy is working…", "Clippy and Ada are working…"); it is gone between turns. While no one works but a buddy watches the doc, <code>.pj-watching</code> in its place: the first watcher's face at 16px, in its glasses, and "Bob is watching" ("Bob and Ada are watching"). Then the view's own buttons: text buttons, 22px, grey on hover and ink on grey while pressed or open, and a menu above them in the <code>.pj-block-menu</code> style. Line numbers, whitespace marks (dots for spaces, arrows for tabs) are <code>--text-faint</code>; indent guides are <code>--border-strong</code>.</p>
@@ -248,6 +248,6 @@
   </div>
 
 </main>
-<script type="module" src="site.js?v=c14a99d"></script>
+<script type="module" src="site.js?v=fd688e1"></script>
 </body>
 </html>
