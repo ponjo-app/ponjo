@@ -45,8 +45,8 @@ function costOf(usage) {
  * The runs' usage (runs.jsonl's entries, each { at, usage?, watched? }) as
  * Settings > Usage shows it, by `now`: { periods: [{ label, ...totals }] for
  * today and the last 7 and 30 days, models: [{ model, ...totals }] for the
- * last 30 days, most costly first }, totals being { runs, watched (those a
- * thread a buddy watches started), input (all input tokens, cached or not),
+ * last 30 days, most costly first }, totals being { runs, watched (those of
+ * a buddy watching its doc), input (all input tokens, cached or not),
  * output, hit (the share of input read from the cache, or null), cost (of
  * the runs whose model has a price; null when none has) }.
  */
@@ -66,7 +66,7 @@ function totals(entries) {
   const costs = entries.map(({ usage }) => costOf(usage)).filter((cost) => cost !== null);
   return {
     runs: entries.length,
-    watched: entries.filter((entry) => entry.watched?.length).length,
+    watched: entries.filter((entry) => entry.watched).length,
     input,
     output: sum('output'),
     hit: input ? sum('cacheRead') / input : null,

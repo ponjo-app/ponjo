@@ -110,7 +110,6 @@ export function createCommentMargin(margin, handlers) {
       card.append(commentRow(comment, i === 0 && !thread.resolved ? resolveButton(thread) : null));
     });
 
-    card.append(...watchNotes(thread));
     if (thread.resolved) {
       const by = thread.comments.findLast((c) => c.resolved).by;
       const row = el('div', 'pj-resolved-row');
@@ -141,13 +140,8 @@ export function createCommentMargin(margin, handlers) {
       reply.append(...folded(latest, null));
       card.append(reply);
     }
-    card.append(...watchNotes(thread));
     return card;
   }
-
-  // Each buddy watching the thread, waiting for changes to the doc, and
-  // when it last looked (`thread.watching`, from the buddies' statuses).
-  const watchNotes = (thread) => (thread.watching ?? []).map(({ id, name, looked }) => el('div', 'pj-card-note', `${nameOf(id, name)} is waiting for changes to the doc · looked ${relativeTime(looked)}`));
 
   // A comment as a folded card shows it: its head, and its text unless it has none.
   function folded(comment, action) {

@@ -82,10 +82,12 @@ for a window), **e2e** (the packaged app, under xvfb on Linux).
   is not run again for it until someone writes there.
 - A look that cannot read the asks is tried again, later each time, with
   no event, and not again once one can.
-- A buddy that watches a thread runs again once people's edits pause 5 s,
-  not before, says nothing until it is due, and stops once it answers
-  without `watch` or the thread is resolved; the watch is never in the
-  sidecar, outlives a restart, and its runs say `watched` in the log.
+- A buddy a person sets watching looks at once and opens its watch thread
+  on the whole doc; then it runs once people's edits pause 5 s, not before,
+  told what changed, saying nothing when nothing is due; set off, it runs
+  no more. Only a person changes the watch: it outlives its thread
+  resolved (it opens another) and a restart (no run on opening); it is
+  never in the sidecar, and its runs say `watched` in the log.
 - Exit non-zero, or a run the host cannot start: nothing is written to the
   sidecar; the buddy's status says the thread failed, with why for the
   owner alone; it is not run again on its own, but on Retry, a new comment

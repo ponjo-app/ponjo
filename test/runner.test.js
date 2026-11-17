@@ -339,52 +339,61 @@ test('a buddy\'s new comment is anchored on the text it quoted, though a person 
   });
 });
 
-test('a buddy that watches a thread runs again once people\'s edits pause, says nothing until it is due, then stops watching; its watch is the host\'s, never the comments\' file', { timeout: 60_000 }, async () => {
+test('a buddy a person sets watching looks at once and opens its watch thread, then runs each time people\'s edits pause, saying nothing when nothing is due; set off, it stops', { timeout: 60_000 }, async () => {
   await withDoc(async ({ docPath, settingsDir, call, edit, state, runs }) => {
-    const id = await comment(call, '@Clippy watch until "ten" replace "extra load" with "extra peak load"');
-    const [waiting] = await until(async () => (await repliesIn(state, id)).length === 1 && repliesIn(state, id), 'its reply');
-    assert.equal(waiting.body, 'Waiting.');
-    const watching = async () => (await state()).agents.find((a) => a.name === 'Clippy').watching.map((w) => w.thread);
-    assert.deepEqual(await watching(), [id]);
-    assert.doesNotMatch(await readFile(`${docPath}.comments.jsonl`, 'utf8'), /"watch"/, 'not in the comments\' file');
+    const watching = async () => (await state()).agents.find((a) => a.name === 'Clippy').watching;
+    await assert.rejects(call('watch', { buddy: 'Nobody', on: true }), { code: 'not_found' });
+    await call('watch', { buddy: 'Clippy', on: true });
+    assert.equal(await watching(), true);
+    await until(async () => (await runs()).length === 1, 'a run at once');
+    assert.match((await runs())[0].prompt, /You watch this doc: .* You have no watch thread yet/);
+    const opened = async () => (await state()).threads.find((t) => !t.anchor && t.comments[0].by.name === 'Clippy');
+    const thread = await until(opened, 'its watch thread, on the whole doc');
+    assert.equal(thread.comments[0].body, 'Watching.');
+    assert.doesNotMatch(await readFile(`${docPath}.comments.jsonl`, 'utf8'), /watch/, 'nothing of the watch in the comments\' file');
+    await until(async () => (await state()).agents.find((a) => a.name === 'Clippy').state === 'ready', 'that run to end');
 
-    await edit(`${(await state()).text}\nNine.\n`);
+    await edit(`${(await state()).text}\nOne.\n`);
     await sleep(2000);
     assert.equal((await runs()).length, 1, 'not while the edits may go on');
-    await until(async () => (await runs()).length === 2, 'the run once they pause', 10_000);
-    assert.match((await runs())[1].prompt, /You watch it, and members have changed the doc since you last looked\./);
-    await until(async () => (await state()).agents.find((a) => a.name === 'Clippy').state === 'ready', 'that run to end');
-    assert.equal((await repliesIn(state, id)).length, 1, 'not due yet: it said nothing');
-    assert.deepEqual(await watching(), [id], 'and goes on watching');
+    await until(async () => (await runs()).length === 2, 'a run once they pause', 10_000);
+    assert.match((await runs())[1].prompt, new RegExp(`Your watch thread is Thread ${thread.id}: comment there\\.`));
+    assert.match((await runs())[1].prompt, /^\+One\.$/m, 'what changed since it last looked');
+    await until(async () => (await opened()).comments.at(-1).body === 'Saw 2 new lines.', 'its comment there: the blank line and One.');
 
-    await edit(`${(await state()).text}Nine, ten.\n`);
-    await until(async () => (await repliesIn(state, id)).length === 2, 'its answer once it is due', 15_000);
-    assert.match((await state()).text, /extra peak load/);
-    assert.deepEqual(await watching(), [], 'answered without watch: it stops');
-    await edit(`${(await state()).text}Eleven.\n`);
+    await edit(`${(await state()).text}A quiet line.\n`);
+    await until(async () => (await runs()).length === 3, 'a run once they pause', 10_000);
+    await until(async () => (await state()).agents.find((a) => a.name === 'Clippy').state === 'ready', 'that run to end');
+    assert.equal((await opened()).comments.length, 2, 'nothing due: nothing said');
+
+    await call('watch', { buddy: 'Clippy', on: false });
+    assert.equal(await watching(), false);
+    await edit(`${(await state()).text}Two.\n`);
     await sleep(6500);
-    assert.equal((await runs()).length, 3, 'no run once it stopped watching');
-    assert.deepEqual((await runLog(settingsDir)).map((l) => l.watched ?? null), [null, [id], [id]], 'the runs its watch started, in the log');
+    assert.equal((await runs()).length, 3, 'no run once set off');
+    assert.deepEqual((await runLog(settingsDir)).map((l) => l.watched ?? false), [true, true, true]);
   });
 });
 
-test('a watch outlives a restart, and ends once a person resolves its thread', { timeout: 60_000 }, async () => {
+test('only a person changes a watch: it outlives its thread resolved, a new one opened, and a restart, with no run on opening', { timeout: 60_000 }, async () => {
   await withDoc(async ({ call, edit, state, runs, restart }) => {
-    const id = await comment(call, '@Clippy watch until "ten" replace "extra load" with "extra peak load"');
-    await until(async () => (await repliesIn(state, id)).length === 1, 'its reply');
+    await call('watch', { buddy: 'Clippy', on: true });
+    const first = await until(async () => (await state()).threads.find((t) => !t.anchor && t.comments[0].by.name === 'Clippy'), 'its watch thread');
     await until(async () => (await state()).agents.find((a) => a.name === 'Clippy').state === 'ready', 'its run to end');
-    await restart();
-    assert.deepEqual((await state()).agents.find((a) => a.name === 'Clippy').watching.map((w) => w.thread), [id], 'noted on the host');
-    await edit(`${(await state()).text}\nNine, ten.\n`);
-    await until(async () => (await repliesIn(state, id)).length === 2, 'its answer after the restart', 15_000);
+    await call('comment', { thread: first.id, body: '', resolved: true });
+    await edit(`${(await state()).text}\nOne.\n`);
+    await until(async () => (await runs()).length === 2, 'a run once the edits pause', 10_000);
+    assert.match((await runs())[1].prompt, /You have no watch thread yet/, 'its thread resolved, it starts another');
+    await until(async () => (await state()).threads.filter((t) => !t.anchor && t.comments[0].by.name === 'Clippy').length === 2, 'a second watch thread');
+    await until(async () => (await state()).agents.find((a) => a.name === 'Clippy').state === 'ready', 'that run to end');
 
-    const other = await comment(call, '@Clippy watch until "twelve"');
-    await until(async () => (await repliesIn(state, other)).length === 1, 'its reply');
-    await call('comment', { thread: other, body: '', resolved: true });
-    await edit(`${(await state()).text}Twelve, twelve.\n`);
-    await sleep(6500);
-    assert.equal((await runs()).length, 3, 'no run in a resolved thread');
-    assert.deepEqual((await state()).agents.find((a) => a.name === 'Clippy').watching, []);
+    await restart();
+    assert.equal((await state()).agents.find((a) => a.name === 'Clippy').watching, true, 'noted on this machine');
+    await sleep(1500);
+    assert.equal((await runs()).length, 2, 'no run on opening');
+    await edit(`${(await state()).text}Two.\n`);
+    await until(async () => (await runs()).length === 3, 'a run once the edits pause', 10_000);
+    assert.match((await runs())[2].prompt, /This is your first look since the app started/);
   });
 });
 

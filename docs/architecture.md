@@ -40,9 +40,10 @@ with a way to fix it.
 5. **AI buddies always edit, and every edit can be undone.** See
    [Undoing changes](#undoing-changes).
 6. **Only a person starts a turn:** a comment, mine or a player's who can
-   edit, which the buddy's reply answers; or, in a thread the buddy said it
-   watches, their edits to the doc. Nothing in a shared file makes an AI buddy run, or chooses what
-   program runs, on this machine.
+   edit, which the buddy's reply answers; or, for a buddy a person set
+   watching the doc, that setting and people's edits. Nothing in a shared
+   file makes an AI buddy run, or chooses what program runs, on this
+   machine.
 7. **One component does one thing.** If it takes two sentences to say what
    a component does, it is two components.
 8. **The fewest interfaces.** A new call is the last resort: first reuse one
@@ -358,7 +359,7 @@ others put in; its result is your typing, merged by character.
 | Store | read, write, watch and move files | `read(path)`, `write(path, text, { ifHash })`, `watch(path, fn)`, `move(from, to)`. Settings, buddies, agent scripts and history are paths and parsers over these, not interfaces of their own |
 | DocService | order every edit to a doc, and write it | `state({ since? })` → text, `{ epoch, rev }`, the `events` missed since, and what this connection may do; `submit({ ops, epoch, rev, id })` → `{ rev }`, or `stale`, or `not_saved`; `comment({ thread?, anchor?, body, resolved? })`; `undo({ id, from? })`, a version (or the versions from `from` to it) undone as above, a turn's from its reply; `cursor({ at, epoch, rev })`; `move(to)`; events `ops` (every landed edit, written), `saved` (`{ error }`: why the file does not hold them, or null), `sidecar`, `room`, `cursors`, `missing`; a window that connects again catches up with `state`. Cursors are never queued behind writes: each is kept at the last rev windows were told of, and moved with every edit told |
 | History | keep the doc as it was at each version | `record`, `list`, `read`; a version may have several authors |
-| Runner | make the running turns equal the asks the sidecar holds | `reconcile()`, `statuses()`. Each time the asks may have changed (a comment, the doc opening, a turn ending, people's edits pausing while a buddy watches a thread), it runs each buddy asked, one turn at a time, with every thread that asks it and it has not answered or that it watches; never on a clock. The asks are people's comments: the owner's and those of players who can edit. A finished turn comes through the door as its buddy, then is logged with its trace |
+| Runner | make the running turns equal the asks the sidecar holds | `reconcile()`, `statuses()`. Each time the asks may have changed (a comment, the doc opening, a turn ending, a watch set on, people's edits pausing while a buddy watches), it runs each buddy asked or watching, one turn at a time, with every thread that asks it and it has not answered; never on a clock. The asks are people's comments: the owner's and those of players who can edit. A finished turn comes through the door as its buddy, then is logged with its trace |
 | Room | who plays in the project's room and what each may do, while it is open | for the owner `open()`, `close()`, `lock(locked)`, `setLevel(id, level)` with `level` `read` or `write`, `kick(id)` and `list()` (`{ link, locked, players }`, or null while closed), at the door as `openRoom`, `closeRoom`, `lockRoom`, `setLevel`, `kick` and `room`; a page that opens the link joins as `join({ id, name })`; the host asks it a player's level on each call; event `room` to the owner's windows |
 | ProjectService | the project's files, the same for everyone | `list(path)`, `read(path)`, `open(path)`, for the owner's windows and a teammate's page alike. A path must resolve inside the root and not start with `.`. An agent reads no more than this |
 | Config | own the settings, buddies and agents | `settings.get/patch`, `buddies.save/remove`, `scripts.list/reset` |
@@ -366,7 +367,7 @@ others put in; its result is your typing, merged by character.
 | Shell | windows, menus, dialogs, recent docs | an open doc's files only through `DocService` (renaming through `DocService.move`), the sidebar through ProjectService (a folder window with no doc: the folder's own, `list`, `read` and `open` only); the settings and agent scripts through Store and Config |
 | Agent | edit its copy, append its comments to its sidecar | none: it cannot call anything |
 
-The page's calls: `state`, `submit`, `comment`, `retry`, `undo`, `cursor`, `history`,
+The page's calls: `state`, `submit`, `comment`, `retry`, `watch`, `undo`, `cursor`, `history`,
 `version`, ProjectService's three, and for the owner settings, buddies,
 agent scripts and Room. `reply`, `resolve`, `reopen`, `saveDoc` and
 `restoreVersion` go: a reply, a resolve and a reopen are each `comment`; a
@@ -461,7 +462,7 @@ written only by the app.
 | `agents/` | agents: each a program and its manifest ([agent config](agent-config.md#agents)); Claude Code, Codex and the Ponjo agent ship |
 | `secrets.bin` | the agents' secret settings, such as API keys, encrypted with the system keychain |
 | `state.json` | recent docs and folders, window bounds |
-| `history/` | versions of each doc, saved each time typing pauses, before and after each buddy edit (tagged with the id of the comment it came with), before each outside change, undo and restore; and the windows' edits the doc's file was last written with; the comments this host took; the threads its buddies watch |
+| `history/` | versions of each doc, saved each time typing pauses, before and after each buddy edit (tagged with the id of the comment it came with), before each outside change, undo and restore; and the windows' edits the doc's file was last written with; the comments this host took |
 | `logs/` | `runs.jsonl`, a line per turn; with Trace runs on, `traces/`, each turn's trace ([a buddy's turn](#a-buddys-turn)) |
 
 ## A buddy's turn
@@ -534,24 +535,29 @@ event may come to try it. A comment a turn was given asks no more,
 though the turn posted nothing there; after a restart it asks again. So a
 buddy costs a turn per comment that asks it, and nothing while people
 write or the doc sits open. What a comment asks that cannot be done yet
-("once I've finished this section"), the buddy says so, and waits for a
-person to ask again or watches the thread (below): the app keeps no clock.
-A buddy's face, and the doc's status bar under the page in every view
-("Clippy is working…"), show its turns.
+("once I've finished this section"), the buddy says so, and it waits for a
+person to ask again: the app keeps no clock. A buddy's face, and the doc's
+status bar under the page in every view ("Clippy is working…"), show its
+turns.
 
-A buddy may wait on people instead: when what it does next depends on
-them changing the doc (their move in a game, a section they are writing),
-its reply says `watch` ([agent config](agent-config.md#comments)). Then
-people's edits to the doc, anywhere, once they pause for 5 s, run it again
-with that thread, and only that: a buddy's edit never does, so no buddy
-wakes itself or another. With nothing due yet it posts nothing and goes on
-watching; it stops once a comment of its own there has no `watch`, its run
-fails, or a person resolves the thread. The watch is the host's, kept with
-the doc's history on this machine and never in the sidecar, for nothing
-in a shared file makes a buddy run here. The thread says so ("Clippy is
-waiting for changes to the doc · looked just now"), and Settings > Usage
-counts the runs a watch started. It is how a buddy follows a dependency on
-people, and still not a clock: nothing runs while no one edits.
+A buddy can also watch a doc, for a buddy whose part is to follow what
+people write (one that chats as you write, a proofreader), its persona
+saying what to do. Only a person sets it, in the buddy's card ("Watch this
+doc"), and only a person unsets it: nothing the buddy or the app does
+changes it. Setting it is an event: the buddy looks at once. Then people's
+edits to the doc, anywhere, once they pause for 5 s, run it again; a
+buddy's edit never does, so no buddy wakes itself or another. Each run is
+told it watches the doc, what changed since it last looked (from the doc
+as its last run started; on its first run since the app started, to read
+the doc), and its watch thread: the first thread on the whole doc it
+opens, where it comments and where its edits hang, each to undo on its
+own; resolved, it opens another. With nothing due it posts nothing.
+Unset, it starts no more runs, and one running ends with no answer. The
+watch is the host's, `{ by, thread }` noted with the doc's history on this
+machine and never in the sidecar, for nothing in a shared file makes a
+buddy run here; it runs as whoever set it may, while they may ask. Its
+face wears glasses meanwhile, and the status bar says "Bob is watching"
+while no one works; Settings > Usage counts its runs.
 
 An AI buddy comments as a member does: new threads and replies in any
 thread. It does not resolve: a line that would is ignored

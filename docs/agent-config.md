@@ -11,7 +11,7 @@ An agent is a filter ([architecture](architecture.md#a-run)):
 | | |
 | --- | --- |
 | Working folder | new and private; holds only copies of the doc and its sidecar, at the doc's path in the project (in doc mode, under their names) |
-| stdin | the prompt: who the buddy is and the rules, then, under `The situation now:`, what changes from run to run: every thread that asks the buddy and it has not answered, each by its id. It names files only by their paths in the project, never where a run keeps them: the script tells its agent that, if it needs to (see [Paths](#paths)) |
+| stdin | the prompt: who the buddy is and the rules, then, under `The situation now:`, what changes from run to run: every thread that asks the buddy and it has not answered, each by its id, and, for a buddy watching the doc, what it is to do, its watch thread and what changed in the doc since it last looked. It names files only by their paths in the project, never where a run keeps them: the script tells its agent that, if it needs to (see [Paths](#paths)) |
 | `PONJO_DOC` | the doc copy's path |
 | `PONJO_COMMENTS` | the sidecar copy's path |
 | `PONJO_PROJECT` | the project folder, to read only (see [Permissions](#permissions)); empty in doc mode |
@@ -60,14 +60,6 @@ app fills in `id`, `by` and `at`.
 - In a thread that asked it, its comments come just after the last comment
   the run was given, so one written while it worked is still to answer;
   elsewhere, after the thread's last comment.
-- `"watch":true` on a line says the buddy waits on its thread for people
-  to change the doc (their move, a section they write): the app runs it
-  again with that thread each time people's edits pause for 5 s, until a
-  comment of its own there has no `watch`, its run fails, or a person
-  resolves the thread. On such a run, with nothing due yet, it posts
-  nothing there and goes on watching. The app keeps the watch on its own
-  machine and never writes it into the sidecar: nothing in a shared file
-  makes a buddy run.
 - Only people resolve: a line's `resolved` is ignored. So is any other
   change to the copy: changed or removed lines, a thread not in the doc,
   lines that are not valid.

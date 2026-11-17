@@ -28,9 +28,10 @@ const NAME_RULE = 'Letters, digits, dot, dash or underscore, starting with a let
 /**
  * @param {{ root: HTMLElement, invite: HTMLElement, panel: HTMLElement, me: HTMLElement, getName: () => string, getId?: () => string | null,
  *           setName: (name: string) => boolean, getAbout: () => string, setAbout: (about: string) => void,
- *           owner?: () => boolean, onResult: (result: { agents? }) => void }} options
+ *           owner?: () => boolean, mayAsk?: () => boolean, onResult: (result: { agents? }) => void }} options
+ *   mayAsk: whether this window may ask buddies, and so turn a buddy's watch on or off.
  */
-export function createPeople({ root, invite, panel, me, getName, getId = () => null, setName, getAbout, setAbout, owner = () => true, onResult }) {
+export function createPeople({ root, invite, panel, me, getName, getId = () => null, setName, getAbout, setAbout, owner = () => true, mayAsk = () => true, onResult }) {
   let statuses = []; // the buddies the doc reaches, who they are and which are at work (the doc host)
   let writers = []; // the people who commented: [{ id, name }]
   let room; // for the owner of a project, its room: null while closed (api.room)
@@ -466,6 +467,7 @@ export function createPeople({ root, invite, panel, me, getName, getId = () => n
     const status = statusOf(name);
     const parts = [cardHead(name)];
     if (status && !viewOnly) parts.push(aboutField(status));
+    if (status && !viewOnly && mayAsk()) parts.push(watchSwitch(status));
     if (status && !viewOnly && owner()) {
       const remove = el('button', 'pj-secondary pj-danger', 'Delete');
       remove.type = 'button';
@@ -496,6 +498,20 @@ export function createPeople({ root, invite, panel, me, getName, getId = () => n
     who.append(el('div', 'pj-profile-sub pj-profile-standing', status ? (STANDING[modeOf(status)] ?? WHERE[status.where]) : 'Not in this doc'));
     head.append(pic, who);
     return head;
+  }
+
+  // Whether `agent` watches this doc: only a person turns it on or off,
+  // here (src/host/doc-service.js, watch).
+  function watchSwitch(agent) {
+    const row = el('label', 'pj-setting');
+    const text = el('span', 'pj-setting-text');
+    text.append(el('span', 'pj-setting-label', 'Watch this doc'));
+    const toggle = el('input', 'pj-switch');
+    toggle.type = 'checkbox';
+    toggle.checked = agent.watching;
+    toggle.addEventListener('change', () => api.watch(agent.id, toggle.checked).catch(() => { toggle.checked = !toggle.checked; }));
+    row.append(text, toggle);
+    return row;
   }
 
   // Who `agent` is, all of it, to change right there: saved when the field
@@ -617,8 +633,8 @@ export function createPeople({ root, invite, panel, me, getName, getId = () => n
     if (nextHere) here = nextHere;
     const recoloured = setPeople([getName(), ...writers.map((p) => p.name), ...here.map((p) => p.name), ...(room?.players.map((p) => p.name) ?? [])]);
     paintFaces();
-    // Not while a field on the card is being typed in.
-    if (showing && showing !== 'me' && !panel.querySelector('input:focus, textarea:focus')) paintCard();
+    // Not while a field on the card is being typed in (a switch is no field).
+    if (showing && showing !== 'me' && !panel.querySelector('input:not([type="checkbox"]):focus, textarea:focus')) paintCard();
     return recoloured;
   }
 
@@ -691,12 +707,12 @@ export function createPeople({ root, invite, panel, me, getName, getId = () => n
 const FAILED_MS = 1000; // how long a failed run's moment plays (app.css: .pj-failed)
 
 // Where a buddy stands in this doc, on its card under its name.
-const STANDING = { working: 'Working…', away: 'Not running here' };
+const STANDING = { working: 'Working…', watching: 'Watching this doc', away: 'Not running here' };
 const WHERE = { user: 'In all your docs', project: "This project's" };
 
-const LABELS = { working: 'Working…', idle: 'Ready', away: 'Not here' };
+const LABELS = { working: 'Working…', watching: 'Watching', idle: 'Ready', away: 'Not here' };
 const PERSON = { working: 'Working…', idle: 'In this doc', away: 'Away' };
-const RANK = { working: 0, idle: 1, away: 2 }; // the queue's order
+const RANK = { working: 0, watching: 1, idle: 1, away: 2 }; // the queue's order
 
 /** How long a person is at work after they move or type: while their cursor is named. */
 export const WORKING_MS = 3000;
@@ -704,10 +720,11 @@ export const WORKING_MS = 3000;
 // What a player may do, under their name.
 const LEVEL = { read: 'Can read', write: 'Can edit' };
 
-/** 'working', 'idle' (answers when @mentioned), or 'away' (no status: not run here). */
+/** 'working', 'watching' (it watches the doc), 'idle' (answers when @mentioned), or 'away' (no status: not run here). */
 export function modeOf(status) {
   if (!status) return 'away';
-  return status.state === 'running' ? 'working' : 'idle';
+  if (status.state === 'running') return 'working';
+  return status.watching ? 'watching' : 'idle';
 }
 
 // A small icon-only button, labelled for screen readers and on hover.

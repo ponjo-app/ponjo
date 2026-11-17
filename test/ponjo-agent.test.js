@@ -85,21 +85,21 @@ test('a turn reads the doc by line number and comments, a comment\'s edits with 
   assert.deepEqual(results(infer.messages).slice(1), ['Posted when your turn ends, on the whole doc.', 'Posted when your turn ends, on line 8, with its edit, applied now: read the doc to see them.', '8\tThe main risk is that the `sync` service cannot handle the extra peak load.'], 'a read after a comment sees its edits');
 });
 
-test('a turn replies in another thread by the id the comments file gives, each comment\'s edits its own group, and may watch it', async () => {
+test('a turn replies in another thread by the id the comments file gives, each comment\'s edits its own group', async () => {
   const { doc, sidecar } = await copies();
   const other = { id: 'c_other1', by: { id: 'u_1', name: 'Ann', kind: 'human' }, at: '2026-11-16T09:00:00.000Z', body: 'Is week one too soon?' };
   await writeFile(sidecar, `${HEADER}${JSON.stringify(other)}\n`);
   const two = SAMPLE.replace('week one', 'week two');
   const both = two.replace('extra load', 'extra peak load');
   const infer = fake(
-    calling(['comment', { thread: 'c_other1', body: 'Yes: week two.', edits: [{ old: 'week one', new: 'week two' }] }], ['comment', { thread: 'c_other1', body: 'And the peak.', edits: [{ old: 'extra load', new: 'extra peak load' }], watch: true }]),
+    calling(['comment', { thread: 'c_other1', body: 'Yes: week two.', edits: [{ old: 'week one', new: 'week two' }] }], ['comment', { thread: 'c_other1', body: 'And the peak.', edits: [{ old: 'extra load', new: 'extra peak load' }] }]),
     DONE,
   );
   const done = await turn({ prompt: 'p', doc, sidecar }, { infer, readFile: seen({ doc, sidecar }) });
-  assert.equal(done.sidecar, `${HEADER}${JSON.stringify(other)}\n${JSON.stringify({ thread: 'c_other1', body: 'Yes: week two.' })}\n${JSON.stringify({ thread: 'c_other1', body: 'And the peak.', watch: true })}\n`);
+  assert.equal(done.sidecar, `${HEADER}${JSON.stringify(other)}\n${JSON.stringify({ thread: 'c_other1', body: 'Yes: week two.' })}\n${JSON.stringify({ thread: 'c_other1', body: 'And the peak.' })}\n`);
   assert.deepEqual(done.groups, [{ comment: 0, doc: two }, { comment: 1, doc: both }], 'each after the ones before it');
   assert.equal(done.doc, both);
-  assert.deepEqual(results(infer.messages), ['Posted when your turn ends, as a reply in c_other1, with its edit, applied now: read the doc to see them.', 'Posted when your turn ends, as a reply in c_other1, with its edit, applied now: read the doc to see them; you watch its thread.']);
+  assert.deepEqual(results(infer.messages), ['Posted when your turn ends, as a reply in c_other1, with its edit, applied now: read the doc to see them.', 'Posted when your turn ends, as a reply in c_other1, with its edit, applied now: read the doc to see them.']);
 });
 
 test('the prompt\'s situation comes after the doc, apart: the rules and the doc are one message, marked to cache', async () => {
@@ -127,8 +127,7 @@ test('a bad comment goes back saying what to fix, nothing of it changed', async 
     ['comment', on([{ old: 'week one' }]), /^Not posted, and nothing changed\. Edit 1: old and new must be strings/],
     ['comment', on('week two'), /^Not posted: comment takes/],
     ['comment', { on: 'the', body: 'Which?' }, /^Not posted, and nothing changed: on is in the doc more than once/],
-    ['comment', { on: '', body: ' ' }, /^Not posted: comment takes \{ on, body, edits, watch \} for a new thread or \{ thread, body, edits, watch \} for a reply, body not empty/],
-    ['comment', { on: '', body: 'Watch.', watch: 'yes' }, /^Not posted: comment takes .* watch true or left out/],
+    ['comment', { on: '', body: ' ' }, /^Not posted: comment takes \{ on, body, edits \} for a new thread or \{ thread, body, edits \} for a reply, body not empty/],
     ['comment', { body: 'No on.' }, /^Not posted: comment takes/],
     ['comment', { on: '', thread: 'c_asked', body: 'Both.' }, /^Not posted: comment takes/],
     ['comment', { thread: 'c_nothere', body: 'Lost.' }, /^Not posted: no thread c_nothere/],
@@ -381,7 +380,7 @@ test('Anthropic: the Messages API, cached up to the last message, the model\'s c
     assert.equal(first.headers['anthropic-version'], '2023-06-01');
     const { tools, messages, ...rest } = second.body;
     assert.deepEqual(rest, { model: 'claude-opus-5-5', max_tokens: 16_000, output_config: { effort: 'low' }, tool_choice: { type: 'auto' } }, 'no thinking setting: the model thinks as it needs');
-    assert.deepEqual(tools.map((t) => [t.name, Object.keys(t.input_schema.properties).join(), t.cache_control]), [['read', 'path,lines', undefined], ['find', 'pattern,path', undefined], ['grep', 'pattern,path', undefined], ['comment', 'thread,on,body,edits,watch', undefined]]);
+    assert.deepEqual(tools.map((t) => [t.name, Object.keys(t.input_schema.properties).join(), t.cache_control]), [['read', 'path,lines', undefined], ['find', 'pattern,path', undefined], ['grep', 'pattern,path', undefined], ['comment', 'thread,on,body,edits', undefined]]);
     assert.deepEqual(messages, [
       { role: 'user', content: [{ type: 'text', text: opening(doc, 'the prompt'), cache_control: { type: 'ephemeral' } }] },
       { role: 'assistant', content: [thinking, { type: 'tool_use', id: 'toolu_1', name: 'read', input: { path: doc, lines: [1, 1] } }] },

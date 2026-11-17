@@ -127,7 +127,8 @@ let rev = 0;
 
 const running = new Map(); // buddy id → thread ids
 const failures = new Map(); // buddy id → Map(thread id → { at, why }): a failed run posts nothing, as in the app
-const agents = () => buddies().map((b) => ({ ...b, state: running.has(b.id) ? 'running' : 'ready', threadIds: running.get(b.id) ?? [], failed: [...(failures.get(b.id) ?? [])].map(([thread, f]) => ({ thread, ...f })) }));
+const watching = new Set(); // the buddies a person turned watch on for: shown, never run here (the preview runs only on comments)
+const agents = () => buddies().map((b) => ({ ...b, state: running.has(b.id) ? 'running' : 'ready', threadIds: running.get(b.id) ?? [], failed: [...(failures.get(b.id) ?? [])].map(([thread, f]) => ({ thread, ...f })), watching: watching.has(b.id) }));
 
 function view() {
   const text = s.files[current];
@@ -269,6 +270,12 @@ const calls = {
     return { rev };
   },
   comment: ({ thread, anchor, body, resolved }) => add({ thread, anchor, body, resolved }),
+  watch({ buddy, on }) {
+    if (on) watching.add(buddy);
+    else watching.delete(buddy);
+    emit('agents', agents());
+    return {};
+  },
   retry({ buddy }) {
     failures.delete(buddy);
     setTimeout(answer);

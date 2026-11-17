@@ -30,14 +30,14 @@ async function ask(call, state, body) {
 const BY = { id: 'Clippy', name: 'Clippy', kind: 'ai' };
 const AT = '2026-10-17T10:00:00.000Z';
 
-test('appended lines are comments, each with its place among them and whether it watches its thread; changed lines, unknown threads, bad lines and resolving are not', () => {
+test('appended lines are comments, each with its place among them; changed lines, unknown threads, bad lines and resolving are not', () => {
   const before = '{"comments":3}\n{"id":"c_first01","by":{"id":"u_1","name":"fzhan","kind":"human"},"at":"2026-10-17T09:00:00Z","body":"Hi"}\n';
   const after = before.replace('"Hi"', '"Changed"') + [
     '{"anchor":{"exact":"beta cohort"},"body":"Who is in it?"}',
     '{"anchor":{"exact":"gather\\nfeedback"},"body":"From whom?"}',
     '{"anchor":{"exact":"the"},"body":"Everywhere."}',
     '{"body":"Fine overall."}',
-    '{"thread":"c_first01","body":"Agreed.","resolved":true,"watch":true}',
+    '{"thread":"c_first01","body":"Agreed.","resolved":true}',
     '{"thread":"c_first01","resolved":true}',
     '{"thread":"c_nothere","body":"Lost."}',
     '{"body":"  "}',
@@ -45,7 +45,6 @@ test('appended lines are comments, each with its place among them and whether it
   ].join('\n') + '\n';
   const text = 'We gather feedback from the beta cohort before the release.';
   const added = appendedComments(before, after, { text, by: BY, at: AT, threads: new Set(['c_first01']) });
-  assert.deepEqual(added.map(({ watch }) => watch), [false, false, false, false, true], 'watch, never in the comment');
   assert.deepEqual(added.map(({ line, comment: { id, ...c } }) => [line, c]), [
     [1, { by: BY, at: AT, body: 'Who is in it?', anchor: { exact: 'beta cohort', prefix: 'We gather feedback from the ', suffix: ' before the release.', start: 28 } }],
     [2, { by: BY, at: AT, body: 'From whom?', anchor: { exact: 'gather feedback', prefix: 'We ', suffix: ' from the beta cohort before the', start: 3 } }],

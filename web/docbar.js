@@ -1,7 +1,10 @@
 // The doc's status bar, under the page for every view: on the left what the
 // view says (the plain view's caret place) and the doc's word count, on the
-// right which buddies are at work, then the view's own buttons. The view
+// right which buddies are at work, or else which watch the doc, then the
+// view's own buttons. The view
 // fills its parts in (web/views/plain/status.js).
+
+import { avatar } from './threads.js';
 
 const words = new Intl.Segmenter(undefined, { granularity: 'word' });
 
@@ -18,12 +21,13 @@ const listed = (names) => (names.length > 1 ? `${names.slice(0, -1).join(', ')} 
  * The bar `bar` (index.html's `.pj-docbar`). `setWords(text, selection)`
  * counts the doc's words, and the selection's ({ from, to }) when there is
  * one, or with `text` null shows none (a view of code or plain text);
- * `setAgents(statuses)` shows the buddies at work.
+ * `setAgents(statuses)` shows the buddies at work, or else those watching.
  */
 export function createDocBar(bar) {
   const count = bar.querySelector('.pj-status-words');
   const workingPart = bar.querySelector('.pj-working');
   const workingText = workingPart.querySelector('.pj-working-text');
+  const watchingPart = bar.querySelector('.pj-watching');
   let total = null; // the doc's words, null when none are counted
 
   return {
@@ -41,8 +45,12 @@ export function createDocBar(bar) {
     },
     setAgents(agents) {
       const working = (agents ?? []).filter((a) => a.threadIds.length > 0);
+      const watching = (agents ?? []).filter((a) => a.watching);
       workingPart.hidden = working.length === 0;
       workingText.textContent = working.length ? `${listed(working.map((a) => a.name))} ${working.length === 1 ? 'is' : 'are'} working…` : '';
+      watchingPart.hidden = working.length > 0 || watching.length === 0;
+      watchingPart.replaceChildren(...watching.slice(0, 1).map((a) => avatar(a.name, 'agent', true, a.id)), `${listed(watching.map((a) => a.name))} ${watching.length === 1 ? 'is' : 'are'} watching`);
+      watchingPart.dataset.presence = 'watching';
     },
   };
 }

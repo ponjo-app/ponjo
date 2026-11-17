@@ -235,9 +235,9 @@ function outline(points) {
 // Only features that still tell apart at 18px.
 const EYES = ['dot', 'big', 'happy', 'sleepy', 'squint'];
 const MOUTHS = ['smile', 'grin', 'o', 'flat', 'cat'];
-const EXTRAS = [null, 'blush', 'glasses'];
-// Blush and glasses would crowd big eyes.
-const fits = (extra, eye) => eye !== 'big' || !['blush', 'glasses'].includes(extra);
+const EXTRAS = [null, 'blush'];
+// Blush would crowd big eyes.
+const fits = (extra, eye) => eye !== 'big' || extra !== 'blush';
 
 function drawFace(g, { eye, mouth, extra }, cy, hue) {
   const big = eye === 'big';
@@ -263,12 +263,14 @@ function drawFace(g, { eye, mouth, extra }, cy, hue) {
   }
   g.append(eyes, focused);
 
-  if (extra === 'glasses') {
-    const r = 9.5;
-    for (const side of [-1, 1]) extras.append(node('circle', { cx: f(50 + side * gap), cy: f(eyeY), r: f(r), fill: 'rgba(255,255,255,0.18)', stroke: INK, 'stroke-width': '3.2' }));
-    extras.append(stroke(`M${f(50 - gap + r)} ${f(eyeY)}Q50 ${f(eyeY - 3)} ${f(50 + gap - r)} ${f(eyeY)}`, 3.2));
-    g.append(extras);
-  }
+  // Glasses it wears while it watches the doc (app.css), and only then: no
+  // face wears glasses of its own. Round lenses on its eyes, apart, with a
+  // bridge over the nose.
+  const watch = node('g', { class: 'pj-face-watch' });
+  const half = Math.max(gap, 17);
+  for (const side of [-1, 1]) watch.append(node('circle', { cx: f(50 + side * half), cy: f(eyeY), r: '12.5', fill: 'rgba(255,255,255,0.28)', stroke: INK, 'stroke-width': '4.2' }));
+  watch.append(stroke(`M${f(50 - half + 12.5)} ${f(eyeY - 1.5)}Q50 ${f(eyeY - 7.5)} ${f(50 + half - 12.5)} ${f(eyeY - 1.5)}`, 4.2));
+  g.append(watch);
 
   drawMouth(g, mouth, 50, mouthY, hue);
 }
