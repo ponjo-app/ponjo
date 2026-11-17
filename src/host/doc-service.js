@@ -176,8 +176,8 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
     text = apply(text, ops);
     rev++;
     told.push(event);
+    changedAt.set(meta.by ?? null, performance.now());
     if (!meta.by) {
-      editedAt = performance.now();
       wakeOnPause();
       // A watcher's run on now saw the doc as it was: it ends, as looked,
       // and runs again once the edits pause.
@@ -185,7 +185,6 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
     } else {
       // A buddy's edit wakes each other buddy watching the doc, at once: it
       // lands whole, with no typing to wait out.
-      changedBy.set(meta.by, performance.now());
       if (watching.size) runner.reconcile();
     }
   }
@@ -517,10 +516,16 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
       const thread = w.thread !== null && open.has(w.thread) ? w.thread : null; // resolved or gone: it starts another
       if (thread !== null && !inbox.threads.some((t) => t.id === thread)) inbox.threads.push(open.get(thread));
       inbox.askers.add(w.by);
-      // People's pauses, and its watch turned on, are free; another buddy's
-      // change since it last looked takes a step (takeStep).
-      const byPeople = w.looked === null || (editedAt > w.looked && performance.now() - editedAt >= SETTLE_MS);
-      const byBuddy = [...changedBy].some(([other, at]) => other !== id && at > w.looked);
+      // Due on its watch turned on, or on another's change since it last
+      // looked: people's once they pause, free; a buddy's at once, for a
+      // step (takeStep).
+      let byPeople = w.looked === null;
+      let byBuddy = false;
+      for (const [by, at] of changedAt) {
+        if (by === id || at <= w.looked) continue;
+        if (by === null) byPeople ||= performance.now() - at >= SETTLE_MS;
+        else byBuddy = true;
+      }
       inbox.watch = { due: byPeople || byBuddy, paid: !byPeople && byBuddy, thread, changes: w.base === null ? null : lineChanges(w.base, text) };
       inboxes.set(id, inbox);
     }
@@ -557,11 +562,12 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
   // (watch); kept on this host (noteWatching), never in the sidecar. People's
   // edits since it looked, once they pause for SETTLE_MS, run each watcher.
   const watching = new Map(Object.entries(await readWatching(docPath, settingsDir)).map(([id, { by, thread }]) => [id, { by, thread: thread ?? null, looked: performance.now(), base: null, failed: null }]));
-  // When people last edited the doc (performance.now()): asks() reads it,
-  // and the time since, whenever it looks.
-  let editedAt = -Infinity;
-  // Look again once the edits pause: only a wake-up, for asks() tells a pause
-  // from editedAt, so a look at any time finds the same.
+  // Who last changed the doc, and when (performance.now()), noted as each
+  // change lands: a buddy by its id, people (and the doc changed outside)
+  // as null. asks() tells from it, against when each watcher last looked,
+  // whether it is due, so a look at any time finds the same.
+  const changedAt = new Map();
+  // Look again once people's edits pause: only a wake-up.
   let settling = null;
   function wakeOnPause() {
     if (!watching.size) return;
@@ -569,9 +575,6 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
     settling = setTimeout(() => runner.reconcile(), SETTLE_MS + 5);
     settling.unref?.();
   }
-  // When each buddy's edit last landed (performance.now()): one wakes each
-  // other buddy watching the doc.
-  const changedBy = new Map();
   // The steps the doc's buddies have to wake each other: up to `steps`
   // (settings), one more every `refillEvery` seconds (0: none), all on
   // Refill (refillSteps). A run woken by another buddy's change takes one;
