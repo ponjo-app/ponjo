@@ -227,14 +227,21 @@ export function createCommentMargin(margin, handlers) {
     const open = unfolded.has(comment.id);
     const body = el('div', `pj-body${open ? '' : ' pj-body-folded'}`);
     body.append(...withMentions(comment.body, handlers.mentionable?.() ?? [], handlers.files?.(), handlers.openFile));
-    if (comment.body.trim()) row.append(head, body, foldButton(comment.id, open));
+    // To retry, or to redo what was dropped, the human asks again. A failed run's output is
+    // whatever its program printed: folded, its first line showing.
+    if (comment.failed) row.append(head, el('div', 'pj-body', `The run failed. @mention ${shown} again to retry.`), output(comment.body));
+    else if (comment.body.trim()) row.append(head, body, foldButton(comment.id, open));
     else row.append(head);
-    // To retry, or to redo what was dropped, the human asks again.
-    if (comment.failed) row.append(el('div', 'pj-card-note pj-msg-note', `The run failed. @mention ${shown} again to retry.`));
     if (edits[comment.id]?.conflict) row.append(el('div', 'pj-card-note pj-msg-note', `People changed some of the same lines while it worked, twice, so its edit there was not applied. @mention ${shown} again to redo it.`));
     if (edits[comment.id]) row.append(receipt(comment.id, edits[comment.id]));
     row.classList.toggle('pj-msg-failed', Boolean(comment.failed));
     return row;
+  }
+
+  function output(text) {
+    const box = el('details', 'pj-output');
+    box.append(el('summary', '', `Output: ${text.trim().split('\n')[0]}`), el('pre', '', text.trim()));
+    return box;
   }
 
   // What a run did, as the app counted it, on the machine that ran it:

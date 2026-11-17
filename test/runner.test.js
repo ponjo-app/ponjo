@@ -425,6 +425,17 @@ test('a failed run says why once in each thread that asks it, not again until so
   });
 });
 
+test('a failed run says so only where a person waits for its answer, not in a thread it only keeps an eye on', { timeout: 30_000 }, async () => {
+  await withDoc(async ({ call, state }) => {
+    const answered = await comment(call, '@Clippy say Sure.');
+    await until(async () => (await repliesIn(state, answered)).length === 1, 'its answer');
+    const asked = await comment(call, '@Clippy fail');
+    await until(async () => (await repliesIn(state, asked)).length === 1, 'the failure');
+    await until(async () => (await state()).agents.find((a) => a.name === 'Clippy').state === 'ready', 'its run to end');
+    assert.deepEqual((await repliesIn(state, answered)).map((c) => c.body), ['Sure.'], 'nothing more where it had answered');
+  });
+});
+
 test('after a restart, an unanswered ask runs again', { timeout: 30_000 }, async () => {
   await withDoc(async ({ settingsDir, call, state, runs, release, restart }) => {
     const id = await comment(call, '@Clippy hold replace "extra load" with "extra peak load"');

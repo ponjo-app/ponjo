@@ -65,7 +65,7 @@ let me; // your name
 let myId; // your id, which your comments carry
 let comments; // the doc's threads, who wrote in them, and a notice about its sidecar (state())
 let client; // the doc in the doc host's order (web/client.js)
-let asking = null; // what the page asked the doc host to change (Undo, Redo, Restore), while it does
+let asking = null; // who asked the doc host for a change (an undo, a redo, a restore): you, by name, while it does it
 let docName; // the doc's file name
 let pendingSelection = null; // an anchor on the doc's text while a comment is written on it
 let activeId = null; // the selected thread
@@ -897,7 +897,7 @@ async function redoReply(id) {
 
 async function undoAs(what, version) {
   await client.landed();
-  asking = what;
+  asking = me;
   try {
     applyComments(await api.undo(version));
   } catch (error) {
@@ -974,7 +974,7 @@ function hideRun() {
 // you typed lands first, and the undo comes back as an edit from the doc host.
 async function undoVersions(id, from) {
   await client.landed();
-  asking = 'Undo';
+  asking = me;
   try {
     applyComments(await api.undo(id, from));
   } finally {
@@ -987,7 +987,7 @@ async function undoVersions(id, from) {
 // the doc host.
 async function restoreVersion(id) {
   await client.landed();
-  asking = 'Restore';
+  asking = me;
   try {
     await api.restoreVersion(id);
   } finally {
@@ -1025,7 +1025,8 @@ function paintMarks() {
     const found = where(text, anchor);
     if (found) marks.push({ kind: 'comment', id, from: found.start, to: found.end, active, busy: busy.get(id)?.id });
   };
-  for (const t of comments?.threads ?? []) {
+  // While a revision shows, it is all that is coloured: the comments' highlights make way.
+  for (const t of preview ? [] : comments?.threads ?? []) {
     if (t.anchor && !t.detached && !t.resolved) comment(t.id, t.anchor, t.id === activeId || t.id === hoverId);
   }
   if (pendingSelection) comment('draft', pendingSelection, true);

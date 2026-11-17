@@ -556,8 +556,8 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
   // comments come just after the last comment it saw, so one written while
   // it worked is after them, still to answer; elsewhere, after the latest.
   // Only people resolve: a line's `resolved` is ignored (appendedComments).
-  // A failed run says why in each thread that
-  // asked it, unless that thread already ends with its failure. The buddy
+  // A failed run says why in each thread that asked it where a person's
+  // comment waits for its answer (not one that ends with its failure). The buddy
   // acts with the level of whoever asked it, at most write, asked now: a
   // run one of whose askers was removed or set to Read meanwhile lands
   // nothing. Run in `serial`. Resolves to the ids of the comments it posted
@@ -574,8 +574,8 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
     let posts; // the comments to post, in order
     let carried = []; // [{ comment, doc (the doc after its edits) }], in order
     if (failed) {
-      const said = (id) => open.get(id).comments.at(-1);
-      posts = asking.filter((id) => !(said(id).by.id === buddyId && said(id).failed)).map((thread) => ({ ...newComment({ thread, body }, { by, at: '' }), failed: true }));
+      // Only where a person's comment waits for its answer: a thread it keeps an eye on hears nothing.
+      posts = asking.filter((id) => open.get(id).comments.at(-1).by.kind === 'human').map((thread) => ({ ...newComment({ thread, body }, { by, at: '' }), failed: true }));
     } else {
       const added = appendedComments(comments.before, comments.after, { text: edited, by, at: '', threads: new Set(threads.map((t) => t.id)) });
       posts = added.map((a) => a.comment);

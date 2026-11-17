@@ -192,7 +192,7 @@ async function run(id, threads) {
   const kept = (c) => c.thread === undefined || open.has(c.thread);
   const at = new Date().toISOString();
   if (failure) {
-    comments().push(...threads.filter((t) => open.has(t.id)).map((t) => ({ ...newComment({ thread: t.id, body: failure }, { by, at }), failed: true })));
+    comments().push(...threads.filter((t) => open.has(t.id) && t.comments.at(-1).by.kind === 'human').map((t) => ({ ...newComment({ thread: t.id, body: failure }, { by, at }), failed: true }))); // where a person waits for its answer
   } else {
     const added = appendedComments(copies[sidecar], texts.sidecar, { text: texts.doc, by, at, threads: new Set(comments().filter((c) => c.thread === undefined).map((c) => c.id)) });
     let prev = copies[doc];

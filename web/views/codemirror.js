@@ -389,7 +389,7 @@ function decorations(marks, toDoc) {
     }
     const { removed, by, replay } = mark;
     const className = (kind) => `${by ? (kind === 'ins' ? 'pj-buddy-edit' : 'pj-buddy-del') : `pj-mark-${kind}`}${replay ? ' pj-replay' : ''}`;
-    const style = by ? `--buddy: ${buddyColor(by)}` : '';
+    const style = by ? `--buddy: ${buddyColor(by)}; --buddy-line: ${buddyColor(by, -0.24)}` : '';
     if (removed) ranges.push(Decoration.widget({ widget: new Removed(removed, className('del'), style, replay), side: -1 }).range(from));
     if (from < to) ranges.push(Decoration.mark({ class: className('ins'), attributes: { style, 'data-replay': String(replay) } }).range(from, to));
   }
