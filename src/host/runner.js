@@ -23,6 +23,11 @@ const TAIL_LINES = 20;
 const RUN_TIMEOUT_MS = 30 * 60 * 1000; // no one can stop a run by hand: one that hangs fails
 const TEST_TIMEOUT_MS = 2 * 60 * 1000;
 const TEST_PROMPT = 'Ponjo is testing that you run. Edit no file and reply only: OK';
+// A look that could not read the asks (a sidecar locked or unreadable, a
+// buddy file gone as it was read) is tried again this long after, twice as
+// long each time, up to LOOK_AGAIN_MAX_MS: no event may come to try it.
+const LOOK_AGAIN_MS = 1000;
+const LOOK_AGAIN_MAX_MS = 30_000;
 
 export class Runner {
   /**
@@ -62,6 +67,7 @@ export class Runner {
     this.stopped = false;
     this.checking = null;
     this.again = false;
+    this.lookAgain = { ms: LOOK_AGAIN_MS, timer: null }; // after a look that could not read the asks
   }
 
   /** The buddies at work: [{ id, name, threadIds }]. */
@@ -75,7 +81,8 @@ export class Runner {
    * resolved, or a deleted buddy, and start a run for each buddy asked
    * without one. Call on any change of the sidecar, the buddies, the
    * settings or who may ask. One look at a time: one asked for meanwhile
-   * follows it.
+   * follows it. One that could not read the asks is tried again, later
+   * each time (LOOK_AGAIN_MS), until one can.
    */
   reconcile() {
     if (this.stopped) return Promise.resolve();
@@ -84,18 +91,29 @@ export class Runner {
       return this.checking;
     }
     this.checking = (async () => {
+      let read;
       do {
         this.again = false;
         for (const [id, run] of this.runs) if (run.over) this.runs.delete(id);
         try {
           const asked = await this.asks();
+          read = true;
           const wanted = new Set(asked.map((inbox) => inbox.buddy.id));
           for (const [id, run] of this.runs) if (!wanted.has(id) && !run.ended) this.#end(run);
           for (const inbox of asked) if (!this.runs.has(inbox.buddy.id) && !this.stopped) this.#start(inbox);
         } catch (error) {
+          read = false;
           console.error('Could not look for asks:', error);
         }
       } while (this.again && !this.stopped);
+      clearTimeout(this.lookAgain.timer);
+      if (read || this.stopped) {
+        this.lookAgain.ms = LOOK_AGAIN_MS;
+        return;
+      }
+      this.lookAgain.timer = setTimeout(() => this.reconcile(), this.lookAgain.ms);
+      this.lookAgain.timer.unref?.();
+      this.lookAgain.ms = Math.min(this.lookAgain.ms * 2, LOOK_AGAIN_MAX_MS);
     })().finally(() => { this.checking = null; });
     return this.checking;
   }
@@ -110,6 +128,7 @@ export class Runner {
   async stop() {
     this.stopped = true;
     await this.checking;
+    clearTimeout(this.lookAgain.timer);
     const runs = [...this.runs.values()];
     for (const run of runs) killTree(run.child);
     await Promise.all(runs.map((r) => r.done));

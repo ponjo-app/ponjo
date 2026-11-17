@@ -527,7 +527,10 @@ cursor or a person coming or going: those are what a turn reads, not what
 starts one. Each look starts a turn for each buddy asked that is not
 running, with every thread that asks it and it has not answered, so a
 comment written while its turn runs is answered by the next turn, which
-starts as soon as that one ends. A comment a turn was given asks no more,
+starts as soon as that one ends. A look that cannot read the asks (the
+sidecar locked by a sync tool, a buddy file gone as it is read) is tried
+again 1 s later, twice as long each time up to 30 s, until one can: no
+event may come to try it. A comment a turn was given asks no more,
 though the turn posted nothing there; after a restart it asks again. So a
 buddy costs a turn per comment that asks it, and nothing while people
 write or the doc sits open. What a comment asks that cannot be done yet

@@ -206,6 +206,30 @@ test('a run the host cannot start fails once: it is not run again until asked ag
   assert.ok(asked < 5, 'no loop');
 });
 
+test('a look that could not read the asks is tried again, later each time, until one can: no event need come', async () => {
+  let asked = 0;
+  const started = [];
+  const inbox = { buddy: { id: 'b_x', name: 'X', about: '' }, buddies: [], threads: [{ id: 'c_t', comments: [{ at: '2026-11-17T10:00:00.000Z' }] }], askers: ['u_me'] };
+  const runner = new Runner({
+    asks: async () => {
+      asked += 1;
+      if (asked <= 2) throw Object.assign(new Error('EBUSY: the sidecar is locked'), { code: 'EBUSY' });
+      return started.length ? [] : [inbox];
+    },
+    doc: async () => { throw new Error('no doc'); },
+    agent: async () => ({ script: 'none', settings: {} }),
+    finish: async (result) => { started.push(Date.now()); return null; },
+  });
+  const from = Date.now();
+  await runner.reconcile();
+  assert.equal(asked, 1);
+  await until(() => started.length === 1, 'the run, once the asks could be read', 6000);
+  assert.ok(started[0] - from >= 2900, 'after 1 s, then 2 s');
+  await sleep(1500);
+  assert.ok(asked <= 5, 'once it could read them, not again on its own');
+  await runner.stop();
+});
+
 test('a teammate hears that a run failed, not why', () => {
   const agents = [{ id: 'b_x', name: 'X', state: 'ready', threadIds: [], failed: [{ thread: 'c_t', at: 'now', why: '/home/me/agents/claude: no key' }] }];
   assert.deepEqual(agentsFor('owner', agents), agents);
