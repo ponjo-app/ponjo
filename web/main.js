@@ -739,20 +739,25 @@ noticeBanner.querySelector('[data-action="any-size"]').addEventListener('click',
 });
 
 // The threads in the margin: the doc's, each with its buddies' failed runs
-// there as their last reply, from their statuses, never from the comments'
-// file (a failure is the host's, not the doc's). The owner's say why; a
-// failure new since the last time makes its buddy flinch.
+// there as their last reply, and the buddies watching it (`watching`), from
+// their statuses, never from the comments' file (these are the host's, not
+// the doc's). The owner's failures say why; one new since the last time
+// makes its buddy flinch.
 let failedShown = null; // ids of the failed replies on screen; null until the first update
 function paintThreads() {
   const failures = new Map(); // thread → its failed replies
+  const watchers = new Map(); // thread → [{ id, name, looked }]
   for (const a of agents) {
+    for (const { thread, looked } of a.watching ?? []) {
+      if (!a.threadIds.includes(thread)) watchers.set(thread, [...(watchers.get(thread) ?? []), { id: a.id, name: a.name, looked }]);
+    }
     for (const { thread, at, why } of a.failed ?? []) {
       if (a.threadIds.includes(thread)) continue; // running there again
       const reply = { id: `failed-${a.id}-${thread}-${at}`, thread, by: { id: a.id, name: a.name, kind: 'ai' }, at, body: why ?? 'The run failed.', failed: true, host: true, retry: reading() ? null : a.id };
       failures.set(thread, [...(failures.get(thread) ?? []), reply]);
     }
   }
-  const threads = comments.threads.map((t) => (failures.has(t.id) ? { ...t, comments: [...t.comments, ...failures.get(t.id)] } : t));
+  const threads = comments.threads.map((t) => ({ ...t, comments: [...t.comments, ...(failures.get(t.id) ?? [])], watching: watchers.get(t.id) ?? [] }));
   const failed = threads.flatMap((t) => t.comments).filter((c) => c.failed);
   if (failedShown) for (const c of failed.filter((c) => !failedShown.has(c.id))) people?.failed(c.by.id);
   failedShown = new Set(failed.map((c) => c.id));

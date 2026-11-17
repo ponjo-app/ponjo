@@ -526,7 +526,8 @@ function paintUsage(box, { periods, models }) {
     for (const row of rows) {
       const line = el('tr');
       const hit = row.hit === null ? '—' : `${Math.round(row.hit * 100)}%`;
-      for (const cell of [row.name, row.runs.toLocaleString(), tokens.format(row.input), tokens.format(row.output), hit, dollars(row.cost)]) line.append(el('td', null, cell));
+      const runs = `${row.runs.toLocaleString()}${row.watched ? ` (${row.watched.toLocaleString()} watching)` : ''}`;
+      for (const cell of [row.name, runs, tokens.format(row.input), tokens.format(row.output), hit, dollars(row.cost)]) line.append(el('td', null, cell));
       node.tBodies[0].append(line);
     }
     return node;

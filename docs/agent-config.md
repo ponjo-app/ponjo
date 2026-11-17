@@ -60,6 +60,14 @@ app fills in `id`, `by` and `at`.
 - In a thread that asked it, its comments come just after the last comment
   the run was given, so one written while it worked is still to answer;
   elsewhere, after the thread's last comment.
+- `"watch":true` on a line says the buddy waits on its thread for people
+  to change the doc (their move, a section they write): the app runs it
+  again with that thread each time people's edits pause for 5 s, until a
+  comment of its own there has no `watch`, its run fails, or a person
+  resolves the thread. On such a run, with nothing due yet, it posts
+  nothing there and goes on watching. The app keeps the watch on its own
+  machine and never writes it into the sidecar: nothing in a shared file
+  makes a buddy run.
 - Only people resolve: a line's `resolved` is ignored. So is any other
   change to the copy: changed or removed lines, a thread not in the doc,
   lines that are not valid.

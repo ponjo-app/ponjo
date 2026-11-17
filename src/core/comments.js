@@ -108,7 +108,9 @@ export function newComment({ thread, anchor = null, body, resolved }, { by, at }
  * `threads`, and a quote found other than once in `text` (the buddy's copy
  * of the doc as it left it, the text it quoted) is on the whole doc.
  * Anything else is skipped, and so is a line's `resolved`: only people
- * resolve.
+ * resolve. A line's `watch: true` (the buddy waits on its thread for people
+ * to change the doc) comes back as `watch`, never in the comment: it is the
+ * host's to keep, not the sidecar's.
  */
 export function appendedComments(before, after, { text, by, at, threads }) {
   const had = new Set(before.split('\n'));
@@ -133,6 +135,7 @@ export function appendedComments(before, after, { text, by, at, threads }) {
         anchor: parsed.thread === undefined ? quoted(text, parsed.anchor?.exact) : undefined,
         body: parsed.body.trim(),
       }, { by, at }),
+      watch: parsed.watch === true,
     });
   }
   return comments;

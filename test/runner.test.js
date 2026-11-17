@@ -34,7 +34,7 @@ async function withDoc(fn, { buddies = null, folder = null, content = SAMPLE, se
     await fn({
       docPath, settingsDir, release, restart,
       call: (type, arg) => opened.call(type, arg),
-      edit: opened.edit,
+      edit: (...args) => opened.edit(...args),
       state: () => opened.state(),
       runs: () => fakeRuns(settingsDir),
     });
@@ -312,6 +312,55 @@ test('a buddy\'s new comment is anchored on the text it quoted, though a person 
     const thread = await until(async () => (await state()).threads.find((t) => t.comments[0].body === 'Is this measured?'), 'its comment');
     assert.equal(thread.detached, false);
     assert.equal(thread.anchor.exact, 'cannot handle the extra holiday load');
+  });
+});
+
+test('a buddy that watches a thread runs again once people\'s edits pause, says nothing until it is due, then stops watching; its watch is the host\'s, never the comments\' file', { timeout: 60_000 }, async () => {
+  await withDoc(async ({ docPath, settingsDir, call, edit, state, runs }) => {
+    const id = await comment(call, '@Clippy watch until "ten" replace "extra load" with "extra peak load"');
+    const [waiting] = await until(async () => (await repliesIn(state, id)).length === 1 && repliesIn(state, id), 'its reply');
+    assert.equal(waiting.body, 'Waiting.');
+    const watching = async () => (await state()).agents.find((a) => a.name === 'Clippy').watching.map((w) => w.thread);
+    assert.deepEqual(await watching(), [id]);
+    assert.doesNotMatch(await readFile(`${docPath}.comments.jsonl`, 'utf8'), /"watch"/, 'not in the comments\' file');
+
+    await edit(`${(await state()).text}\nNine.\n`);
+    await sleep(2000);
+    assert.equal((await runs()).length, 1, 'not while the edits may go on');
+    await until(async () => (await runs()).length === 2, 'the run once they pause', 10_000);
+    assert.match((await runs())[1].prompt, /You watch it, and members have changed the doc since you last looked\./);
+    await until(async () => (await state()).agents.find((a) => a.name === 'Clippy').state === 'ready', 'that run to end');
+    assert.equal((await repliesIn(state, id)).length, 1, 'not due yet: it said nothing');
+    assert.deepEqual(await watching(), [id], 'and goes on watching');
+
+    await edit(`${(await state()).text}Nine, ten.\n`);
+    await until(async () => (await repliesIn(state, id)).length === 2, 'its answer once it is due', 15_000);
+    assert.match((await state()).text, /extra peak load/);
+    assert.deepEqual(await watching(), [], 'answered without watch: it stops');
+    await edit(`${(await state()).text}Eleven.\n`);
+    await sleep(6500);
+    assert.equal((await runs()).length, 3, 'no run once it stopped watching');
+    assert.deepEqual((await runLog(settingsDir)).map((l) => l.watched ?? null), [null, [id], [id]], 'the runs its watch started, in the log');
+  });
+});
+
+test('a watch outlives a restart, and ends once a person resolves its thread', { timeout: 60_000 }, async () => {
+  await withDoc(async ({ call, edit, state, runs, restart }) => {
+    const id = await comment(call, '@Clippy watch until "ten" replace "extra load" with "extra peak load"');
+    await until(async () => (await repliesIn(state, id)).length === 1, 'its reply');
+    await until(async () => (await state()).agents.find((a) => a.name === 'Clippy').state === 'ready', 'its run to end');
+    await restart();
+    assert.deepEqual((await state()).agents.find((a) => a.name === 'Clippy').watching.map((w) => w.thread), [id], 'noted on the host');
+    await edit(`${(await state()).text}\nNine, ten.\n`);
+    await until(async () => (await repliesIn(state, id)).length === 2, 'its answer after the restart', 15_000);
+
+    const other = await comment(call, '@Clippy watch until "twelve"');
+    await until(async () => (await repliesIn(state, other)).length === 1, 'its reply');
+    await call('comment', { thread: other, body: '', resolved: true });
+    await edit(`${(await state()).text}Twelve, twelve.\n`);
+    await sleep(6500);
+    assert.equal((await runs()).length, 3, 'no run in a resolved thread');
+    assert.deepEqual((await state()).agents.find((a) => a.name === 'Clippy').watching, []);
   });
 });
 

@@ -60,6 +60,7 @@ const TOOLS = [
         on: { type: 'string', description: 'For a new thread: the text it is about, quoted exactly from the doc as this comment\'s edits leave it, and found there once; "" for the whole doc.' },
         body: { type: 'string', description: 'What you say.' },
         edits: { type: 'array', items: { type: 'object', properties: { old: { type: 'string' }, new: { type: 'string' } }, required: ['old', 'new'] } },
+        watch: { type: 'boolean', description: 'true when what you do next waits on members changing the doc: you are run again with this thread each time their edits pause.' },
       },
       required: ['body'],
     },
@@ -123,8 +124,8 @@ async function use({ name, args: json }, { doc, sidecar, texts, comments, groups
   if (name === 'read') return read(args, reads, doc);
   if (name === 'find' || name === 'grep') return search(name, args, reads, resolve);
   if (name !== 'comment') return `No tool ${name}: call ${ANY_TOOL}.`;
-  const { on, thread: to, body, edits = [] } = args;
-  if (typeof body !== 'string' || !body.trim() || (typeof on !== 'string') === (typeof to !== 'string') || !Array.isArray(edits)) return 'Not posted: comment takes { on, body, edits } for a new thread or { thread, body, edits } for a reply, body not empty, edits [{ old, new }] or left out.';
+  const { on, thread: to, body, edits = [], watch = false } = args;
+  if (typeof body !== 'string' || !body.trim() || (typeof on !== 'string') === (typeof to !== 'string') || !Array.isArray(edits) || typeof watch !== 'boolean') return 'Not posted: comment takes { on, body, edits, watch } for a new thread or { thread, body, edits, watch } for a reply, body not empty, edits [{ old, new }] or left out, watch true or left out.';
   // A thread of the doc, by the id of its first comment, as the comments file has it.
   const isThread = (await readFile(sidecar) ?? '').split('\n').some((line) => {
     try {
@@ -147,12 +148,12 @@ async function use({ name, args: json }, { doc, sidecar, texts, comments, groups
     if (count !== 1) return `Not posted, and nothing changed: on is ${count ? 'in the doc more than once: quote more of it' : 'not in the doc as your edits leave it: quote it from there'}, or give "" for the whole doc.`;
     where = on.trim() ? `on line ${line}` : 'on the whole doc';
   }
-  comments.push(to !== undefined ? { thread: to, body } : on.trim() ? { anchor: { exact: on }, body } : { body });
+  comments.push({ ...(to !== undefined ? { thread: to } : on.trim() ? { anchor: { exact: on } } : {}), body, ...(watch ? { watch } : {}) });
   if (edits.length) {
     texts.doc = edited;
     groups.push({ comment: comments.length - 1, doc: edited });
   }
-  return `Posted when your turn ends, ${where}${edits.length ? `, with its ${edits.length === 1 ? 'edit' : `${edits.length} edits`}, applied now: read the doc to see them` : ''}.`;
+  return `Posted when your turn ends, ${where}${edits.length ? `, with its ${edits.length === 1 ? 'edit' : `${edits.length} edits`}, applied now: read the doc to see them` : ''}${watch ? '; you watch its thread' : ''}.`;
 }
 
 /**

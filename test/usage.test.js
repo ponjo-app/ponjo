@@ -22,7 +22,7 @@ test('usage by period and by model: all input, the share read from the cache, an
   const opus = { model: 'claude-opus-5-5', input: 1_000_000, output: 100_000, cacheRead: 2_000_000, cacheWrite: 1_000_000 };
   const entries = [
     { at: at(0), usage: opus },
-    { at: at(3), usage: { ...opus, model: 'claude-haiku-5-5' } },
+    { at: at(3), usage: { ...opus, model: 'claude-haiku-5-5' }, watched: ['c_t'] },
     { at: at(20), usage: { ...opus, model: 'some-new-model' } },
     { at: at(40), usage: opus },
     { at: at(0), outcome: 'ok' }, // another agent: no usage
@@ -30,7 +30,7 @@ test('usage by period and by model: all input, the share read from the cache, an
   const { periods, models } = summarizeUsage(entries, now);
   const opusCost = 1 * 4 + 0.1 * 20 + 2 * 0.2 + 1 * 5; // $11.40
   const haikuCost = 1 * 0.1 + 0.1 * 0.5 + 2 * 0.01 + 1 * 0.125;
-  assert.deepEqual(periods.map(({ label, runs }) => [label, runs]), [['Today', 1], ['Last 7 days', 2], ['Last 30 days', 3]]);
+  assert.deepEqual(periods.map(({ label, runs, watched }) => [label, runs, watched]), [['Today', 1, 0], ['Last 7 days', 2, 1], ['Last 30 days', 3, 1]], 'and how many a watch started');
   assert.equal(periods[0].input, 4_000_000, 'input cached or not');
   assert.equal(periods[0].hit, 0.5);
   assert.ok(Math.abs(periods[0].cost - opusCost) < 1e-9);

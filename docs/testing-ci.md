@@ -80,6 +80,10 @@ for a window), **e2e** (the packaged app, under xvfb on Linux).
   again; a comment written while it runs is answered by a run right after,
   with only the threads not answered; a run that posts nothing in a thread
   is not run again for it until someone writes there.
+- A buddy that watches a thread runs again once people's edits pause 5 s,
+  not before, says nothing until it is due, and stops once it answers
+  without `watch` or the thread is resolved; the watch is never in the
+  sidecar, outlives a restart, and its runs say `watched` in the log.
 - Exit non-zero, or a run the host cannot start: nothing is written to the
   sidecar; the buddy's status says the thread failed, with why for the
   owner alone; it is not run again on its own, but on Retry, a new comment

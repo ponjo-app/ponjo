@@ -8,6 +8,7 @@
 //   <config>/history/<key>/index.json   the versions, oldest first
 //   <config>/history/<key>/<sha256>.md  each version's text, by content
 //   <config>/history/<key>/taken.json   the comments this host took (noteTaken)
+//   <config>/history/<key>/watching.json the threads its buddies watch (noteWatching)
 // `key` is derived from the doc's absolute path; renaming a doc in Ponjo
 // moves its history along (moveHistory).
 //
@@ -167,6 +168,27 @@ async function readTakenFile(dir) {
 }
 
 const takenHash = (c) => hashText(JSON.stringify([c.thread ?? null, c.by.id, c.body]));
+
+/**
+ * The threads the doc's buddies watch on this host, for a restart:
+ * { <buddy>: { <thread>: { askers, looked } } } (src/host/doc-service.js).
+ * Kept here, never in the sidecar: what makes a buddy run on this machine
+ * is this machine's.
+ */
+export async function noteWatching(docPath, root, watching) {
+  const dir = historyDir(docPath, root);
+  await mkdir(dir, { recursive: true });
+  await writeAtomic(join(dir, 'watching.json'), JSON.stringify(watching));
+}
+
+/** The threads noted by noteWatching, or none. */
+export async function readWatching(docPath, root) {
+  try {
+    return JSON.parse(await readFile(join(historyDir(docPath, root), 'watching.json'), 'utf8')) ?? {};
+  } catch {
+    return {};
+  }
+}
 
 /**
  * The doc was renamed from `fromPath` to `toPath`: its history follows. A

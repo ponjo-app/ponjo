@@ -67,7 +67,9 @@ AI buddies.
 4. **Someone answers.** A person replies in the thread. `@Clippy` in a
    comment asks the AI buddy Clippy: it replies in the thread, with the
    edits its reply says why it made, and may comment on other passages. Its
-   reply answers you: it runs again when you write in the thread again.
+   reply answers you: it runs again when you write in the thread again. When
+   it waits on you changing the doc (your move, a section you are writing),
+   it says it is waiting, and looks again each time you pause.
 5. **Anyone allowed decides.** Keep an edit, undo it from the comment it
    came with, reply again, or resolve the thread, whoever asked and
    whoever answered.
@@ -141,7 +143,10 @@ and 30 days, and by model.
   comment on a passage and the replies under it.
 - A comment asks until the AI buddy replies in its thread: it runs once,
   answers, and runs again only when someone writes there again, never on
-  its own, on an edit or on a clock. Resolving the thread, which only
+  its own or on a clock. A buddy waiting on the doc (its reply says so, and
+  the thread "Clippy is waiting for changes to the doc") looks again each
+  time people's edits pause for 5 s, saying nothing until it is due, until
+  it answers or the thread is resolved. Resolving the thread, which only
   people do, stops a buddy working on it at once, and nothing it did there
   lands. Reopening asks no one.
 - Only people's comments ask: yours, and a teammate's who can edit. A

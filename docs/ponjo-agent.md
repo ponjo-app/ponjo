@@ -113,8 +113,8 @@ it matches as `read` gives it, cut at 500 characters. Both walk the folders
 with `readFile`, and give at most 100 paths or lines, then how many more,
 saying to narrow the pattern or the path.
 
-**`comment({ thread, body, edits? })`** replies in a thread, by the id the
-comments file gives it; **`comment({ on, body, edits? })`** starts one on
+**`comment({ thread, body, edits?, watch? })`** replies in a thread, by the id the
+comments file gives it; **`comment({ on, body, edits?, watch? })`** starts one on
 `on`, quoted from the doc as this comment's edits leave it and found there
 once, or `""` for the whole doc. It is the model's only way to change
 anything, as a member's comment is theirs: a change to the doc is the
@@ -125,7 +125,8 @@ doc, a quote not found once) is sent back at once, saying what to fix, and
 changes nothing. A good one's edits apply to the doc at once, so what the
 model reads next has them, and its line of the sidecar
 ([agent config](agent-config.md#comments)) is written by the program when
-the turn ends. One tool, not fields of another: a model writing the lines
+the turn ends. `watch: true` puts `"watch":true` on that line: the buddy
+waits on the thread for people to change the doc. One tool, not fields of another: a model writing the lines
 itself got the path, the JSON or the thread's id wrong, and one filling a
 field of its last call (a `resolve`, once) set it for every thread. A
 comment's text is found as the app finds it: as quoted, else with any run

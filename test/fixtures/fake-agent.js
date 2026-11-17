@@ -6,6 +6,8 @@
 //   hold                                wait for $FAKE_DIR/release-<buddy> first
 //   fail                                print to stderr and exit 1
 //   until "<text>"                      while the copy lacks <text>, leave the thread as it is
+//   watch                               watch the thread: with until, reply "Waiting." and watch it, then on a run
+//                                       for it (on people's edits) say nothing until the copy has <text>
 //   usage                               write a step with the Claude API's usage to the trace
 //   say <text>                          reply <text>
 //   quiet                               reply nothing
@@ -27,10 +29,14 @@ import { delimiter, join } from 'node:path';
 let prompt = '';
 for await (const chunk of process.stdin) prompt += chunk;
 const { PONJO_DOC: doc, PONJO_COMMENTS: comments, PONJO_PROJECT: project, PONJO_GROUPS: groups, PONJO_BUDDY: buddy, FAKE_DIR: dir } = process.env;
-// The prompt's threads, each { id, ask (its latest comment), mine (whether that is this buddy's) }.
-const threads = [...prompt.matchAll(/Thread (c_[\w-]+), [^\n]*\n\n<thread>\n([\s\S]*?)\n<\/thread>/g)].map(([, id, said]) => {
-  const ask = said.split(/\n\n(?=[^\s:]+: )/).at(-1); // a comment starts with its writer's name
-  return { id, ask, mine: ask.startsWith(`${buddy}: `) };
+// The prompt's threads, each { id, ask (its latest comment; in one it
+// watches, the latest not its own), mine (whether that is this buddy's),
+// watched }.
+const threads = [...prompt.matchAll(/Thread (c_[\w-]+), ([^\n]*)\n\n<thread>\n([\s\S]*?)\n<\/thread>/g)].map(([, id, head, said]) => {
+  const comments = said.split(/\n\n(?=[^\s:]+: )/); // a comment starts with its writer's name
+  const watched = head.includes('You watch it');
+  const ask = watched ? comments.findLast((c) => !c.startsWith(`${buddy}: `)) : comments.at(-1);
+  return { id, ask, mine: !watched && ask.startsWith(`${buddy}: `), watched };
 });
 const todo = threads.filter((t) => !t.mine);
 const ask = todo.map((t) => t.ask).join('\n\n');
@@ -59,7 +65,11 @@ const append = (line) => {
 };
 for (const thread of todo) {
   const awaited = thread.ask.match(/\buntil "(.*?)"/)?.[1];
-  if (awaited !== undefined && !text.includes(awaited)) continue;
+  const watch = /\bwatch\b/.test(thread.ask);
+  if (awaited !== undefined && !text.includes(awaited)) {
+    if (watch && !thread.watched) append(JSON.stringify({ thread: thread.id, body: 'Waiting.', watch: true }));
+    continue;
+  }
   const edits = [...thread.ask.matchAll(/replace "(.*?)" with "(.*?)"/g)];
   const was = text;
   text = edits.reduce((t, [, before, after]) => t.replace(before, after), text);
@@ -78,7 +88,7 @@ for (const thread of todo) {
   }
   if (/\bquiet\b/.test(thread.ask)) continue;
   const said = thread.ask.match(/\bsay (.*)/)?.[1];
-  append(JSON.stringify({ thread: thread.id, body: said ?? (edits.length ? `Replaced "${edits[0][1]}".` : 'Nothing to change.') }));
+  append(JSON.stringify({ thread: thread.id, body: said ?? (edits.length ? `Replaced "${edits[0][1]}".` : 'Nothing to change.'), ...(watch && awaited === undefined ? { watch: true } : {}) }));
   if (groups && text !== was && !/\bungrouped\b/.test(thread.ask)) appendFileSync(groups, `${JSON.stringify({ comment: appended - 1, doc: text })}\n`);
 }
 writeFileSync(doc, text);
