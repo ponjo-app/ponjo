@@ -176,11 +176,16 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
     text = apply(text, ops);
     rev++;
     told.push(event);
-    if (!meta.by) { // a buddy's edit is no change a watcher looks at
+    if (!meta.by) {
       settle();
       // A watcher's run on now saw the doc as it was: it ends, as looked,
       // and runs again once the edits pause.
       for (const { id, from } of runner.interrupt()) if (watching.has(id)) watching.get(id).looked = from;
+    } else {
+      // A buddy's edit wakes each other buddy watching the doc, at once: it
+      // lands whole, with no typing to wait out.
+      changedBy.set(meta.by, performance.now());
+      if (watching.size) runner.reconcile();
     }
   }
 
@@ -396,6 +401,7 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
       level: who.level,
       owner: (await me()).id, // whose face wears the crown
       agents: agentsFor(who.level, agentStatuses()),
+      steps: stepsView(),
       cursors: cursorsNow(),
       project: folder !== null, // whether the doc was opened from a project
       // The project's name and the doc's path in it, for a teammate's sidebar.
@@ -510,9 +516,14 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
       const thread = w.thread !== null && open.has(w.thread) ? w.thread : null; // resolved or gone: it starts another
       if (thread !== null && !inbox.threads.some((t) => t.id === thread)) inbox.threads.push(open.get(thread));
       inbox.askers.add(w.by);
-      inbox.watch = { due: w.looked === null || settledAt > w.looked, thread, changes: w.base === null ? null : lineChanges(w.base, text) };
+      // People's pauses, and its watch turned on, are free; another buddy's
+      // change since it last looked takes a step (takeStep).
+      const byPeople = w.looked === null || settledAt > w.looked;
+      const byBuddy = [...changedBy].some(([other, at]) => other !== id && at > w.looked);
+      inbox.watch = { due: byPeople || byBuddy, paid: !byPeople && byBuddy, thread, changes: w.base === null ? null : lineChanges(w.base, text) };
       inboxes.set(id, inbox);
     }
+    refill((await readSettings(settingsDir)).settings);
     // A failure is shown while its thread still asks the buddy.
     let gone = false;
     for (const [id, failed] of failures) for (const thread of failed.keys()) if (!asking.has(`${id} ${thread}`)) gone = failed.delete(thread);
@@ -522,6 +533,7 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
       watch: w && { thread: w.thread, changes: w.changes },
       due: asked || Boolean(w?.due),
       watchOnly: !asked && Boolean(w),
+      ...(!asked && w?.paid ? { pay: takeStep } : {}),
     })).filter((inbox) => inbox.buddy); // a thread's opener may be gone
   }
   // What each buddy's runs were given: buddy → Map(thread → the time of the
@@ -555,6 +567,62 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
     }, SETTLE_MS);
     settling.unref?.();
   }
+  // When each buddy's edit last landed (performance.now()): one wakes each
+  // other buddy watching the doc.
+  const changedBy = new Map();
+  // The steps the doc's buddies have to wake each other: up to `steps`
+  // (settings), one more every `refillEvery` seconds (0: none), all on
+  // Refill (refillSteps). A run woken by another buddy's change takes one;
+  // with none left it waits, until one comes (a timer, only then) or someone
+  // refills them. In memory: a restart fills it.
+  const bucket = { left: null, cap: DEFAULT_SETTINGS.steps, every: DEFAULT_SETTINGS.refillEvery * 1000, at: performance.now(), timer: null };
+  // The bucket as `settings` make it now, refilled for the time gone by.
+  function refill({ steps, refillEvery }) {
+    const before = JSON.stringify(stepsView());
+    Object.assign(bucket, { cap: steps, every: refillEvery * 1000 });
+    if (bucket.left === null || bucket.left > steps) bucket.left = steps;
+    const now = performance.now();
+    if (bucket.left >= steps || !bucket.every) bucket.at = now;
+    else {
+      const gained = Math.floor((now - bucket.at) / bucket.every);
+      bucket.left = Math.min(steps, bucket.left + gained);
+      bucket.at = bucket.left >= steps ? now : bucket.at + gained * bucket.every;
+    }
+    if (JSON.stringify(stepsView()) !== before) emit('steps', stepsView());
+  }
+  // Take a step for a run woken by another buddy: false, with a look set for
+  // when the next one comes, when none is left.
+  function takeStep() {
+    if (bucket.left < 1) {
+      if (bucket.every && !bucket.timer) {
+        bucket.timer = setTimeout(() => {
+          bucket.timer = null;
+          runner.reconcile();
+        }, Math.max(0, bucket.at + bucket.every - performance.now()) + 5);
+        bucket.timer.unref?.();
+      }
+      return false;
+    }
+    if (bucket.left >= bucket.cap) bucket.at = performance.now();
+    bucket.left -= 1;
+    emit('steps', stepsView());
+    return true;
+  }
+  // The steps as the windows show them: { left, cap, next (when the next
+  // comes, by the wall clock, or null) }.
+  function stepsView() {
+    const next = bucket.left !== null && bucket.left < bucket.cap && bucket.every ? Date.now() + Math.max(0, bucket.at + bucket.every - performance.now()) : null;
+    return { left: bucket.left ?? bucket.cap, cap: bucket.cap, next: next && Math.round(next / 1000) * 1000 };
+  }
+  // Someone refills the steps: all of them, and the buddies waiting go on.
+  function refillSteps() {
+    bucket.left = bucket.cap;
+    bucket.at = performance.now();
+    emit('steps', stepsView());
+    runner.reconcile();
+    return {};
+  }
+
   // Note who watches, and tell the windows.
   function keepWatching() {
     const noted = Object.fromEntries([...watching].map(([id, { by, thread }]) => [id, { by, thread }]));
@@ -989,6 +1057,8 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
       undo: (body, who) => serial(() => undo(body, who)),
       // A buddy watches this doc, or no longer: { buddy, on }.
       watch: (body, who) => watch(body, who),
+      // Fill the steps the doc's buddies have to wake each other.
+      refillSteps,
       // Run a buddy again where its last run failed.
       retry: (body) => {
         if (typeof body?.buddy !== 'string') throw new DocError('bad_input', 'expected { buddy }');
@@ -1090,6 +1160,7 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
       } finally {
         clearTimeout(retry);
         clearTimeout(settling);
+        clearTimeout(bucket.timer);
         stopWatching();
         stopWatchingSettings();
         stopWatchingProjectBuddies();

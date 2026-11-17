@@ -30,6 +30,8 @@ export const api = {
   comment: ({ thread, anchor, body, resolved }) => call('comment', { thread, anchor, body, resolved }),
   /** Buddy `buddy` watches this doc (`on`), or no longer. */
   watch: (buddy, on) => call('watch', { buddy, on }),
+  /** Fill the steps this doc's buddies have to wake each other. */
+  refillSteps: () => call('refillSteps', {}),
   /** Run buddy `buddy` again where its last run failed. */
   retry: (buddy) => call('retry', { buddy }),
   /**

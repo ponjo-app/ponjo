@@ -8,7 +8,7 @@
 // they belong to a doc's People.
 
 import { hydrateIcons, icon } from './icons.js';
-import { agentSettings, viewSettings } from '../src/core/settings.js';
+import { STEP_FIELDS, agentSettings, viewSettings } from '../src/core/settings.js';
 
 const SHORTCUTS = [
   ['Text', [['Bold', 'Mod+B'], ['Italic', 'Mod+I'], ['Inline code', 'Mod+E'], ['Strikethrough', 'Mod+Shift+X'], ['Link', 'Mod+K'], ['Normal text', 'Mod+Alt+0'], ['Heading 1–3', 'Mod+Alt+1–3'], ['Quote', 'Mod+Alt+Q'], ['Code block', 'Mod+Alt+C'], ['Numbered list', 'Mod+Shift+7'], ['Bulleted list', 'Mod+Shift+8'], ['Task list', 'Mod+Shift+9'], ['Find', 'Mod+F'], ['Find and replace', 'Mod+Alt+F'], ['Next match', 'Mod+G'], ['Previous match', 'Mod+Shift+G']]],
@@ -134,7 +134,9 @@ export function setupSettings({ store, getName, setName, onApply = () => {}, vie
 
   // For whoever works on an agent: each run's trace, read in a doc's Runs.
   const trace = fieldRow({ key: 'trace', type: 'switch', label: 'Trace runs', hint: 'Keep what each run was given, did and printed, step by step, to read in a doc\'s Runs. Traces hold the doc\'s text; the newest 200 are kept in the config folder\'s logs.' }, 'app', (key, value) => set({ [key]: value }));
-  dialog.querySelector('.pj-agents-trace').replaceWith(trace.node);
+  // How often a doc's buddies may wake each other (src/host/doc-service.js).
+  const steps = STEP_FIELDS.map((field) => fieldRow(field, 'app', (key, value) => set({ [key]: value })));
+  dialog.querySelector('.pj-agents-trace').replaceWith(...steps.map((row) => row.node), trace.node);
   fillShortcuts(dialog.querySelector('.pj-shortcuts-body'));
   dialog.querySelector('[data-action="show-agents"]').hidden = !scripts.showFolder;
 
@@ -188,7 +190,7 @@ export function setupSettings({ store, getName, setName, onApply = () => {}, vie
       }
     }
     paintAgents(settings);
-    trace.paint(settings);
+    for (const row of [...steps, trace]) row.paint(settings);
     if (document.activeElement !== nameInput) nameInput.value = getName();
     onApply(settings);
   }

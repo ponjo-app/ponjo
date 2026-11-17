@@ -413,6 +413,48 @@ test('a watch run that fails, before its buddy has a thread, shows on the buddy,
   });
 });
 
+test('a buddy\'s change wakes each other buddy watching, never itself, each such run taking a step; with none left they wait, and Refill fills them', { timeout: 60_000 }, async () => {
+  await withDoc(async ({ call, edit, state, runs }) => {
+    const moves = async () => (await runs()).length;
+    const idle = () => until(async () => (await state()).agents.every((a) => a.state === 'ready'), 'the runs to end');
+    await call('watch', { buddy: 'Ada', on: true });
+    await until(async () => (await state()).text.includes('Ada moved.'), 'Ada\'s first move');
+    await idle();
+    await sleep(1000);
+    assert.equal(await moves(), 1, 'its own change wakes it not');
+    assert.deepEqual((await state()).steps, { left: 3, cap: 3, next: null });
+
+    await call('watch', { buddy: 'Ben', on: true });
+    await until(async () => (await state()).steps.left === 0, 'the steps to run out');
+    await idle();
+    await sleep(1000);
+    assert.equal(await moves(), 5, 'each first look free, then three steps');
+    assert.deepEqual((await runs()).map((r) => r.buddy), ['Ada', 'Ben', 'Ada', 'Ben', 'Ada'], 'each on the other\'s move');
+    assert.equal((await state()).steps.next, null, 'none comes on its own');
+
+    await edit(`${(await state()).text}A person's line.\n`);
+    await until(async () => (await moves()) === 7, 'both on the pause, free', 10_000);
+    await idle();
+    await sleep(1000);
+    assert.equal(await moves(), 7, 'then they wait again');
+
+    await call('refillSteps', {});
+    await until(async () => (await moves()) === 10 && (await state()).steps.left === 0, 'three more moves');
+  }, { content: 'ping-pong\n', settings: { steps: 3, refillEvery: 0 }, buddies: { Ada: 'Plays.\n', Ben: 'Plays.\n' } });
+});
+
+test('with no step left, buddies watching wait for the next to come on its own', { timeout: 60_000 }, async () => {
+  await withDoc(async ({ call, state, runs }) => {
+    await call('watch', { buddy: 'Ada', on: true });
+    await call('watch', { buddy: 'Ben', on: true });
+    await until(async () => (await state()).steps.left === 0 && (await runs()).length === 3, 'the step taken');
+    const { next } = (await state()).steps;
+    assert.ok(Number.isFinite(next) && next <= Date.now() + 2500, 'when the next comes, within its time');
+    await until(async () => (await runs()).length === 4, 'a move on the step that came', 10_000);
+    await until(async () => (await runs()).length === 5, 'and on the next', 10_000);
+  }, { content: 'ping-pong\n', settings: { steps: 1, refillEvery: 2 }, buddies: { Ada: 'Plays.\n', Ben: 'Plays.\n' } });
+});
+
 test('only a person changes a watch: it outlives its thread resolved, a new one opened, and a restart, with no run on opening', { timeout: 60_000 }, async () => {
   await withDoc(async ({ call, edit, state, runs, restart }) => {
     await call('watch', { buddy: 'Clippy', on: true });

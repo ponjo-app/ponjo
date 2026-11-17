@@ -75,7 +75,11 @@ AI buddies.
    while it watches, and stops only when you turn it off. If you start
    typing again while it works, it stops and looks again at your next
    pause. If a run fails, its card says "Watch failed", with why and
-   **Retry**.
+   **Retry**. Each buddy watching also runs when another buddy changes
+   the doc, so two can play a game there; each such run takes one of the
+   doc's steps, shown in the status bar ("14 steps"). Out of steps, they
+   wait for the next (one a minute) or for **Refill**; Settings > Agents
+   sets how many and how often.
 5. **Anyone allowed decides.** Keep an edit, undo it from the comment it
    came with, reply again, or resolve the thread, whoever asked and
    whoever answered.
