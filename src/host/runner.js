@@ -2,8 +2,9 @@
 // a comment asks and it has not answered yet, or that watches the doc,
 // one run at a time, and ends the run of a buddy nothing asks any more. It
 // looks at the asks each time they may have changed (reconcile): a
-// comment, the doc opening, a run ending, a watch turned on or people's
-// edits pausing while a buddy watches; never on a clock. A run
+// comment, the doc opening, a run ending, a watch turned on, people's
+// edits pausing or another buddy's edit while a buddy watches; never on a
+// clock, but for a step its watchers wait for. A run
 // copies the doc and its sidecar into a new private folder, runs the agent
 // script there with the prompt on stdin, and hands back the copies and the
 // comments' groups of edits when it exits. The agent knows nothing of
@@ -34,36 +35,38 @@ export class Runner {
   /**
    * `asks()` resolves to the buddies asked now, each with its inbox: [{
    * buddy: { id, name, about }, buddies, threads, askers, watch, due,
-   * watchOnly }],
-   * `buddies` all those the doc reaches, `threads` those that ask it and it
-   * has not answered (and its watch thread), `askers` the ids of whoever
-   * asked, `watch` null or, when it watches the doc, { thread (its watch
-   * thread's id, or null), changes (what changed since it last looked, or
-   * null) }, `due` whether to run it now: a buddy watching the doc is in,
-   * so its run on now goes on, though not due, and `watchOnly` whether only
-   * its watch has it run (interrupt ends such a run). `doc()` to { path, text,
-   * comments }, `path` the doc's in the project (`/`-separated; its name in
-   * doc mode), where the run's folder holds its copy, and `comments` the
-   * sidecar's text or null. `agent()` resolves to the agent that runs every
-   * buddy: { script (its path), settings ({ <key>: value }, each handed to
-   * the run as PONJO_SETTING_<KEY>) }. `folder()` resolves to the project
-   * folder the agent is given, or null, and `human()` the user, { name,
-   * about }. `finish(result)` takes a run that ended: { id, name,
-   * threadIds, askers, seen, from, base, edited, comments, groups, failed,
-   * body }, `seen` the `at` of each of its threads' last comment it was
-   * given, by thread, `from` when it started (performance.now(), a clock
-   * that never goes back), `watched` whether it watched the doc, `edited` the doc's copy at the end (null when the run failed),
+   * watchOnly, pay? }], `buddies` all those the doc reaches, `threads` those
+   * that ask it and it has not answered (and its watch thread), `askers` the
+   * ids of whoever asked, `watch` null or, when it watches the doc, { thread
+   * (its watch thread's id, or null), changes (what changed since it last
+   * looked, or null) }, `due` whether to run it now (a buddy watching the
+   * doc is in, so its run on now goes on, though not due), `watchOnly`
+   * whether only its watch has it run (interrupt ends such a run), and
+   * `pay`, for a run another buddy's change wakes, to take a step for it:
+   * false when none is left, and it does not start. `doc()` to { path,
+   * text, comments }, `path` the doc's in the project (`/`-separated; its
+   * name in doc mode), where the run's folder holds its copy, and `comments`
+   * the sidecar's text or null. `agent()` resolves to the agent that runs
+   * every buddy: { script (its path), settings ({ <key>: value }, each
+   * handed to the run as PONJO_SETTING_<KEY>) }. `folder()` resolves to the
+   * project folder the agent is given, or null, and `human()` the user, {
+   * name, about }. `finish(result)` takes a run that ended: { id, name,
+   * threadIds, askers, seen, from, watched, base, edited, comments, groups,
+   * failed, body }, `seen` the `at` of each of its threads' last comment it
+   * was given, by thread, `from` when it started (performance.now(), a
+   * clock that never goes back), `watched` whether it watched the doc,
+   * `edited` the doc's copy at the end (null when the run failed),
    * `comments` { before, after } the sidecar's copy at the start and end,
    * `groups` the lines it wrote to PONJO_GROUPS, parsed, and `body` why a
    * failed run failed; it resolves, while the doc is open, to what became
    * of it: { comments (the ids it posted), landed (in words) }. `onChange()`
    * runs when a run starts or ends. `log(entry, trace)` takes each run that
    * ended: `entry` { run (its id), buddy, threads, watched? (true for a
-   * watcher's), comments, at, ms, outcome: ok | failed | timedOut | stopped, code, usage? (runUsage: its
-   * Claude API tokens, when its agent wrote them to its trace) }, and
-   * `trace` what it was given and did: { script, prompt, steps (the lines
-   * the agent wrote to PONJO_TRACE), stdout, stderr, base, edited,
-   * comments, landed }.
+   * watcher's), comments, at, ms, outcome: ok | failed | timedOut |
+   * stopped, code, usage? (runUsage: its Claude API tokens, when its agent
+   * wrote them to its trace) }, and `trace` what it was given and did: {
+   * script, prompt, steps (the lines the agent wrote to PONJO_TRACE),
+   * stdout, stderr, base, edited, comments, landed }.
    */
   constructor({ asks, doc, agent, folder = async () => null, human = async () => null, finish, onChange = () => {}, log = async () => {}, timeoutMs = RUN_TIMEOUT_MS }) {
     Object.assign(this, { asks, doc, agent, folder, human, finish, onChange, log, timeoutMs });
@@ -107,7 +110,11 @@ export class Runner {
           read = true;
           const wanted = new Set(asked.map((inbox) => inbox.buddy.id));
           for (const [id, run] of this.runs) if (!wanted.has(id) && !run.ended) this.#end(run);
-          for (const inbox of asked) if (inbox.due !== false && !this.runs.has(inbox.buddy.id) && !this.stopped) this.#start(inbox);
+          for (const inbox of asked) {
+            if (inbox.due === false || this.runs.has(inbox.buddy.id) || this.stopped) continue;
+            if (inbox.pay && !inbox.pay()) continue; // woken by another buddy, with no step left
+            this.#start(inbox);
+          }
         } catch (error) {
           read = false;
           console.error('Could not look for asks:', error);

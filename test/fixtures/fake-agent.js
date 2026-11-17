@@ -18,7 +18,8 @@
 // Watching the doc, it says "Watching." on the whole doc when it has no watch
 // thread, else "Saw <n> new lines." there, n the lines the changes put in;
 // nothing when one of them says quiet. Watching a doc that says fail-watch,
-// it fails; one that says hold-watch, it waits for release-<buddy> first.
+// it fails; one that says hold-watch, it waits for release-<buddy> first;
+// one that says ping-pong, it adds the line "<buddy> moved." too.
 // Commands after the first may follow `;;`. It prints Done. A reply is `say`'s text, else
 // what it replaced, else "Nothing to change.". A reply that carries edits
 // writes them, as its group, to PONJO_GROUPS.
@@ -97,6 +98,10 @@ const watch = prompt.match(/You watch this doc:[\s\S]*$/)?.[0];
 if (watch && !/^\+.*\bquiet\b/m.test(watch)) {
   const own = watch.match(/Your watch thread is Thread (c_[\w-]+)/)?.[1];
   append(JSON.stringify(own ? { thread: own, body: `Saw ${(watch.match(/^\+/gm) ?? []).length} new lines.` } : { body: 'Watching.' }));
+  if (text.includes('ping-pong')) {
+    text += `${buddy} moved.\n`;
+    if (groups) appendFileSync(groups, `${JSON.stringify({ comment: appended - 1, doc: text })}\n`);
+  }
 }
 writeFileSync(doc, text);
 console.log('Done.'); // its last words: for the trace, never posted

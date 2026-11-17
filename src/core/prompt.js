@@ -45,7 +45,7 @@ function watchText({ thread, changes }) {
   const what = changes === null ? 'This is your first look since the app started: read the doc.'
     : changes.length ? `What changed in the doc since you last looked, yours included, lines taken out marked - and put in marked +:\n\n${changes.map(({ before, after }) => [...marked(before, '-'), ...marked(after, '+')].join('\n')).join('\n\n')}`
       : 'Nothing in the doc changed since you last looked.';
-  return `You watch this doc: a member turned your watch on, and the app runs you each time members' edits to it pause, as well as when a member asks you. Do what who you are says to do with what they write; when nothing is due, post nothing. ${where} Comment on a passage only where a member must decide something.\n\n${what}`;
+  return `You watch this doc: a member turned your watch on, and the app runs you each time members' edits to it pause or another buddy changes it, as well as when a member asks you. Do what who you are says to do with what they write; when nothing is due, post nothing. ${where} Comment on a passage only where a member must decide something.\n\n${what}`;
 }
 
 // Lines as a prompt lists a change of them, each marked.
