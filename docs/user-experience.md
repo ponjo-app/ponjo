@@ -59,8 +59,8 @@ AI buddies.
 3. **Comment.** Select text and click the comment button at the page edge
    (Ctrl+Alt+M). The comment sits in the margin beside its text and follows
    it as the text changes. A thread not open is folded to its first comment
-   and a line on what followed (who replied, the edits made, a buddy at work,
-   a run that failed); the open one is whole, beside its text, and the
+   and a line on what followed (who replied, the edits made, a run that
+   failed); the open one is whole, beside its text, and the
    others make way. The threads with no place in the text, on the whole doc
    or whose text was deleted, are one comment icon with their number at the
    top of the margin, opened in place.
@@ -163,13 +163,18 @@ and 30 days, and by model.
   then, at once, and glow for a moment with its name, as anyone's do.
 - An AI buddy comments as people do: on any passage, or in any thread. It
   never resolves. Its comments ask no one.
-- **No edit without a comment.** Every edit an AI buddy makes comes with a
-  comment, its own reply or one the app posts for it, empty, when its agent
-  said nothing. Under that comment the app shows how many places it edited; clicking
-  it shows them in the text as a revision (and scrolls to them): new text in
-  its color, removed text grey and struck through where it was, until you
-  type, press Escape or click it again. Edits changed since are left out.
-  The comment only says why, or what you need to decide.
+- **No edit without a comment, beside it.** Every edit an AI buddy makes
+  comes with a comment, its own reply or one the app posts for it, empty,
+  when its agent said nothing; and it sits beside that comment. A reply's
+  edits outside the paragraph its thread is on are not left in it: each
+  becomes a comment of the AI buddy's on the text it wrote there (a reply's
+  edits in a thread on the whole doc stay in it). So each place it changed
+  has its own comment beside it, and its own Undo. Under that comment the
+  app shows how many places it edited; clicking it shows them in the text
+  as a revision (and scrolls to them): new text in its color, removed text
+  grey and struck through where it was, the comments' highlights cleared
+  meanwhile, until you type, press Escape or click it again. Edits changed
+  since are left out. The comment only says why, or what you need to decide.
 - **Nothing a person types is lost.** When two people change the same place
   at once, both edits stay, in the order they reached the host. Text one
   deletes while the other types inside it keeps what was typed. If both
@@ -191,9 +196,10 @@ and 30 days, and by model.
   by undoing that undo.
   **Undo this change** in history undoes any version, or a burst of typing.
   It works in every window of the team.
-- **A failed run** says so in each thread that asked it, with the end of
-  its output, marked failed. It is tried again on the doc's next look, and
-  says so again only where someone has written since.
+- **A failed run** says so, marked failed, in each thread where a person's
+  comment was waiting for its answer, with its output folded under it; a
+  thread it only keeps an eye on hears nothing. It is tried again on the
+  doc's next look, and says so again only where someone has written since.
 
 ## Seeing teammates work
 
@@ -210,13 +216,16 @@ and 30 days, and by model.
   is away it is greyed out; and when a run fails it shakes and flashes red
   once. No dots or badges. In the Team panel you see which teammates are
   here; a teammate sees who is here with them.
-- **Cursor.** Every teammate in the doc has a cursor in their color, with
-  their name beside it while they work or type; otherwise it is a plain line.
-  A person's stands where they are typing. An AI buddy asked to work stays
-  in the doc until it is closed or the AI buddy is gone: at the passage it was
-  last asked about, and at the end of its last edit when its run lands, until you
-  type. A cursor follows the text as it changes, and is hidden where its text
-  is gone. It is only drawn: never in the file, and it takes no clicks.
+- **Cursor.** Every person in the doc has a cursor in their color, with
+  their name beside it while they move or type; otherwise it is a plain line.
+  It stands where they are typing, follows the text as it changes, and is
+  hidden where its text is gone. It is only drawn: never in the file, and it
+  takes no clicks.
+- **An AI buddy at work** has no cursor: it works on threads, not at a place.
+  Each thread it works on shows it, its text underlined in the AI buddy's
+  color and, in the open card, "Clippy is working…" with its face; the doc's
+  status bar says so too, and clicking it there goes to its thread. When its
+  run lands, its edits glow with its name as anyone's do.
 
 ## Around the doc
 
