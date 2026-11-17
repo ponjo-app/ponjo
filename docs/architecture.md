@@ -563,9 +563,13 @@ opens, where it comments and where its edits hang, each to undo on its
 own; resolved, it opens another. With nothing due it posts nothing. A
 person editing again while a run only its watch started is on ends that
 run with no answer, for it saw the doc as it was; it runs again once they
-pause. Its runs are timed by a clock that never goes back
-(`performance.now()`), so no pause is missed when the system's clock is
-set back. A watch run that fails shows on the buddy, for it may have no
+pause. Whether a watcher is due is told from times the host notes as
+each edit lands, when people last edited and when each buddy did, against
+when its last run started: so a look at any time finds the same, and a
+run that already saw some edits does not run again at their pause; the
+timer at the pause only wakes the look. These times are by a clock that
+never goes back (`performance.now()`), so no pause is missed when the
+system's clock is set back. A watch run that fails shows on the buddy, for it may have no
 thread yet: its card says "Watch failed", why to the owner alone, and
 Retry; it also runs again the next time people pause, or once its agent
 or key changes. Unset, it starts no more runs, and one running ends with

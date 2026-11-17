@@ -177,7 +177,8 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
     rev++;
     told.push(event);
     if (!meta.by) {
-      settle();
+      editedAt = performance.now();
+      wakeOnPause();
       // A watcher's run on now saw the doc as it was: it ends, as looked,
       // and runs again once the edits pause.
       for (const { id, from } of runner.interrupt()) if (watching.has(id)) watching.get(id).looked = from;
@@ -518,7 +519,7 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
       inbox.askers.add(w.by);
       // People's pauses, and its watch turned on, are free; another buddy's
       // change since it last looked takes a step (takeStep).
-      const byPeople = w.looked === null || settledAt > w.looked;
+      const byPeople = w.looked === null || (editedAt > w.looked && performance.now() - editedAt >= SETTLE_MS);
       const byBuddy = [...changedBy].some(([other, at]) => other !== id && at > w.looked);
       inbox.watch = { due: byPeople || byBuddy, paid: !byPeople && byBuddy, thread, changes: w.base === null ? null : lineChanges(w.base, text) };
       inboxes.set(id, inbox);
@@ -554,17 +555,18 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
   // null before its first run here), failed (null, or { at, why } when its
   // last run failed: shown on the buddy, as it may have no thread yet) }. Only a person changes it
   // (watch); kept on this host (noteWatching), never in the sidecar. People's
-  // edits, once they pause for SETTLE_MS (settle), run each watcher.
+  // edits since it looked, once they pause for SETTLE_MS, run each watcher.
   const watching = new Map(Object.entries(await readWatching(docPath, settingsDir)).map(([id, { by, thread }]) => [id, { by, thread: thread ?? null, looked: performance.now(), base: null, failed: null }]));
-  let settledAt = -Infinity; // when people's edits last paused (performance.now())
+  // When people last edited the doc (performance.now()): asks() reads it,
+  // and the time since, whenever it looks.
+  let editedAt = -Infinity;
+  // Look again once the edits pause: only a wake-up, for asks() tells a pause
+  // from editedAt, so a look at any time finds the same.
   let settling = null;
-  function settle() {
+  function wakeOnPause() {
     if (!watching.size) return;
     clearTimeout(settling);
-    settling = setTimeout(() => {
-      settledAt = performance.now();
-      runner.reconcile();
-    }, SETTLE_MS);
+    settling = setTimeout(() => runner.reconcile(), SETTLE_MS + 5);
     settling.unref?.();
   }
   // When each buddy's edit last landed (performance.now()): one wakes each
