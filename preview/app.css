@@ -129,7 +129,7 @@ kbd { font: 500 11px/1 var(--ui-font); padding: 2px 6px; border-radius: 4px; bor
 .pj-face-body, .pj-face-look { transform-box: view-box; transform-origin: 50% 50%; transition: filter 0.15s; }
 .pj-face-hat { color: var(--text); }
 .pj-face-focused { display: none; }
-/* Small faces stay plain: no blush or glasses, and upright. */
+/* Small faces stay plain: no blush, and upright. */
 .pj-avatar { container-type: size; }
 @container (max-width: 20px) {
   .pj-face-extra { display: none; }
@@ -152,6 +152,9 @@ kbd { font: 500 11px/1 var(--ui-font); padding: 2px 6px; border-radius: 4px; bor
 [data-presence="working"] .pj-face-look { animation: pj-bob 0.8s ease-in-out infinite alternate; }
 [data-presence="working"] .pj-face-eyes { display: none; }
 [data-presence="working"] .pj-face-focused { display: inline; }
+/* A buddy watching the doc wears its glasses (faces.js) between its runs. */
+.pj-face-watch { display: none; }
+[data-presence="watching"] .pj-face-watch { display: inline; }
 [data-presence="away"] .pj-avatar { filter: grayscale(1); opacity: 0.45; }
 .pj-avatar.pj-failed { animation: pj-shake 0.45s ease-in-out; }
 .pj-failed .pj-face-body { animation: pj-red 1s; }
@@ -249,6 +252,7 @@ kbd { font: 500 11px/1 var(--ui-font); padding: 2px 6px; border-radius: 4px; bor
 .pj-link-files .pj-icon { width: 16px; height: 16px; color: var(--text-soft); }
 
 /* who a buddy is, under its name on its card: grows with the text, up to a point */
+.pj-profile-about + .pj-setting { margin-top: 12px; }
 .pj-input.pj-profile-about { display: block; width: 100%; box-sizing: border-box; margin-top: 12px; min-height: 4lh; max-height: 45vh; field-sizing: content; resize: none; font: 13px/1.5 var(--ui-font); }
 
 /* ---- toolbar ---- */
@@ -590,20 +594,15 @@ del.pj-buddy-del { margin-right: 0.15em; }
 .pj-unplaced { position: absolute; left: 0; display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 10px 0 8px; border: 0; border-radius: 6px; background: none; font-size: 12px; font-weight: 600; color: var(--text-soft); font-variant-numeric: tabular-nums; transition: top 0.18s ease, background 0.15s; }
 .pj-unplaced .pj-icon { width: 14px; height: 14px; }
 /* the buddies' loop, in the status bar while an ask is unanswered or the loop is paused: its ring the rest until the next look */
-.pj-loop { display: flex; align-items: center; gap: 7px; margin-right: 6px; }
-.pj-loop[hidden] { display: none; }
-.pj-statusbar .pj-loop-pause { display: inline-flex; align-items: center; justify-content: center; width: 22px; padding: 0; background: var(--hover); color: var(--text); }
-.pj-statusbar .pj-loop-pause:hover { background: var(--active); }
-.pj-loop-pause[hidden] { display: none; }
-.pj-loop-pause .pj-icon { width: 14px; height: 14px; }
-.pj-loop-ring { flex: none; width: 14px; height: 14px; }
-.pj-loop-ring circle { fill: none; stroke-width: 2; }
-.pj-loop-track { stroke: var(--border-strong); }
-.pj-loop-arc { stroke: var(--accent); stroke-linecap: round; stroke-dasharray: 37.7; transform: rotate(-90deg); transform-origin: center; transition: stroke-dashoffset 1s linear; }
-.pj-loop[data-state="working"] .pj-loop-ring { animation: pj-spin 1s linear infinite; }
-.pj-loop[data-state="working"] .pj-loop-arc { stroke-dashoffset: 26 !important; transition: none; }
-.pj-loop[data-state="still"] .pj-loop-arc { stroke: none; }
-@media (prefers-reduced-motion: reduce) { .pj-loop-ring, .pj-loop-arc { animation: none !important; transition: none; } }
+.pj-working, .pj-watching { display: flex; align-items: center; gap: 7px; margin-right: 6px; }
+.pj-watching[hidden] { display: none; }
+.pj-watching .pj-avatar { --size: 16px; }
+.pj-working[hidden] { display: none; }
+.pj-working-ring { flex: none; width: 14px; height: 14px; animation: pj-spin 1s linear infinite; }
+.pj-working-ring circle { fill: none; stroke-width: 2; }
+.pj-working-track { stroke: var(--border-strong); }
+.pj-working-arc { stroke: var(--accent); stroke-linecap: round; stroke-dasharray: 37.7; stroke-dashoffset: 26; transform: rotate(-90deg); transform-origin: center; }
+@media (prefers-reduced-motion: reduce) { .pj-working-ring { animation: none; } }
 .pj-unplaced:hover { background: var(--hover); color: var(--text); }
 .pj-unplaced[aria-expanded="true"] { visibility: hidden; }
 .pj-unplaced-failed::after { content: ""; position: absolute; top: 3px; left: 4px; width: 8px; height: 8px; border-radius: 50%; background: var(--red); box-shadow: 0 0 0 2px var(--canvas); }
