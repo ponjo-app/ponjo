@@ -14,7 +14,7 @@
 /* global document, IntersectionObserver */
 
 import { diffOps, mapOffset } from '../src/core/ot.js';
-import { lineChanges, merge3 } from '../src/core/diff.js';
+import { merge3 } from '../src/core/diff.js';
 import { newId, serializeSidecar, threadsOf } from '../src/core/comments.js';
 import { buildPrompt } from '../src/core/prompt.js';
 import { INFER, turn } from '../agents/ponjo-core.mjs';
@@ -98,8 +98,7 @@ function buddyTurn(root) {
     $(root, '[data-landed]').hidden = true;
     const first = { id: newId('c'), by: YOU, at: new Date().toISOString(), body: ask.value };
     const thread = threadsOf([first], [CLIPPY])[0];
-    let redo = null;
-    let steps = 0; // of this run: a run once more has its own 20
+    let steps = 0;
     const trace = $(root, '[data-trace]');
     trace.replaceChildren();
     // Each step of the loop as it runs: what the model called and how long it
@@ -108,7 +107,7 @@ function buddyTurn(root) {
       const results = messages.slice(messages.findLastIndex((m) => m.role === 'assistant') + 1);
       const back = results.find((m) => m.role === 'tool' && m.content.startsWith('Nothing was changed.'));
       if (back) trace.lastChild.append(el('span', 'arch-back', `sent back: ${back.content.replace('Nothing was changed. ', '').split('. ')[0]}`));
-      status(`${redo ? 'Running once more, told what you changed' : 'Clippy is working on a copy'}. Keep editing the doc.`);
+      status('Clippy is working on a copy. Keep editing the doc.');
       const started = Date.now();
       const step = await infer(messages, tools);
       const row = el('li', '', `${++steps}.`);
@@ -117,30 +116,20 @@ function buddyTurn(root) {
       return step;
     };
     try {
-      for (;;) {
-        const base = doc.value;
-        const copies = { [DOC]: base, [SIDECAR]: serializeSidecar([{ comment: first }]) };
-        const prompt = buildPrompt({ buddy: CLIPPY, buddies: [CLIPPY], docName: DOC, sidecarName: SIDECAR, thread, human: { name: YOU.name, about: '' }, redo });
-        const readFile = (path) => copies[path] ?? (['', '.'].includes(path) ? Object.keys(copies) : null);
-        const { doc: edited, reply } = await turn({ prompt, doc: DOC, sidecar: SIDECAR, thread: thread.id }, { infer: traced, readFile });
-        const now = doc.value;
-        const merged = merge3(base, now, edited);
-        if (merged.conflicts > 0 && !redo) { // as the doc host does: once more, on the doc as it is now
-          redo = { mine: lineChanges(base, edited), theirs: lineChanges(base, now) };
-          trace.append(el('li', '', 'Its edit collided with yours: the turn runs once more, told what you changed.'));
-          steps = 0;
-          continue;
-        }
-        show(doc, merged.text, diffOps(now, merged.text));
-        revision($(root, '[data-result]'), now, merged.text);
-        $(root, '[data-reply]').textContent = reply || '(no reply: the edit says it all)';
-        $(root, '[data-verdict]').textContent = edited === base ? 'Clippy edited nothing.'
-          : merged.conflicts ? `It collided with your typing twice: your lines stay there, the rest of its edit landed, and its version says conflict.`
-            : redo ? 'Its first edit collided with your typing, so it ran once more on the doc as it was then, and that landed.'
-              : 'It landed, merged with what you typed meanwhile.';
-        $(root, '[data-landed]').hidden = false;
-        break;
-      }
+      const base = doc.value;
+      const copies = { [DOC]: base, [SIDECAR]: serializeSidecar([{ comment: first }]) };
+      const prompt = buildPrompt({ buddy: CLIPPY, buddies: [CLIPPY], docName: DOC, sidecarName: SIDECAR, thread, human: { name: YOU.name, about: '' } });
+      const readFile = (path) => copies[path] ?? (['', '.'].includes(path) ? Object.keys(copies) : null);
+      const { doc: edited, reply } = await turn({ prompt, doc: DOC, sidecar: SIDECAR, thread: thread.id }, { infer: traced, readFile });
+      const now = doc.value;
+      const merged = merge3(base, now, edited); // as the doc host does
+      show(doc, merged.text, diffOps(now, merged.text));
+      revision($(root, '[data-result]'), now, merged.text);
+      $(root, '[data-reply]').textContent = reply || '(no reply: the edit says it all)';
+      $(root, '[data-verdict]').textContent = edited === base ? 'Clippy edited nothing.'
+        : merged.conflicts ? 'It collided with your typing: your lines stay there, the rest of its edit landed, and its version says conflict.'
+          : 'It landed, merged with what you typed meanwhile.';
+      $(root, '[data-landed]').hidden = false;
     } catch (error) {
       $(root, '[data-reply]').textContent = `Clippy could not answer: ${error.message.split('\n')[0]}`;
       $(root, '[data-result]').replaceChildren();
@@ -312,7 +301,7 @@ const HOODS = {
   control: [
     [['host'], 'The doc host is the only writer of the file: every edit, typed or merged, goes through it, in order.'],
     [['turns', 'merge', 'host'], 'When a run ends, the host merges its copy into the doc as it is now, by line: merge3 of the copy as it started, the doc now, and the copy as it ended.'],
-    [['merge', 'runner', 'start', 'turns'], 'Where you changed the same lines, your lines stay, and the runner runs it once more on your version.'],
+    [['merge', 'runner', 'start', 'turns'], 'Where you changed the same lines, your lines stay, the rest of its edit lands, and its comment says what was not applied.'],
     [['host'], 'Each run lands as one version, with the one before it kept: that is its “1 edit” count, and its Undo.'],
   ],
 };
@@ -668,16 +657,20 @@ function design3(root) {
     { say: 'Meanwhile you change the same paragraph: the beta moves to April.', run: async () => {
       win.draw([{ text: YOURS, mine: true, cursor: 'Clippy' }, { text: PARAS[1] }]);
     } },
-    { say: 'Clippy is done, but its copy says March. The app keeps your line, and has Clippy redo its edit on your version.', run: async (wait) => {
+    { say: 'Clippy is done, but its copy says March. The app keeps your line, and Clippy’s comment says its edit there was not applied.', run: async () => {
       const { conflicts } = merge3(text(PARAS), text([YOURS, PARAS[1]]), text([SHORTER, PARAS[1]]));
-      copy.show([SHORTER, PARAS[1]], 0, `${conflicts} paragraph changed by you too: redo it on yours`);
-      await wait(2500);
+      copy.show([SHORTER, PARAS[1]], 0, `${conflicts} paragraph changed by you too: yours stays`);
+      win.working('Clippy', false);
+      win.draw([{ text: YOURS, mine: true }, { text: PARAS[1] }]);
+      ask.reply('You changed this paragraph meanwhile, so my edit there was not applied.', 0);
+    } },
+    { say: 'You ask again, and Clippy shortens your version, with your April in it. Nobody had to resolve anything.', run: async (wait) => {
+      win.working('Clippy', true);
+      ask.working(true);
       for (let x = 0; x <= 1.0001; x += 0.1) {
-        copy.show([writing(YOURS, REDONE, x), PARAS[1]], 0, 'redoing, on your version');
+        copy.show([writing(YOURS, REDONE, x), PARAS[1]], 0, 'working, on your version');
         await wait(120);
       }
-    } },
-    { say: 'Clippy’s new edit lands, with your April in it. Nobody had to resolve anything.', run: async () => {
       const now = merge3(text([YOURS, PARAS[1]]), text([YOURS, PARAS[1]]), text([REDONE, PARAS[1]])).text;
       const [one, two] = parasOf(now);
       win.working('Clippy', false);

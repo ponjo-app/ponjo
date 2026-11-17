@@ -4,7 +4,6 @@
 // is not its own, as that comment says:
 //   replace "<before>" with "<after>"   edit the copy (each such command, in turn)
 //   hold                                wait for $FAKE_DIR/release-<buddy> first
-//   wait                                the same, and take the file away: each run waits for its own
 //   fail                                print to stderr and exit 1
 //   until "<text>"                      while the copy lacks <text>, leave the thread as it is
 //   usage                               write a step with the Claude API's usage to the trace
@@ -22,7 +21,7 @@
 // Each run logs one JSON line to $FAKE_DIR/runs.log when it starts, with
 // the PONJO_SETTING_* it was given, and writes { started: <ask> } to its trace.
 
-import { appendFileSync, existsSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { delimiter, join } from 'node:path';
 
 let prompt = '';
@@ -42,9 +41,8 @@ if (process.env.PONJO_TRACE) appendFileSync(process.env.PONJO_TRACE, `${JSON.str
 // `usage`: a step as the Ponjo agent writes it, with the Claude API's count.
 if (/\busage\b/.test(ask)) appendFileSync(process.env.PONJO_TRACE, `${JSON.stringify({ role: 'assistant', model: 'claude-opus-5-5', usage: { input_tokens: 100, output_tokens: 10, cache_read_input_tokens: 900 } })}\n`);
 
-if (/\b(hold|wait)\b/.test(ask)) {
+if (/\bhold\b/.test(ask)) {
   while (!existsSync(join(dir, `release-${buddy}`))) await new Promise((r) => setTimeout(r, 50));
-  if (/\bwait\b/.test(ask)) rmSync(join(dir, `release-${buddy}`), { force: true });
 }
 if (/\bfail\b/.test(ask)) {
   console.log('some output');

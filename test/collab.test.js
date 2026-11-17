@@ -239,7 +239,7 @@ for (const [prefix, teammate] of [['', false], ['through the relay: ', true]]) {
     }
   });
 
-  test(`${prefix}9. a buddy's turn lands while one types: the typing stays; its edit lands where no one typed, and where it collides it runs once more on the typed text`, { timeout: 60_000 }, async () => {
+  test(`${prefix}9. a buddy's turn lands while one types: the typing stays; its edit lands where no one typed, and where it collides the typed text stays`, { timeout: 60_000 }, async () => {
     await make('Alpha one.\n\nBeta two.\n\nGamma three.\n');
     await run(`collab.ask('@Pilot hold replace "Gamma three." with "Gamma buddy."')`);
     await select(0, 'Alpha one.', 9);
@@ -258,7 +258,7 @@ for (const [prefix, teammate] of [['', false], ['through the relay: ', true]]) {
     await waitFor(() => run('collab.replies().then((r) => r.length === 2)'), 30_000, 'the second reply');
     const text = await settled();
     assert.match(text, /\nBeta [two]*XY[two]*\.\n/, 'the typing stays, in the word as it was');
-    assert.doesNotMatch(text, /2!/, 'run once more, it found no "two." to replace');
+    assert.doesNotMatch(text, /2!/, 'where it collided, the typed line stays');
   });
 
   // Both type in each block of `blocks` at once, the first edit there for

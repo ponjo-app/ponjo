@@ -83,42 +83,21 @@ test('a run edits its copy and appends its reply: the doc has the edit, the thre
   });
 });
 
-test('the human edits the same lines during a run: the turn runs once more, on the doc as it is now, told what it and they changed', { timeout: 30_000 }, async () => {
+test('the human edits the same lines during a run: their lines stay, the rest lands, its version says conflict, and it does not run again', { timeout: 30_000 }, async () => {
   await withDoc(async ({ docPath, call, edit, state, runs, release }) => {
-    const id = await comment(call, '@Clippy hold replace "extra load" with "extra peak load"');
+    const id = await comment(call, '@Clippy hold replace "extra load" with "extra peak load" replace "## Risks" with "## Open risks"');
     await until(async () => (await runs()).length === 1, 'the run to start');
     await edit((await state()).text.replace('extra load', 'extra traffic'));
     await release('Clippy');
-    await until(async () => (await repliesIn(state, id)).length, 'the reply');
-    const [first, again] = await runs();
-    assert.doesNotMatch(first.prompt, /was applied/);
-    assert.match(again.prompt, /none of it was applied/);
-    assert.match(again.prompt, /\n-The main risk is that the `sync` service cannot handle the extra load\.\n\+The main risk is that the `sync` service cannot handle the extra peak load\.\n/);
-    assert.match(again.prompt, /What members changed meanwhile:\n\n-The main risk .* extra load\.\n\+The main risk .* extra traffic\.$/);
+    const [reply] = await until(async () => (await repliesIn(state, id)).length && repliesIn(state, id), 'the reply');
     const text = await readFile(docPath, 'utf8');
     assert.match(text, /the extra traffic\./);
     assert.doesNotMatch(text, /peak/);
-  });
-});
-
-test('a turn that collides again when run once more lands where no one changed its lines, and its version says conflict', { timeout: 30_000 }, async () => {
-  await withDoc(async ({ docPath, call, edit, state, runs, release }) => {
-    const id = await comment(call, '@Clippy wait replace "extra load" with "extra peak load" replace "week one" with "week two" replace "## Risks" with "## Open risks"');
-    await until(async () => (await runs()).length === 1, 'the run to start');
-    await edit((await state()).text.replace('extra load', 'extra traffic'));
-    await release('Clippy');
-    await until(async () => (await runs()).length === 2, 'the run once more');
-    await edit((await state()).text.replace('week one', 'week 1'));
-    await release('Clippy');
-    await until(async () => (await repliesIn(state, id)).length, 'the reply');
-    const text = await readFile(docPath, 'utf8');
-    assert.match(text, /in week 1,/);
     assert.match(text, /## Open risks/);
-    assert.match(text, /the extra traffic\./);
-    assert.equal((await runs()).length, 2, 'once more, no more');
-    const [reply] = await repliesIn(state, id);
     assert.equal((await state()).edits[reply.id].conflict, true);
     assert.equal(reply.conflict, undefined, 'nothing of it in the comments\' file');
+    await sleep(500);
+    assert.equal((await runs()).length, 1);
   });
 });
 

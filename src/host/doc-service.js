@@ -17,7 +17,7 @@ import { appendedComments, askedBy, movedAnchor, newComment, newId, parseSidecar
 import { sameName } from '../core/mentions.js';
 import { BuddyError, buddiesHere, checkBuddyPatch } from '../core/buddies.js';
 import { DEFAULT_SETTINGS, SettingsError } from '../core/settings.js';
-import { lineChanges, merge3 } from '../core/diff.js';
+import { merge3 } from '../core/diff.js';
 import { apply, diffOps, mapOffset, transform } from '../core/ot.js';
 import { PROTOCOL } from '../core/protocol.js';
 import { StoreError, formFor, hashText, moveDoc, readDoc, readSidecarText, sidecarPath, writeAtomic, writeDoc, writeSidecar } from '../store/files.js';
@@ -457,8 +457,7 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
   // owner and the players who can edit, and only those this host took
   // (comment), as they were taken: one that reached the sidecar another way
   // is shown but asks no one. A comment a run of the buddy was given asks
-  // it no more, though the run posted nothing there (`looked`). `redo` is
-  // what its last run did when it collided.
+  // it no more, though the run posted nothing there (`looked`).
   async function asks() {
     if (closed) return [];
     const here = await buddies();
@@ -479,13 +478,9 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
         inboxes.set(id, inbox);
       }
     }
-    return [...inboxes].map(([id, inbox]) => ({ buddy: here.find((b) => b.id === id), buddies: here, threads: inbox.threads, askers: [...inbox.askers], redo: redo.get(id) ?? null }))
+    return [...inboxes].map(([id, inbox]) => ({ buddy: here.find((b) => b.id === id), buddies: here, threads: inbox.threads, askers: [...inbox.askers] }))
       .filter((inbox) => inbox.buddy); // a thread's opener may be gone
   }
-  // The buddies whose last run collided with people's edits, to run once
-  // more: buddy → { mine, what the run changed; theirs, what people changed
-  // meanwhile }, each [{ before, after }].
-  const redo = new Map();
   // What each buddy's runs were given: buddy → Map(thread → the time of the
   // last comment it was given there). A run that answered nothing there, or
   // whose comments could not be written, is not run again until someone
@@ -527,24 +522,22 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
   // comment's edits are undone on their own. An agent that wrote no groups
   // lands its edits on its last comment, or, with none, on an empty reply
   // in the first thread that asked it: no edit lands without a comment.
-  // Where people changed the same lines meanwhile, nothing lands, and the
-  // buddy runs once more on the doc as it is now, told what it changed and
-  // what they did (`redo`); colliding again, their lines stay, the rest
-  // lands, and its versions say `conflict`. A reply in a thread resolved
+  // Where people changed the same lines meanwhile, their lines stay, the
+  // rest lands, and its versions say `conflict`. A reply in a thread resolved
   // meanwhile is dropped, with its edits. In a thread that asked it, its
   // comments come just after the last comment it saw, so one written while
   // it worked is after them, still to answer; elsewhere, after the latest.
   // Only people resolve: a line's `resolved` is ignored (appendedComments).
   // A failed run says why in each thread that asked it. The buddy acts with
   // the level of whoever asked it, at most write, asked now: a run one of
-  // whose askers was removed or set to Read meanwhile lands nothing. Run in `serial`. Resolves to the ids of the comments it posted
-  // and what landed, in words, for its trace.
-  async function finishRun({ id: buddyId, name, threadIds, askers, seen, again, base, edited, comments, groups = [], failed, body }) {
+  // whose askers was removed or set to Read meanwhile lands nothing. Run in
+  // `serial`. Resolves to the ids of the comments it posted and what
+  // landed, in words, for its trace.
+  async function finishRun({ id: buddyId, name, threadIds, askers, seen, base, edited, comments, groups = [], failed, body }) {
     const saw = looked.get(buddyId) ?? new Map();
     for (const [thread, at] of Object.entries(seen)) saw.set(thread, Date.parse(at));
     looked.set(buddyId, saw);
     for (const asker of askers) if (!can({ level: await levelOf(asker) }, 'write')) return { comments: [], landed: 'Dropped: whoever asked can no longer edit' };
-    redo.delete(buddyId);
     const by = { id: buddyId, name, kind: 'ai' };
     const all = (await readComments()).lines.map((l) => l.comment).filter(Boolean);
     const threads = threadsOf(all, [], text);
@@ -565,14 +558,6 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
         if (!posts.length && asking.length) posts.push(newComment({ thread: asking[0], body: '' }, { by, at: '' }));
         if (!posts.length) return { comments: [], landed: 'Dropped: the threads that asked it were resolved meanwhile' };
         carried = [{ comment: posts.at(-1), doc: edited }];
-      }
-      if (edited !== base && !missing) {
-        const merged = merge3(base, text, edited);
-        if (merged.conflicts > 0 && !again) {
-          redo.set(buddyId, { mine: lineChanges(base, edited), theirs: lineChanges(base, text) });
-          for (const thread of Object.keys(seen)) saw.delete(thread); // asked still
-          return { comments: [], landed: 'People changed the same lines meanwhile: it runs once more' };
-        }
       }
     }
     posts = posts.filter(kept);
@@ -610,7 +595,7 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
       posted = false;
     });
     if (!posted) return { comments: [], landed: 'Its comments were not posted' };
-    return { comments: posts.map((c) => c.id), landed: failed ? 'Failed: it said why' : conflict ? 'Posted; where it collided with people twice, their lines stayed' : 'Posted' };
+    return { comments: posts.map((c) => c.id), landed: failed ? 'Failed: it said why' : conflict ? 'Posted; where it collided with people, their lines stayed' : 'Posted' };
   }
 
   // ---- undo ----
@@ -636,7 +621,7 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
   // `changes` how many places the run changed, `version` the version that
   // holds the doc right after it, `undo` (while undone) the version of its
   // last undo, whose undo redoes it, and `conflict` whether people's lines
-  // stayed where it collided with them, twice.
+  // stayed where it collided with them.
   async function replyEdits() {
     await chronicle; // a run's version is in before the page reads the doc it wrote
     const edits = {};

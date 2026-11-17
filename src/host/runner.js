@@ -27,11 +27,9 @@ const TEST_PROMPT = 'Ponjo is testing that you run. Edit no file and reply only:
 export class Runner {
   /**
    * `asks()` resolves to the buddies asked now, each with its inbox: [{
-   * buddy: { id, name, about }, buddies, threads, askers, redo }], `buddies`
-   * all those the doc reaches, `threads` those that ask it and it has not
-   * answered, `askers` the ids of whoever asked, `redo` null or, when its
-   * last run collided with people's edits, what that run changed and what
-   * people did ({ mine, theirs }, each [{ before, after }]). `doc()` to { path, text,
+   * buddy: { id, name, about }, buddies, threads, askers }], `buddies` all
+   * those the doc reaches, `threads` those that ask it and it has not
+   * answered, `askers` the ids of whoever asked. `doc()` to { path, text,
    * comments }, `path` the doc's in the project (`/`-separated; its name in
    * doc mode), where the run's folder holds its copy, and `comments` the
    * sidecar's text or null. `agent()` resolves to the agent that runs every
@@ -39,9 +37,9 @@ export class Runner {
    * the run as PONJO_SETTING_<KEY>) }. `folder()` resolves to the project
    * folder the agent is given, or null, and `human()` the user, { name,
    * about }. `finish(result)` takes a run that ended: { id, name,
-   * threadIds, askers, seen, again, base, edited, comments, groups, failed,
-   * body }, `seen` the `at` of each of its threads' last comment it was
-   * given, by thread, `again` whether it was run once more (`redo`), `edited` the doc's copy at the end (null when the run failed),
+   * threadIds, askers, seen, base, edited, comments, groups, failed, body },
+   * `seen` the `at` of each of its threads' last comment it was given, by
+   * thread, `edited` the doc's copy at the end (null when the run failed),
    * `comments` { before, after } the sidecar's copy at the start and end,
    * `groups` the lines it wrote to PONJO_GROUPS, parsed, and `body` why a
    * failed run failed; it resolves, while the doc is open, to what became
@@ -122,10 +120,10 @@ export class Runner {
     return this.reconcile();
   }
 
-  #start({ buddy, buddies, threads, askers, redo }) {
+  #start({ buddy, buddies, threads, askers }) {
     const run = { runId: newId('r'), id: buddy.id, name: buddy.name, threadIds: threads.map((t) => t.id), askers, child: null, done: null, cancelled: false, ended: false, over: false };
     this.runs.set(buddy.id, run);
-    run.done = this.#run(run, threads, buddy, buddies, redo)
+    run.done = this.#run(run, threads, buddy, buddies)
       .catch((error) => console.error(`Run of ${buddy.name} failed to finish:`, error))
       .finally(() => {
         run.over = true;
@@ -135,7 +133,7 @@ export class Runner {
     this.onChange();
   }
 
-  async #run(run, threads, buddy, buddies, redo) {
+  async #run(run, threads, buddy, buddies) {
     const { path: docPath, text: base, comments } = await this.doc();
     const dir = await mkdtemp(join(tmpdir(), 'ponjo-run-'));
     let aside = null; // the folder its trace is in, out of its sight
@@ -151,7 +149,7 @@ export class Runner {
       aside = await mkdtemp(join(tmpdir(), 'ponjo-trace-'));
       const steps = join(aside, 'trace.jsonl');
       const groups = join(aside, 'groups.jsonl');
-      const prompt = buildPrompt({ buddy, buddies, docName: docPath, sidecarName: docPath + SIDECAR_SUFFIX, threads, project: Boolean(folder), human: await this.human(), redo });
+      const prompt = buildPrompt({ buddy, buddies, docName: docPath, sidecarName: docPath + SIDECAR_SUFFIX, threads, project: Boolean(folder), human: await this.human() });
       const at = Date.now();
       const result = await runScript(script, { cwd: dir, prompt, timeoutMs: this.timeoutMs, env: runEnv({ doc: copy, sidecar, folder, buddy: buddy.name, settings, trace: steps, groups }), onChild: (child) => {
         run.child = child;
@@ -167,7 +165,7 @@ export class Runner {
       try {
         if (stopped) return; // ended by stop or cancel: no answer
         const seen = Object.fromEntries(threads.map((t) => [t.id, t.comments.at(-1).at]));
-        const out = { id: buddy.id, name: buddy.name, threadIds: run.threadIds, askers: run.askers, seen, again: Boolean(redo), base };
+        const out = { id: buddy.id, name: buddy.name, threadIds: run.threadIds, askers: run.askers, seen, base };
         if (result.code === 0) {
           const bytes = await readFile(copy).catch(() => null);
           trace.edited = (bytes && decodeText(bytes)?.text) ?? base; // as text, like the doc

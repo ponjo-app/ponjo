@@ -81,7 +81,7 @@ How we're different:
 
 - **People in control**: The AI never takes over the doc. Measure edits that go beyond the comment's scope and the share of runs users undo.
 - **Less waiting**: Measure time from an @ to the AI buddy's reply, and how long people and AI buddies wait on each other.
-- **Many AI buddies**: Measure the share of docs with 2+ AI buddies and the number of AI buddy turns run once more, or not fully applied, after colliding with people's edits.
+- **Many AI buddies**: Measure the share of docs with 2+ AI buddies and the number of AI buddy turns not fully applied after colliding with people's edits.
 - **Writing together**: Measure the share of projects with a teammate, and characters lost when people type at once (the target is none).
 - **Better writing experience**: Beat an editor + AI plugin on completion time and satisfaction for the same task; track weekly active docs and retention.
 - **Open**: Docs open correctly in any text editor; count the third-party agents that connect.

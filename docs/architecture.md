@@ -35,9 +35,8 @@ with a way to fix it.
    a window (typing, a paste) is merged by character, and nothing typed is
    dropped. A whole text that arrives late (an AI buddy's turn, a change
    from outside, an undo) is merged by line (`merge3`): where it changed
-   the same lines as what landed meanwhile, what landed stays. A turn that
-   collides is run once more first. What does not land is redone (ask the
-   buddy again) or restored (history).
+   the same lines as what landed meanwhile, what landed stays. What does
+   not land is redone (ask the buddy again) or restored (history).
 5. **AI buddies always edit, and every edit can be undone.** See
    [Undoing changes](#undoing-changes).
 6. **Only a person's comment starts a turn:** mine, or a player's who can
@@ -385,7 +384,7 @@ merges never knows the writer (principle 8).
 | Edit | Comes as | Merged | Where it collides |
 | --- | --- | --- | --- |
 | A window's: typing, a paste, a cut | operations on the revision the window last heard, milliseconds old | by character (`transform`) | both stay, in the order they reached the host |
-| A whole text: a buddy's turn, an outside change (another editor, `git pull`), an undo | the text it ended on, from a base that may be minutes old | by line (`merge3(base, doc, late)`) | the doc as it is stays; the late text is in history. A turn first runs once more |
+| A whole text: a buddy's turn, an outside change (another editor, `git pull`), an undo | the text it ended on, from a base that may be minutes old | by line (`merge3(base, doc, late)`) | the doc as it is stays; the late text is in history |
 
 Why two ways: an edit from a window says what it does, on text its writer
 saw a moment ago, so it can move over others' edits character by
@@ -394,7 +393,7 @@ guessed by a diff, against edits it never saw, and merged by character
 they splice two rewrites of one sentence into words neither wrote. By
 line, the collision shows. The doc as it is wins because people have
 seen what landed and keep working on it, while a late text can be made
-again (the turn runs once more) or found in history.
+again (ask the buddy again) or found in history.
 
 So a person's edit saved in another editor gives way where it collides,
 as a buddy's turn does, and a buddy's turn that landed first holds
@@ -492,11 +491,9 @@ window. Resolving a thread, which only people do, drops what it asked.
    the copy as it started (`merge3`, see Interfaces). Where people changed
    none of the same lines meanwhile, each comment's edits land as their own
    version, hung on it, and its comments are added as the buddy's: no edit
-   lands without a comment. Where they did, nothing lands and nothing is
-   posted: the buddy runs once more, on the doc as it is then, and its
-   prompt says what the turn changed and what people did. Run once more
-   and colliding again, it lands with the doc's lines kept there, and its
-   versions say `conflict`. The turn lands as the buddy's. In a thread
+   lands without a comment. Where they did, the doc's lines stay there, the
+   rest lands, and its versions say `conflict`. The turn lands as the
+   buddy's. In a thread
    that asked it, its comments are dated just after the last comment the
    turn was given, so one the user wrote meanwhile comes after them, still
    to answer.

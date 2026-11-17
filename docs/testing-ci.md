@@ -73,9 +73,8 @@ for a window), **e2e** (the packaged app, under xvfb on Linux).
   stdin and `PONJO_DOC`, `PONJO_PROJECT`, `PONJO_GROUPS` and `PONJO_BUDDY`, and the lines it
   appends to its sidecar copy become its comments; the folder is gone after.
 - **The human edits the same lines during a run**: the human's text stays,
-  and the turn runs once more on the doc as it is, told what it and they
-  changed; colliding again, it lands where no one changed its lines, and
-  its version says `conflict`; nothing asks the user.
+  the turn lands where no one changed its lines, and its version says
+  `conflict`; it does not run again, and nothing asks the user.
 - Two runs on one doc at once: both edits land, merged one at a time.
 - A buddy's reply answers its ask: neither it nor a person's edit runs it
   again; a comment written while it runs is answered by a run right after,

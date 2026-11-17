@@ -49,8 +49,8 @@ export function historyDir(docPath, root) {
  * unknown, the first of `authors` when several typed it; `added` and
  * `removed` count the characters changed since the parent. A buddy's edit
  * has the `thread` it answered and the id of its `reply`, and `conflict`
- * when it collided with people's lines again when run once more, and theirs
- * stayed there; an undo has the version it `undid`.
+ * when it collided with people's lines, and theirs stayed there; an undo
+ * has the version it `undid`.
  */
 export async function readHistory(docPath, root) {
   return (await readIndex(historyDir(docPath, root))).versions;

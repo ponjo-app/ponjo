@@ -177,11 +177,9 @@ and 30 days, and by model.
 - **A person's typing is trusted.** It is not marked by who typed it, and
   when two people disagree they settle it outside the app, in a call.
 - **People win over AI buddies.** Where a person changed the same lines
-  while an AI buddy worked, the buddy does its turn once more on the doc as
-  it is then, told what changed. If it collides again, the person's lines
-  stay, the rest of its change lands, and its comment says part of it was not
-  applied: ask it again to redo it. A change from outside merges the
-  same way, without the second try.
+  while an AI buddy worked, the person's lines stay, the rest of its change
+  lands, and its comment says part of it was not applied: ask it again to
+  redo it. A change from outside merges the same way.
 - **Undo is one thing**, for your typing, an AI buddy's run, a teammate's
   change or one from outside: it takes those edits back, all at once, and
   keeps everything written since; where someone changed those lines since,
