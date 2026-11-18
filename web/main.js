@@ -414,7 +414,6 @@ async function start() {
     if (!reading()) client.moved();
     countSelection();
   });
-  events.on('sidecar', () => afterTyping('sidecar', refreshThreads));
   events.on('history', () => {
     history.changed();
     afterTyping('sidecar', refreshThreads); // a buddy's turn's receipt is read from its version
@@ -595,13 +594,18 @@ window.addEventListener('beforeunload', (event) => {
   client.landed();
 });
 
-// Others' edits landed and the view's text is now `text` (web/client.js).
-// A person's typing (an edit with an `id`) shows by their cursor alone;
-// anything else glows, a buddy's in its colour (`by`; with its `reply`
-// unless its ask stays open).
+// Others' changes landed and the view's text is now `text` (web/client.js).
+// Comments changed: the threads are read again. A person's typing (an edit
+// with an `id`) shows by their cursor alone; anything else glows, a buddy's
+// in its colour (`by`; with its `reply` unless its ask stays open).
 function showLanded(text, ops, event) {
+  if (event?.comments) {
+    afterTyping('sidecar', refreshThreads);
+    return;
+  }
   const reply = event?.reply;
-  editor.applyText(text, { by: event?.by ?? (event?.id ? null : asking ?? ON_DISK), buddy: Boolean(event?.by), ops });
+  const buddy = event?.by?.kind === 'buddy';
+  editor.applyText(text, { by: buddy ? event.by.id : event?.id ? null : asking ?? ON_DISK, buddy, ops });
   paintMarks();
   if (reply) {
     runLanded = reply;

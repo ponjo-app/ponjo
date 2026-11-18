@@ -133,8 +133,10 @@ The owner's level is owner, a teammate's read or write. A buddy acts with
 the level of whoever asked it, at most write, as a Unix program runs as the
 user who started it. Behind the door, `who` only names a change's author.
 
-Events to every connection on the doc: `change` (each change in the log,
-below), `saved` (whether the file holds what was told, and why not),
+Events to every connection on the doc: `ops` (each change in the log,
+below: `{ epoch, rev, ops, id, by: { id, kind }, reply?, comments? }`, a
+change to the comments with no `ops` and `comments: true`), `saved`
+(whether the file holds what was told, and why not),
 `cursors`, `missing` (the file gone), `renamed`, and from the controller
 `buddies` (who is here, running, watching, failed; the steps).
 

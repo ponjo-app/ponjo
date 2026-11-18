@@ -38,6 +38,9 @@ const agentOf = (json) => JSON.stringify((({ agent, agents }) => ({ agent, agent
 
 // A comment's `by`: who wrote it.
 const byOf = ({ id, name, kind }) => ({ id, name, kind });
+// A change's author in the log: a person or a buddy by id; outside, a file changed by another program.
+const authorOf = (who) => ({ id: who.id, kind: who.kind === 'ai' ? 'buddy' : 'person' });
+const OUTSIDE = { id: null, kind: 'outside' };
 
 /**
  * Open the doc at `docPath`. Its buddies are the user's and, in project
@@ -124,8 +127,8 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
   // Edit `ops` lands on the text, from a window (`id`, the window's name for
   // it) or from here, merged already (merge3): a buddy's turn (buddy `by`,
   // and its `reply`), an outside change, an undo.
-  function land(ops, meta = {}) {
-    const event = { epoch, rev: rev + 1, ops, id: meta.id ?? null, ...(meta.by ? { by: meta.by } : {}), ...(meta.reply ? { reply: meta.reply } : {}) };
+  function land(ops, meta) {
+    const event = { epoch, rev: rev + 1, ops, id: meta.id ?? null, by: meta.by, ...(meta.reply ? { reply: meta.reply } : {}) };
     log.push({ ops, id: meta.id, event });
     if (meta.id) landedRevs.set(meta.id, rev + 1);
     if (log.length > LOG_SIZE) {
@@ -135,7 +138,20 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
     text = apply(text, ops);
     rev++;
     told.push(event);
-    runtime.changed(meta.by ?? null);
+    runtime.changed(meta.by.kind === 'buddy' ? meta.by.id : null);
+  }
+  // The comments changed, by `by`: a change in the log too, with no
+  // operations on the text, told to every window as the next commit tells
+  // its edits.
+  function changedComments(by) {
+    const event = { epoch, rev: rev + 1, ops: [], id: null, by, comments: true };
+    log.push({ ops: [], event });
+    if (log.length > LOG_SIZE) {
+      log.shift();
+      logStart++;
+    }
+    rev++;
+    told.push(event);
   }
 
   // Write what landed, then tell every window: what a window has heard of is
@@ -238,7 +254,7 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
     written = disk.text;
     writtenHash = disk.hash;
     await noteWritten(docPath, settingsDir, writtenHash, writtenIds); // the edits written so far: landed, though the file now holds another's
-    land(diffOps(text, merged));
+    land(diffOps(text, merged), { by: OUTSIDE });
     if (text !== disk.text) await noteVersion(text, { kind: 'edit', author: await me() });
   }
 
@@ -286,11 +302,11 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
       for (const landed of log.slice(at - logStart)) ops = transform(ops, landed.ops);
       if (ops.length > 0 && ops.at(-1).to > text.length) throw new DocError('bad_input', 'operations past the end of the doc');
       if (reply === undefined) {
-        land(ops, { id });
+        land(ops, { id, by: authorOf(who) });
         typed(who);
       } else {
         await flushTyping();
-        land(ops, { id, by: who.id, reply });
+        land(ops, { id, by: authorOf(who), reply });
         await noteVersion(text, { kind: 'edit', author: { ...byOf(who), kind: who.kind === 'ai' ? 'agent' : who.kind }, thread, reply, ...(conflict ? { conflict: true } : {}) });
       }
       const failed = await committed();
@@ -332,7 +348,7 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
     const found = await readVersion(docPath, settingsDir, versionId(body?.id));
     if (!found) throw new DocError('not_found', 'no such version');
     await flushTyping();
-    land(diffOps(text, found.text));
+    land(diffOps(text, found.text), { by: authorOf(who) });
     await committed(); // landed: windows hear if it is not saved
     await noteVersion(text, { kind: 'restore', author: byOf(who), restoredFrom: body.id });
     return {};
@@ -394,14 +410,18 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
     return { threads, people: peopleOf(comments), edits: await replyEdits(), readOnly: problem, notice };
   }
 
-  // Add or remove lines of the sidecar, written whole. Run in `serial`.
-  // The comments as `change` makes them; then the buddies look at what is asked.
-  async function changeComments(change) {
+  // Add or remove lines of the sidecar, written whole, as `by`. Run in
+  // `serial`. The comments as `change` makes them, a change in the log;
+  // then the buddies look at what is asked.
+  async function changeComments(change, by) {
     const current = await readComments();
     if (current.problem) throw new DocError('read_only', `${basename(sidecarPath(docPath))} is read-only here, so it is not changed`);
     const next = await change(current.lines);
     if (next === current.lines) return;
     await writeSidecar(docPath, serializeSidecar(next));
+    lastSidecarHash = await fileHash(sidecarPath(docPath)); // this service's own write
+    changedComments(by);
+    await commit().catch(() => {}); // the doc not saved holds the telling; it is tried again
     runtime.look();
   }
 
@@ -431,7 +451,7 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
       added = { ...newComment({ thread, anchor, body, resolved }, { by: byOf(who), at: new Date(at).toISOString() }), ...(id !== undefined ? { id } : {}), ...(thread !== undefined && anchor !== null ? { anchor } : {}) };
       if (body.trim() !== '') await noteTaken(docPath, settingsDir, added, lines.map((l) => l.comment?.id));
       return [...lines, { comment: added }];
-    }));
+    }, authorOf(who)));
     return { ...(await commentsView(text)), id: added.id, at: added.at };
   }
 
@@ -468,7 +488,7 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
     const [after, first] = await Promise.all([id, from].map((v) => readVersion(docPath, settingsDir, versionId(v))));
     if (!after || first?.before == null) throw new DocError('not_found', 'that change is not in this machine\'s history');
     await flushTyping();
-    land(diffOps(text, merge3(after.text, text, first.before).text));
+    land(diffOps(text, merge3(after.text, text, first.before).text), { by: authorOf(who) });
     await committed(); // landed: windows hear if it is not saved
     await noteVersion(text, { kind: 'undo', author: byOf(who), undid: id });
     return commentsView(text);
@@ -579,7 +599,10 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
       const sidecarHash = await fileHash(sidecarPath(docPath));
       if (sidecarHash !== lastSidecarHash) {
         lastSidecarHash = sidecarHash;
-        emit('sidecar', { hash: sidecarHash });
+        await serial(async () => {
+          changedComments(OUTSIDE);
+          await commit().catch(() => {});
+        });
         await runtime.sync(); // a new ask
       }
     } catch (error) {

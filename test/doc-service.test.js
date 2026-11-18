@@ -267,6 +267,19 @@ test('a reply comes after every comment in its thread, though its clock is behin
   });
 });
 
+test('one log: a comment through the door is a change by its author, the next rev; a window\'s edit names its author too', async () => {
+  await withDoc(async ({ call, edit, events, state }) => {
+    const { me } = await state();
+    await call('comment', { anchor: null, body: 'Fix this' });
+    await edit(`${(await state()).text}More.\n`);
+    const told = events.filter(([name]) => name === 'ops').map(([, e]) => [e.rev, Boolean(e.comments), e.by]);
+    assert.deepEqual(told, [[1, true, { id: me.id, kind: 'person' }], [2, false, { id: me.id, kind: 'person' }]]);
+    assert.equal((await state()).rev, 2);
+    const caught = await call('state', { since: { epoch: (await state()).epoch, rev: 0 } });
+    assert.deepEqual(caught.events.map((e) => e.rev), [1, 2], 'a window catching up hears both');
+  });
+});
+
 test('a comment sent again with its id is added once; with `after` a reply comes just after that time; a reply may move its thread', async () => {
   await withDoc(async ({ call, docPath }) => {
     const { id } = await call('comment', { anchor: null, body: 'Fix this' });
@@ -541,13 +554,14 @@ test('a sidecar of another version, or without a header, is shown read-only; a b
   }, { sidecar: '{"comments":3}\nnot json\n' });
 });
 
-test('events: the sidecar changed on disk; the doc changed outside lands as an edit', { timeout: 15_000 }, async () => {
+test('one log: the comments changed on disk, then the doc changed outside, each a change by outside with its rev', { timeout: 15_000 }, async () => {
   await withDoc(async ({ events, docPath, state }) => {
     await writeFile(sidecarPath(docPath), '{"comments":3}\n');
-    await until(() => events.some(([name]) => name === 'sidecar'), 'a sidecar event');
+    const [, comments] = await until(() => events.find(([name, e]) => name === 'ops' && e.comments), 'a change to the comments');
+    assert.deepEqual([comments.rev, comments.ops, comments.by], [1, [], { id: null, kind: 'outside' }]);
     await writeFile(docPath, SAMPLE.replace('Q4 Launch Plan', 'Q4 Plan'));
-    const [, landed] = await until(() => events.find(([name]) => name === 'ops'), 'an ops event');
-    assert.deepEqual([landed.rev, landed.id], [1, null]);
+    const [, landed] = await until(() => events.find(([name, e]) => name === 'ops' && !e.comments), 'an edit');
+    assert.deepEqual([landed.rev, landed.id, landed.by], [2, null, { id: null, kind: 'outside' }]);
     assert.equal((await state()).text, SAMPLE.replace('Q4 Launch Plan', 'Q4 Plan'));
   });
 });
