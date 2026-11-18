@@ -24,12 +24,15 @@ test('each comment carries the edits of its group, in order', () => {
   assert.ok(result.posts.every((c) => c.by.id === 'b_ada' && c.id));
 });
 
-test('with no good groups, every edit hangs on the last comment; with no comment, on the one it left out: in the thread that asked it, else on the whole doc', () => {
+test('with no good groups, every edit hangs on the last comment; with no comment, on the one it left out (its last words, else that it edited): in the thread that asked it, else on the whole doc', () => {
   const edited = 'Two.\n';
   const lastDocWrong = [{ comment: 0, doc: 'Other.\n' }];
   assert.deepEqual(shape(run({ edited, comments: sidecar({ thread: 'c_1', body: 'Done.' }), groups: lastDocWrong })), { posts: [['c_1', 'Done.']], carried: [['Done.', edited, true]] });
   assert.deepEqual(shape(run({ edited, asking: ['c_1'] })), { posts: [['c_1', 'Edited the doc.']], carried: [['Edited the doc.', edited, true]] }, 'the comment it left out, in the thread that asked it');
   assert.deepEqual(shape(run({ edited, asking: ['c_1'], threads: [{ ...open('c_1'), resolved: true }] })), { posts: [[null, 'Edited the doc.']], carried: [['Edited the doc.', edited, true]] }, 'that thread resolved meanwhile, or none asked: on the whole doc');
+  const output = '\u001b[1mReading the doc.\u001b[0m\n\nShortened the second\nparagraph to two sentences.\n';
+  assert.equal(run({ edited, asking: ['c_1'], output }).posts[0].body, 'Shortened the second paragraph to two sentences.', 'what it said last on its way out, in one line');
+  assert.equal(run({ edited, output: `${'word '.repeat(80)}\n` }).posts[0].body.length, 280, 'at most a comment\'s length');
 });
 
 test('a reply in a thread resolved meanwhile is not posted, and its edits do not land; a new thread is', () => {

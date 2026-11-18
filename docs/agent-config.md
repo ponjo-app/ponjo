@@ -78,7 +78,8 @@ is undone on its own. An agent says which edits come with which comment in
 doc after its edits>"}`, the last one's `doc` the copy as it leaves it.
 The Ponjo agent writes them. An agent that writes none, or groups that do
 not end at its copy, lands all its edits with its last comment; with no
-comment, with the one it left out, "Edited the doc.", in the first thread
+comment, with the one it left out: the last paragraph it printed, in one
+line of at most 280 characters, else "Edited the doc.", in the first thread
 that asked it, or else on the whole doc. No edit lands without a comment.
 
 ## Agents
