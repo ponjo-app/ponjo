@@ -1,7 +1,9 @@
-// Avatars: a face drawn from the id (a person's, the name), from one set of parts, each body a
-// little uneven as if drawn by hand. People are round, wear a hat that says
+// Avatars: a face drawn from the id (a person's, the name): a body, each a
+// little uneven as if drawn by hand, and a colour. Every face has the same
+// eyes and mouth, so an expression means the same thing on every face; what
+// it shows is how it is (life.js), not who it is. People are round, wear a hat that says
 // who they are on the project (the owner a crown, a teammate a top hat) and
-// keep their face everywhere. Buddies in a doc take parts as unlike each
+// keep their face everywhere. Buddies in a doc take bodies as unlike each
 // other's as can be (setBuddies), and a colour no other buddy there has
 // (colorSlots); people there take the colours the buddies left (setPeople).
 //
@@ -10,6 +12,7 @@
 // extras and the tilt go (app.css), so a face stays plain.
 
 import { colorSlots } from '../src/core/buddies.js';
+import { liven } from './life.js';
 
 const NS = 'http://www.w3.org/2000/svg';
 const INK = '#1f1d24';
@@ -91,13 +94,21 @@ function face(name, look, kind = look.body, hat = null) {
   const defs = node('defs', {});
   defs.append(gradient);
 
-  // The whole face tilts a touch, body and all, a hat a little more.
+  // The whole face tilts a touch, body and all, a hat a little more. `pose`
+  // around it is where life.js moves the face as a whole.
+  const pose = node('g', { class: 'pj-face-pose' });
   const tilted = node('g', { class: 'pj-face-tilt', transform: `rotate(${f(look.tilt)} 50 50)` });
   const features = node('g', { class: 'pj-face-look' });
   tilted.append(node('path', { class: 'pj-face-body', d: body.d, fill: `url(#${id})` }), features);
-  if (hat) tilted.append(drawHat(hat, look.tilt));
-  svg.append(defs, tilted);
-  drawFace(features, look, body.cy, colorOf(name)[2]);
+  const lag = hat ? node('g', { class: 'pj-face-hat-lag' }) : null;
+  if (hat) {
+    lag.append(drawHat(hat, look.tilt));
+    tilted.append(lag);
+  }
+  pose.append(tilted);
+  svg.append(defs, pose);
+  const parts = drawFace(features, look, body.cy, colorOf(name)[2]);
+  liven(svg, { pose, look: features, hat: lag, ...parts }, name);
   return svg;
 }
 
@@ -122,28 +133,20 @@ function drawn(name) {
   const rand = random(seed(name));
   const body = pick(rand, BODIES);
   const tilt = range(rand, -7, 7);
-  const eye = pick(rand, EYES);
-  const mouth = pick(rand, MOUTHS);
-  const extra = pick(rand, EXTRAS.filter((x) => fits(x, eye)));
-  return { body, tilt, eye, mouth, extra };
+  return { body, tilt };
 }
 
-// The buddies in turn: each part is the one fewest before have,
-// the first such from the one the name picks, so faces in a doc differ as
-// much as they can.
+// The buddies in turn: each takes the body fewest before have, the first
+// such from the one its name picks, so faces in a doc differ as much as they can.
 function spread(names) {
-  const parts = { body: BODIES, eye: EYES, mouth: MOUTHS, extra: EXTRAS };
-  const counts = Object.fromEntries(Object.keys(parts).map((part) => [part, new Map()]));
-  const count = (part, option) => counts[part].get(option) ?? 0;
+  const counts = new Map();
+  const count = (option) => counts.get(option) ?? 0;
   const result = new Map();
   for (const name of names) {
     const look = { ...drawn(name) };
-    for (const [part, options] of Object.entries(parts)) {
-      const fit = options.filter((option) => part !== 'extra' || fits(option, look.eye));
-      const start = Math.max(0, fit.indexOf(look[part]));
-      look[part] = [...fit.slice(start), ...fit.slice(0, start)].reduce((best, option) => (count(part, option) < count(part, best) ? option : best));
-      counts[part].set(look[part], count(part, look[part]) + 1);
-    }
+    const start = BODIES.indexOf(look.body);
+    look.body = [...BODIES.slice(start), ...BODIES.slice(0, start)].reduce((best, option) => (count(option) < count(best) ? option : best));
+    counts.set(look.body, count(look.body) + 1);
     result.set(name, look);
   }
   return result;
@@ -232,86 +235,162 @@ function outline(points) {
 
 // ---- the face ----
 
-// Only features that still tell apart at 18px.
-const EYES = ['dot', 'big', 'happy', 'sleepy', 'squint'];
-const MOUTHS = ['smile', 'grin', 'o', 'flat', 'cat'];
-const EXTRAS = [null, 'blush'];
-// Blush would crowd big eyes.
-const fits = (extra, eye) => eye !== 'big' || extra !== 'blush';
+// One set of eyes and one mouth for every face, drawn from an expression, so
+// "asleep" or "pleased" looks the same on all of them. Few shapes, each
+// clear down to 18px:
+//
+//   eyes  open   upright ovals with a glint (the glint goes below 24px)
+//         shut   ‿ ‿  resting, asleep, and the middle of a blink
+//         happy  ^ ^  pleased
+//         wince  > <  it went wrong
+//   mouth one curve from corner to corner: up is a smile, down a frown;
+//         open, a second curve under it, filled; round, its top lifts into an o.
+//
+// An open eye never half-closes: lids are open or shut, as in a cartoon, so
+// a face never looks sly or bored. Eyes change shape behind a blink (life.js).
+//
+//   shape  open, happy or wince (an open eye with lid 0 is shut)
+//   lid    0 shut … 1 open; a happy or wince eye pops in with it
+//   size   how big the open eyes are: 1 as drawn, more wide and eager, with a second glint
+//   ex, ey where the eyes look
+//   curve  -1 frown … 1 smile;  open 0 … 1;  round 0 … 1;  width;  mx  the mouth to a side
+export const REST = Object.freeze({ shape: 'open', lid: 1, size: 1, ex: 0, ey: 0, curve: 0.55, open: 0, round: 0, width: 6, mx: 0 });
 
-function drawFace(g, { eye, mouth, extra }, cy, hue) {
-  const big = eye === 'big';
-  const gap = big ? 16 : 14;
-  const eyeY = cy - 7;
-  const mouthY = eyeY + (big ? 17 : 14);
+const GAP = 13; // from the middle to each eye
 
-  const extras = node('g', { class: 'pj-face-extra' }); // gone below 24px (app.css)
+function drawFace(g, look, cy, hue) {
+  const eyeY = cy - 6;
+  const mouthY = eyeY + 12;
 
-  // Cheeks go under everything else, a soft blush below the eyes.
-  if (extra === 'blush') {
-    const blush = hue > 320 || hue < 15 ? 'hsl(350 85% 50% / 0.45)' : 'hsl(350 95% 72% / 0.6)';
-    for (const side of [-1, 1]) extras.append(node('ellipse', { cx: f(50 + side * (gap + 5)), cy: f(eyeY + 9), rx: '5.5', ry: '3.2', fill: blush }));
-    g.append(extras);
-  }
+  // Soft cheeks under everything else, every face; gone below 24px (app.css).
+  const extras = node('g', { class: 'pj-face-extra' });
+  // pink reads warm on warm faces; on cool ones it needs more of itself or it turns grey
+  const blush = hue > 320 || hue < 15 ? 'hsl(350 85% 50% / 0.4)' : hue > 120 && hue < 290 ? 'hsl(345 100% 72% / 0.8)' : 'hsl(350 95% 72% / 0.55)';
+  const cheeks = [-1, 1].map((side) => node('ellipse', { cx: f(50 + side * (GAP + 6)), cy: f(eyeY + 8), rx: '5', ry: '3', fill: blush }));
+  extras.append(...cheeks);
+  g.append(extras);
 
-  // Its own eyes, and focused ones it wears while it works (app.css).
   const eyes = node('g', { class: 'pj-face-eyes' });
-  const focused = node('g', { class: 'pj-face-focused' });
-  for (const side of [-1, 1]) {
-    drawEye(eyes, eye, 50 + side * gap, eyeY, side);
-    drawEye(focused, 'focused', 50 + side * gap, eyeY, side);
-  }
-  g.append(eyes, focused);
+  const paintEyes = [-1, 1].map((side) => eyeOf(eyes, 50 + side * GAP, eyeY, side));
+  g.append(eyes);
 
   // Glasses it wears while it watches the doc (app.css), and only then: no
   // face wears glasses of its own. Round lenses on its eyes, apart, with a
   // bridge over the nose.
   const watch = node('g', { class: 'pj-face-watch' });
-  const half = Math.max(gap, 17);
-  for (const side of [-1, 1]) watch.append(node('circle', { cx: f(50 + side * half), cy: f(eyeY), r: '12.5', fill: 'rgba(255,255,255,0.28)', stroke: INK, 'stroke-width': '4.2' }));
-  watch.append(stroke(`M${f(50 - half + 12.5)} ${f(eyeY - 1.5)}Q50 ${f(eyeY - 7.5)} ${f(50 + half - 12.5)} ${f(eyeY - 1.5)}`, 4.2));
+  const half = 17;
+  for (const side of [-1, 1]) watch.append(node('circle', { cx: f(50 + side * half), cy: f(eyeY), r: '12', fill: 'rgba(255,255,255,0.28)', stroke: INK, 'stroke-width': '4' }));
+  watch.append(stroke(`M${f(50 - half + 12)} ${f(eyeY - 1.5)}Q50 ${f(eyeY - 7)} ${f(50 + half - 12)} ${f(eyeY - 1.5)}`, 4));
   g.append(watch);
 
-  drawMouth(g, mouth, 50, mouthY, hue);
+  const paintMouth = mouthOf(g, 50, mouthY, hue);
+
+  const paint = (e) => {
+    for (const p of paintEyes) p(e);
+    paintMouth(e);
+    // a smile lifts the cheeks; they follow the face as it turns
+    const lift = Math.max(0, e.curve) * 1.5 + (e.shape === 'happy' ? 1.5 : 0);
+    cheeks.forEach((c, i) => {
+      c.setAttribute('cy', f(eyeY + 8 - lift));
+      c.setAttribute('cx', f(50 + (i ? 1 : -1) * (GAP + 6) + e.ex * 0.3));
+    });
+  };
+  paint(REST);
+  return { paint };
 }
 
-function drawEye(g, style, x, y, side) {
-  if (style === 'focused') {
-    // a dot under a brow that slopes down to the middle
-    g.append(node('circle', { cx: f(x), cy: f(y + 1), r: '4.6', fill: INK }), stroke(`M${f(x - side * 6)} ${f(y - 9)}L${f(x + side * 5)} ${f(y - 5)}`, 4.5));
-  } else if (style === 'dot') {
-    g.append(node('circle', { cx: f(x), cy: f(y), r: '5.4', fill: INK }));
-  } else if (style === 'big') {
-    g.append(
-      node('circle', { cx: f(x), cy: f(y), r: '9', fill: '#fff', stroke: INK, 'stroke-width': '2.6' }),
-      node('circle', { cx: f(x), cy: f(y), r: '4.6', fill: INK }),
-    );
-  } else if (style === 'happy') {
-    g.append(stroke(`M${f(x - 6)} ${f(y + 2.5)}Q${f(x)} ${f(y - 6)} ${f(x + 6)} ${f(y + 2.5)}`));
-  } else if (style === 'sleepy') {
-    g.append(stroke(`M${f(x - 6)} ${f(y - 1)}Q${f(x)} ${f(y + 6)} ${f(x + 6)} ${f(y - 1)}`));
-  } else if (style === 'squint') {
-    // > <, pointing in
-    g.append(stroke(`M${f(x + side * 5)} ${f(y - 5)}L${f(x - side * 3)} ${f(y)}L${f(x + side * 5)} ${f(y + 5)}`));
-  }
+const clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, n));
+const K = 0.5523; // a quarter circle as a cubic
+
+// Half an ellipse from (x - r, y) over to (x + r, y), `h` above the line (below if negative)…
+const halfArc = (x, y, r, h) =>
+  `C${f(x - r)} ${f(y - K * h)} ${f(x - K * r)} ${f(y - h)} ${f(x)} ${f(y - h)}C${f(x + K * r)} ${f(y - h)} ${f(x + r)} ${f(y - K * h)} ${f(x + r)} ${f(y)}`;
+// …and back from the right, `h` below the line.
+const halfArcBack = (x, y, r, h) =>
+  `C${f(x + r)} ${f(y + K * h)} ${f(x + K * r)} ${f(y + h)} ${f(x)} ${f(y + h)}C${f(x - K * r)} ${f(y + h)} ${f(x - r)} ${f(y + K * h)} ${f(x - r)} ${f(y)}`;
+
+// One eye at x, y (`side` -1 left, 1 right), and how to repaint it.
+function eyeOf(g, x, y, side) {
+  const oval = node('ellipse', { fill: INK });
+  const glint = node('circle', { class: 'pj-face-glint', fill: '#fff' });
+  const glint2 = node('circle', { class: 'pj-face-glint', fill: '#fff' }); // a small second one in a big eye
+  const line = stroke('', 4.6);
+  g.append(oval, glint, glint2, line);
+  const show = (el, on) => el.setAttribute('visibility', on ? 'visible' : 'hidden');
+  return (e) => {
+    const lid = clamp(e.lid, 0, 1.25);
+    const cx = x + e.ex, cy = y + e.ey;
+    if (e.shape === 'open' && lid > 0.22) {
+      // upright and a little tall: it reads as looking at you
+      const size = clamp(e.size ?? 1, 0.7, 1.6);
+      const rx = 4.4 * size * (1 + Math.max(0, lid - 1) * 0.5), ry = 5.6 * size * lid;
+      oval.setAttribute('cx', f(cx));
+      oval.setAttribute('cy', f(cy));
+      oval.setAttribute('rx', f(rx));
+      oval.setAttribute('ry', f(ry));
+      glint.setAttribute('cx', f(cx + rx * 0.35));
+      glint.setAttribute('cy', f(cy - ry * 0.43));
+      glint.setAttribute('r', f(1.7 * Math.sqrt(size)));
+      glint2.setAttribute('cx', f(cx - rx * 0.38));
+      glint2.setAttribute('cy', f(cy + ry * 0.42));
+      glint2.setAttribute('r', f(clamp((size - 1.1) * 3, 0, 1.1)));
+      show(oval, true);
+      show(glint, lid > 0.6);
+      show(glint2, lid > 0.6 && size > 1.15);
+      show(line, false);
+      return;
+    }
+    show(oval, false);
+    show(glint, false);
+    show(glint2, false);
+    show(line, true);
+    if (e.shape === 'happy') {
+      // ^ : pops up from flat as `lid` opens
+      const h = 9 * clamp(lid, 0.1, 1.2);
+      line.setAttribute('d', `M${f(cx - 5)} ${f(cy + 2)}Q${f(cx)} ${f(cy + 2 - h)} ${f(cx + 5)} ${f(cy + 2)}`);
+    } else if (e.shape === 'wince') {
+      // > < pointing in, squeezed tight
+      const h = 4.6 * clamp(lid, 0.15, 1.2);
+      line.setAttribute('d', `M${f(cx - side * 4.5)} ${f(cy - h)}L${f(cx + side * 3)} ${f(cy)}L${f(cx - side * 4.5)} ${f(cy + h)}`);
+    } else {
+      // shut: ‿, a little lower than the open eye's middle
+      line.setAttribute('d', `M${f(cx - 5)} ${f(cy + 1)}Q${f(cx)} ${f(cy + 6)} ${f(cx + 5)} ${f(cy + 1)}`);
+    }
+  };
 }
 
-function drawMouth(g, style, x, y, hue) {
-  const w = 7.5;
-  if (style === 'smile') {
-    g.append(stroke(`M${f(x - w)} ${f(y)}Q${f(x)} ${f(y + 7)} ${f(x + w)} ${f(y)}`));
-  } else if (style === 'grin') {
-    const tongue = hue > 320 || hue < 15 ? '#fff' : '#ff6f8f';
-    g.append(node('path', { d: `M${f(x - w - 1)} ${f(y - 1)}Q${f(x)} ${f(y + 14)} ${f(x + w + 1)} ${f(y - 1)}Z`, fill: INK, stroke: INK, 'stroke-width': '2.5', 'stroke-linejoin': 'round' }));
-    g.append(node('ellipse', { cx: f(x), cy: f(y + 5.2), rx: f(w * 0.45), ry: '2', fill: tongue }));
-  } else if (style === 'o') {
-    g.append(node('ellipse', { cx: f(x), cy: f(y + 2), rx: '3.6', ry: '4.4', fill: INK }));
-  } else if (style === 'flat') {
-    g.append(stroke(`M${f(x - w * 0.7)} ${f(y + 2)}L${f(x + w * 0.7)} ${f(y + 2)}`));
-  } else if (style === 'cat') {
-    const h = w * 0.5;
-    g.append(stroke(`M${f(x - 2 * h)} ${f(y)}Q${f(x - h)} ${f(y + 6)} ${f(x)} ${f(y)}Q${f(x + h)} ${f(y + 6)} ${f(x + 2 * h)} ${f(y)}`, 4.5));
-  }
+// The mouth at x, y, and how to repaint it.
+function mouthOf(g, x, y, hue) {
+  const el = node('path', { stroke: INK, 'stroke-width': '4.6', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' });
+  const pink = hue > 320 || hue < 15 ? '#fff' : '#ff7a97';
+  const tongue = node('ellipse', { fill: pink });
+  g.append(el, tongue);
+  return (e) => {
+    const w = clamp(e.width, 2, 9);
+    const curve = clamp(e.curve, -1, 1);
+    const open = clamp(e.open, 0, 1.2);
+    const cx = x + e.mx;
+    const lift = curve * 1.4;
+    const top = curve * 6 - open * e.round * 7; // a quadratic sags half way to its control point
+    const depth = open * 13;
+    const l = `${f(cx - w)} ${f(y - lift)}`, r = `${f(cx + w)} ${f(y - lift)}`;
+    const filled = depth > 0.8;
+    // open, it is two half ellipses, so its corners are soft and an o is round
+    el.setAttribute('d', filled
+      ? `M${l}${halfArc(cx, y - lift, w, -(top + lift) / 2)}${halfArcBack(cx, y - lift, w, (top + lift) / 2 + depth)}Z`
+      : `M${l}Q${f(cx)} ${f(y + top)} ${r}`);
+    el.setAttribute('fill', filled ? INK : 'none');
+    el.setAttribute('stroke-width', filled ? '3' : '4.6');
+    // a tongue in a happy open mouth, not in an o or a frown
+    const showTongue = filled && curve > 0.2 && open > 0.35 && e.round < 0.5;
+    tongue.setAttribute('visibility', showTongue ? 'visible' : 'hidden');
+    if (showTongue) {
+      tongue.setAttribute('cx', f(cx));
+      tongue.setAttribute('cy', f(y - lift + top / 2 + depth * 0.75));
+      tongue.setAttribute('rx', f(w * 0.45));
+      tongue.setAttribute('ry', f(clamp(depth / 6, 0.5, 2.4)));
+    }
+  };
 }
 
 // ---- helpers ----
