@@ -57,7 +57,7 @@ const OUTSIDE = { id: null, kind: 'outside' };
  * `calls`), `owner()` being the `who` of this machine's user;
  * `moveTo(newPath, move)` renames the doc while it is open (`move` defaults
  * to moveDoc and may return the final path).
- * @returns {Promise<{ call: (type: string, arg: object | undefined, who: object) => Promise<object>, owner: () => Promise<object>, leave: (id: string) => void, hello: () => object, runner: Runner, docPath: () => string, moveTo: (newPath: string, move?: Function) => Promise<string>, setFolder: (folder: string | null, room: object | null) => void, close: () => Promise<void> }>}
+ * @returns {Promise<{ call: (type: string, arg: object | undefined, who: object) => Promise<object>, owner: () => Promise<object>, leave: (id: string) => void, hello: () => object, running: () => string[], docPath: () => string, moveTo: (newPath: string, move?: Function) => Promise<string>, setFolder: (folder: string | null, room: object | null) => void, close: () => Promise<void> }>}
  */
 export async function openDoc(docPath, { folder = null, room = null, settingsDir = configDir(), secrets = () => ({}), emit = () => {} } = {}) {
   const opened = await readDoc(docPath); // fail early on a missing doc
@@ -662,7 +662,6 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
     return serial(async () => {
       const target = (await move(docPath, newPath)) ?? newPath;
       stopWatching();
-      await runtime.runner.stop(); // their asks run again once the doc is at its new name
       await chronicle;
       await moveHistory(docPath, target, settingsDir).catch((error) => console.error('Could not move the history:', error));
       docPath = target;
@@ -670,7 +669,6 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
       if (missing) emit('missing', { missing: false, doc: basename(docPath) });
       missing = false;
       stopWatching = watchDoc(docPath, onFilesChanged);
-      runtime.runner.resume();
       await runtime.sync();
       emit('renamed', { doc: basename(docPath) });
       return docPath;
@@ -819,7 +817,8 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
     hello: () => ({ protocol: PROTOCOL, missing, agents: runtime.statuses() }),
     /** The agents' secrets changed: the failed asks run again. */
     agentChanged: () => runtime.agentChanged(),
-    runner: runtime.runner,
+    /** The names of the buddies at work on the doc. */
+    running: () => runtime.running(),
     docPath: () => docPath,
     moveTo,
     setFolder(next, nextRoom) {

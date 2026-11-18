@@ -4,12 +4,9 @@ How buddies run against a doc. It uses only the doc's public door
 ([architecture](architecture.md#the-door)), as any client does; the doc
 knows nothing about buddies.
 
-Built so far: the runtime is `src/host/buddy-runtime.js`, landing runs
-through the door's `submit` and `comment`; Rules are `src/core/due.js` and
-`src/core/bucket.js`, Translate `src/core/translate.js`. Not yet: the doc
-still creates the runtime and calls it directly, rather than the host
-joining them; and the controller still times by clock and keeps three
-timers, not one.
+Code: the controller is `src/host/buddy-runtime.js`, the executor
+`src/host/runner.js`, the rules `src/core/due.js` (with the steps in
+`src/core/bucket.js`), Translate `src/core/translate.js`.
 
 ## Principles
 
@@ -42,21 +39,22 @@ flowchart LR
 
 | Component | Does | Interface |
 | --- | --- | --- |
-| Controller | holds the runtime's state; listens to the door; one timer | `start()`, `stop()` |
-| Rules | pure: decides what should run now | `plan(state, now)` → `{ start, stop, wakeAt }` |
-| Executor | runs the agent once on copies in a temp folder | `run(task, copies)` → copies back |
-| Translate | pure: turns the agent's copies into door changes | `toChanges(before, after, docNow)` → changes |
+| Controller | holds the runtime's state; hears each change; one timer | `changed(by)`, `look()`, `statuses()`, `watch`, `retry`, `refillSteps`, `close()` |
+| Rules | pure: decides what should run now | `plan(state)` → `{ start, stop, steps, wakeAt }` |
+| Executor | runs the agent once on copies in a temp folder | `execute({ task, copies, agent })` → the copies back |
+| Translate | pure: turns the agent's copies into door changes | `toChanges({ base, edited, comments, groups, threads })` → `{ posts, carried }` |
 
 ## State
 
 All in memory, on this machine only. Never written to the shared files.
 
 ```
-per buddy:  seen     thread → rev it was last given
+per buddy:  seen     thread → time of the last comment its runs were given
             lookedAt rev its last run started at
+            base     the doc as its last run started
             failed   thread or watch → why
-            watch    { by } or null
-per doc:    changedAt  author → rev of their last change
+            watch    { by } or null (also noted in the config folder)
+per doc:    changedAt  author → rev (and time) of their last change to the text
             steps      budget for buddies waking each other
             running    buddy → run
 ```
@@ -69,9 +67,9 @@ change, timer or finished run only means "look again":
 ```
 look():
   state = door.read() + notes
-  { start, stop, wakeAt } = plan(state, now)
+  { start, stop, steps, wakeAt } = plan(state + notes, now)
   stop the runs in stop, start the runs in start
-  set the one timer to wakeAt
+  set the one timer to wakeAt: people's pause ending, the next step
 ```
 
 A look at any time gives the same answer, so a missed event costs nothing.

@@ -517,7 +517,7 @@ test('a comment changed outside since it was taken stops asking', { timeout: 30_
   });
 });
 
-test('a taken ask still unanswered asks again when the doc opens again, and after a rename in the app', { timeout: 30_000 }, async () => {
+test('a taken ask still unanswered asks again when the doc opens again; a rename in the app lets its run go on, and its answer lands at the new name', { timeout: 30_000 }, async () => {
   const docPath = await tempDoc();
   const settingsDir = await fakeConfig();
   const first = await openTestDoc(docPath, { settingsDir, buddies: PILOT });
@@ -527,8 +527,11 @@ test('a taken ask still unanswered asks again when the doc opens again, and afte
   const again = await openTestDoc(docPath, { settingsDir, buddies: PILOT });
   try {
     await until(async () => (await fakeRuns(settingsDir)).length === 2, 'the run after opening again');
-    await again.doc.moveTo(join(dirname(docPath), 'launch.md'));
-    await until(async () => (await fakeRuns(settingsDir)).length === 3, 'the run at the new name');
+    const moved = await again.doc.moveTo(join(dirname(docPath), 'launch.md'));
+    await writeFile(join(settingsDir, 'release-Pilot'), '');
+    await until(async () => (await again.state()).threads[0].comments.length === 2, 'its answer');
+    assert.equal((await fakeRuns(settingsDir)).length, 2, 'the same run, not another');
+    assert.match(await readFile(sidecarPath(moved), 'utf8'), /Pilot/, 'at the new name');
   } finally {
     await again.doc.close();
   }

@@ -157,7 +157,7 @@ const handlers = {
   },
   // `moved`: the doc is already at `toPath` (its folder moved); the doc follows it.
   moveTo: ({ docId, toPath, moved }) => docOf(docId).service.moveTo(toPath, moved ? async () => toPath : renameFile),
-  running: ({ docId }) => docOf(docId).service.runner.statuses().map((s) => s.name),
+  running: ({ docId }) => docOf(docId).service.running(),
   setFolder({ docId, folder }) {
     const was = docOf(docId).folder;
     docOf(docId).folder = folder;

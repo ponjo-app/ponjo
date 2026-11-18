@@ -6,13 +6,13 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
-import { mkdir, mkdtemp, readFile, readdir, stat, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, delimiter, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildPrompt } from '../src/core/prompt.js';
-import { agentsFor } from '../src/host/buddy-runtime.js';
-import { Runner } from '../src/host/runner.js';
+import { agentsFor, createBuddyRuntime } from '../src/host/buddy-runtime.js';
+import { noteTaken } from '../src/store/history.js';
 import { agentScript, agentsDir, installAgents, listAgents } from '../src/store/agents.js';
 import { readSecrets, secretTails, writeSecrets } from '../src/store/secrets.js';
 import { SAMPLE, fakeConfig, fakeRuns, openTestDoc, readOnly, tempDoc, until } from './helpers.js';
@@ -187,47 +187,58 @@ test('a script that exits 1 writes nothing: the buddy\'s status says the thread 
   });
 });
 
-test('a run the host cannot start fails once: it is not run again until asked again', async () => {
-  let asked = 0;
-  const finished = [];
-  const inbox = { buddy: { id: 'b_x', name: 'X', about: '' }, buddies: [], threads: [{ id: 'c_t', comments: [{ at: '2026-11-17T10:00:00.000Z' }] }], askers: ['u_me'] };
-  const runner = new Runner({
-    asks: async () => (asked++, finished.length ? [] : [inbox]),
-    doc: async () => { throw new Error('no doc'); },
-    agent: async () => ({ script: 'none', settings: {} }),
-    finish: async (result) => { finished.push(result); return null; },
+// The controller over a door that only holds threads, for what it does
+// whatever the doc: `read()` gives the sidecar's lines, or throws.
+async function withRuntime(read, fn) {
+  const settingsDir = await fakeConfig();
+  const docPath = await tempDoc('Text.\n');
+  const ask = { id: 'c_asked0001', anchor: null, by: { id: 'u_me000001', name: 'me', kind: 'human' }, at: '2026-11-17T10:00:00.000Z', body: '@X look' };
+  await noteTaken(docPath, settingsDir, ask, [ask.id]);
+  const landed = [];
+  const runtime = await createBuddyRuntime({
+    door: {
+      text: () => 'Text.\n', rev: () => 0, epoch: () => 'e_1', missing: () => false, closed: () => false,
+      readComments: async () => ({ lines: read(ask).map((comment) => ({ comment })), problem: null }),
+      submit: async () => ({}), comment: async (arg) => { landed.push(arg); return { at: new Date().toISOString() }; },
+    },
+    place: () => ({ docPath, folder: null, room: null }), pathInProject: async () => 'doc.md',
+    buddies: async () => [{ id: 'b_x', name: 'X', about: '' }], me: async () => ({ id: 'u_me000001', name: 'me' }), levelOf: async () => 'owner',
+    settingsDir, secrets: () => ({}), emit: () => {},
   });
-  await runner.reconcile();
-  await until(() => finished.length === 1 && runner.statuses().length === 0, 'its failure');
-  await sleep(200);
-  assert.equal(finished.length, 1);
-  assert.deepEqual([finished[0].failed, finished[0].threadIds, finished[0].seen], [true, ['c_t'], { c_t: '2026-11-17T10:00:00.000Z' }]);
-  assert.match(finished[0].body, /Ponjo could not run X: no doc/);
-  assert.ok(asked < 5, 'no loop');
+  try {
+    await fn({ runtime, landed, settingsDir });
+  } finally {
+    await runtime.close();
+  }
+}
+
+test('a run whose agent cannot start fails once: it is not run again until asked again', async () => {
+  await withRuntime((ask) => [ask], async ({ runtime, settingsDir }) => {
+    await rm(join(settingsDir, 'agents', 'fake'));
+    await rm(join(settingsDir, 'agents', 'fake.cmd'));
+    await runtime.look();
+    await until(async () => runtime.statuses().length === 0 && (await runLog(settingsDir).catch(() => [])).length === 1, 'its failure');
+    await sleep(500);
+    assert.equal((await runLog(settingsDir)).length, 1, 'not again on its own');
+    assert.equal((await runLog(settingsDir))[0].outcome, 'failed');
+  });
 });
 
-test('a look that could not read the asks is tried again, later each time, until one can: no event need come', async () => {
-  let asked = 0;
-  const started = [];
-  const inbox = { buddy: { id: 'b_x', name: 'X', about: '' }, buddies: [], threads: [{ id: 'c_t', comments: [{ at: '2026-11-17T10:00:00.000Z' }] }], askers: ['u_me'] };
-  const runner = new Runner({
-    asks: async () => {
-      asked += 1;
-      if (asked <= 2) throw Object.assign(new Error('EBUSY: the sidecar is locked'), { code: 'EBUSY' });
-      return started.length ? [] : [inbox];
-    },
-    doc: async () => { throw new Error('no doc'); },
-    agent: async () => ({ script: 'none', settings: {} }),
-    finish: async (result) => { started.push(Date.now()); return null; },
+test('a look that could not read the doc is tried again, later each time, until one can: no event need come', async () => {
+  let reads = 0;
+  const read = (ask) => {
+    reads += 1;
+    if (reads <= 2) throw Object.assign(new Error('EBUSY: the sidecar is locked'), { code: 'EBUSY' });
+    return [ask];
+  };
+  await withRuntime(read, async ({ runtime, landed }) => {
+    const from = Date.now();
+    await runtime.look();
+    assert.equal(reads, 1);
+    await until(() => landed.length === 1, 'the run, once the doc could be read', 8000);
+    assert.ok(Date.now() - from >= 2900, 'after 1 s, then 2 s');
+    assert.equal(landed[0].thread, 'c_asked0001');
   });
-  const from = Date.now();
-  await runner.reconcile();
-  assert.equal(asked, 1);
-  await until(() => started.length === 1, 'the run, once the asks could be read', 6000);
-  assert.ok(started[0] - from >= 2900, 'after 1 s, then 2 s');
-  await sleep(1500);
-  assert.ok(asked <= 5, 'once it could read them, not again on its own');
-  await runner.stop();
 });
 
 test('a teammate hears that a run failed, not why', () => {
