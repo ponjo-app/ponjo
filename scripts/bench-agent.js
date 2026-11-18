@@ -20,12 +20,13 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { createAnchor } from '../src/core/anchor.js';
+import { CLIPPY } from '../src/core/buddies.js';
 import { serializeSidecar } from '../src/core/comments.js';
 import { buildPrompt } from '../src/core/prompt.js';
 import { CASES } from './bench-cases.js';
 
 const AGENT = join(dirname(fileURLToPath(import.meta.url)), '..', 'agents', 'ponjo.mjs');
-const BUDDY = { id: 'Clippy', name: 'Clippy', about: 'A general writing assistant that helps draft and edit docs' };
+const BUDDY = { id: 'Clippy', name: 'Clippy', about: CLIPPY }; // the first buddy, as a new user has it
 const HUMAN = { id: 'fanzhangg', name: 'fanzhangg', about: '' };
 const AT = '2026-10-27T12:00:00.000Z';
 const TIMEOUT_MS = 5 * 60_000;
