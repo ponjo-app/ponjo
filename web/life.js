@@ -17,7 +17,10 @@
 // pleased. Few, so each one reads.
 //
 // The body barely moves: a breath and the head's slow lean, from the neck.
-// The eyes lead and the head follows a beat later. Every number is a damped
+// The eyes lead and the head follows a beat later, turning most of the way:
+// the head shifts and rolls toward where it looks, and its features slide
+// farther than its outline, so it reads as a round head turning, not a mask
+// sliding. As the head catches up the eyes come back toward its middle. Every number is a damped
 // spring, so moods blend; the eyes' shape (open, ^, > <) changes behind a
 // blink and pops open in the new shape.
 //
@@ -36,7 +39,7 @@ const spring = (x = 0) => ({ x, v: 0, t: x });
 // [stiffness (rad/s), damping ratio]. The lids pop (under 1); the head is slow.
 const TUNE = {
   gazeX: [26, 0.95], gazeY: [26, 0.95],
-  headX: [4.5, 1], headY: [4.5, 1],
+  headX: [6.5, 0.8], headY: [6.5, 0.8], // a touch of overshoot, as a real head settles
   tilt: [3.5, 0.9], nod: [4.5, 0.9],
   lid: [30, 0.5], size: [12, 0.55],
   curve: [9, 0.85], open: [11, 0.75], round: [12, 1], width: [9, 0.85], mx: [6, 1],
@@ -312,8 +315,8 @@ function aim(face, x, lean, bob, now = 0) {
   const g = x.gaze ?? face.gaze;
   s.gazeX.t = g.x;
   s.gazeY.t = g.y;
-  s.headX.t = g.x * 0.55; // the head turns some of the way, later
-  s.headY.t = g.y * 0.45;
+  s.headX.t = g.x * 0.8; // the head turns most of the way, later
+  s.headY.t = g.y * 0.7;
   s.tilt.t = x.tilt + lean;
   s.nod.t = x.nod + bob;
   // the eyes: a new shape waits for them to shut, then pops open in it
@@ -327,17 +330,18 @@ function aim(face, x, lean, bob, now = 0) {
 
 function paint(face, breath) {
   const { s } = face;
-  const lean = s.headX.x * 0.4;
-  // the head tilts from the neck and nods; the body only breathes
-  face.pose.setAttribute('transform', `translate(${f(lean * 0.3)} ${f(s.nod.x)}) rotate(${f(s.tilt.x + lean * 0.5)} 50 70) translate(50 97) scale(${f(1 - breath * 0.004, 1000)} ${f(1 + breath * 0.006, 1000)}) translate(-50 -97)`);
-  // the features turn with the head; the eyes lead it
-  face.look.setAttribute('transform', `translate(${f(s.headX.x * 0.55)} ${f(s.headY.x * 0.5 + s.down.x)})`);
+  const hx = s.headX.x, hy = s.headY.x;
+  // the head turns from the neck: it shifts and rolls a little toward where
+  // it looks and nods; the body only breathes
+  face.pose.setAttribute('transform', `translate(${f(hx * 0.6)} ${f(s.nod.x + hy * 0.4)}) rotate(${f(s.tilt.x + hx * 1.2)} 50 70) translate(50 97) scale(${f(1 - breath * 0.004, 1000)} ${f(1 + breath * 0.006, 1000)}) translate(-50 -97)`);
+  // the features slide farther than the outline, round the front of the head
+  face.look.setAttribute('transform', `translate(${f(hx)} ${f(hy * 0.9 + s.down.x)})`);
   face.paint({
     shape: face.shape,
     lid: s.lid.x,
     size: s.size.x,
-    ex: clamp(s.gazeX.x - s.headX.x * 0.55, -3.5, 3.5) * 0.8,
-    ey: clamp(s.gazeY.x - s.headY.x * 0.5, -3, 3) * 0.7,
+    ex: clamp(s.gazeX.x - hx, -3.5, 3.5) * 0.8, // the eyes: the rest of the way
+    ey: clamp(s.gazeY.x - hy, -3, 3) * 0.7,
     curve: s.curve.x,
     open: Math.max(0, s.open.x),
     round: clamp(s.round.x, 0, 1),
