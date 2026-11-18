@@ -745,7 +745,8 @@ test('the prompt tells a buddy who the other members are, as the app shows them'
 test('the prompt names files by their paths in the project, a comment\'s from the doc\'s folder', () => {
   const thread = { id: 'c_thread01', anchor: null, comments: [{ by: { name: 'fzhan', kind: 'human' }, body: 'Summarize rule.md' }] };
   const prompt = (docName, project) => buildPrompt({ buddy: { id: 'b_ada', name: 'Ada', about: '' }, docName, sidecarName: `${docName}.comments.jsonl`, threads: [thread], project });
-  assert.match(prompt('a.md', true), /every path here is from the project's top folder\. A file path in a comment is relative to the doc's folder, the top one\./);
+  assert.match(prompt('a.md', true), /every path here is from the project's top folder\..* A file path in a comment is relative to the doc's folder, the top one\./);
   assert.match(prompt('plans/2026/a.md', true), /relative to the doc's folder, plans\/2026\/: a comment's notes\.md is plans\/2026\/notes\.md/);
+  assert.match(prompt('plans/2026/a.md', true), /"The doc" and "this doc" are plans\/2026\/a\.md; another file a comment names is in the project\./, 'not taken for the doc');
   assert.doesNotMatch(prompt('a.md', false), /project/, 'in doc mode, no project');
 });
