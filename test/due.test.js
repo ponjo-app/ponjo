@@ -47,13 +47,11 @@ test('a watcher is due once turned on, on people\'s changes once they pause, and
   assert.deepEqual([started(none), none.wakeAt], [[], 150_000], 'no step left: look when the next comes');
 });
 
-test('a watcher is in only while whoever turned it on may ask, with its oldest open thread on the whole doc and what changed; a run nothing wants is stopped', () => {
-  const own = thread('c_w', [say('b_ada', 'Watching.', '2026-11-18T10:00:00.000Z')]);
-  const later = thread('c_x', [say('b_ada', 'Another.', '2026-11-18T10:01:00.000Z')]);
-  const [task] = look({ notes: watching(null, { base: 'Text.\n' }), threads: [own, later], text: 'Text.\nMore.\n' }).start;
-  assert.deepEqual([task.watch.thread, task.threads.map((t) => t.id), task.askers, task.watchOnly], ['c_w', ['c_w'], [ME], true]);
-  assert.deepEqual(task.watch.changes, [{ before: '', after: 'More.\n' }]);
-  assert.equal(look({ notes: watching(null), threads: [{ ...own, resolved: true }] }).start[0].watch.thread, null, 'resolved: it starts another');
+test('a watcher is in only while whoever turned it on may ask, told what changed, given only the threads that ask it; a run nothing wants is stopped', () => {
+  const its = thread('c_w', [say('b_ada', 'Watching.', '2026-11-18T10:00:00.000Z')]);
+  const [task] = look({ notes: watching(null, { base: 'Text.\n' }), threads: [its], text: 'Text.\nMore.\n' }).start;
+  assert.deepEqual([task.threads, task.askers, task.watchOnly], [[], [ME], true], 'it reads every thread in the comments itself');
+  assert.deepEqual(task.watch, { changes: [{ before: '', after: 'More.\n' }] });
   const gone = look({ notes: watching(null, { watch: { by: 'u_gone00001' } }), running: new Set(['b_ada', 'b_ben']) });
   assert.deepEqual([started(gone), gone.stop], [[], ['b_ada', 'b_ben']], 'nothing wants them');
 });

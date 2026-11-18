@@ -223,8 +223,7 @@ export async function createBuddyRuntime({ door, place, pathInProject, buddies, 
       return { comments: [], landed: 'Failed' };
     }
     broadcastAgents();
-    const { posts, carried, dropped } = toChanges({ by, base: copies.text, edited: result.edited, comments: result.comments, groups: result.groups, threads, asking: task.threads.map((t) => t.id) });
-    if (dropped) return { comments: [], landed: `Dropped: ${dropped}` };
+    const { posts, carried } = toChanges({ by, base: copies.text, edited: result.edited, comments: result.comments, groups: result.groups, threads, asking: task.threads.map((t) => t.id) });
     const who = { ...by, level: 'write' };
     let prev = copies.text;
     let conflict = false;

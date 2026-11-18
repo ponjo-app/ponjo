@@ -79,7 +79,7 @@ test('a run edits its copy and appends its reply: the doc has the edit, the thre
     assert.equal(run.project, '');
     assert.equal(run.ponjo, false, 'no ponjo to call');
     assert.deepEqual(run.settings, {}, 'an agent with no manifest has no settings');
-    assert.match(run.prompt, /A general writing assistant/, 'Clippy, written on first run');
+    assert.match(run.prompt, /A writing assistant who helps draft and edit the doc\. I answer what members ask me/, 'Clippy, written on first run');
     assert.match(run.prompt, /fzhan: @Clippy replace/);
     await until(() => !existsSync(run.cwd), 'the folder to be gone after', 5000);
   });
@@ -332,8 +332,8 @@ test('in project mode a run gets the project folder, and its copies at the doc\'
     assert.equal(run.comments, `${run.doc}.comments.jsonl`);
     assert.ok(!run.prompt.includes(run.project) && !run.prompt.includes(folder) && !run.prompt.includes(run.cwd), 'no path but the project\'s');
     assert.match(run.prompt, /a member of the doc drafts\/plan\.md\./);
-    assert.match(run.prompt, /A file path in a comment is relative to the doc's folder, drafts\/: a comment's notes\.md is drafts\/notes\.md, not notes\.md at the top\./);
-    assert.match(run.prompt, /drafts\/plan\.md\.comments\.jsonl holds the doc's threads[\s\S]*append lines to drafts\/plan\.md\.comments\.jsonl, one JSON object per line/);
+    assert.match(run.prompt, /A file path in a comment is relative to the doc's folder, drafts\/: a comment's notes\.md is drafts\/notes\.md\./);
+    assert.match(run.prompt, /drafts\/plan\.md\.comments\.jsonl holds its comment threads[\s\S]*append lines to drafts\/plan\.md\.comments\.jsonl, one JSON object per line/);
     await until(() => !existsSync(run.cwd), 'its copies to be gone after', 5000);
   }, { folder });
 });
@@ -350,16 +350,17 @@ test('a buddy\'s new comment is anchored on the text it quoted, though a person 
   });
 });
 
-test('a buddy a person sets watching looks at once and opens its watch thread, then runs each time people\'s edits pause, saying nothing when nothing is due; set off, it stops', { timeout: 60_000 }, async () => {
+test('a buddy a person sets watching looks at once and opens a thread of its own, then runs each time people\'s edits pause, saying nothing when nothing is due; set off, it stops', { timeout: 60_000 }, async () => {
   await withDoc(async ({ docPath, settingsDir, call, edit, state, runs }) => {
     const watching = async () => (await state()).agents.find((a) => a.name === 'Clippy').watching;
     await assert.rejects(call('watch', { buddy: 'Nobody', on: true }), { code: 'not_found' });
     await call('watch', { buddy: 'Clippy', on: true });
     assert.equal(await watching(), true);
     await until(async () => (await runs()).length === 1, 'a run at once');
-    assert.match((await runs())[0].prompt, /You watch this doc: .* You have no watch thread yet/);
+    assert.match((await runs())[0].prompt, /You watch the doc\. This is your first look since the app started/);
+    assert.doesNotMatch((await runs())[0].prompt, /watch thread/, 'where it comments is its own call');
     const opened = async () => (await state()).threads.find((t) => !t.anchor && t.comments[0].by.name === 'Clippy');
-    const thread = await until(opened, 'its watch thread, on the whole doc');
+    const thread = await until(opened, 'its thread, on the whole doc');
     assert.equal(thread.comments[0].body, 'Watching.');
     assert.doesNotMatch(await readFile(`${docPath}.comments.jsonl`, 'utf8'), /watch/, 'nothing of the watch in the comments\' file');
     await until(async () => (await state()).agents.find((a) => a.name === 'Clippy').state === 'ready', 'that run to end');
@@ -368,7 +369,6 @@ test('a buddy a person sets watching looks at once and opens its watch thread, t
     await sleep(2000);
     assert.equal((await runs()).length, 1, 'not while the edits may go on');
     await until(async () => (await runs()).length === 2, 'a run once they pause', 10_000);
-    assert.match((await runs())[1].prompt, new RegExp(`Your watch thread is Thread ${thread.id}: comment there\\.`));
     assert.match((await runs())[1].prompt, /^\+One\.$/m, 'what changed since it last looked');
     await until(async () => (await opened()).comments.at(-1).body === 'Saw 2 new lines.', 'its comment there: the blank line and One.');
 
@@ -410,7 +410,7 @@ test('a watcher runs on people\'s edits once they pause, unless a run since alre
 test('a watch run is ended when a person types again, with no answer, and runs again once they pause', { timeout: 60_000 }, async () => {
   await withDoc(async ({ settingsDir, call, edit, state, runs, release }) => {
     await call('watch', { buddy: 'Clippy', on: true });
-    await until(async () => (await state()).threads.some((t) => !t.anchor && t.comments[0].by.name === 'Clippy'), 'its watch thread');
+    await until(async () => (await state()).threads.some((t) => !t.anchor && t.comments[0].by.name === 'Clippy'), 'its thread');
     await until(async () => (await state()).agents.find((a) => a.name === 'Clippy').state === 'ready', 'that run to end');
     await edit(`${(await state()).text}\nhold-watch\n`);
     await until(async () => (await runs()).length === 2, 'a run once the edits pause', 10_000);
@@ -490,13 +490,12 @@ test('with no step left, buddies watching wait for the next to come on its own',
 test('only a person changes a watch: it outlives its thread resolved, a new one opened, and a restart, with no run on opening', { timeout: 60_000 }, async () => {
   await withDoc(async ({ call, edit, state, runs, restart }) => {
     await call('watch', { buddy: 'Clippy', on: true });
-    const first = await until(async () => (await state()).threads.find((t) => !t.anchor && t.comments[0].by.name === 'Clippy'), 'its watch thread');
+    const first = await until(async () => (await state()).threads.find((t) => !t.anchor && t.comments[0].by.name === 'Clippy'), 'its thread');
     await until(async () => (await state()).agents.find((a) => a.name === 'Clippy').state === 'ready', 'its run to end');
     await call('comment', { thread: first.id, body: '', resolved: true });
     await edit(`${(await state()).text}\nOne.\n`);
     await until(async () => (await runs()).length === 2, 'a run once the edits pause', 10_000);
-    assert.match((await runs())[1].prompt, /You have no watch thread yet/, 'its thread resolved, it starts another');
-    await until(async () => (await state()).threads.filter((t) => !t.anchor && t.comments[0].by.name === 'Clippy').length === 2, 'a second watch thread');
+    await until(async () => (await state()).threads.filter((t) => !t.anchor && t.comments[0].by.name === 'Clippy').length === 2, 'a second thread of its own');
     await until(async () => (await state()).agents.find((a) => a.name === 'Clippy').state === 'ready', 'that run to end');
 
     await restart();
@@ -563,11 +562,11 @@ test('one run a buddy, with every thread that asks it: each reply carries its ow
   });
 });
 
-test('no edit lands without a comment: an agent that edits and says nothing gets an empty reply carrying its edits; one that writes no groups, its last comment', { timeout: 30_000 }, async () => {
+test('no edit lands without a comment: an agent that edits and says nothing gets the reply it left out, carrying its edits; one that writes no groups, its last comment', { timeout: 30_000 }, async () => {
   await withDoc(async ({ call, state }) => {
     const id = await comment(call, '@Clippy quiet replace "extra load" with "extra peak load"');
     const [empty] = await until(async () => (await repliesIn(state, id)).length && repliesIn(state, id), 'the reply');
-    assert.equal(empty.body, '');
+    assert.equal(empty.body, 'Edited the doc.');
     assert.ok((await state()).edits[empty.id], 'its edits hang on it, with their Undo');
     const other = await comment(call, '@Clippy ungrouped replace "week one" with "week 1"');
     const [said] = await until(async () => (await repliesIn(state, other)).length && repliesIn(state, other), 'the reply');
@@ -736,7 +735,9 @@ test('the prompt tells a buddy who the other members are, as the app shows them'
   assert.doesNotMatch(prompt, /Ada: /, 'not itself');
   const withUser = buildPrompt({ buddy: buddies[0], buddies, docName: 'a.md', sidecarName: 'a.md.comments.jsonl', threads: [thread], human: { name: 'fzhan', about: 'I write novels.' } });
   assert.match(withUser, /The other members of the doc:\n\nfzhan \(owner\): I write novels\.\n\nBo/);
-  assert.match(withUser, /When it does not, start a thread only where a member must decide something, and fix small things in the doc instead\..* Only people resolve threads\./);
+  assert.match(withUser, /You can do what any member can: edit a\.md in place, .* reply in any thread; start a thread .* Only people resolve threads\./);
+  assert.match(withUser, /What every member keeps to, as the doc is shared: each change you make to the doc comes with a comment that says why.* at most 280 characters, in the language of the thread\./, 'the etiquette, for every buddy');
+  assert.doesNotMatch(withUser, /Edit only when asked/, 'how it answers is its persona\'s');
   assert.match(withUser, /The situation now:\n\nThe threads that ask you, each oldest comment first:\n\nThread c_thread01, on the whole doc:/, 'each by its id, in the situation, last');
   assert.doesNotMatch(prompt, /I write novels/, 'nothing about an owner who wrote nothing');
 });
@@ -744,8 +745,7 @@ test('the prompt tells a buddy who the other members are, as the app shows them'
 test('the prompt names files by their paths in the project, a comment\'s from the doc\'s folder', () => {
   const thread = { id: 'c_thread01', anchor: null, comments: [{ by: { name: 'fzhan', kind: 'human' }, body: 'Summarize rule.md' }] };
   const prompt = (docName, project) => buildPrompt({ buddy: { id: 'b_ada', name: 'Ada', about: '' }, docName, sidecarName: `${docName}.comments.jsonl`, threads: [thread], project });
-  assert.match(prompt('a.md', true), /every path here is from the project's top folder: .* relative to the doc's folder, the top one\./);
+  assert.match(prompt('a.md', true), /every path here is from the project's top folder\. A file path in a comment is relative to the doc's folder, the top one\./);
   assert.match(prompt('plans/2026/a.md', true), /relative to the doc's folder, plans\/2026\/: a comment's notes\.md is plans\/2026\/notes\.md/);
-  assert.match(prompt('plans/2026/a.md', true), /First, work out which file each thread is about\. "The doc" and "this doc" are plans\/2026\/a\.md\. Another file or doc a comment names .* find it by name/, 'not taken for the doc');
   assert.doesNotMatch(prompt('a.md', false), /project/, 'in doc mode, no project');
 });

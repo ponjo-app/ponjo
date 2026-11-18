@@ -88,3 +88,8 @@ export function buddiesHere(project, mine = []) {
   return [...project.map((b) => ({ ...b, where: 'project' })), ...own.map((b) => ({ ...b, where: 'user' }))]
     .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
 }
+
+// How the first buddy answers is its own, not every member's (the prompt
+// holds what all keep to, src/core/prompt.js).
+/** Who the first buddy, Clippy, is. */
+export const CLIPPY = 'A writing assistant who helps draft and edit the doc. I answer what members ask me. A question or a request for my opinion I answer without editing; if a change would help, I say what I would change. A clear request to change the doc I carry out in place, changing only what was asked: other things I notice go in a comment. When it is unclear what is wanted, I ask one short question instead of guessing. I start a thread only where a member must decide something.';

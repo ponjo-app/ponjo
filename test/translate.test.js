@@ -11,8 +11,8 @@ const by = { id: 'b_ada', name: 'Ada', kind: 'ai' };
 const header = `${JSON.stringify({ comments: FORMAT_VERSION })}\n`;
 const sidecar = (...lines) => ({ before: header, after: header + lines.map((l) => `${JSON.stringify(l)}\n`).join('') });
 const open = (id) => ({ id, resolved: false, anchor: null, comments: [] });
-const run = (over) => toChanges({ by, base: 'One.\n', edited: 'One.\n', comments: sidecar(), groups: [], threads: [open('c_1')], asking: ['c_1'], ...over });
-const shape = ({ posts, carried, dropped }) => ({ posts: posts.map((c) => [c.thread ?? null, c.body]), carried: carried.map((c) => [c.comment.body, c.doc, c.lands]), dropped });
+const run = (over) => toChanges({ by, base: 'One.\n', edited: 'One.\n', comments: sidecar(), groups: [], threads: [open('c_1')], ...over });
+const shape = ({ posts, carried }) => ({ posts: posts.map((c) => [c.thread ?? null, c.body]), carried: carried.map((c) => [c.comment.body, c.doc, c.lands]) });
 
 test('each comment carries the edits of its group, in order', () => {
   const result = run({
@@ -20,16 +20,16 @@ test('each comment carries the edits of its group, in order', () => {
     comments: sidecar({ thread: 'c_1', body: 'First.' }, { thread: 'c_1', body: 'Second.' }),
     groups: [{ comment: 0, doc: 'Two.\n' }, { comment: 1, doc: 'Two.\nThree.\n' }],
   });
-  assert.deepEqual(shape(result), { posts: [['c_1', 'First.'], ['c_1', 'Second.']], carried: [['First.', 'Two.\n', true], ['Second.', 'Two.\nThree.\n', true]], dropped: null });
+  assert.deepEqual(shape(result), { posts: [['c_1', 'First.'], ['c_1', 'Second.']], carried: [['First.', 'Two.\n', true], ['Second.', 'Two.\nThree.\n', true]] });
   assert.ok(result.posts.every((c) => c.by.id === 'b_ada' && c.id));
 });
 
-test('with no good groups, every edit hangs on the last comment, or on an empty reply in the first open thread that asked', () => {
+test('with no good groups, every edit hangs on the last comment; with no comment, on the one it left out: in the thread that asked it, else on the whole doc', () => {
   const edited = 'Two.\n';
   const lastDocWrong = [{ comment: 0, doc: 'Other.\n' }];
-  assert.deepEqual(shape(run({ edited, comments: sidecar({ thread: 'c_1', body: 'Done.' }), groups: lastDocWrong })), { posts: [['c_1', 'Done.']], carried: [['Done.', edited, true]], dropped: null });
-  assert.deepEqual(shape(run({ edited, threads: [{ ...open('c_1'), resolved: true }, open('c_2')], asking: ['c_1', 'c_2'] })), { posts: [['c_2', '']], carried: [['', edited, true]], dropped: null });
-  assert.equal(run({ edited, threads: [{ ...open('c_1'), resolved: true }] }).dropped, 'the threads that asked it were resolved meanwhile');
+  assert.deepEqual(shape(run({ edited, comments: sidecar({ thread: 'c_1', body: 'Done.' }), groups: lastDocWrong })), { posts: [['c_1', 'Done.']], carried: [['Done.', edited, true]] });
+  assert.deepEqual(shape(run({ edited, asking: ['c_1'] })), { posts: [['c_1', 'Edited the doc.']], carried: [['Edited the doc.', edited, true]] }, 'the comment it left out, in the thread that asked it');
+  assert.deepEqual(shape(run({ edited, asking: ['c_1'], threads: [{ ...open('c_1'), resolved: true }] })), { posts: [[null, 'Edited the doc.']], carried: [['Edited the doc.', edited, true]] }, 'that thread resolved meanwhile, or none asked: on the whole doc');
 });
 
 test('a reply in a thread resolved meanwhile is not posted, and its edits do not land; a new thread is', () => {
@@ -39,12 +39,12 @@ test('a reply in a thread resolved meanwhile is not posted, and its edits do not
     comments: sidecar({ thread: 'c_1', body: 'Late.' }, { body: 'New thread.', anchor: { exact: 'Two.' } }),
     groups: [{ comment: 0, doc: 'Two.\n' }, { comment: 1, doc: 'Two.\n' }],
   });
-  assert.deepEqual(shape(result), { posts: [[null, 'New thread.']], carried: [['Late.', 'Two.\n', false], ['New thread.', 'Two.\n', true]], dropped: null });
+  assert.deepEqual(shape(result), { posts: [[null, 'New thread.']], carried: [['Late.', 'Two.\n', false], ['New thread.', 'Two.\n', true]] });
   assert.equal(result.posts[0].anchor.exact, 'Two.', 'anchored on the doc it edited');
 });
 
 test('a run that changed nothing comes to nothing; lines it could not mean are left out', () => {
-  assert.deepEqual(shape(run({})), { posts: [], carried: [], dropped: null });
+  assert.deepEqual(shape(run({})), { posts: [], carried: [] });
   const odd = { before: header, after: `${header}not json\n${JSON.stringify({ thread: 'c_9', body: 'Nowhere.' })}\n${JSON.stringify({ thread: 'c_1', body: '  ' })}\n` };
-  assert.deepEqual(shape(run({ comments: odd })), { posts: [], carried: [], dropped: null });
+  assert.deepEqual(shape(run({ comments: odd })), { posts: [], carried: [] });
 });
