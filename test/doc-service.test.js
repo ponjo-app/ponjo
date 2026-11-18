@@ -9,6 +9,7 @@ import { dirname, join } from 'node:path';
 import { sidecarPath } from '../src/store/files.js';
 import { openDoc } from '../src/host/doc-service.js';
 import { apply } from '../src/core/ot.js';
+import { createAnchor } from '../src/core/anchor.js';
 import { readHistory } from '../src/store/history.js';
 import { SAMPLE, fakeConfig, fakeRuns, openTestDoc, tempDoc, until } from './helpers.js';
 
@@ -263,6 +264,40 @@ test('a reply comes after every comment in its thread, though its clock is behin
     const { threads } = await call('comment', { thread: id, body: 'Not yet' });
     assert.deepEqual(threads[0].comments.map((c) => c.body), ['Fix this', '', 'Not yet']);
     assert.equal(threads[0].resolved, false);
+  });
+});
+
+test('a comment sent again with its id is added once; with `after` a reply comes just after that time; a reply may move its thread', async () => {
+  await withDoc(async ({ call, docPath }) => {
+    const { id } = await call('comment', { anchor: null, body: 'Fix this' });
+    const later = await call('comment', { thread: id, body: 'Also this' });
+    const reply = { id: 'c_myreply01', thread: id, body: 'Fixed.', after: (await call('comment', { thread: id, body: '' })).threads[0].comments[0].at };
+    const first = await call('comment', reply);
+    assert.equal((await call('comment', reply)).at, first.at, 'answered as it was');
+    const lines = (await readFile(sidecarPath(docPath), 'utf8')).trimEnd().split('\n').slice(1).map((l) => JSON.parse(l));
+    assert.equal(lines.filter((c) => c.id === 'c_myreply01').length, 1);
+    const { threads } = await call('state');
+    assert.deepEqual(threads[0].comments.map((c) => c.body), ['Fix this', 'Fixed.', 'Also this', ''], 'just after the first, before what came later');
+    assert.ok(Date.parse(first.at) < Date.parse(later.threads[0].comments[1].at));
+    const { text } = await call('state');
+    const on = await call('comment', { anchor: createAnchor(text, 0, 5), body: 'On this' });
+    const moved = await call('comment', { thread: on.id, body: 'Moved.', anchor: createAnchor(text, 6, 11) });
+    assert.equal(moved.threads.find((t) => t.id === on.id).anchor.exact, text.slice(6, 11), 'a reply with an anchor moves its thread');
+    await assert.rejects(call('comment', { id: 'not an id', thread: id, body: 'x' }), refused('bad_input'));
+    await assert.rejects(call('comment', { anchor: null, body: 'x', after: first.at }), refused('bad_input'), 'only a reply comes after');
+  });
+});
+
+test('an edit sent as a group is its own version, hung on its comment, by whoever sent it', async () => {
+  await withDoc(async ({ call, docPath, settingsDir }) => {
+    const { id } = await call('comment', { anchor: null, body: 'Fix this' });
+    const { text, rev, epoch } = await call('state');
+    const at = text.indexOf('extra load');
+    await call('submit', { ops: [{ from: at, to: at + 5, insert: 'peak' }], rev, epoch, id: 'e_group', reply: 'c_reply0001', thread: id, conflict: true });
+    const versions = await readHistory(docPath, settingsDir);
+    const group = versions.find((v) => v.reply === 'c_reply0001');
+    assert.deepEqual([group.thread, group.conflict, group.author.kind], [id, true, 'human']);
+    await assert.rejects(call('submit', { ops: [], rev, epoch, id: 'e_bad', reply: 'c_reply0001' }), refused('bad_input'), 'a group names its thread');
   });
 });
 

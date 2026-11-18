@@ -156,6 +156,23 @@ then tells everyone. A whole text (a run, an outside change, an undo) is
 merged by line first (below) and lands as an edit on the current `rev`,
 like anyone's.
 
+The calls a change comes through:
+
+- `submit({ ops, epoch, rev, id, reply?, thread?, conflict? })`: an edit.
+  Sent again with its `id`, it is answered with the rev it made. With
+  `reply`, it is a group: the edits comment `reply` in `thread` carries, a
+  version of its own (`conflict` when the doc's lines stayed where it
+  collided); without, it is typing, a version once typing pauses.
+- `comment({ id?, thread?, anchor?, body, resolved?, after? })`: a first
+  comment (`anchor` on the text, or null for the whole doc) or a reply in
+  `thread`; a reply with `anchor` moves its thread (SPEC §3). A reply comes
+  after every comment in its thread, or with `after` (a time) just after
+  that. Sent again with its `id`, it is answered as it was.
+
+A buddy lands its run through these two, as the buddy: its groups first,
+then its comments, each reply just after the last comment the run was
+given in its thread.
+
 Only a comment that came through the door by a member asks: one found in
 the file is by `outside` and asks no one. The comments this host took are
 noted in the doc's history, so this holds after a restart.

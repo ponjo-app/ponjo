@@ -9,7 +9,7 @@ import { createAnchor, locate } from './anchor.js';
 import { diffOps, mapOffset } from './ot.js';
 
 export const FORMAT_VERSION = 3;
-const COMMENT_ID = /^c_[A-Za-z0-9_-]{6,}$/;
+export const COMMENT_ID = /^c_[A-Za-z0-9_-]{6,}$/;
 const AT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/;
 
 const ID_ALPHABET = '0123456789abcdefghijklmnopqrstuvwxyz';

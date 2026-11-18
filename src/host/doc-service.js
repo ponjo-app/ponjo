@@ -13,7 +13,7 @@ import { mkdir, readFile, realpath, stat } from 'node:fs/promises';
 import { basename, dirname, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createAnchor, locate } from '../core/anchor.js';
-import { movedAnchor, newComment, newId, parseSidecar, peopleOf, serializeSidecar, threadsOf, validAnchor } from '../core/comments.js';
+import { COMMENT_ID, movedAnchor, newComment, newId, parseSidecar, peopleOf, serializeSidecar, threadsOf, validAnchor } from '../core/comments.js';
 import { sameName } from '../core/mentions.js';
 import { BuddyError, buddiesHere, checkBuddyPatch } from '../core/buddies.js';
 import { DEFAULT_SETTINGS, SettingsError } from '../core/settings.js';
@@ -100,7 +100,7 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
     agent: pickAgent,
     folder: async () => folder,
     human: async () => ({ name: (await me()).name, about: (await settingsWithId(settingsDir)).about.trim() }),
-    finish: (result) => serial(() => finishRun(result)),
+    finish: (result) => finishRun(result),
     onChange: () => broadcastAgents(),
     log: (entry, trace) => logRun(settingsDir, { doc: docPath, ...entry }, trace),
   });
@@ -318,13 +318,17 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
     await noteVersion(text, await typingChange());
   }
 
-  // A window's edit: operations `ops` on rev `rev` of epoch `epoch`, moved over
-  // what landed since, by character. `id` names it in the `ops` event that tells it;
-  // one sent again once it landed lands no more, and is answered as it was.
-  // An epoch or rev this service no longer has is `stale`: the window takes
-  // the text again (state) and sends its edit on that.
-  async function submit({ ops, rev: at, epoch: from, id } = {}, who) {
+  // An edit: operations `ops` on rev `rev` of epoch `epoch`, moved over what
+  // landed since, by character. `id` names it in the `ops` event that tells
+  // it; one sent again once it landed lands no more, and is answered as it
+  // was. An epoch or rev this service no longer has is `stale`: the window
+  // takes the text again (state) and sends its edit on that. An edit with
+  // `reply` is a group: the edits a comment carries (a buddy's), a version of
+  // its own hung on that comment in `thread`, `conflict` when people's lines
+  // stayed where it collided; else it is typing.
+  async function submit({ ops, rev: at, epoch: from, id, reply, thread, conflict = false } = {}, who) {
     if (!validOps(ops) || !Number.isInteger(at) || typeof id !== 'string') throw new DocError('bad_input', 'expected { ops, rev, epoch, id }');
+    if (reply !== undefined && !(COMMENT_ID.test(reply) && COMMENT_ID.test(thread))) throw new DocError('bad_input', 'expected the comment and thread of a group');
     return serial(async () => {
       const landedAt = from === epoch && landedRevs.get(id);
       if (landedAt) {
@@ -335,8 +339,14 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
       if (from !== epoch || at < logStart || at > rev) throw new DocError('stale', 'the doc has moved on: take it again');
       for (const landed of log.slice(at - logStart)) ops = transform(ops, landed.ops);
       if (ops.length > 0 && ops.at(-1).to > text.length) throw new DocError('bad_input', 'operations past the end of the doc');
-      land(ops, { id });
-      typed(who);
+      if (reply === undefined) {
+        land(ops, { id });
+        typed(who);
+      } else {
+        await flushTyping();
+        land(ops, { id, by: who.id, reply });
+        await noteVersion(text, { kind: 'edit', author: { ...byOf(who), kind: who.kind === 'ai' ? 'agent' : who.kind }, thread, reply, ...(conflict ? { conflict: true } : {}) });
+      }
       const failed = await committed();
       if (failed) throw failed;
       return { rev };
@@ -450,25 +460,33 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
   }
 
   // A comment by `who`: a first comment (`anchor` on the doc's text, or
-  // null for the whole doc), or a reply in `thread`. Resolving is an empty
-  // reply with `resolved`, reopening an empty reply; neither asks anyone.
-  // Only a comment taken here asks (asks): it is noted before it is written.
-  async function comment({ thread, anchor = null, body, resolved } = {}, who) {
+  // null for the whole doc), or a reply in `thread` (with `anchor`: the text
+  // its edits moved the thread to, SPEC §3). Resolving is an empty reply with
+  // `resolved`, reopening an empty reply; neither asks anyone. A reply comes
+  // after every comment in its thread, or, with `after` (a time), just after
+  // that: a buddy's reply to what it was given comes before what was written
+  // meanwhile, still to answer. With `id`, one sent again is answered, not
+  // added twice. Only a comment taken here asks (asks): it is noted before it
+  // is written.
+  async function comment({ id, thread, anchor = null, body, resolved, after } = {}, who) {
     if (typeof body !== 'string' || (body.trim() === '' && thread === undefined)) throw new DocError('bad_input', 'a comment needs text');
-    if (anchor !== null && (thread !== undefined || !validAnchor(anchor))) throw new DocError('bad_input', 'invalid anchor');
+    if (anchor !== null && !validAnchor(anchor)) throw new DocError('bad_input', 'invalid anchor');
     if (resolved === true && thread === undefined) throw new DocError('bad_input', 'only a reply can resolve');
+    if ((id !== undefined && !COMMENT_ID.test(id)) || (after !== undefined && (thread === undefined || Number.isNaN(Date.parse(after))))) throw new DocError('bad_input', 'expected { id?, thread, after? }');
     let added;
     await serial(() => changeComments(async (lines) => {
+      added = id !== undefined && lines.find((l) => l.comment?.id === id)?.comment;
+      if (added) return lines;
       if (thread !== undefined && !lines.some((l) => l.comment?.id === thread && l.comment.thread === undefined)) throw new DocError('not_found', 'no such thread');
       // A reply is after every comment in its thread, though written in the
       // same millisecond: a thread is ordered by `at` (SPEC §4).
-      const at = thread === undefined ? Date.now() : lines.reduce((after, { comment: c }) => (
-        c && (c.id === thread || c.thread === thread) ? Math.max(after, Date.parse(c.at) + 1) : after), Date.now());
-      added = newComment({ thread, anchor, body, resolved }, { by: byOf(who), at: new Date(at).toISOString() });
+      const at = thread === undefined ? Date.now() : after !== undefined ? Date.parse(after) + 1 : lines.reduce((last, { comment: c }) => (
+        c && (c.id === thread || c.thread === thread) ? Math.max(last, Date.parse(c.at) + 1) : last), Date.now());
+      added = { ...newComment({ thread, anchor, body, resolved }, { by: byOf(who), at: new Date(at).toISOString() }), ...(id !== undefined ? { id } : {}), ...(thread !== undefined && anchor !== null ? { anchor } : {}) };
       if (body.trim() !== '') await noteTaken(docPath, settingsDir, added, lines.map((l) => l.comment?.id));
       return [...lines, { comment: added }];
     }));
-    return { ...(await commentsView(text)), id: added.id };
+    return { ...(await commentsView(text)), id: added.id, at: added.at };
   }
 
   // ---- the doc's buddies ----
@@ -689,40 +707,38 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
     }
     const { posts, carried, dropped } = toChanges({ by, base, edited, comments, groups, threads, asking: threadIds });
     if (dropped) return { comments: [], landed: `Dropped: ${dropped}` };
+    // Through the door, as the buddy: each comment's edits, merged by line
+    // with the doc as it is, then its comments.
+    const who = { ...by, level: 'write' };
     let prev = base;
     let conflict = false;
     for (const { comment, doc, lands } of carried) {
       if (!missing && lands && doc !== prev) { // a doc gone has nothing to land on
-        const merged = merge3(prev, text, doc);
+        const now = { text, rev };
+        const merged = merge3(prev, now.text, doc);
         conflict ||= merged.conflicts > 0;
-        await flushTyping();
-        land(diffOps(text, merged.text), { by: buddyId, reply: comment.id });
-        await committed(); // landed: windows hear if it is not saved
+        const thread = comment.thread ?? comment.id;
+        await submit({ ops: diffOps(now.text, merged.text), rev: now.rev, epoch, id: newId('e'), reply: comment.id, thread, conflict: merged.conflicts > 0 }, who)
+          .catch((error) => { if (error.code !== 'not_saved') throw error; }); // landed: windows hear it is not saved
         // A reply whose edits rewrote its thread's text moves the thread (SPEC §3).
         const anchor = comment.thread !== undefined && movedAnchor(open.get(comment.thread).anchor, prev, doc, text);
         if (anchor) comment.anchor = anchor;
-        await noteVersion(text, { kind: 'edit', author: { id: buddyId, name, kind: 'agent' }, thread: comment.thread ?? comment.id, reply: comment.id, ...(merged.conflicts > 0 ? { conflict: true } : {}) });
       }
       prev = doc;
     }
     if (!posts.length) return { comments: [], landed: 'Nothing to do' };
-    let posted = true;
-    await changeComments((lines) => {
-      // Each after the one before it in its thread, though written in the same millisecond (SPEC §4).
-      const last = new Map(Object.entries(seen).map(([thread, at]) => [thread, Date.parse(at)]));
-      for (const { comment: c } of lines) if (c && !((c.thread ?? c.id) in seen)) last.set(c.thread ?? c.id, Math.max(last.get(c.thread ?? c.id) ?? 0, Date.parse(c.at)));
-      const now = Date.now();
+    // A reply comes just after the last comment the run was given in its
+    // thread, each after the one before it.
+    const after = new Map(Object.entries(seen));
+    try {
       for (const c of posts) {
-        const at = c.thread === undefined ? now : (last.get(c.thread) ?? now) + 1;
-        if (c.thread !== undefined) last.set(c.thread, at);
-        c.at = new Date(at).toISOString();
+        const { at } = await comment({ id: c.id, thread: c.thread, anchor: c.anchor ?? null, body: c.body, after: c.thread !== undefined ? after.get(c.thread) : undefined }, who);
+        if (c.thread !== undefined && after.has(c.thread)) after.set(c.thread, at);
       }
-      return [...lines, ...posts.map((comment) => ({ comment }))];
-    }).catch((error) => {
+    } catch (error) {
       console.error(`Could not post ${name}'s comments:`, error);
-      posted = false;
-    });
-    if (!posted) return { comments: [], landed: 'Its comments were not posted' };
+      return { comments: [], landed: 'Its comments were not posted' };
+    }
     // The first thread on the whole doc a watcher opens is its watch thread.
     const opened = posts.find((c) => c.thread === undefined && !c.anchor);
     if (watcher && watching.get(buddyId) === watcher && opened && !(watcher.thread !== null && open.has(watcher.thread))) {
@@ -998,7 +1014,7 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
     write: {
       submit,
       recreate: (body, who) => serial(() => recreate(who)),
-      comment: (body, who) => comment({ thread: body?.thread, anchor: body?.anchor ?? null, body: body?.body, resolved: body?.resolved }, who),
+      comment: (body, who) => comment({ id: body?.id, thread: body?.thread, anchor: body?.anchor ?? null, body: body?.body, resolved: body?.resolved, after: body?.after }, who),
       restoreVersion: (body, who) => serial(() => restoreVersion(body, who)),
       undo: (body, who) => serial(() => undo(body, who)),
       // A buddy watches this doc, or no longer: { buddy, on }.
