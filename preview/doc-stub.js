@@ -580,9 +580,9 @@ flowchart TD
 | Component | Owns |
 | --- | --- |
 | Format | \`X\` + \`X.comments.jsonl\`, anchors on X's text ([SPEC](../spec/SPEC.md)) |
-| Core (\`src/core/\`) | computing on text, the same in the doc host and the page; no I/O: anchors, diff (Myers', \`diff.js\`) and the three-way merge by line (\`merge3\`), text operations and how they merge by character (\`ot.js\`), the sidecar's lines and threads, @mentions and the inbox, what a buddy file and the settings may hold |
-| Store (\`src/store/\`) | the files: a doc and its sidecar, each written whole (\`files.js\`), watched (\`watch.js\`), and the doc's versions (\`history.js\`); the settings and agents (programs and their manifests) in the config folder; buddy files (the user's there, a project's in its folder) |
-| DocService (\`src/host/doc-service.js\`) | every write to a doc and its sidecar, one at a time; outside changes; versions |
+| Core (\`src/core/\`) | computing on text, the same in the doc host and the page; no I/O: anchors, diff (Myers', \`diff.js\`) and the three-way merge by line (\`merge3\`), text operations and how they merge by character (\`ot.js\`), the sidecar's lines and threads, @mentions and the inbox, which buddies are due to run (\`due.js\`) and the steps they have to wake each other (\`bucket.js\`), from the threads and the host's notes and the time given, what a buddy file and the settings may hold |
+| Store (\`src/store/\`) | the files: a doc and its sidecar, each written whole (\`files.js\`), watched (\`watch.js\`), and the doc's versions (\`history.js\`); the runs' log and traces (\`runs.js\`); the settings and agents (programs and their manifests) in the config folder; buddy files (the user's there, a project's in its folder) |
+| DocService (\`src/host/doc-service.js\`) | every write to a doc and its sidecar, one at a time; outside changes; versions; what the host notes for its buddies (what their runs were given, who watches, who last changed the doc, the steps) |
 | Runner (\`src/host/runner.js\`) | which turns should start (the inbox), runs them, their status in memory |
 | ProjectService (\`src/host/project-service.js\`) | the project's files, the same for everyone: what a folder holds, a file to show or open, the files a search finds (\`src/core/search.js\`, as the find bar finds); every path resolved to its real path, inside the root, no part starting with \`.\` |
 | Windows (\`web/\`) | the doc page: editing and commenting, through DocService. The page talks to its editor, a view, in offsets on the doc's text, turns its typing into operations and takes others' back (\`client.js\`), and works out the marks a view draws (comments, a draft, a revision). The page knows no format. Also the home page (\`start.js\`) |
@@ -1031,9 +1031,13 @@ opens, where it comments and where its edits hang, each to undo on its
 own; resolved, it opens another. With nothing due it posts nothing. A
 person editing again while a run only its watch started is on ends that
 run with no answer, for it saw the doc as it was; it runs again once they
-pause. Its runs are timed by a clock that never goes back
-(\`performance.now()\`), so no pause is missed when the system's clock is
-set back. A watch run that fails shows on the buddy, for it may have no
+pause. Whether a watcher is due is told from who last changed the doc
+and when (people as one, each buddy on its own), which the host notes as
+each change lands, against when its last run started: so a look at any time finds the same, and a
+run that already saw some edits does not run again at their pause; the
+timer at the pause only wakes the look. These times are by a clock that
+never goes back (\`performance.now()\`), so no pause is missed when the
+system's clock is set back. A watch run that fails shows on the buddy, for it may have no
 thread yet: its card says "Watch failed", why to the owner alone, and
 Retry; it also runs again the next time people pause, or once its agent
 or key changes. Unset, it starts no more runs, and one running ends with
@@ -1980,6 +1984,11 @@ for a window), **e2e** (the packaged app, under xvfb on Linux).
   is not run again for it until someone writes there.
 - A look that cannot read the asks is tried again, later each time, with
   no event, and not again once one can.
+- Who is due, as a pure function of the threads, the host's notes and the
+  time (\`test/due.test.js\`): a comment asks until answered or given to a
+  run; a watcher is due once turned on, on people's changes once they pause
+  (free), on another buddy's at once (a step), never on its own; the steps
+  gain one every interval up to the cap, none with 0, all on Refill.
 - A buddy a person sets watching looks at once and opens its watch thread
   on the whole doc; then it runs once people's edits pause 5 s, not before,
   told what changed, saying nothing when nothing is due; set off, it runs
@@ -1989,6 +1998,8 @@ for a window), **e2e** (the packaged app, under xvfb on Linux).
   is ended when a person types again, with no answer, and runs again once
   they pause. A watch run that fails, before its buddy has a thread, shows
   on the buddy, why to the owner alone, and Retry runs it again.
+- A watcher runs on people's edits once they pause, unless a run since
+  already saw them.
 - A buddy's change wakes each other buddy watching, never itself, each such
   run taking a step, a person's pause none; with none left they wait, and
   Refill fills them; with steps coming on their own, they go on as each
