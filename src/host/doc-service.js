@@ -9,8 +9,8 @@
 // through Room (room.js), at the same door.
 
 import { createHash } from 'node:crypto';
-import { appendFile, mkdir, open, readFile, readdir, realpath, rm, stat } from 'node:fs/promises';
-import { basename, dirname, join, relative, sep } from 'node:path';
+import { mkdir, readFile, realpath, stat } from 'node:fs/promises';
+import { basename, dirname, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createAnchor, locate } from '../core/anchor.js';
 import { appendedComments, askedBy, movedAnchor, newComment, newId, parseSidecar, peopleOf, serializeSidecar, threadsOf, validAnchor } from '../core/comments.js';
@@ -20,12 +20,12 @@ import { DEFAULT_SETTINGS, SettingsError } from '../core/settings.js';
 import { lineChanges, merge3 } from '../core/diff.js';
 import { apply, diffOps, mapOffset, transform } from '../core/ot.js';
 import { PROTOCOL } from '../core/protocol.js';
-import { StoreError, formFor, hashText, moveDoc, readDoc, readSidecarText, sidecarPath, writeAtomic, writeDoc, writeSidecar } from '../store/files.js';
+import { StoreError, formFor, hashText, moveDoc, readDoc, readSidecarText, sidecarPath, writeDoc, writeSidecar } from '../store/files.js';
 import { VERSION_ID, moveHistory, noteTaken, noteWatching, noteWritten, readHistory, readTaken, readVersion, readWatching, recordVersion, writtenEdits } from '../store/history.js';
 import { configDir, defaultName, ownerOf, readSettings, settingsWithId, updateSettings, watchSettings } from '../store/settings.js';
 import { firstBuddies, projectBuddiesDir, readBuddies, removeBuddy, userBuddiesDir, writeBuddy } from '../store/buddies.js';
 import { secretTails } from '../store/secrets.js';
-import { readRuns, readUsage } from '../store/runs.js';
+import { logRun, readTrace, readUsage, tracedRuns } from '../store/runs.js';
 import { watchDoc, watchFolder } from '../store/watch.js';
 import { agentsDir, installAgents, listAgents, pickedAgent, SHIPPED_AGENTS } from '../store/agents.js';
 import { linkURL, projectService, saveImage } from './project-service.js';
@@ -1224,52 +1224,4 @@ async function fileHash(path) {
   } catch {
     return null;
   }
-}
-
-// A line per run in the config folder's logs/runs.jsonl: what a slow or
-// missing reply was. With Trace runs on, its trace too (runner.js), in
-// logs/traces/<run>.json, the newest TRACES kept. Then each log there (an
-// agent's too) past LOG_LIMIT keeps its newest half, from a line's start:
-// old runs are worth less. Never fails a run.
-const LOG_LIMIT = 10 * 1024 * 1024;
-const TRACES = 200;
-async function logRun(dir, entry, trace) {
-  const logs = join(dir, 'logs');
-  try {
-    await mkdir(logs, { recursive: true });
-    await appendFile(join(logs, 'runs.jsonl'), `${JSON.stringify(entry)}\n`);
-    if ((await readSettings(dir)).settings.trace) await keepTrace(join(logs, 'traces'), { ...entry, ...trace });
-    for (const name of (await readdir(logs)).filter((n) => n.endsWith('.jsonl'))) {
-      const path = join(logs, name);
-      const { size } = await stat(path);
-      if (size <= LOG_LIMIT) continue;
-      const file = await open(path);
-      const { buffer } = await file.read({ buffer: Buffer.alloc(LOG_LIMIT / 2), position: size - LOG_LIMIT / 2 }).finally(() => file.close());
-      await writeAtomic(path, buffer.subarray(buffer.indexOf('\n') + 1));
-    }
-  } catch (error) {
-    console.error('Could not log a run:', error);
-  }
-}
-
-async function keepTrace(folder, trace) {
-  await mkdir(folder, { recursive: true });
-  await writeAtomic(join(folder, `${trace.run}.json`), JSON.stringify(trace)); // whole, for a window reading it meanwhile
-  const names = (await readdir(folder)).filter((name) => name.endsWith('.json'));
-  if (names.length <= TRACES) return;
-  const kept = await Promise.all(names.map(async (name) => ({ name, at: (await stat(join(folder, name))).mtimeMs })));
-  kept.sort((a, b) => b.at - a.at);
-  await Promise.all(kept.slice(TRACES).map(({ name }) => rm(join(folder, name), { force: true })));
-}
-
-// The runs of the doc at `docPath` that have a trace, as runs.jsonl has them, newest first.
-async function tracedRuns(dir, docPath) {
-  const traced = new Set(await readdir(join(dir, 'logs', 'traces')).catch(() => []));
-  return (await readRuns(dir)).filter((entry) => entry.doc === docPath && traced.has(`${entry.run}.json`)).reverse();
-}
-
-// Run `run`'s trace (logRun), or null.
-async function readTrace(dir, run) {
-  if (typeof run !== 'string' || !/^r_[a-z0-9]+$/.test(run)) return null;
-  return JSON.parse(await readFile(join(dir, 'logs', 'traces', `${run}.json`), 'utf8').catch(() => 'null'));
 }

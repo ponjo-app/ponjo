@@ -15,7 +15,7 @@ export const SETTINGS_VERSION = 3;
  * (src/store/buddies.js), never settings. `views` and `agents` hold the
  * settings of each view and agent by its id (`{ <id>: { enabled: false } }`);
  * one not there takes the default its declaration gives (viewSettings,
- * agentSettings). `trace` keeps each run's trace (src/host/doc-service.js
+ * agentSettings). `trace` keeps each run's trace (src/store/runs.js
  * logRun), to read in a doc's Runs. A doc's buddies may wake each other,
  * watching it, `steps` times, one more every `refillEvery` seconds (0:
  * only when someone refills them; src/host/doc-service.js).
