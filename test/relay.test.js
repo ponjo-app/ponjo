@@ -17,7 +17,7 @@ import { LATENCY } from '../web/views/index.js';
 import { PROTOCOL } from '../src/core/protocol.js';
 import { launchElectron, waitFor } from '../scripts/devtools.js';
 import { until } from './helpers.js';
-import { idOf, page as playerPage, teammate, project as newProject, roomOf, startHost as hostOn, startRelay } from './relay/harness.js';
+import { idOf, page as teammatePage, newTeammate, project as newProject, roomOf, startHost as hostOn, startRelay } from './relay/harness.js';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const TEXT = '# Plan\n\nShip the preview first.\n';
@@ -50,14 +50,14 @@ after(() => relay?.stop());
 
 const project = () => newProject(TEXT);
 const startHost = (shared) => hostOn(shared, relay.url);
-const page = (host, who, doc) => playerPage(relay.url, host.room, who, doc);
+const page = (host, who, doc) => teammatePage(relay.url, host.room, who, doc);
 const levelOf = (p) => p.events.filter((e) => e.event === 'level').at(-1)?.data.level;
 
 test('anyone with the link is in at once, at Edit, and writes and reads through the relay; a name taken on the project gets a number', async () => {
   const shared = await project();
   const host = await startHost(shared);
   try {
-    const sam = teammate('Sam');
+    const sam = newTeammate('Sam');
     const teammate = page(host, sam); // no doc named: the project's first
     const { result: state } = await teammate.call('state');
     assert.equal(state.text, TEXT);
@@ -80,7 +80,7 @@ test('anyone with the link is in at once, at Edit, and writes and reads through 
     assert.deepEqual((await teammate.call('open', { path: 'plan.md' })).result, { path: 'plan.md' });
 
     for (const [name, named] of [['owner', 'owner2'], ['Clippy', 'Clippy2'], ['sam', 'sam2'], ['Sam', 'Sam3']]) {
-      assert.equal((await page(host, teammate(name)).call('state')).result.me.name, named, name);
+      assert.equal((await page(host, newTeammate(name)).call('state')).result.me.name, named, name);
     }
     assert.deepEqual((await host.call('room')).teammates.map((p) => `${p.name} ${p.level}`), ['Sam write', 'owner2 write', 'Clippy2 write', 'sam2 write', 'Sam3 write']);
     await assert.rejects(host.call('createBuddy', { buddy: { name: 'Sam' } }), (error) => error.message === 'the name Sam is taken');
@@ -93,7 +93,7 @@ test('a teammate at Read is told so, and every write and owner-only call from a 
   const shared = await project();
   const host = await startHost(shared);
   try {
-    const sam = teammate('Sam');
+    const sam = newTeammate('Sam');
     const teammate = page(host, sam);
     const { result: state } = await teammate.call('state');
     await host.call('setLevel', { id: idOf(sam.key), level: 'read' });
@@ -151,7 +151,7 @@ test('no credential is in an address: the host proves its secret, and a page say
   const shared = await project();
   const host = await startHost(shared);
   try {
-    await page(host, teammate('Sam'), 'plan.md').call('state');
+    await page(host, newTeammate('Sam'), 'plan.md').call('state');
     assert.deepEqual(sockets.filter((s) => s.url.includes(host.room)).map((s) => s.url), [`${relay.url}/rooms/${host.room}`]);
     assert.equal(new URL(host.link).search, `?room=${host.room}`, 'the link names the room alone');
 
@@ -160,7 +160,7 @@ test('no credential is in an address: the host proves its secret, and a page say
     const closed = new Promise((done) => impostor.addEventListener('close', ({ code }) => done(code)));
     impostor.addEventListener('open', () => impostor.send(JSON.stringify({ secret: 'guess' })));
     assert.equal(await closed, 4003);
-    assert.equal((await page(host, teammate('Ada')).call('state')).result.me.name, 'Ada', 'the host still in');
+    assert.equal((await page(host, newTeammate('Ada')).call('state')).result.me.name, 'Ada', 'the host still in');
   } finally {
     host.kill();
   }
@@ -175,7 +175,7 @@ test('a page reaches only what the project shows, and is told why not', async ()
       ['../plan.md', 'hidden'], ['/etc/hosts', 'hidden'],
       ['nothing.md', 'not_found', 'This doc is not in the shared project'],
     ]) {
-      const turnedAway = page(host, teammate(), doc);
+      const turnedAway = page(host, newTeammate(), doc);
       const { error } = await turnedAway.call('state');
       assert.equal(error.code, code, doc);
       if (message) assert.equal(error.message, message);
@@ -191,7 +191,7 @@ test('C5: a page whose line drops is offline at once, keeps nothing to send, and
   const shared = await project();
   const host = await startHost(shared);
   try {
-    const teammate = page(host, teammate('Sam'));
+    const teammate = page(host, newTeammate('Sam'));
     const { result: state } = await teammate.call('state');
     let shown = state.text;
     const client = createClient({
@@ -224,7 +224,7 @@ test('C6: a half-open line is noticed within 15 s, and made again', { timeout: 6
   const shared = await project();
   const host = await startHost(shared);
   try {
-    const teammate = page(host, teammate('Sam'));
+    const teammate = page(host, newTeammate('Sam'));
     await teammate.call('state');
     await new Promise((done) => setTimeout(done, 1000));
     const cutAt = Date.now();
@@ -239,7 +239,7 @@ test('C6: a half-open line is noticed within 15 s, and made again', { timeout: 6
 });
 
 test('a link no host is in says so, and the page waits for one', async () => {
-  const teammate = playerPage(relay.url, roomOf('a secret no host has'), teammate());
+  const teammate = teammatePage(relay.url, roomOf('a secret no host has'), newTeammate());
   let answered = false;
   teammate.call('state').then(() => { answered = true; });
   await until(() => teammate.lines.length > 0, 'the line');
@@ -251,7 +251,7 @@ test('Kick turns a teammate\'s pages away at once, and that browser cannot come 
   const shared = await project();
   const host = await startHost(shared);
   try {
-    const sam = teammate('Sam');
+    const sam = newTeammate('Sam');
     const kicked = page(host, sam);
     await kicked.call('state');
     await host.call('kick', { id: idOf(sam.key) });
@@ -259,13 +259,13 @@ test('Kick turns a teammate\'s pages away at once, and that browser cannot come 
     assert.equal((await kicked.call('state')).error.message, 'The host removed you from this room');
     assert.equal((await page(host, sam).call('state')).error.code, 'kicked', 'not again, from a new page');
 
-    const ada = teammate('Ada');
+    const ada = newTeammate('Ada');
     await page(host, ada).call('state');
     assert.deepEqual(await host.call('lockRoom', { locked: true }), { link: host.link, locked: true, teammates: [{ id: idOf(ada.key), name: 'Ada', level: 'write' }] });
-    assert.equal((await page(host, teammate('Bo')).call('state')).error.code, 'locked');
+    assert.equal((await page(host, newTeammate('Bo')).call('state')).error.code, 'locked');
     assert.equal((await page(host, ada).call('state')).result.me.name, 'Ada', 'a teammate comes back');
     await host.call('lockRoom', { locked: false });
-    assert.equal((await page(host, teammate('Bo')).call('state')).result.me.name, 'Bo');
+    assert.equal((await page(host, newTeammate('Bo')).call('state')).result.me.name, 'Bo');
   } finally {
     host.kill();
   }
@@ -280,7 +280,7 @@ test('Close room, or closing the project\'s last window, turns every page away w
     // The ids the next docs opened get.
     const { docId: before } = await host.request('open', { docPath: join(shared.folder, 'notes', 'b.md'), folder: shared.folder });
     await host.request('close', { docId: before });
-    const pages = [page(host, teammate('Sam')), page(host, teammate('Ada'), 'notes/b.md')];
+    const pages = [page(host, newTeammate('Sam')), page(host, newTeammate('Ada'), 'notes/b.md')];
     for (const p of pages) await p.call('state'); // b.md opens again, for the page: before + 1
     const oldRoom = host.room;
     let closedAt = performance.now();
@@ -293,13 +293,13 @@ test('Close room, or closing the project\'s last window, turns every page away w
     const { link } = await host.call('openRoom');
     const room = new URL(link).searchParams.get('room');
     assert.notEqual(room, oldRoom);
-    const old = playerPage(relay.url, oldRoom, teammate('Sam'));
+    const old = teammatePage(relay.url, oldRoom, newTeammate('Sam'));
     old.call('state');
     await until(() => old.lines.length > 0, 'the old link');
     assert.deepEqual(old.lines, ['nohost']);
     assert.deepEqual(await host.call('room'), { link, locked: false, teammates: [] }, 'no one from before');
 
-    const late = playerPage(relay.url, room, teammate('Sam'));
+    const late = teammatePage(relay.url, room, newTeammate('Sam'));
     await late.call('state');
     await host.request('close', { docId: before + 2 });
     assert.ok(!late.lines.includes('refused closed'), 'the project still has a window');
@@ -318,7 +318,7 @@ test('a teammate sees the owner\'s tree and opens any doc in it at once, nothing
   await writeFile(join(shared.folder, 'notes', 'b.md'), 'B\n');
   const host = await startHost(shared);
   try {
-    const sam = teammate('Sam');
+    const sam = newTeammate('Sam');
     const first = (await page(host, sam).call('state')).result;
     assert.deepEqual(first.place, { name: basename(shared.folder), path: 'plan.md' });
     const teammate = page(host, sam);
@@ -343,8 +343,8 @@ test('B6: two writers see each other\'s cursor move, within the promise, followi
   const shared = await project();
   const host = await startHost(shared);
   try {
-    const samKey = teammate('Sam');
-    const noor = page(host, teammate('Noor'));
+    const samKey = newTeammate('Sam');
+    const noor = page(host, newTeammate('Noor'));
     await noor.call('state');
     const sam = page(host, samKey);
     const state = (await sam.call('state')).result;
@@ -393,7 +393,7 @@ test('C8: a doc too big for the relay: its page says so, alone; the host and the
   await writeFile(join(shared.folder, 'big.txt'), `${'x'.repeat(99)}\n`.repeat(9 * 2 ** 20 / 100));
   const host = await startHost(shared);
   try {
-    const sam = teammate('Sam');
+    const sam = newTeammate('Sam');
     const other = page(host, sam);
     await other.call('state');
     const big = page(host, sam, 'big.txt');
@@ -508,7 +508,8 @@ test('the browser build, on a host with another version of the messages, says wh
     const notice = () => shown.evaluate(`(n => n.hidden ? '' : n.querySelector('.pj-banner-text').textContent)(document.querySelector('.pj-notice'))`);
     assert.equal(await notice(), '', 'the same version');
     // The hello on each line made again, after the last one dropped, says the version anew.
-    for (const [protocol, says] of [[PROTOCOL - 1, 'Ask them to update the app'], [PROTOCOL + 1, 'Reload it'], [null, ''], [PROTOCOL, '']]) {
+    // A host that says none is at 1 (src/core/protocol.js).
+    for (const [protocol, says] of [[PROTOCOL - 1, 'Ask them to update the app'], [PROTOCOL + 1, 'Reload it'], [null, PROTOCOL > 1 ? 'Ask them to update the app' : ''], [PROTOCOL, '']]) {
       await shown.evaluate(`window.protocol = ${protocol}; sockets.at(-1).dispatchEvent(new CloseEvent('close'))`);
       await waitFor(async () => (says ? (await notice()).includes(says) : (await notice()) === ''), 30_000, `the notice for ${protocol}`);
     }

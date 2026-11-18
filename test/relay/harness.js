@@ -33,7 +33,7 @@ export async function startRelay() {
 export const roomOf = (secret) => createHash('sha256').update(secret).digest('hex');
 
 /** A teammate's browser: its key, made once, and their name. */
-export const teammate = (name = 'Sam') => ({ key: `k-${Math.random().toString(36).slice(2)}${Math.random().toString(36).slice(2)}`, name });
+export const newTeammate = (name = 'Sam') => ({ key: `k-${Math.random().toString(36).slice(2)}${Math.random().toString(36).slice(2)}`, name });
 
 /** The id the host knows the teammate of `key` by (desktop/doc-host.js). */
 export const idOf = (key) => `p_${roomOf(key).slice(0, 24)}`;
