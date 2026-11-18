@@ -3,7 +3,7 @@
 
 import { mkdir, readFile, readdir, rename, rm } from 'node:fs/promises';
 import { join } from 'node:path';
-import { BuddyError, buddiesHere, buddyText, parseBuddy } from '../core/buddies.js';
+import { BuddyError, CLIPPY, buddiesHere, buddyText, parseBuddy } from '../core/buddies.js';
 import { NAME_PATTERN, sameName } from '../core/mentions.js';
 import { writeAtomic } from './files.js';
 
@@ -37,7 +37,7 @@ export async function writeBuddy(dir, buddy, was = null) {
 export async function firstBuddies(settingsDir) {
   const dir = userBuddiesDir(settingsDir);
   if ((await mkdir(dir, { recursive: true })) === undefined) return; // there already
-  await writeAtomic(fileOf(dir, 'Clippy'), buddyText({ id: 'Clippy', name: 'Clippy', about: 'A general writing assistant that helps draft and edit docs' }));
+  await writeAtomic(fileOf(dir, 'Clippy'), buddyText({ id: 'Clippy', name: 'Clippy', about: CLIPPY }));
 }
 
 export async function removeBuddy(dir, name) {

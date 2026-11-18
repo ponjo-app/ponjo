@@ -87,8 +87,8 @@ for a window), **e2e** (the packaged app, under xvfb on Linux).
   run; a watcher is due once turned on, on people's changes once they pause
   (free), on another buddy's at once (a step), never on its own; the steps
   gain one every interval up to the cap, none with 0, all on Refill.
-- A buddy a person sets watching looks at once and opens its watch thread
-  on the whole doc; then it runs once people's edits pause 5 s, not before,
+- A buddy a person sets watching looks at once and opens a thread of its
+  own on the whole doc; then it runs once people's edits pause 5 s, not before,
   told what changed, saying nothing when nothing is due; set off, it runs
   no more. Only a person changes the watch: it outlives its thread
   resolved (it opens another) and a restart (no run on opening); it is

@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { cp, mkdir, mkdtemp, readFile, readdir, rename, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { buddiesHere, buddyText, colorSlots, defaultName, parseBuddy, tagline } from '../src/core/buddies.js';
+import { CLIPPY, buddiesHere, buddyText, colorSlots, defaultName, parseBuddy, tagline } from '../src/core/buddies.js';
 import { readSettings } from '../src/store/settings.js';
 import { SAMPLE, fakeConfig, fakeRuns, openTestDoc, tempDoc, until } from './helpers.js';
 
@@ -54,7 +54,7 @@ test('a new buddy is named a common first name, not one taken (in any case), the
   assert.equal(defaultName([...all, 'Alice2'], () => 0), 'Alice3');
 });
 
-const CLIPPY_ROW = ['Clippy', 'A general writing assistant that helps draft and edit docs', 'user'];
+const CLIPPY_ROW = ['Clippy', CLIPPY, 'user'];
 
 test('buddy colors: up to eight get different ones, the same in any order', () => {
   // Eight names that would all pick the same color on their own.

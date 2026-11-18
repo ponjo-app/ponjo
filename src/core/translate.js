@@ -4,6 +4,9 @@
 
 import { appendedComments, newComment } from './comments.js';
 
+// What a buddy that edited without a word says, on the whole doc.
+const EDITED = 'Edited the doc.';
+
 /**
  * The changes a run made, as buddy `by` ({ id, name, kind }): `base` the
  * doc's copy as the run started and `edited` as it ended, `comments` the
@@ -15,13 +18,14 @@ import { appendedComments, newComment } from './comments.js';
  * Returns { posts (the comments to post, in order), carried ([{ comment,
  * doc (the doc after its edits), lands }], in order: the edits each comment
  * carries, merged one after another, `lands` false for one in a thread
- * resolved meanwhile), dropped (null, or why nothing lands) }. Each comment's
- * edits are its group; an agent that wrote no good groups hangs every edit
- * on its last comment, or, with none, on an empty reply in the first thread
- * that asked it and is still open: no edit lands without a comment. A reply
- * in a thread resolved meanwhile is not posted.
+ * resolved meanwhile) }. Each comment's edits are its group; an agent that
+ * wrote no good groups hangs every edit on its last comment, and one that
+ * wrote no comment on the comment it left out, which says so: in the first
+ * thread that asked it, still open, else on the whole doc. No edit lands
+ * without a comment. A reply in a thread resolved meanwhile is
+ * not posted.
  */
-export function toChanges({ by, base, edited, comments, groups = [], threads, asking }) {
+export function toChanges({ by, base, edited, comments, groups = [], threads, asking = [] }) {
   const open = new Set(threads.filter((t) => !t.resolved).map((t) => t.id));
   const kept = (c) => c.thread === undefined || open.has(c.thread);
   const added = appendedComments(comments.before, comments.after, { text: edited, by, at: '', threads: new Set(threads.map((t) => t.id)) });
@@ -31,10 +35,8 @@ export function toChanges({ by, base, edited, comments, groups = [], threads, as
   if (groups.length && groups.every((g) => byLine.has(g?.comment) && typeof g.doc === 'string') && groups.at(-1).doc === edited) {
     carried = groups.map((g) => ({ comment: byLine.get(g.comment), doc: g.doc }));
   } else if (edited !== base) {
-    const still = asking.filter((id) => open.has(id));
-    if (!posts.length && still.length) posts.push(newComment({ thread: still[0], body: '' }, { by, at: '' }));
-    if (!posts.length) return { posts: [], carried: [], dropped: 'the threads that asked it were resolved meanwhile' };
+    if (!posts.length) posts.push(newComment({ thread: asking.find((id) => open.has(id)), body: EDITED }, { by, at: '' }));
     carried = [{ comment: posts.at(-1), doc: edited }];
   }
-  return { posts: posts.filter(kept), carried: carried.map((c) => ({ ...c, lands: kept(c.comment) })), dropped: null };
+  return { posts: posts.filter(kept), carried: carried.map((c) => ({ ...c, lands: kept(c.comment) })) };
 }

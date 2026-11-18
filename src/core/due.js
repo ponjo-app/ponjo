@@ -21,7 +21,7 @@ export const SETTLE_MS = 5000;
  * bucket buddies wake each other from (bucket.js); `text` the doc now.
  *
  * Returns { start ([{ buddy, buddies, threads, askers, watch (null, or {
- * thread, changes }), watchOnly }]), stop (ids), steps (the bucket, less
+ * changes }), watchOnly }]), stop (ids), steps (the bucket, less
  * those spent), wakeAt (when to look again, or null), asking (a Set of
  * `${buddy} ${thread}`, each ask, looked at or not) }.
  *
@@ -29,7 +29,6 @@ export const SETTLE_MS = 5000;
  * A watcher, while whoever turned it on may ask, is due once turned on, and
  * on another member's change since its last run started: people's once
  * they pause SETTLE_MS, a buddy's at once, for a step. Its own never counts.
- * Its watch thread is its oldest open thread on the whole doc.
  */
 export function plan({ buddies, threads, askers, taken, notes, changedAt, running, steps, text, now }) {
   const noteOf = (id) => notes.get(id) ?? { seen: new Map(), lookedAt: null, base: null, watch: null };
@@ -51,8 +50,6 @@ export function plan({ buddies, threads, askers, taken, notes, changedAt, runnin
   for (const [id, note] of notes) {
     if (!note.watch || !buddies.some((b) => b.id === id) || !askers.includes(note.watch.by)) continue;
     const task = taskOf(id);
-    const own = threads.find((t) => !t.resolved && !t.anchor && t.comments[0]?.by.id === id);
-    if (own && !task.threads.includes(own)) task.threads.push(own);
     task.askers.add(note.watch.by);
     let byPeople = note.lookedAt === null;
     let byBuddy = false;
@@ -62,7 +59,7 @@ export function plan({ buddies, threads, askers, taken, notes, changedAt, runnin
       else if (now - at >= SETTLE_MS) byPeople = true;
       else soonest(at + SETTLE_MS); // people still typing: look once they pause
     }
-    task.watch = { thread: own?.id ?? null, changes: note.base === null ? null : lineChanges(note.base, text), due: byPeople || byBuddy, paid: !byPeople && byBuddy };
+    task.watch = { changes: note.base === null ? null : lineChanges(note.base, text), due: byPeople || byBuddy, paid: !byPeople && byBuddy };
   }
   const start = [];
   for (const [id, task] of tasks) {
@@ -77,7 +74,7 @@ export function plan({ buddies, threads, askers, taken, notes, changedAt, runnin
       }
       steps = step.bucket;
     }
-    start.push({ buddy, buddies, threads: task.threads, askers: [...task.askers], watch: task.watch && { thread: task.watch.thread, changes: task.watch.changes }, watchOnly: !task.asked && task.watch !== null });
+    start.push({ buddy, buddies, threads: task.threads, askers: [...task.askers], watch: task.watch && { changes: task.watch.changes }, watchOnly: !task.asked && task.watch !== null });
   }
   const wanted = new Set([...tasks.keys()].filter((id) => buddies.some((b) => b.id === id)));
   return { start, stop: [...running].filter((id) => !wanted.has(id)), steps, wakeAt, asking };

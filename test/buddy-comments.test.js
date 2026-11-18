@@ -60,7 +60,7 @@ test('a run appends a thread on a quote, one on the whole doc and replies: all a
     const { id, threads } = await ask(call, state, '@Clippy append {"anchor":{"exact":"beta cohort"},"body":"Who is in it?"};; append {"body":"Reads well."};; reply-first Yes, make it week two.');
     const [run] = await fakeRuns(settingsDir);
     assert.deepEqual(run.files.sort(), ['plan.md', 'plan.md.comments.jsonl'], 'its folder holds the copies');
-    assert.match(run.prompt, /plan\.md\.comments\.jsonl holds the doc's threads[\s\S]*append lines to plan\.md\.comments\.jsonl, one JSON object per line/);
+    assert.match(run.prompt, /plan\.md\.comments\.jsonl holds its comment threads[\s\S]*append lines to plan\.md\.comments\.jsonl, one JSON object per line/);
 
     const asked = threads.find((t) => t.id === id);
     assert.deepEqual(asked.comments.map((c) => [c.by.name, c.body]), [['fzhan', asked.comments[0].body], ['Clippy', 'Nothing to change.']]);

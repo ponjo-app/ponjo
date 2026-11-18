@@ -362,9 +362,8 @@ its last run started: people's once they pause for 5 s (`SETTLE_MS`), a
 buddy's at once, for it lands whole. Its own change never wakes it. A
 person editing again while a run only a watch started is on ends that run
 with no answer, for it saw the doc as it was. Each run is told what
-changed since its last (`lineChanges`), and comments in its watch thread:
-its open thread on the whole doc, worked out from the comments; with none,
-it opens one.
+changed since its last (`lineChanges`); it reads the doc's threads in the
+comments itself, and comments where it will, as any member.
 
 **Steps.** So that buddies cannot wake each other for ever, a run woken by
 another buddy's change takes a step from the doc's steps: up to 20, one
@@ -414,8 +413,9 @@ next.
 3. On exit 0, Translate turns the copies into changes: the new comments,
    each with its group of edits merged by line with the doc as it is now
    (`merge3`, the doc's lines win, the version says `conflict`). An agent
-   that wrote no groups hangs its edits on its last comment, or on an empty
-   reply in the first thread that asked it: no edit lands without a
+   that wrote no groups hangs its edits on its last comment; one that wrote
+   no comment, on the one it left out, "Edited the doc.", in the first
+   thread that asked it, or else on the whole doc: no edit lands without a
    comment. A reply in a thread resolved meanwhile is dropped, with its
    edits; a line that would resolve is ignored, as only people resolve. In
    a thread that asked it, its comments come just after the last comment

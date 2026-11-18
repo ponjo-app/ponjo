@@ -23,7 +23,7 @@ import { buildPrompt } from '../src/core/prompt.js';
 import { summarizeUsage } from '../src/core/usage.js';
 import { matches, searchPattern } from '../src/core/search.js';
 import { INFER, turn } from '../agents/ponjo-core.mjs';
-import { buddiesHere, checkBuddyPatch, parseBuddy } from '../src/core/buddies.js';
+import { CLIPPY, buddiesHere, checkBuddyPatch, parseBuddy } from '../src/core/buddies.js';
 import { sameName } from '../src/core/mentions.js';
 import { DEFAULT_SETTINGS, checkSettingsPatch, mergeSettings } from '../src/core/settings.js';
 import { PICKED, SCRIPTS } from './agents.js';
@@ -88,7 +88,7 @@ function seed() {
   }
   return {
     settings, files, comments,
-    mine: [{ id: 'Clippy', name: 'Clippy', about: 'A general writing assistant that helps draft and edit docs' }],
+    mine: [{ id: 'Clippy', name: 'Clippy', about: CLIPPY }],
     buddies,
     expanded: [], sidebar: true, carry: null,
     room: null,

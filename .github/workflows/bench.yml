@@ -1,0 +1,92 @@
+# The Ponjo agent's benchmark (scripts/bench-agent.js) on a real model:
+# this branch against main, the same cases and settings, when a person asks
+# for it. A run costs tokens, and a model answers differently each time, so
+# it never gates a merge: it tells whoever reviews a change to how buddies
+# answer (the prompt, a persona, the Ponjo agent) what it did to them.
+#
+# Ask for it with the `bench` label on a pull request, or run it by hand
+# (Actions, Agent benchmark). It needs the repository secret
+# ANTHROPIC_API_KEY; a pull request from a fork cannot read it.
+
+name: Agent benchmark
+
+on:
+  pull_request:
+    types: [labeled]
+  workflow_dispatch:
+    inputs:
+      runs:
+        description: Runs a case
+        default: '3'
+      only:
+        description: Only the cases whose name holds this (empty for all)
+        default: ''
+      model:
+        description: The Claude model
+        default: claude-opus-5-5
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bench-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  bench:
+    if: github.event_name == 'workflow_dispatch' || github.event.label.name == 'bench'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: 1
+      PONJO_SETTING_PROVIDER: anthropic
+      PONJO_SETTING_ANTHROPIC_MODEL: ${{ inputs.model || 'claude-opus-5-5' }}
+      PONJO_SETTING_ANTHROPIC_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      PONJO_SETTING_EFFORT: low
+      RUNS: ${{ inputs.runs || '3' }}
+      ONLY: ${{ inputs.only || '' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: head
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          path: base
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check the key is there
+        run: test -n "$PONJO_SETTING_ANTHROPIC_KEY" || { echo "::error::Add the repository secret ANTHROPIC_API_KEY"; exit 1; }
+      - name: Bench main
+        working-directory: base
+        run: npm ci --ignore-scripts && npm run bench:agent -- --runs "$RUNS" --only "$ONLY" | tee ../base.txt
+      - name: Bench this branch
+        working-directory: head
+        run: npm ci --ignore-scripts && npm run bench:agent -- --runs "$RUNS" --only "$ONLY" | tee ../head.txt
+      - name: Compare
+        if: always()
+        run: |
+          node --input-type=module - base.txt head.txt >> "$GITHUB_STEP_SUMMARY" <<'EOF'
+          import { readFileSync } from 'node:fs';
+          // Each case's "passed/counted" from a bench's output: "  3/3  name  (...)".
+          const scores = (file) => {
+            let text = '';
+            try { text = readFileSync(file, 'utf8'); } catch {}
+            const cases = new Map();
+            for (const [, passed, counted, name] of text.matchAll(/^ {2}(\d+)\/(\d+)\S*(?: \(\d+ errors\))? {2}(.+?) {2}\(/gm)) cases.set(name, { passed: +passed, counted: +counted });
+            return { cases, all: text.match(/^all: (.+)$/m)?.[1] ?? 'no result' };
+          };
+          const [base, head] = process.argv.slice(2).map(scores);
+          const rate = (s) => (s && s.counted ? s.passed / s.counted : null);
+          const cell = (s) => (s ? `${s.passed}/${s.counted}` : '–');
+          const rows = [...new Set([...base.cases.keys(), ...head.cases.keys()])].map((name) => {
+            const was = base.cases.get(name);
+            const is = head.cases.get(name);
+            return { name, was, is, delta: (rate(is) ?? 0) - (rate(was) ?? 0) };
+          }).sort((a, b) => a.delta - b.delta);
+          const mark = (d) => (d < 0 ? '⬇' : d > 0 ? '⬆' : '');
+          console.log(`## Agent benchmark\n\n${process.env.PONJO_SETTING_ANTHROPIC_MODEL}, ${process.env.RUNS} runs a case. main: **${base.all}**, this branch: **${head.all}**.\n`);
+          console.log('| Case | main | this branch | |\n| --- | --- | --- | --- |');
+          for (const r of rows) console.log(`| ${r.name} | ${cell(r.was)} | ${cell(r.is)} | ${mark(r.delta)} |`);
+          EOF

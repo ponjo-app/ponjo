@@ -15,8 +15,9 @@
 //   resolve                             append the line that resolves the thread
 //   resolve-first                       append the line that resolves the sidecar's first thread
 //   tamper                              change the first comment's line, and append one that resolves its thread
-// Watching the doc, it says "Watching." on the whole doc when it has no watch
-// thread, else "Saw <n> new lines." there, n the lines the changes put in;
+// Watching the doc, it says "Watching." on the whole doc when it has no
+// thread of its own there yet (found in the sidecar's copy, as any agent
+// reads it), else "Saw <n> new lines." in it, n the lines the changes put in;
 // nothing when one of them says quiet. Watching a doc that says fail-watch,
 // it fails; one that says hold-watch, it waits for release-<buddy> first;
 // one that says ping-pong, it adds the line "<buddy> moved." too.
@@ -46,7 +47,7 @@ if (process.env.PONJO_TRACE) appendFileSync(process.env.PONJO_TRACE, `${JSON.str
 // `usage`: a step as the Ponjo agent writes it, with the Claude API's count.
 if (/\busage\b/.test(ask)) appendFileSync(process.env.PONJO_TRACE, `${JSON.stringify({ role: 'assistant', model: 'claude-opus-5-5', usage: { input_tokens: 100, output_tokens: 10, cache_read_input_tokens: 900 } })}\n`);
 
-if (/You watch this doc:/.test(prompt)) {
+if (/You watch the doc\./.test(prompt)) {
   const now = readFileSync(doc, 'utf8');
   if (now.includes('fail-watch')) {
     console.error('fake agent: the watch run failed');
@@ -94,9 +95,10 @@ for (const thread of todo) {
   append(JSON.stringify({ thread: thread.id, body: said ?? (edits.length ? `Replaced "${edits[0][1]}".` : 'Nothing to change.') }));
   if (groups && text !== was && !/\bungrouped\b/.test(thread.ask)) appendFileSync(groups, `${JSON.stringify({ comment: appended - 1, doc: text })}\n`);
 }
-const watch = prompt.match(/You watch this doc:[\s\S]*$/)?.[0];
+const watch = prompt.match(/You watch the doc\.[\s\S]*$/)?.[0];
 if (watch && !/^\+.*\bquiet\b/m.test(watch)) {
-  const own = watch.match(/Your watch thread is Thread (c_[\w-]+)/)?.[1];
+  const parsed = lines.slice(1).filter(Boolean).map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
+  const own = parsed.find((c) => c.thread === undefined && !c.anchor && c.by?.name === buddy && !parsed.some((r) => r.thread === c.id && r.resolved))?.id;
   append(JSON.stringify(own ? { thread: own, body: `Saw ${(watch.match(/^\+/gm) ?? []).length} new lines.` } : { body: 'Watching.' }));
   if (text.includes('ping-pong')) {
     text += `${buddy} moved.\n`;

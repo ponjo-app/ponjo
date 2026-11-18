@@ -11,7 +11,7 @@ An agent is a filter ([architecture](host-spec.md#a-run)):
 | | |
 | --- | --- |
 | Working folder | new and private; holds only copies of the doc and its sidecar, at the doc's path in the project (in doc mode, under their names) |
-| stdin | the prompt: who the buddy is and the rules, then, under `The situation now:`, what changes from run to run: every thread that asks the buddy and it has not answered, each by its id, and, for a buddy watching the doc, what it is to do, its watch thread and what changed in the doc since it last looked. It names files only by their paths in the project, never where a run keeps them: the script tells its agent that, if it needs to (see [Paths](#paths)) |
+| stdin | the prompt: who the buddy is and the rules, then, under `The situation now:`, what changes from run to run: every thread that asks the buddy and it has not answered, each by its id, and, for a buddy watching the doc, what changed in the doc since it last looked. The rules say what any member can do and the etiquette every member keeps (each edit with a comment saying why, comments of a sentence or two in the thread's language, a comment naming another buddy left to it); how a buddy answers is its persona's. It names files only by their paths in the project, never where a run keeps them: the script tells its agent that, if it needs to (see [Paths](#paths)) |
 | `PONJO_DOC` | the doc copy's path |
 | `PONJO_COMMENTS` | the sidecar copy's path |
 | `PONJO_PROJECT` | the project folder, to read only (see [Permissions](#permissions)); empty in doc mode |
@@ -78,8 +78,8 @@ is undone on its own. An agent says which edits come with which comment in
 doc after its edits>"}`, the last one's `doc` the copy as it leaves it.
 The Ponjo agent writes them. An agent that writes none, or groups that do
 not end at its copy, lands all its edits with its last comment; with no
-comment, with an empty reply in the first thread that asked it. No edit
-lands without a comment.
+comment, with the one it left out, "Edited the doc.", in the first thread
+that asked it, or else on the whole doc. No edit lands without a comment.
 
 ## Agents
 
