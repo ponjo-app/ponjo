@@ -80,7 +80,8 @@ AI buddies.
    the doc, so two can play a game there; each such run takes one of the
    doc's steps, shown in the status bar ("14 steps"). Out of steps, they
    wait for the next (one a minute) or for **Refill**; Settings > Agents
-   sets how many and how often.
+   sets how many and how often. Why a buddy ran or did not is in Settings >
+   Agents > **Agent log**.
 5. **Anyone allowed decides.** Keep an edit, undo it from the comment it
    came with, reply again, or resolve the thread, whoever asked and
    whoever answered.

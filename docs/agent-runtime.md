@@ -67,14 +67,24 @@ change, timer or finished run only means "look again":
 ```
 look():
   state = the doc (door) + notes
-  { start, stop, steps, wakeAt } = plan(state + notes, now)
+  { start, stop, steps, wakeAt, why } = plan(state + notes, now)
   stop the runs in stop, start the runs in start
   set the one timer to wakeAt: people's pause ending, the next step
+  write to the agent log what woke the look and why each buddy runs or not
 ```
 
 A look at any time gives the same answer, so a missed event costs nothing:
 a look also comes every minute on the clock, and when it starts something
 no event woke, it says in the log that an event was lost, a bug to fix.
+
+The agent log (Settings > Agents > Agent log, the config folder's
+`logs/agents.log`) is for people asking why a buddy ran or did not: a line
+per look, saying what woke it (an edit or a comment and its rev, a run
+ending, a watch turned on, Retry, the timer, the clock), then a line per
+buddy with `plan`'s verdict (due or not, and why: asked in which threads,
+whose change after its look at which rev, people still typing, no step
+left, already running), and a line per run ending, with how and what
+landed. It holds names, revs and thread ids, never the doc's text.
 
 `plan` starts a buddy when:
 

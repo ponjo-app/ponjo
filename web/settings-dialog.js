@@ -104,7 +104,7 @@ export function keyLabel(keys) {
  * one page shows. `views` (web/views/index.js) fill Views, which shows only
  * when there are some: a list of them, each opening its own page.
  * `scripts` ({ list() → { agents, shipped, folder, secrets, fixed? }, reset(id),
- * saveSecret(id, key, value), showFolder? }, see web/api.js) backs Agents:
+ * saveSecret(id, key, value), showFolder?, showLog? }, see web/api.js) backs Agents:
  * the agents, read again each time it shows, one of them picked to run
  * every buddy, its settings open under it; with `fixed`, why they can't
  * be changed here, said in place of the intro, the section read only.
@@ -136,7 +136,16 @@ export function setupSettings({ store, getName, setName, onApply = () => {}, vie
   const trace = fieldRow({ key: 'trace', type: 'switch', label: 'Trace runs', hint: 'Keep what each run was given, did and printed, step by step, to read in a doc\'s Runs. Traces hold the doc\'s text; the newest 200 are kept in the config folder\'s logs.' }, 'app', (key, value) => set({ [key]: value }));
   // How often a doc's buddies may wake each other (src/host/doc-service.js).
   const steps = STEP_FIELDS.map((field) => fieldRow(field, 'app', (key, value) => set({ [key]: value })));
-  dialog.querySelector('.pj-agents-trace').replaceWith(...steps.map((row) => row.node), trace.node);
+  // For whoever asks why a buddy ran or did not: the agent log (src/store/runs.js, logLoop).
+  const log = el('div', 'pj-setting');
+  const logText = el('span', 'pj-setting-text');
+  logText.append(el('span', 'pj-setting-label', 'Agent log'), el('span', 'pj-setting-hint', 'What the buddies\' runtime looked at and why: why each buddy ran or did not, and how each run ended. It holds no doc\'s text.'));
+  const logOpen = el('button', 'pj-secondary', 'Open');
+  logOpen.type = 'button';
+  logOpen.dataset.action = 'show-agent-log';
+  log.append(logText, logOpen);
+  log.hidden = !scripts.showLog;
+  dialog.querySelector('.pj-agents-trace').replaceWith(...steps.map((row) => row.node), log, trace.node);
   fillShortcuts(dialog.querySelector('.pj-shortcuts-body'));
   dialog.querySelector('[data-action="show-agents"]').hidden = !scripts.showFolder;
 
@@ -236,7 +245,7 @@ export function setupSettings({ store, getName, setName, onApply = () => {}, vie
     const button = event.target.closest('button');
     if (!button) return;
     if (button.dataset.action === 'close') dialog.close();
-    else if (button.dataset.action === 'show-agents') scripts.showFolder(); else if (button.getAttribute('role') === 'tab') show(button.dataset.section);
+    else if (button.dataset.action === 'show-agents') scripts.showFolder(); else if (button.dataset.action === 'show-agent-log') scripts.showLog(); else if (button.getAttribute('role') === 'tab') show(button.dataset.section);
     else if (button.dataset.openPage) {
       showPage(listOf(button), button.dataset.openPage);
       dialog.querySelector(`[data-page="${button.dataset.openPage}"] .pj-back`).focus();

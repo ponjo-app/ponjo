@@ -145,6 +145,7 @@ contextBridge.exposeInMainWorld('ponjoDesktop', {
   trashSidecar: () => act('trashSidecar'),
   /** Show the folder of the agent scripts. */
   showAgents: () => act('showAgents'),
+  showAgentLog: () => act('showAgentLog'),
   /** The start window's Settings > Agents: { agents, shipped, folder, secrets }, and resetting a shipped agent. */
   agentScripts: () => ipcRenderer.invoke('ponjo:action', 'agentScripts'),
   usage: () => ipcRenderer.invoke('ponjo:action', 'usage'),

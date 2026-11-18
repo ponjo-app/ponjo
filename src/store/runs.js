@@ -1,6 +1,7 @@
 // The config folder's logs: runs.jsonl, a line per buddy run (logRun), and
 // with Trace runs on each run's trace, written and read back: for a doc's
-// Runs, and for Settings > Usage (src/core/usage.js).
+// Runs, and for Settings > Usage (src/core/usage.js); and agents.log, what
+// the agent runtime did and why (logLoop), for people to read.
 
 import { appendFile, mkdir, open, readFile, readdir, rm, stat } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -31,6 +32,7 @@ export async function readUsage(dir) {
 // agent's too) past LOG_LIMIT keeps its newest half, from a line's start:
 // old runs are worth less. Never fails a run.
 const LOG_LIMIT = 10 * 1024 * 1024;
+const LOOP_LOG = 'agents.log';
 const TRACES = 200;
 export async function logRun(dir, entry, trace) {
   const logs = join(dir, 'logs');
@@ -38,16 +40,35 @@ export async function logRun(dir, entry, trace) {
     await mkdir(logs, { recursive: true });
     await appendFile(join(logs, 'runs.jsonl'), `${JSON.stringify(entry)}\n`);
     if ((await readSettings(dir)).settings.trace) await keepTrace(join(logs, 'traces'), { ...entry, ...trace });
-    for (const name of (await readdir(logs)).filter((n) => n.endsWith('.jsonl'))) {
-      const path = join(logs, name);
-      const { size } = await stat(path);
-      if (size <= LOG_LIMIT) continue;
-      const file = await open(path);
-      const { buffer } = await file.read({ buffer: Buffer.alloc(LOG_LIMIT / 2), position: size - LOG_LIMIT / 2 }).finally(() => file.close());
-      await writeAtomic(path, buffer.subarray(buffer.indexOf('\n') + 1));
-    }
+    for (const name of (await readdir(logs)).filter((n) => n.endsWith('.jsonl'))) await trim(join(logs, name));
   } catch (error) {
     console.error('Could not log a run:', error);
+  }
+}
+
+// A log past LOG_LIMIT keeps its newest half, from a line's start.
+async function trim(path) {
+  const { size } = await stat(path);
+  if (size <= LOG_LIMIT) return;
+  const file = await open(path);
+  const { buffer } = await file.read({ buffer: Buffer.alloc(LOG_LIMIT / 2), position: size - LOG_LIMIT / 2 }).finally(() => file.close());
+  await writeAtomic(path, buffer.subarray(buffer.indexOf('\n') + 1));
+}
+
+/** Where config folder `dir` keeps the agent log. */
+export const loopLogPath = (dir) => join(dir, 'logs', LOOP_LOG);
+
+/**
+ * Add `text` (whole lines) to the agent log of config folder `dir`
+ * (src/host/buddy-runtime.js writes it), trimmed like the others. Never fails.
+ */
+export async function logLoop(dir, text) {
+  try {
+    await mkdir(join(dir, 'logs'), { recursive: true });
+    await appendFile(loopLogPath(dir), text);
+    await trim(loopLogPath(dir));
+  } catch (error) {
+    console.error('Could not write the agent log:', error);
   }
 }
 

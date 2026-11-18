@@ -4,7 +4,8 @@
 // reads the doc, asks the rules (plan, src/core/due.js) what to start and
 // stop, and does that. A run is the agent once on copies (execute,
 // runner.js); what it made (toChanges, src/core/translate.js) lands through
-// the doc's door, as the buddy. Nothing of it is written to a shared file.
+// the doc's door, as the buddy. Nothing of it is written to a shared file;
+// what it does and why is written to this machine's agent log (logLoop).
 
 import { basename } from 'node:path';
 import { filled, nextStepAt, refilled } from '../core/bucket.js';
@@ -16,7 +17,7 @@ import { DEFAULT_SETTINGS } from '../core/settings.js';
 import { toChanges } from '../core/translate.js';
 import { pickedAgent } from '../store/agents.js';
 import { noteWatching, readTaken, readWatching } from '../store/history.js';
-import { logRun } from '../store/runs.js';
+import { logLoop, logRun } from '../store/runs.js';
 import { readSettings, settingsWithId } from '../store/settings.js';
 import { readSidecarText } from '../store/files.js';
 import { DocError, can } from './door.js';
@@ -31,6 +32,9 @@ const LOOK_AGAIN_MAX_MS = 30_000;
 // woken (a look at any time finds the same), and says so: a lost event is a
 // bug to fix, not one to hide.
 const RESYNC_MS = 60_000;
+
+// A time as the agent log writes it, on this machine's clock: 2026-11-18 21:40:12.203.
+const stamp = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${d.toTimeString().slice(0, 8)}.${String(d.getMilliseconds()).padStart(3, '0')}`;
 
 /**
  * The buddies' statuses as someone at `level` sees them: why a run failed
@@ -67,6 +71,18 @@ export async function createBuddyRuntime({ door, place, pathInProject, buddies, 
   const runs = new Map();
   let shown = []; // the buddies the windows were last told of
   let stopped = false;
+  const nameOf = (id) => shown.find((b) => b.id === id)?.name ?? id;
+
+  // ---- the agent log ----
+
+  // Lines for the agent log, one write after another, each the time and the
+  // doc, then what happened: names, revs and thread ids, never the doc's text.
+  let logged = Promise.resolve();
+  function tell(...lines) {
+    const head = `${stamp(new Date())}  ${basename(place().docPath)}  `;
+    const text = lines.map((line, i) => (i ? `  ${line}` : head + line)).join('\n');
+    logged = logged.then(() => logLoop(settingsDir, `${text}\n`));
+  }
 
   // ---- looking ----
 
@@ -75,21 +91,25 @@ export async function createBuddyRuntime({ door, place, pathInProject, buddies, 
   let lookAgainMs = LOOK_AGAIN_MS;
   let timer = null;
   let timerAt = Infinity;
-  // Look at `at` (performance.now()), or sooner if a look is set sooner.
-  function wake(at) {
+  const whys = new Set(); // why the next look comes, for the agent log
+  // Look at `at` (performance.now()), or sooner if a look is set sooner;
+  // `why` it was set.
+  function wake(at, why) {
     if (stopped || at >= timerAt) return;
     clearTimeout(timer);
     timerAt = at;
     timer = setTimeout(() => {
       timer = null;
       timerAt = Infinity;
-      look();
+      look(why);
     }, Math.max(0, at - performance.now()) + 5);
     timer.unref?.();
   }
-  // Look, one at a time: a look asked for meanwhile is one more after it.
-  function look() {
+  // Look, one at a time, `why` in words: a look asked for meanwhile is one
+  // more after it.
+  function look(why) {
     if (stopped) return Promise.resolve();
+    if (why) whys.add(why);
     if (looking) {
       again = true;
       return looking;
@@ -102,7 +122,8 @@ export async function createBuddyRuntime({ door, place, pathInProject, buddies, 
           lookAgainMs = LOOK_AGAIN_MS;
         } catch (error) {
           console.error('Could not look for asks:', error);
-          wake(performance.now() + lookAgainMs);
+          tell(`look failed: ${error.message}; again in ${lookAgainMs / 1000} s`);
+          wake(performance.now() + lookAgainMs, 'a look that failed');
           lookAgainMs = Math.min(lookAgainMs * 2, LOOK_AGAIN_MAX_MS);
         }
       } while (again && !stopped);
@@ -116,12 +137,14 @@ export async function createBuddyRuntime({ door, place, pathInProject, buddies, 
   const resync = setInterval(() => {
     if (looking || stopped) return;
     byClock = timerAt === Infinity;
-    look();
+    look(`the clock${byClock ? ', with no look set' : ''}`);
   }, resyncMs);
   resync.unref?.();
   async function lookOnce() {
     const clock = byClock;
     byClock = false;
+    const why = [...whys].join('; ');
+    whys.clear();
     if (door.closed()) return;
     const here = await buddies();
     const { lines, problem } = await door.readComments();
@@ -145,10 +168,18 @@ export async function createBuddyRuntime({ door, place, pathInProject, buddies, 
     let gone = false;
     for (const [id, note] of notes) for (const key of note.failed.keys()) if (key !== 'watch' && !p.asking.has(`${id} ${key}`)) gone = note.failed.delete(key);
     if (gone) broadcastAgents();
+    const verdicts = new Map(p.why ?? [['', problem ? `nothing starts: the comments cannot be read (${problem})` : 'nothing starts: no buddy here']]);
+    const names = new Map([...runs].map(([id, r]) => [id, r.task.buddy.name]).concat(here.map((b) => [b.id, b.name])));
     for (const id of p.stop) end(runs.get(id));
-    for (const task of p.start) if (!stopped) startRun(task);
-    if (clock && p.start.length) console.warn(`A look on the clock started ${p.start.map((t) => t.buddy.name).join(', ')}: no event woke it, so one was lost`);
-    if (p.wakeAt !== null) wake(p.wakeAt);
+    for (const task of p.start) if (!stopped) verdicts.set(task.buddy.id, `${verdicts.get(task.buddy.id)} · started ${startRun(task)}`);
+    if (clock && p.start.length) {
+      console.warn(`A look on the clock started ${p.start.map((t) => t.buddy.name).join(', ')}: no event woke it, so one was lost`);
+      verdicts.set(' lost', 'no event woke this look: one was lost');
+    }
+    const rows = [...verdicts].map(([id, reason]) => [names.get(id) ?? '', reason]);
+    const width = Math.max(...rows.map(([name]) => name.length));
+    tell(`look · ${why || 'asked to'}`, ...rows.map(([name, reason]) => `${name.padEnd(width)}  ${reason}`));
+    if (p.wakeAt !== null) wake(p.wakeAt, 'what a look waited for: people to pause, or a step');
   }
 
   // ---- runs ----
@@ -159,15 +190,17 @@ export async function createBuddyRuntime({ door, place, pathInProject, buddies, 
     killTree(run.child);
   }
 
+  // Start `task`'s run; returns its id.
   function startRun(task) {
-    const run = { task, from: door.rev(), child: null, cancelled: false, landing: false, done: null };
+    const run = { id: newId('r'), task, from: door.rev(), child: null, cancelled: false, landing: false, done: null };
     runs.set(task.buddy.id, run);
     run.done = runOnce(run).finally(() => {
       runs.delete(task.buddy.id);
       broadcastAgents();
-      look(); // what was asked while it ran
+      look(`run ${run.id} of ${task.buddy.name} ended`); // what was asked while it ran
     });
     broadcastAgents();
+    return run.id;
   }
 
   // The agent once, then what it made lands; logged with its trace.
@@ -175,7 +208,7 @@ export async function createBuddyRuntime({ door, place, pathInProject, buddies, 
     const { task } = run;
     const { docPath, folder } = place();
     const copies = { path: folder ? await pathInProject() : basename(docPath), text: door.text(), comments: await readSidecarText(docPath) };
-    const runId = newId('r');
+    const runId = run.id;
     let result;
     let answered = null;
     try {
@@ -199,6 +232,8 @@ export async function createBuddyRuntime({ door, place, pathInProject, buddies, 
       if (result.outcome !== 'stopped') answered = await finish(run, copies, result);
     } finally {
       const trace = { script: result.script, prompt: result.prompt, steps: result.steps ?? [], stdout: result.stdout ?? '', stderr: result.stderr ?? '', base: copies.text, edited: result.edited ?? null, comments: result.comments ?? null, landed: answered?.landed ?? 'Ended without an answer' };
+      const why = result.outcome === 'ok' || result.outcome === 'stopped' ? '' : `: ${String(result.body ?? '').split('\n')[0].slice(0, 200)}`;
+      tell(`run ${runId} of ${task.buddy.name} ended: ${result.outcome}${why} in ${(result.ms / 1000).toFixed(1)} s · ${trace.landed}, ${answered?.comments.length ?? 0} comments`);
       await logRun(settingsDir, { doc: place().docPath, run: runId, buddy: task.buddy.name, threads: task.threads.map((t) => t.id), ...(task.watch ? { watched: true } : {}), comments: answered?.comments ?? [], at: new Date(result.at).toISOString(), ms: result.ms, outcome: result.outcome, code: result.code, ...(result.usage ? { usage: result.usage } : {}) }, trace);
     }
   }
@@ -301,20 +336,20 @@ export async function createBuddyRuntime({ door, place, pathInProject, buddies, 
     if (!on) Object.assign(note, { watch: null, base: null });
     if (!on) note.failed.delete('watch');
     keepWatching();
-    look();
+    look(`${nameOf(buddy)}'s watch turned ${on ? 'on' : 'off'}`);
     return {};
   }
   // Run the failed asks of `buddy` (or every buddy's) again: the agent or
   // its settings changed, or someone pressed Retry.
-  function retryFailed(buddy = null) {
+  function retryFailed(buddy, why) {
     for (const [id, note] of notes) {
-      if (buddy !== null && id !== buddy) continue;
+      if (buddy && id !== buddy) continue;
       for (const key of note.failed.keys()) {
         if (key === 'watch') note.lookedAt = null; // it looks again at once
         else note.seen.delete(key);
       }
     }
-    look();
+    look(why);
   }
 
   // ---- what the windows see ----
@@ -342,21 +377,28 @@ export async function createBuddyRuntime({ door, place, pathInProject, buddies, 
       console.error('Could not read the buddies:', error);
     }
     broadcastAgents();
-    await look();
+    await look('the buddies or who may ask changed');
   }
 
   return {
     /**
-     * A change to the text landed, at the doc's rev now: `by` a buddy's id,
-     * or null for people (or outside). A person's ends the runs only a watch
-     * started, for they saw the doc as it was, and the watchers look again
-     * once people pause; a buddy's has them look at once.
+     * A change landed in the doc's log (doc-service.js, subscribe): { rev,
+     * by: { id, kind }, comments }. Comments changed: look. The text: a
+     * person's (or outside) ends the runs only a watch started, for they saw
+     * the doc as it was, and the watchers look again once people pause; a
+     * buddy's has them look at once.
      */
-    changed(by) {
-      changedAt.set(by, { rev: door.rev(), at: performance.now() });
+    heard({ rev, by: author, comments }) {
+      const who = author.kind === 'buddy' ? nameOf(author.id) : author.kind === 'person' ? 'a person' : 'outside the app';
+      if (comments) {
+        look(`a comment by ${who}, rev ${rev}`);
+        return;
+      }
+      const by = author.kind === 'buddy' ? author.id : null;
+      changedAt.set(by, { rev, at: performance.now() });
       if (![...notes.values()].some((n) => n.watch)) return;
       if (by !== null) {
-        look();
+        look(`an edit by ${who}, rev ${rev}`);
         return;
       }
       for (const run of runs.values()) {
@@ -364,13 +406,13 @@ export async function createBuddyRuntime({ door, place, pathInProject, buddies, 
         noteOf(run.task.buddy.id).lookedAt = run.from;
         end(run);
       }
-      wake(performance.now() + SETTLE_MS);
+      wake(performance.now() + SETTLE_MS, `an edit by ${who}, rev ${rev}, once people pause`);
     },
-    /** What is asked may have changed: look again. */
+    /** What is asked may have changed (`why`): look again. */
     look,
     sync,
     /** The agent, its settings or its secrets changed: the failed asks run again. */
-    agentChanged: () => retryFailed(),
+    agentChanged: () => retryFailed(null, 'the agent or its settings changed'),
     statuses: () => agentStatuses(),
     steps: () => stepsView(),
     /** The names of the buddies at work. */
@@ -385,12 +427,12 @@ export async function createBuddyRuntime({ door, place, pathInProject, buddies, 
       refillSteps: () => {
         steps = filled(steps, performance.now());
         emit('steps', stepsView());
-        look();
+        look('the steps were refilled');
         return {};
       },
       retry: (body) => {
         if (typeof body?.buddy !== 'string') throw new DocError('bad_input', 'expected { buddy }');
-        retryFailed(body.buddy);
+        retryFailed(body.buddy, `Retry on ${nameOf(body.buddy)}`);
         return {};
       },
     },
@@ -402,6 +444,7 @@ export async function createBuddyRuntime({ door, place, pathInProject, buddies, 
       await looking;
       for (const run of runs.values()) end(run);
       await Promise.all([...runs.values()].map((r) => r.done));
+      await logged;
     },
   };
 }

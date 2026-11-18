@@ -82,11 +82,13 @@ for a window), **e2e** (the packaged app, under xvfb on Linux).
   is not run again for it until someone writes there.
 - A look that cannot read the asks is tried again, later each time, with
   no event, and not again once one can. A look on the clock starts what no
-  event woke, and says an event was lost.
+  event woke, and says an event was lost. The agent log says what woke
+  each look, why the buddy ran, and how its run ended.
 - Who is due, as a pure function of the threads, the host's notes and the
   time (`test/due.test.js`): a comment asks until answered or given to a
   run; a watcher is due once turned on, on people's changes once they pause
-  (free), on another buddy's at once (a step), never on its own; the steps
+  (free), on another buddy's at once (a step), never on its own, each
+  verdict with why in words; the steps
   gain one every interval up to the cap, none with 0, all on Refill.
 - A buddy a person sets watching looks at once and opens a thread of its
   own on the whole doc; then it runs once people's edits pause 5 s, not before,

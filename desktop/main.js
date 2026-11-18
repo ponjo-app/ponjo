@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url';
 import { SHIPPED_AGENTS, agentsDir, installAgents, listAgents, pickedAgent, readAgent } from '../src/store/agents.js';
 import { testAgent } from '../src/host/runner.js';
 import { readSecrets, secretTails, writeSecrets } from '../src/store/secrets.js';
-import { readUsage } from '../src/store/runs.js';
+import { logLoop, loopLogPath, readUsage } from '../src/store/runs.js';
 import { configDir, readSettings, updateSettings, watchSettings } from '../src/store/settings.js';
 import { readSidecarText, sidecarPath } from '../src/store/files.js';
 import { parseSidecar } from '../src/core/comments.js';
@@ -456,6 +456,13 @@ function showAgents() {
   shell.openPath(agentsDir()).catch(() => {});
 }
 
+// Settings > Agents > Agent log: in the app this machine reads logs with,
+// not in Ponjo, where it would be a doc whose own buddies write to it.
+async function showAgentLog() {
+  await logLoop(configDir(), ''); // there before a buddy has looked
+  shell.openPath(loopLogPath(configDir())).catch(() => {});
+}
+
 // Print and Export as PDF: the doc's page as a reader sees it, without the
 // app around it (app.css, print), on A4 paper or, where it is the custom,
 // Letter.
@@ -848,6 +855,7 @@ ipcMain.handle('ponjo:action', async (event, action, arg) => {
   if (action === 'folderTrash' && fromDoc) return sidebarTrash(win, arg);
   if (action === 'folderMenu' && fromDoc) return void (await sidebarMenu(win, event.sender, arg));
   if (action === 'showAgents' && (fromStart || fromDoc)) return void showAgents();
+  if (action === 'showAgentLog' && (fromStart || fromDoc)) return void (await showAgentLog());
   if (action === 'agentScripts' && fromStart) return agentScripts();
   if (action === 'usage' && fromStart) return readUsage(configDir());
   if (action === 'resetAgentScript' && fromStart) return void (await resetAgentScript(arg));

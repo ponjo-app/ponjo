@@ -29,6 +29,22 @@ test('a person\'s comment asks the buddy it names until the buddy comments after
   assert.deepEqual(started(look({ threads: [asked], running: new Set(['b_ada']) })), [], 'one run at a time');
 });
 
+test('it says why each buddy starts or not, for the agent log', () => {
+  const why = (over) => Object.fromEntries(look(over).why);
+  const asked = thread('c_1', [say(ME, '@Ada look', '2026-11-18T10:00:00.000Z', ['b_ada'])]);
+  assert.deepEqual(why({ threads: [asked] }), { b_ada: 'due: asked in c_1', b_ben: 'not due: no ask, not watching' });
+  assert.equal(why({ threads: [asked], running: new Set(['b_ada']) }).b_ada, 'not due: already running (asked in c_1)');
+  assert.equal(why({ notes: watching(null) }).b_ada, 'due: its first look');
+  assert.equal(why({ notes: watching(5) }).b_ada, 'not due: no change since its look at rev 5');
+  assert.equal(why({ notes: watching(5), changedAt: new Map([[null, { rev: 7, at: 98_000 }]]) }).b_ada, 'not due: changed by people at rev 7, still typing, after its look at rev 5');
+  assert.equal(why({ notes: watching(5), changedAt: new Map([['b_ada', { rev: 7, at: 0 }]]) }).b_ada, 'not due: changed by itself at rev 7, which does not count, after its look at rev 5');
+  const ben = new Map([['b_ben', { rev: 7, at: 99_000 }]]);
+  assert.equal(why({ notes: watching(5), changedAt: ben }).b_ada, 'due: changed by Ben at rev 7, after its look at rev 5 · a step taken, 2 left');
+  assert.equal(why({ notes: watching(5), changedAt: ben, steps: { ...full, left: 0, at: 90_000 } }).b_ada, 'not due: changed by Ben at rev 7, after its look at rev 5, but no step is left, the next in 50 s');
+  assert.equal(why({ notes: watching(5, { watch: { by: 'u_gone00001' } }) }).b_ada, 'not due: whoever turned on its watch may not ask');
+  assert.equal(why({ running: new Set(['b_ada']) }).b_ada, 'stopped: nothing asks it now');
+});
+
 test('a watcher is due once turned on, on people\'s changes once they pause, and on another buddy\'s at once for a step; never on its own', () => {
   assert.deepEqual(started(look({ notes: watching(null) })), ['b_ada'], 'turned on: it looks at once');
   assert.deepEqual(started(look({ notes: watching(5) })), [], 'no change since it looked');
