@@ -189,7 +189,7 @@ test('a script that exits 1 writes nothing: the buddy\'s status says the thread 
 
 // The controller over a door that only holds threads, for what it does
 // whatever the doc: `read()` gives the sidecar's lines, or throws.
-async function withRuntime(read, fn) {
+async function withRuntime(read, fn, options = {}) {
   const settingsDir = await fakeConfig();
   const docPath = await tempDoc('Text.\n');
   const ask = { id: 'c_asked0001', anchor: null, by: { id: 'u_me000001', name: 'me', kind: 'human' }, at: '2026-11-17T10:00:00.000Z', body: '@X look' };
@@ -203,7 +203,7 @@ async function withRuntime(read, fn) {
     },
     place: () => ({ docPath, folder: null, room: null }), pathInProject: async () => 'doc.md',
     buddies: async () => [{ id: 'b_x', name: 'X', about: '' }], me: async () => ({ id: 'u_me000001', name: 'me' }), levelOf: async () => 'owner',
-    settingsDir, secrets: () => ({}), emit: () => {},
+    settingsDir, secrets: () => ({}), emit: () => {}, ...options,
   });
   try {
     await fn({ runtime, landed, settingsDir });
@@ -239,6 +239,23 @@ test('a look that could not read the doc is tried again, later each time, until 
     assert.ok(Date.now() - from >= 2900, 'after 1 s, then 2 s');
     assert.equal(landed[0].thread, 'c_asked0001');
   });
+});
+
+test('a look on the clock starts what no event woke, and says an event was lost', async () => {
+  let asks = false; // the ask comes, but no event says so
+  const warned = [];
+  const warn = console.warn;
+  console.warn = (message) => warned.push(message);
+  try {
+    await withRuntime((ask) => (asks ? [ask] : []), async ({ runtime, landed }) => {
+      await runtime.look();
+      asks = true;
+      await until(() => landed.length === 1, 'the run, from a look on the clock', 5000);
+      assert.match(warned.join('\n'), /A look on the clock started X: no event woke it, so one was lost/);
+    }, { resyncMs: 300 });
+  } finally {
+    console.warn = warn;
+  }
 });
 
 test('a teammate hears that a run failed, not why', () => {
@@ -562,11 +579,11 @@ test('one run a buddy, with every thread that asks it: each reply carries its ow
   });
 });
 
-test('no edit lands without a comment: an agent that edits and says nothing gets the reply it left out, carrying its edits; one that writes no groups, its last comment', { timeout: 30_000 }, async () => {
+test('no edit lands without a comment: an agent that edits and says nothing gets the reply it left out, its last words, carrying its edits; one that writes no groups, its last comment', { timeout: 30_000 }, async () => {
   await withDoc(async ({ call, state }) => {
     const id = await comment(call, '@Clippy quiet replace "extra load" with "extra peak load"');
     const [empty] = await until(async () => (await repliesIn(state, id)).length && repliesIn(state, id), 'the reply');
-    assert.equal(empty.body, 'Edited the doc.');
+    assert.equal(empty.body, 'Done.', 'what the agent printed last');
     assert.ok((await state()).edits[empty.id], 'its edits hang on it, with their Undo');
     const other = await comment(call, '@Clippy ungrouped replace "week one" with "week 1"');
     const [said] = await until(async () => (await repliesIn(state, other)).length && repliesIn(state, other), 'the reply');

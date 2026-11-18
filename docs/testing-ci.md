@@ -81,7 +81,8 @@ for a window), **e2e** (the packaged app, under xvfb on Linux).
   with only the threads not answered; a run that posts nothing in a thread
   is not run again for it until someone writes there.
 - A look that cannot read the asks is tried again, later each time, with
-  no event, and not again once one can.
+  no event, and not again once one can. A look on the clock starts what no
+  event woke, and says an event was lost.
 - Who is due, as a pure function of the threads, the host's notes and the
   time (`test/due.test.js`): a comment asks until answered or given to a
   run; a watcher is due once turned on, on people's changes once they pause

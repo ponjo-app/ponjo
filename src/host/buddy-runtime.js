@@ -27,6 +27,10 @@ import { execute, killTree, testAgent } from './runner.js';
 // long each time, up to LOOK_AGAIN_MAX_MS: no event may come to try it.
 const LOOK_AGAIN_MS = 1000;
 const LOOK_AGAIN_MAX_MS = 30_000;
+// A look on the clock, this often, finds what an event lost would have
+// woken (a look at any time finds the same), and says so: a lost event is a
+// bug to fix, not one to hide.
+const RESYNC_MS = 60_000;
 
 /**
  * The buddies' statuses as someone at `level` sees them: why a run failed
@@ -44,9 +48,10 @@ export function agentsFor(level, agents) {
  * `place()` is { docPath, folder, room } as they are now, `pathInProject()`
  * the doc's path in its project (`/`-separated); `buddies()` the buddies the
  * doc reaches, `me()` the owner, `levelOf(id)` a person's level now. `emit`
- * tells every window (`agents`, `steps`). `timeoutMs` ends a run that hangs.
+ * tells every window (`agents`, `steps`). `timeoutMs` ends a run that hangs;
+ * `resyncMs` is how often a look comes on the clock.
  */
-export async function createBuddyRuntime({ door, place, pathInProject, buddies, me, levelOf, settingsDir, secrets, emit, timeoutMs }) {
+export async function createBuddyRuntime({ door, place, pathInProject, buddies, me, levelOf, settingsDir, secrets, emit, timeoutMs, resyncMs = RESYNC_MS }) {
   // What this machine notes of each buddy (plan): { seen, lookedAt, base,
   // failed (thread, or 'watch' for its watch, → { at, why }), watch }. The
   // watch is noted with the doc's history too (noteWatching), as only a
@@ -105,7 +110,18 @@ export async function createBuddyRuntime({ door, place, pathInProject, buddies, 
     })();
     return looking;
   }
+  // A look on the clock while nothing is set to wake one: what it starts, no
+  // event woke.
+  let byClock = false;
+  const resync = setInterval(() => {
+    if (looking || stopped) return;
+    byClock = timerAt === Infinity;
+    look();
+  }, resyncMs);
+  resync.unref?.();
   async function lookOnce() {
+    const clock = byClock;
+    byClock = false;
     if (door.closed()) return;
     const here = await buddies();
     const { lines, problem } = await door.readComments();
@@ -131,6 +147,7 @@ export async function createBuddyRuntime({ door, place, pathInProject, buddies, 
     if (gone) broadcastAgents();
     for (const id of p.stop) end(runs.get(id));
     for (const task of p.start) if (!stopped) startRun(task);
+    if (clock && p.start.length) console.warn(`A look on the clock started ${p.start.map((t) => t.buddy.name).join(', ')}: no event woke it, so one was lost`);
     if (p.wakeAt !== null) wake(p.wakeAt);
   }
 
@@ -223,7 +240,7 @@ export async function createBuddyRuntime({ door, place, pathInProject, buddies, 
       return { comments: [], landed: 'Failed' };
     }
     broadcastAgents();
-    const { posts, carried } = toChanges({ by, base: copies.text, edited: result.edited, comments: result.comments, groups: result.groups, threads, asking: task.threads.map((t) => t.id) });
+    const { posts, carried } = toChanges({ by, base: copies.text, edited: result.edited, comments: result.comments, groups: result.groups, threads, asking: task.threads.map((t) => t.id), output: result.stdout });
     const who = { ...by, level: 'write' };
     let prev = copies.text;
     let conflict = false;
@@ -381,6 +398,7 @@ export async function createBuddyRuntime({ door, place, pathInProject, buddies, 
     async close() {
       stopped = true;
       clearTimeout(timer);
+      clearInterval(resync);
       await looking;
       for (const run of runs.values()) end(run);
       await Promise.all([...runs.values()].map((r) => r.done));

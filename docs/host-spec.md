@@ -391,8 +391,10 @@ and whenever its one timer fires, it reads the doc and asks the rules:
 start, stop, spend, wakeAt }`. It starts and ends runs as told and sets its
 timer to `wakeAt`: the soonest of people's pause ending, the next step
 coming, and a failed read tried again (1 s, twice as long each time up to
-30 s). The same look at any time finds the same; nothing else runs a
-buddy. A buddy has one run at a time in a doc, given every thread that asks
+30 s). The same look at any time finds the same, so a look also comes
+every minute on the clock: what it starts while nothing was set to wake a
+look, an event that was lost should have, and it says so in the log, a bug
+to fix. Nothing else runs a buddy. A buddy has one run at a time in a doc, given every thread that asks
 it and it has not been given; a comment written while it runs is for the
 next.
 
@@ -414,9 +416,10 @@ next.
    each with its group of edits merged by line with the doc as it is now
    (`merge3`, the doc's lines win, the version says `conflict`). An agent
    that wrote no groups hangs its edits on its last comment; one that wrote
-   no comment, on the one it left out, "Edited the doc.", in the first
-   thread that asked it, or else on the whole doc: no edit lands without a
-   comment. A reply in a thread resolved meanwhile is dropped, with its
+   no comment, on the one it left out (what the agent printed last, in
+   one line of at most 280 characters, else "Edited the doc."), in the
+   first thread that asked it, or else on the whole doc: no edit lands
+   without a comment. A reply in a thread resolved meanwhile is dropped, with its
    edits; a line that would resolve is ignored, as only people resolve. In
    a thread that asked it, its comments come just after the last comment
    it was given, so one written meanwhile is after them, still to answer.

@@ -72,7 +72,9 @@ look():
   set the one timer to wakeAt: people's pause ending, the next step
 ```
 
-A look at any time gives the same answer, so a missed event costs nothing.
+A look at any time gives the same answer, so a missed event costs nothing:
+a look also comes every minute on the clock, and when it starts something
+no event woke, it says in the log that an event was lost, a bug to fix.
 
 `plan` starts a buddy when:
 
