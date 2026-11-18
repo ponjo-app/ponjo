@@ -620,6 +620,67 @@ memory: after a restart, unanswered asks run again.
 Buddies' turns go on at the same time; their merges are applied one at a
 time.
 
+### Where the buddy runtime is going
+
+Not built yet: the design the runtime above moves to, so that the doc and
+its buddies are apart and each part does one thing. Today
+`src/host/doc-service.js` holds both: the doc's writes, and the buddies'
+notes, timers and landing; `src/host/runner.js` carries the doc's notes
+for it.
+
+**One log.** Every change to a doc, to its text or its comments, is a line
+in one ordered log: `{ rev, by: { id, kind: person | buddy | outside }, at,
+edit? | comment?, group? }`, `group` the comment an edit hangs on, to undo
+with it. The doc file and its sidecar are what the log comes to, in the
+format as it is ([SPEC](../spec/SPEC.md)); a file changed outside is a
+change by `outside`. One `rev` versions both, so "has it changed since
+this buddy looked" is a comparison of two numbers. Only a comment that came
+through the doc's door, by an author it trusts, asks: one found in the
+file is by `outside` and asks no one (today's `taken`).
+
+**Five parts, each depending only on those before it.**
+
+| Part | Does | Knows nothing of |
+| --- | --- | --- |
+| Doc | the door: `apply(change, who)` → rev, `read()` → `{ text, threads, rev }`, `subscribe(fromRev, fn)`; the one writer: orders, merges (OT), saves, versions, undoes by group | buddies |
+| Rules | pure: `plan({ threads, rev, changedAt, notes, running, steps, now })` → `{ start, stop, spend, wakeAt }` | files, clocks |
+| Controller | one per doc: keeps the notes, the steps and the runs going; subscribes to the log; one timer | the doc's insides |
+| Executor | `run(task, snapshot)` → the copies back: a private folder, the agent, the prompt on stdin | the doc |
+| Translate | pure: `toChanges(snapshot, result, now)` → the changes to apply: new comments, each with its edits as a group, merged with what people wrote meanwhile (`merge3`, their lines stay) | files |
+
+A buddy writes as a window does: the controller applies its changes through
+the door, as the buddy, with the level of whoever asked it. The doc has no
+path for buddies of its own.
+
+**The controller.** Each change it hears notes who changed the doc at which
+rev (`changedAt`; people as one), and a person's ends the runs only a watch
+started. Then, and whenever its timer fires, it reads the doc, asks the
+rules what to start and stop, does that, and sets its one timer to
+`wakeAt`: the soonest of people's pause ending, the next step coming and a
+failed read's retry. Asked at any time it finds the same. A run that ends
+updates the buddy's notes (a pure function), and its changes are applied.
+
+**A buddy's notes**, on this host only: `{ seen (thread → the rev it was
+given), lookedAt (the rev its last run started at), failed (thread or
+watch → why), watch ({ by } or null) }`. Its watch thread is not noted: it
+is the open thread on the whole doc it opened.
+
+**What goes.** Two clocks (all but the 5 s pause is by rev); three timers;
+the rules split between the runner and the doc (`due: false`, `pay`, the
+"already running" check); a landing path of its own (`finishRun`); the
+runner carrying the doc's notes for it, and four flags for where a run is;
+reading the sidecar on each look; ending runs when the doc is renamed.
+
+**What stays.** The agent as a filter over copies, the file format, runtime
+state off the shared files, only people asking, the steps, failures left
+to people.
+
+**Getting there.** Rules, Translate and the controller are written beside
+the old code; then the doc service switches to them at once, and the old
+code goes. `test/runner.test.js` and `test/buddies.test.js` passing as
+they are is the acceptance; the rules and the translation are tested on
+their own, with no agent and no waiting (as `test/due.test.js` does now).
+
 ## Sharing
 
 Sharing is hosting a room, as for an online game. In a project window the
