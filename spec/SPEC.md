@@ -4,7 +4,7 @@ Ponjo is the reference implementation.
 
 The sidecar holds a doc's comments and nothing else. Buddies, their runs
 and versions are not part of the format (see
-[architecture](../docs/architecture.md)).
+[host spec](../docs/host-spec.md)).
 
 The key words MUST, MUST NOT, SHOULD and MAY are used as in RFC 2119.
 

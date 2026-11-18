@@ -1,4 +1,4 @@
-// Players who can edit (docs/architecture.md, Sharing): a player at write
+// Players who can edit (docs/host-spec.md, Sharing): a player at write
 // comes through the door as the owner's windows do; their comments ask AI
 // buddies, whose turns act with the asker's level as it is when they end;
 // history credits whoever made each version. The agent is the fake script

@@ -2,7 +2,7 @@
 
 The editor a `.md` doc opens in: the Markdown file as its text, drawn
 formatted, with the syntax shown only where the caret is (live preview). It
-is one view ([Views](architecture.md#processes-and-views)); switched off, Markdown opens in
+is one view ([Views](host-spec.md#processes-and-views)); switched off, Markdown opens in
 the plain view as source.
 
 ## Principles
@@ -262,10 +262,10 @@ run test:perf` to the B rules.
 ## Many writers
 
 The host orders every edit as text operations on a revision
-([The log](architecture.md#the-log)); the page turns the view's
+([The log](host-spec.md#the-log)); the page turns the view's
 changes into them and back (`web/client.js`), the same for both views. The
 writers are the owner, teammates who can edit
-([Sharing](architecture.md#sharing)), AI buddies and changes from outside.
+([Sharing](host-spec.md#sharing)), AI buddies and changes from outside.
 
 1. **Typing out.** On each change, while no edit is on its way, the change
    goes to the host on `{ epoch, rev }` and waits as pending. Changes made

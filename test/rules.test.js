@@ -1,4 +1,4 @@
-// Every rule of Editing (docs/architecture.md) has a test whose title
+// Every rule of Editing (docs/host-spec.md) has a test whose title
 // starts with its id (docs/testing-ci.md, Editing tests); a rule whose row
 // says "No test yet" waits for one.
 
@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 const root = fileURLToPath(new URL('..', import.meta.url));
 
 test('every editing rule has a test named by its id', async () => {
-  const doc = await readFile(join(root, 'docs', 'architecture.md'), 'utf8');
+  const doc = await readFile(join(root, 'docs', 'host-spec.md'), 'utf8');
   const start = doc.indexOf('### Editing');
   const editing = doc.slice(start, doc.indexOf('\n### ', start + 1));
   const rules = [...editing.matchAll(/^\| ([A-E]\d+) \|(.*)$/gm)].filter(([, , row]) => !row.includes('No test yet')).map(([, id]) => id);

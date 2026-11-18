@@ -1,7 +1,7 @@
 # Testing and CI/CD (draft)
 
 How Ponjo is tested and shipped, derived from
-[architecture](architecture.md), [SPEC](../spec/SPEC.md),
+[architecture](architecture.md), [host spec](host-spec.md), [SPEC](../spec/SPEC.md),
 [PROJECT](../spec/PROJECT.md) and [agent config](agent-config.md).
 Each test guards a rule there; a test that guards none is not needed.
 
@@ -136,7 +136,7 @@ for a window), **e2e** (the packaged app, under xvfb on Linux).
 
 ### Editing tests
 
-One set of tests for the rules in [Editing](architecture.md#editing),
+One set of tests for the rules in [Editing](host-spec.md#editing),
 alone and shared alike: what changes is parameters, never the path. Every
 test title starts with its rule id (`A3: a dropped line never lands an
 edit twice`), and a check in `npm test` (`test/rules.test.js`) fails when

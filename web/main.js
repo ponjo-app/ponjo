@@ -1163,7 +1163,7 @@ function showUnsaved(reason) {
 
 // ---- the save state ----
 
-// The page is in one save state at a time (docs/architecture.md, E1),
+// The page is in one save state at a time (docs/host-spec.md, E1),
 // shown in the toolbar: the first that holds of Not saved, and why;
 // Offline; Read-only; Saving; Saved.
 const saveMark = document.querySelector('.pj-save');

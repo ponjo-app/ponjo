@@ -1,4 +1,4 @@
-// DocService (docs/architecture.md): orders every edit to one doc, as text
+// DocService (docs/host-spec.md, The doc): orders every edit to one doc, as text
 // operations on a revision, and writes the doc and its sidecar, one at a
 // time; changes made outside the app; versions. It runs the buddies
 // @mentioned in the doc's comments (runner.js) and lands what each run
@@ -511,7 +511,7 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
   // at, why }), in memory only: a failure is this machine's, not the doc's.
   const failures = new Map();
 
-  // The buddies watching this doc on this host (docs/architecture.md, Asks
+  // The buddies watching this doc on this host (docs/host-spec.md, Asks
   // and watches): buddy → { by (who turned it on), thread (its watch
   // thread, or null), looked (when its last run started, by
   // performance.now(), a clock that never goes back; null: never since it
@@ -744,7 +744,7 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
 
   // ---- undo ----
 
-  // Undo version `id` (docs/architecture.md, Versions and undo), or every
+  // Undo version `id` (docs/host-spec.md, Versions and undo), or every
   // version from `from` to it: the change from the parent of `from` to `id`
   // taken back, merged with everything landed since (merge3), so lines
   // anyone changed since stay. On the machine that has the versions; by

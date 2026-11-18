@@ -1,4 +1,4 @@
-// The steps a doc's buddies have to wake each other (docs/architecture.md,
+// The steps a doc's buddies have to wake each other (docs/host-spec.md,
 // Asks and watches): a bucket that holds `cap`, gains one every `every` ms
 // (0: none), and is filled on Refill. Each function takes the bucket and the
 // time (performance.now()) and returns a new one: { left (null: full), cap,
