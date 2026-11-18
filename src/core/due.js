@@ -1,5 +1,5 @@
-// Which of a doc's buddies are due to run now (docs/architecture.md, When a
-// buddy runs), from the doc's threads and what the host noted, with no
+// Which of a doc's buddies are due to run now (docs/host-spec.md, Asks
+// and watches), from the doc's threads and what the host noted, with no
 // clock or file of its own: a look at any time finds the same.
 
 import { askedBy } from './comments.js';

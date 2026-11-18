@@ -1,5 +1,5 @@
 // The page's line to the doc host in a plain browser: through the relay
-// (relay/worker.js; docs/architecture.md, Sharing), with the same
+// (relay/worker.js; docs/host-spec.md, Sharing), with the same
 // `{ call, onEvent }` the app's preload gives a window (window.ponjoHost),
 // and `onLine`, how the line is. The relay is at the page's own origin,
 // which serves it; the page's address names the room and maybe the doc:

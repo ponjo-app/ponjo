@@ -6,7 +6,7 @@ else about it.
 
 ## The contract
 
-An agent is a filter ([architecture](architecture.md#a-run)):
+An agent is a filter ([architecture](host-spec.md#a-run)):
 
 | | |
 | --- | --- |
@@ -26,7 +26,7 @@ An agent is a filter ([architecture](architecture.md#a-run)):
 A buddy acts only by commenting: an answer, a question or a change to the
 doc is a comment, and an edit comes with one. It runs when a person's
 comment asks it, and its comment in that thread answers it
-([architecture](architecture.md#a-buddys-turn)); a run that posts nothing
+([architecture](host-spec.md#asks-and-watches)); a run that posts nothing
 there is not run again for it until someone writes there. The program
 needs no Ponjo tool: it reads files and edits them.
 
@@ -108,7 +108,7 @@ replaced (Reset to Default, a new version) without losing them.
 ### Settings
 
 `settings` is an ordered list of fields, as a view's
-([architecture](architecture.md#views)), with two more types:
+([architecture](host-spec.md#processes-and-views)), with two more types:
 
 | `type` | Holds | Stored |
 | --- | --- | --- |

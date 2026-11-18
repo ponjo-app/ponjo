@@ -1,5 +1,5 @@
 // Operations on a doc's text: what an edit is when the doc host orders the
-// edits of many writers (docs/architecture.md, Interfaces). An edit is a
+// edits of many writers (docs/host-spec.md, The log). An edit is a
 // list of operations `{ from, to, insert }` on the text it started from:
 // replace [from, to) with `insert`, offsets in UTF-16 code units, sorted and
 // not overlapping. The page and the host share these.

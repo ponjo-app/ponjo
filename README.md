@@ -71,6 +71,8 @@ In the [online demo](https://ponjo.app/preview/), a buddy asked answers on NVIDI
 - [Product vision](docs/product-vision.md)
 - [User experience](docs/user-experience.md)
 - [Architecture](docs/architecture.md)
+- [Agent runtime](docs/agent-runtime.md)
+- [Host spec](docs/host-spec.md)
 - [Markdown view](docs/markdown-view.md)
 - [UX Design System](https://ponjo.app/design.html)
 - [Sidecar Config Spec](spec/SPEC.md)
