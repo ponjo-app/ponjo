@@ -359,7 +359,8 @@ the buddy or the app does changes it. It is noted on this machine, `{ by }`,
 never in the comments, and the buddy runs as whoever set it may, while they
 may ask. A watcher is due once set, then on another member's change since
 its last run started: people's once they pause for 5 s (`SETTLE_MS`), a
-buddy's at once, for it lands whole. Its own change never wakes it. A
+buddy's once that buddy's run has ended: its edits land before its
+comments, and the watcher sees both. Its own change never wakes it. A
 person editing again while a run only a watch started is on ends that run
 with no answer, for it saw the doc as it was. Each run is told what
 changed since its last (`lineChanges`); it reads the doc's threads in the

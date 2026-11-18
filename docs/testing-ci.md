@@ -87,7 +87,7 @@ for a window), **e2e** (the packaged app, under xvfb on Linux).
 - Who is due, as a pure function of the threads, the host's notes and the
   time (`test/due.test.js`): a comment asks until answered or given to a
   run; a watcher is due once turned on, on people's changes once they pause
-  (free), on another buddy's at once (a step), never on its own, each
+  (free), on another buddy's once its run ended (a step), never on its own, each
   verdict with why in words; the steps
   gain one every interval up to the cap, none with 0, all on Refill.
 - A buddy a person sets watching looks at once and opens a thread of its

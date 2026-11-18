@@ -40,6 +40,7 @@ test('it says why each buddy starts or not, for the agent log', () => {
   assert.equal(why({ notes: watching(5), changedAt: new Map([['b_ada', { rev: 7, at: 0 }]]) }).b_ada, 'not due: changed by itself at rev 7, which does not count, after its look at rev 5');
   const ben = new Map([['b_ben', { rev: 7, at: 99_000 }]]);
   assert.equal(why({ notes: watching(5), changedAt: ben }).b_ada, 'due: changed by Ben at rev 7, after its look at rev 5 · a step taken, 2 left');
+  assert.equal(why({ notes: watching(5), changedAt: ben, running: new Set(['b_ben']) }).b_ada, 'not due: changed by Ben at rev 7, still landing, after its look at rev 5');
   assert.equal(why({ notes: watching(5), changedAt: ben, steps: { ...full, left: 0, at: 90_000 } }).b_ada, 'not due: changed by Ben at rev 7, after its look at rev 5, but no step is left, the next in 50 s');
   assert.equal(why({ notes: watching(5, { watch: { by: 'u_gone00001' } }) }).b_ada, 'not due: whoever turned on its watch may not ask');
   assert.equal(why({ running: new Set(['b_ada']) }).b_ada, 'stopped: nothing asks it now');
@@ -58,6 +59,8 @@ test('a watcher is due once turned on, on people\'s changes once they pause, and
 
   const buddy = look({ notes: watching(5), changedAt: new Map([['b_ben', { rev: 7, at: 99_000 }]]) });
   assert.deepEqual([started(buddy), buddy.steps.left], [['b_ada'], 2], 'another buddy: at once, for a step');
+  const landing = look({ notes: watching(5), changedAt: new Map([['b_ben', { rev: 7, at: 99_000 }]]), running: new Set(['b_ben']) });
+  assert.deepEqual([started(landing), landing.steps.left, landing.wakeAt], [[], 3, null], 'not while its run still lands: the comment with the edit comes after it, and its end looks again');
   assert.deepEqual(started(look({ notes: watching(5), changedAt: new Map([['b_ada', { rev: 7, at: 99_000 }]]) })), [], 'its own change');
   const none = look({ notes: watching(5), changedAt: new Map([['b_ben', { rev: 7, at: 99_000 }]]), steps: { ...full, left: 0, at: 90_000 } });
   assert.deepEqual([started(none), none.wakeAt], [[], 150_000], 'no step left: look when the next comes');
