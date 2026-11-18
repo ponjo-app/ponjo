@@ -12,7 +12,7 @@ import { viewFor } from './views/index.js';
 import { createCommentMargin } from './threads.js';
 import { createDocBar } from './docbar.js';
 import { WORKING_MS, createPeople, modeOf } from './agent.js';
-import { nameOf, setBuddies, setOwner } from './faces.js';
+import { setBuddies, setOwner } from './faces.js';
 import { createNameCards } from './namecard.js';
 import { createChrome } from './ui.js';
 import { createSettings } from './settings.js';
@@ -32,7 +32,6 @@ import { NAME_PATTERN } from '../src/core/mentions.js';
 import { FORMAT_VERSION } from '../src/core/comments.js';
 import { PROTOCOL } from '../src/core/protocol.js';
 
-const ON_DISK = 'Edited on disk'; // a change no collaborator is known to have made
 // Comment updates wait for a pause in typing this long, but never longer
 // than WAIT_FOR_PAUSE_MS: taking them in while keys arrive would stall the keys.
 const TYPING_PAUSE_MS = 600;
@@ -65,7 +64,6 @@ let me; // your name
 let myId; // your id, which your comments carry
 let comments; // the doc's threads, who wrote in them, and a notice about its sidecar (state())
 let client; // the doc in the doc host's order (web/client.js)
-let asking = null; // what the page asked the doc host to change (Undo, Redo, Restore), while it does
 let runLanded = null; // the reply whose buddy's edit just landed: its cursor moves once its comments arrive
 let docName; // the doc's file name
 let pendingSelection = null; // an anchor on the doc's text while a comment is written on it
@@ -403,7 +401,7 @@ async function start() {
     if (data.by) people.moved(data.by);
     paintMarks();
     clearTimeout(settleCarets);
-    settleCarets = setTimeout(paintMarks, WORKING_MS); // names go once they stop
+    settleCarets = setTimeout(paintMarks, WORKING_MS); // cursors go once they stop
   });
   events.on('here', (data) => {
     if (people.render({ here: data })) repaintThreads(); // someone new moved a colour
@@ -499,7 +497,6 @@ function makeView(chosen, text) {
     },
     onChange: () => {
       hideRun();
-      leaveIdle();
       paintMarks();
       countWords();
     },
@@ -559,7 +556,7 @@ async function swapView(chosen) {
   const text = old.getText();
   const next = await makeView(chosen, text);
   // Another's edit taken in while the new view was made.
-  if (old.getText() !== text) next.applyText(old.getText(), { by: ON_DISK });
+  if (old.getText() !== text) next.applyText(old.getText(), { glow: true });
   editor = next;
   await old.destroy();
   countWords();
@@ -596,16 +593,14 @@ window.addEventListener('beforeunload', (event) => {
 
 // Others' changes landed and the view's text is now `text` (web/client.js).
 // Comments changed: the threads are read again. A person's typing (an edit
-// with an `id`) shows by their cursor alone; anything else glows, a buddy's
-// in its colour (`by`; with its `reply` unless its ask stays open).
+// with an `id`) shows by their cursor alone; anything else glows.
 function showLanded(text, ops, event) {
   if (event?.comments) {
     afterTyping('sidecar', refreshThreads);
     return;
   }
   const reply = event?.reply;
-  const buddy = event?.by?.kind === 'buddy';
-  editor.applyText(text, { by: buddy ? event.by.id : event?.id ? null : asking ?? ON_DISK, buddy, ops });
+  editor.applyText(text, { glow: event?.by?.kind === 'buddy' || !event?.id, ops });
   paintMarks();
   if (reply) {
     runLanded = reply;
@@ -931,28 +926,24 @@ async function redoReply(id) {
 
 async function undoAs(what, version) {
   await client.landed();
-  asking = what;
   try {
     applyComments(await api.undo(version));
   } catch (error) {
     setStatus(`Could not ${what.toLowerCase()}: ${error.message}`, 'error');
     throw error;
-  } finally {
-    asking = null;
   }
 }
 
 // ---- where each buddy stands in the text ----
 
-// A buddy asked to work in this window stays in the doc with its cursor, at
-// the end of its last edit, or at the passage it was last asked about until
-// it edits. The place is an anchor, so it follows the text; the cursor goes with
-// the page, with the buddy once it is no longer here, and, once it is done,
-// when the human types.
+// A buddy asked to work in this window has a place in the doc, at the end of
+// its last edit, or at the passage it was last asked about until it edits;
+// its cursor shows there while it works. The place is an anchor, so it follows
+// the text; it goes with the page, and with the buddy once it is no longer here.
 const cursors = new Map(); // buddy id -> anchor of the character before its cursor
 let working = new Set();
-// People's cursors are the host's (client.cursorsShown); each is named for
-// a while after it moves.
+// People's cursors are the host's (client.cursorsShown), shown while they
+// move or type and for a few seconds after. One cursor each, with no name.
 let settleCarets = null;
 
 function standAtWork(statuses) {
@@ -966,12 +957,6 @@ function standAtWork(statuses) {
     if (thread) cursors.set(a.id, thread.anchor);
   }
   working = now;
-}
-
-// The human typed: a buddy not at work leaves the text, so its cursor does
-// not stay behind in what they write next.
-function leaveIdle() {
-  for (const id of cursors.keys()) if (!working.has(id)) cursors.delete(id);
 }
 
 // The buddy of the run that wrote reply `id` stands after its last edit.
@@ -1023,12 +1008,7 @@ function hideRun() {
 // you typed lands first, and the undo comes back as an edit from the doc host.
 async function undoVersions(id, from) {
   await client.landed();
-  asking = 'Undo';
-  try {
-    applyComments(await api.undo(id, from));
-  } finally {
-    asking = null;
-  }
+  applyComments(await api.undo(id, from));
 }
 
 // Put the doc back the way it was in an earlier version (web/history.js):
@@ -1036,12 +1016,7 @@ async function undoVersions(id, from) {
 // the doc host.
 async function restoreVersion(id) {
   await client.landed();
-  asking = 'Restore';
-  try {
-    await api.restoreVersion(id);
-  } finally {
-    asking = null;
-  }
+  await api.restoreVersion(id);
 }
 
 function select(id, { focus = true } = {}) {
@@ -1079,13 +1054,13 @@ function paintMarks() {
   }
   if (pendingSelection) comment('draft', pendingSelection, true);
   if (preview) marks.push(...revisionMarks(text, preview.edits, preview));
+  // Cursors, only of those at work.
   for (const [by, anchor] of cursors) {
-    const found = where(text, anchor);
-    if (found) marks.push({ kind: 'cursor', at: found.end, by, name: nameOf(by), working: working.has(by) });
+    const found = working.has(by) && where(text, anchor);
+    if (found) marks.push({ kind: 'cursor', at: found.end, by });
   }
-  // People's, named while they move or type.
   for (const { id, name, at } of client?.cursorsShown() ?? []) {
-    if (id !== myId && at <= text.length) marks.push({ kind: 'cursor', at, by: name, name, working: people?.atWork(id) });
+    if (id !== myId && at <= text.length && people?.atWork(id)) marks.push({ kind: 'cursor', at, by: name });
   }
   editor.setMarks(marks);
   return marks;

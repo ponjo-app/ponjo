@@ -1,16 +1,15 @@
 // The CodeMirror editor every view is (web/views/plain/, web/views/markdown/):
 // the doc's text is the editor's, so offsets on it are positions in the
 // editor and marks are decorations as given. Others' edits go in as the
-// operations that made them, outside the human's undo history, glowing with
-// who made them (a buddy's name in its colour). A view adds its own keys,
-// language and display as extensions.
+// operations that made them, outside the human's undo history, glowing when
+// asked. A view adds its own keys, language and display as extensions.
 
 import { Annotation, EditorState, StateEffect, StateField, Transaction } from '@codemirror/state';
 import { Decoration, EditorView, ViewPlugin, WidgetType, drawSelection, keymap } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap, redo, undo } from '@codemirror/commands';
 import { diffOps } from '../../src/core/ot.js';
 import { diffEdits } from '../../src/core/diff.js';
-import { buddyColor, nameOf } from '../faces.js';
+import { buddyColor } from '../faces.js';
 import { cursorNode } from '../marks.js';
 import { hydrateIcons } from '../icons.js';
 import { matches } from '../../src/core/search.js';
@@ -219,10 +218,9 @@ export function createEditor({ stage, host, text, editable = true, keys = [], ex
   /**
    * Show `next`, outside the human's undo history, as `ops` change the text
    * shown (when given; else as diffOps finds), so the caret stays at its
-   * character; glowing and flagged `by` for a while, if given (a buddy's
-   * change, `buddy`: `by` its id, flagged by its name in its colour).
+   * character; with `glow`, glowing for a while.
    */
-  function applyText(next, { by = null, buddy = false, ops = null } = {}) {
+  function applyText(next, { glow = false, ops = null } = {}) {
     const before = currentText();
     const lf = (s) => s.replaceAll('\r\n', '\n');
     const changes = view.state.changes(ops && isCrlf(next) === crlf
@@ -236,7 +234,7 @@ export function createEditor({ stage, host, text, editable = true, keys = [], ex
     const shown = view.lineBlockAtHeight(scroller.getBoundingClientRect().top - view.documentTop);
     const flashId = Symbol('flash');
     const flashes = [];
-    if (by) {
+    if (glow) {
       // What changed as a run's revision shows it, not as the operations cut it: per run of lines,
       // in whole words; the new text glows and the removed is deleted where it was (Erased).
       const edits = diffEdits(lf(before), lf(next)).map((change) => change.edit);
@@ -244,10 +242,6 @@ export function createEditor({ stage, host, text, editable = true, keys = [], ex
         if (removed) flashes.push(Decoration.widget({ widget: new Erased(removed), side: -1, flashId }).range(start));
         if (added) flashes.push(Decoration.mark({ class: 'pj-flash', flashId }).range(start, start + added.length));
       }
-      // The flag at the start of the word the change begins in, before what it removed.
-      const at = edits[0].start;
-      const word = view.state.update({ changes }).state.wordAt(at);
-      flashes.push(Decoration.widget({ widget: new Flag(buddy ? nameOf(by) : by, buddy ? buddyColor(by) : null), side: -2, flashId }).range(word && word.from < at ? word.from : at));
     }
     view.dispatch({
       changes,
@@ -452,7 +446,7 @@ class Erased extends Removed {
   }
 }
 
-// A buddy's cursor (see cursorNode), drawn again once the buddy is renamed.
+// Someone's cursor (see cursorNode).
 class Cursor extends WidgetType {
   constructor(mark) {
     super();
@@ -460,34 +454,11 @@ class Cursor extends WidgetType {
   }
 
   eq(other) {
-    return other.mark.by === this.mark.by && other.mark.name === this.mark.name && other.mark.working === this.mark.working;
+    return other.mark.by === this.mark.by;
   }
 
   toDOM() {
     return cursorNode(this.mark);
-  }
-}
-
-// Who made a change, over its start; in a buddy's colour (`color`) for a buddy.
-class Flag extends WidgetType {
-  constructor(name, color) {
-    super();
-    Object.assign(this, { name, color });
-  }
-
-  eq(other) {
-    return other.name === this.name && other.color === this.color;
-  }
-
-  toDOM() {
-    const wrap = document.createElement('span');
-    wrap.className = 'pj-flag';
-    if (this.color) wrap.style.cssText = `--buddy: ${this.color}; --buddy-ink: #1f1d24`;
-    const label = document.createElement('span');
-    label.className = 'pj-flag-label';
-    label.textContent = this.name;
-    wrap.append(label);
-    return wrap;
   }
 }
 

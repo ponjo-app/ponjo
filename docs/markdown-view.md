@@ -168,14 +168,13 @@ The view's settings, on its page in Settings > Views:
 - **Comments:** commented text is yellow, the open thread's stronger. A
   bubble over a selection offers Comment.
 - **An AI buddy's revision:** when its turn lands, its new text is in its
-  color and what it removed is grey and struck through where it was, with
-  its name over the change for a moment. It stays until you type, press
+  color and what it removed is grey and struck through where it was. It stays until you type, press
   Escape or another turn lands; the count under its reply shows it again.
-- **Changes from outside** (`git pull`, another editor) glow for a moment,
-  with who made them.
-- **Cursors:** an AI buddy's, at the passage it was asked about, with its
-  name while it works. A person's, where they type, with their name while
-  they move or type. One inside hidden syntax is drawn at its edge.
+- **Changes from outside** (`git pull`, another editor) glow for a moment.
+- **Cursors:** one each, a blinking line in their color with no name, only
+  while they are at work: an AI buddy's at the passage it was asked about
+  during its run; a person's where they type, until a few seconds after
+  they stop. One inside hidden syntax is drawn at its edge.
 - **Two people typing:** see [Many writers](#many-writers).
 
 ### Earlier versions

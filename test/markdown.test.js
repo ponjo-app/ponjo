@@ -386,7 +386,7 @@ test('others: their edits around hidden syntax and in a table keep my caret at i
     const caret = text.indexOf(mine.replace('‸', '')) + mine.indexOf('‸');
     await at(`${text.slice(0, caret)}‸${text.slice(caret)}`);
     const next = theirs(text);
-    await run(`view.applyText(${JSON.stringify(next)}, { by: 'Ana' })`);
+    await run(`view.applyText(${JSON.stringify(next)}, { glow: true })`);
     const expected = next.indexOf(mine.replace('‸', '')) + mine.indexOf('‸');
     assert.equal(await marked(), `${next.slice(0, expected)}‸${next.slice(expected)}`, mine);
   }

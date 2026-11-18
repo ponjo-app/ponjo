@@ -1,7 +1,6 @@
 // Where a buddy's cursor stands in the doc (web/main.js): at the passage it
-// was asked about while it works, after its last edit when its run lands,
-// and gone once the person types while it is not at work; its edit flagged
-// by its name, not its id, and its cursor renamed with it. The desktop app
+// was asked about while it works, with no name, and gone once it is done;
+// its edit glows, with no name over it. The desktop app
 // on a folder with the fake agent, so it needs the page built (npm run
 // build).
 
@@ -70,7 +69,7 @@ const ask = async (quote, body) => {
 };
 
 // The doc's text just before Ada's cursor, or null when it has none; what
-// the view draws in it (names, cursors) left out.
+// the view draws in it (cursors) left out.
 const cursorAfter = () => page.evaluate(`(() => {
   const cursor = document.querySelector('.pj-cursor');
   if (!cursor) return null;
@@ -88,32 +87,21 @@ const typeAfter = async (quote, text) => {
   await page.send('Input.insertText', { text });
 };
 
-test('a buddy at work keeps its cursor at the passage while the person types; once it is done, typing takes it away', { timeout: 60_000 }, async () => {
+test('a buddy at work keeps its cursor, unnamed, at the passage while the person types; once it is done, the cursor goes', { timeout: 60_000 }, async () => {
   await ask('beta cohort', 'hold');
   await waitFor(async () => (await cursorAfter())?.endsWith('beta cohort'), 30_000, 'Ada at the passage');
   await typeAfter('week one', ',');
   await new Promise((resolve) => setTimeout(resolve, 600)); // past the view's pause after typing
   assert.ok((await cursorAfter())?.endsWith('beta cohort'), 'still there while Ada works');
+  assert.equal(await page.evaluate(`document.querySelectorAll('.pj-cursor').length`), 1, 'one cursor');
+  assert.equal(await page.evaluate(`document.querySelector('.pj-cursor').textContent`), '', 'no name');
 
   await writeFile(join(config, 'release-Ada'), '');
-  await waitFor(() => page.evaluate(`!document.querySelector('.pj-cursor-working')`), 30_000, 'Ada done');
-  assert.ok((await cursorAfter())?.endsWith('beta cohort'), 'still there once done, until the person types');
-  await typeAfter('week one,', ' then');
-  await waitFor(async () => (await cursorAfter()) === null, 10_000, 'the cursor gone');
+  await waitFor(async () => (await cursorAfter()) === null, 30_000, 'the cursor gone once Ada is done');
 });
 
-test('a buddy\'s cursor stands after its last edit when its run lands, and goes when the person types there', { timeout: 60_000 }, async () => {
+test('a buddy\'s edit glows with no name over it, and its cursor goes when its run ends', { timeout: 60_000 }, async () => {
   await ask('extra load', 'replace "extra load" with "extra peak load"');
-  const flag = await waitFor(() => page.evaluate(`document.querySelector('.pj-flag-label')?.textContent ?? null`), 30_000, 'its edit flagged');
-  assert.equal(flag, 'Ada');
-  await waitFor(async () => (await cursorAfter())?.endsWith('extra peak '), 30_000, 'Ada after its edit, the "peak " it put in');
-  await typeAfter('peak ', 'hour ');
-  await waitFor(async () => (await cursorAfter()) === null, 10_000, 'the cursor gone, not left inside the typing');
-});
-
-test('a buddy renamed while its cursor stays after its run: the cursor says its new name', { timeout: 60_000 }, async () => {
-  await ask('week one', 'hold'); // released already: it is done at once
-  await waitFor(async () => (await cursorAfter())?.endsWith('week one') && page.evaluate(`!document.querySelector('.pj-cursor-working')`), 30_000, 'Ada done, at the passage');
-  await page.evaluate(`window.ponjoHost.call('updateBuddy', { id: 'b_ada', patch: { name: 'Bea' } })`);
-  await waitFor(() => page.evaluate(`document.querySelector('.pj-cursor')?.textContent === 'Bea'`), 10_000, 'its cursor renamed');
+  await waitFor(() => page.evaluate(`[...document.querySelectorAll('.pj-flash')].some((node) => node.textContent.includes('peak'))`), 30_000, 'its edit glowing');
+  await waitFor(async () => (await cursorAfter()) === null, 30_000, 'the cursor gone once Ada is done');
 });
