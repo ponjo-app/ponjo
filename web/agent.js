@@ -731,7 +731,7 @@ const LABELS = { working: 'Working…', idle: 'Ready', away: 'Not here' };
 const PERSON = { working: 'Working…', idle: 'In this doc', away: 'Away' };
 const RANK = { working: 0, idle: 1, away: 2 }; // the queue's order
 
-/** How long a person is at work after they move or type: while their cursor is named. */
+/** How long a person is at work after they move or type: while their cursor shows. */
 export const WORKING_MS = 3000;
 
 // What a teammate may do, under their name.

@@ -90,13 +90,13 @@
   pet.append(avatar);
   const typed = el('span', 'pj-buddy-edit');
   const cursor = el('span', 'pj-cursor');
-  cursor.append(el('span', 'pj-cursor-name', 'Clippy'));
+  cursor.style.display = 'none';
   line.replaceChildren('Write together ', el('br'), typed, cursor); // the break is for phones (site.css)
   stage.replaceChildren(pet, line);
 
   const working = (on) => {
     pet.dataset.presence = on ? 'working' : 'idle';
-    cursor.classList.toggle('pj-cursor-working', on);
+    cursor.style.display = on ? '' : 'none'; // a cursor shows only while its buddy works, as in the app
   };
 
   await sleep(1200);

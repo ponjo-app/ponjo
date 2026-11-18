@@ -73,7 +73,7 @@ function createHarnessClient(view, name, call) {
     show(text, ops, event) {
       try {
         const shown = performance.now();
-        view.applyText(text, { by: event?.id ? 'other' : 'outside' });
+        view.applyText(text, { glow: true });
         // The other's cursor, after what they typed, is a mark (plan A, 3).
         let at = 0;
         let shift = 0;
@@ -81,7 +81,7 @@ function createHarnessClient(view, name, call) {
           at = op.from + shift + op.insert.length;
           shift += op.insert.length - (op.to - op.from);
         }
-        view.setMarks([{ kind: 'cursor', at, by: 'other', name: 'other', working: false }]);
+        view.setMarks([{ kind: 'cursor', at, by: 'other' }]);
         const applied = performance.now();
         const after = view.getText();
         harness.batches.push({ before: shown - received, applyText: applied - shown, after: performance.now() - applied });

@@ -304,7 +304,7 @@ numbers are `LATENCY` in `web/views/index.js`, which the tests read:
 | D3 | My undo: Cmd+Z undoes only my typing, and still works after others split or restyle my paragraph. |
 | D4 | IME: nothing is saved or sent mid-composition, and others' edits arriving meanwhile show once it ends (one in the text being composed would break it); they lose or double nothing. |
 | D5 | The view never rewrites: after `applyText(t)`, `getText() === t`; a view's own normalisation is never saved as anyone's edit. |
-| D6 | Clear marks: a teammate's typing shows only by their cursor; a buddy's change is flagged with its name; outside changes and restores glow. |
+| D6 | Clear marks: one unnamed cursor per teammate at work; a teammate's typing shows only by their cursor; a buddy's change, outside changes and restores glow. |
 | D7 | Drafts stay: a comment being written, and its anchor, survive others' edits. |
 | D8 | Comments follow their text: a thread stays on its text through others' edits, and through its buddy rewriting that text. |
 

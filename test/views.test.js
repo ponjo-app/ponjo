@@ -59,7 +59,7 @@ for (const name of VIEWS) {
       await make(name, start);
       let text = start;
       for (text of steps(start, typed)) {
-        await run(`view.applyText(${JSON.stringify(text)}, { by: 'Someone' })`);
+        await run(`view.applyText(${JSON.stringify(text)}, { glow: true })`);
         await new Promise((done) => setTimeout(done, 10)); // what the editor does after it
         assert.equal(await getText(), text);
       }
@@ -72,13 +72,13 @@ for (const name of VIEWS) {
   });
 
   test(`D1: ${name} view: others' edits never move the caret off the character it is next to`, async () => {
-    for (const by of [null, 'Clippy', 'Edited on disk']) { // a teammate's typing, a buddy's edit, another program's
+    for (const glow of [false, true]) { // a teammate's typing; a buddy's edit or another program's
       await make(name, 'A wonderful day.\n');
       await select('wonderful', 6, 6); // wonder|ful
       const at = 'A wonderful'.length;
-      await run(`view.applyText('A wonderfully good day.\\n', { by: ${JSON.stringify(by)}, ops: [{ from: ${at}, to: ${at}, insert: 'ly good' }] })`);
+      await run(`view.applyText('A wonderfully good day.\\n', { glow: ${glow}, ops: [{ from: ${at}, to: ${at}, insert: 'ly good' }] })`);
       await type('X');
-      assert.equal(await getText(), 'A wonderXfully good day.\n', by ?? 'a teammate');
+      assert.equal(await getText(), 'A wonderXfully good day.\n', glow ? 'glowing' : 'a teammate');
     }
   });
 
@@ -92,26 +92,25 @@ for (const name of VIEWS) {
       await make(name, 'Alpha.\n\nBeta.\n');
       await select('Beta.', 5, 5);
       await type(' X');
-      await run(`view.applyText(${JSON.stringify(`Alpha.\n\n${theirs}`)}, { by: 'Someone' })`);
+      await run(`view.applyText(${JSON.stringify(`Alpha.\n\n${theirs}`)}, { glow: true })`);
       await undo();
       assert.equal(await getText(), `Alpha.\n\n${after}`, theirs);
     }
   });
 
-  test(`D6: ${name} view: a buddy's change glows in whole words, what it removed struck through, flagged with its name before the word it changed, and its revision is drawn whole over the glow`, async () => {
+  test(`D6: ${name} view: a buddy's change glows in whole words, what it removed struck through, with no name, and its revision is drawn whole over the glow`, async () => {
     await make(name, 'Say Hello to all.\n');
     const at = 'Say H'.length;
-    await run(`view.applyText('Say Howdy to all.\\n', { by: 'Clippy', buddy: true, ops: [{ from: ${at}, to: ${at + 4}, insert: 'owdy' }] })`);
+    await run(`view.applyText('Say Howdy to all.\\n', { glow: true, ops: [{ from: ${at}, to: ${at + 4}, insert: 'owdy' }] })`);
     assert.equal(await run(`contract.drawn('.pj-flash')`), 'Howdy');
     assert.equal(await run(`contract.drawn('.pj-flash-del')`), 'Hello');
-    assert.equal(await run(`contract.drawn('.pj-flag')`), 'Clippy');
     await run(`view.setMarks([{ kind: 'edit', from: 4, to: 9, removed: 'Hello', by: 'Clippy', replay: 1 }])`);
     assert.equal(await run(`contract.drawn('.pj-buddy-edit')`), 'Howdy');
   });
 
   test(`D6: ${name} view: a rewrite glows as one run, not in the pieces its operations cut`, async () => {
     await make(name, 'The sync is scheduled for Tuesday in the main hall.\n');
-    await run(`view.applyText('The meeting is on Monday at the office.\\n', { by: 'Undo' })`);
+    await run(`view.applyText('The meeting is on Monday at the office.\\n', { glow: true })`);
     assert.equal(await run(`document.querySelectorAll('.pj-flash').length`), 1);
     assert.equal(await run(`contract.drawn('.pj-flash')`), 'meeting is on Monday at the office');
     assert.equal(await run(`contract.drawn('.pj-flash-del')`), 'sync is scheduled for Tuesday in the main hall');
@@ -132,7 +131,7 @@ for (const name of VIEWS) {
     })()`);
     const seen = await waitFor(top, 5000, 'the lines in view drawn');
     const added = Array.from({ length: 40 }, (_, k) => `Added ${k}.\n\n`).join('');
-    await run(`view.applyText(${JSON.stringify(added + lines)}, { by: 'Someone', ops: [{ from: 0, to: 0, insert: ${JSON.stringify(added)} }] })`);
+    await run(`view.applyText(${JSON.stringify(added + lines)}, { glow: true, ops: [{ from: 0, to: 0, insert: ${JSON.stringify(added)} }] })`);
     assert.match(seen, /^Line \d+\.$/);
     assert.equal(await waitFor(top, 5000, 'the lines in view drawn again'), seen);
     await run(`document.querySelector('.pj-canvas').style.height = ''`);
@@ -146,7 +145,7 @@ for (const name of VIEWS) {
     assert.equal(await run('view.composing()'), true);
     // Another's edit lands while the person composes, in another paragraph.
     const text = await getText();
-    await run(`view.applyText(${JSON.stringify(text.replace('more', 'much more'))}, { by: 'Someone', ops: [{ from: ${text.indexOf('more')}, to: ${text.indexOf('more')}, insert: 'much ' }] })`);
+    await run(`view.applyText(${JSON.stringify(text.replace('more', 'much more'))}, { glow: true, ops: [{ from: ${text.indexOf('more')}, to: ${text.indexOf('more')}, insert: 'much ' }] })`);
     await page.send('Input.insertText', { text: '你好' });
     await new Promise((done) => setTimeout(done, 50));
     assert.equal(await getText(), 'Say hi你好.\n\nAnd much more.\n');
@@ -158,7 +157,7 @@ for (const name of VIEWS) {
     await select('Beta.', 5, 5);
     await type(' X');
     assert.equal(await getText(), 'Alpha.\n\nBeta. X\n');
-    await run(`view.applyText('Alpha one.\\n\\nBeta. X\\n', { by: 'Someone' })`);
+    await run(`view.applyText('Alpha one.\\n\\nBeta. X\\n', { glow: true })`);
     await type(' Y');
     assert.equal(await getText(), 'Alpha one.\n\nBeta. X Y\n');
     for (let i = 0; i < 3; i++) await undo();
@@ -186,10 +185,10 @@ for (const name of VIEWS) {
     assert.equal(await drawn('[data-thread], .pj-mark-ins, del'), '');
   });
 
-  test(`${name} view: setMarks draws a buddy's cursor after the text it stands at; its name shows while it works`, async () => {
+  test(`${name} view: setMarks draws one cursor each after the text it stands at, with no name`, async () => {
     const text = 'Some **bold** words here.\n';
     await make(name, text);
-    const mark = (working) => JSON.stringify([{ kind: 'cursor', at: text.indexOf(' here'), by: 'Clippy', name: 'Clippy', working }]);
+    const mark = JSON.stringify([{ kind: 'cursor', at: text.indexOf(' here'), by: 'Clippy' }]);
     const before = () => run(`(() => {
       const cursor = document.querySelector('.pj-cursor');
       const range = document.createRange();
@@ -197,13 +196,12 @@ for (const name of VIEWS) {
       range.setEndBefore(cursor);
       return range.toString().replaceAll('**', '');
     })()`);
-    await run(`view.setMarks(${mark(false)})`);
+    await run(`view.setMarks(${mark})`);
     assert.equal(await before(), 'Some bold words');
-    await run(`view.setMarks(${JSON.stringify([{ kind: 'cursor', at: text.indexOf('bold'), by: 'Clippy', name: 'Clippy' }])})`);
+    await run(`view.setMarks(${JSON.stringify([{ kind: 'cursor', at: text.indexOf('bold'), by: 'Clippy' }])})`);
     assert.equal(await before(), 'Some ', 'after markup: before the next character');
-    assert.equal(await run(`getComputedStyle(document.querySelector('.pj-cursor-name')).display`), 'none');
-    await run(`view.setMarks(${mark(true)})`);
-    assert.equal(await run(`getComputedStyle(document.querySelector('.pj-cursor-name')).display`), 'block');
+    assert.equal(await run(`document.querySelectorAll('.pj-cursor').length`), 1);
+    assert.equal(await run(`document.querySelector('.pj-cursor').textContent`), '');
     await run('view.setMarks([])');
     assert.equal(await run(`document.querySelectorAll('.pj-cursor').length`), 0);
   });
@@ -517,11 +515,10 @@ test('markdown view: a block style changes only the lines the selection touches,
   assert.equal(await getText(), 'Before\n\n```\nfirst line\n\n## Second\n```\n\nAfter\n', 'codeBlock over a paragraph and a heading');
 });
 
-test('markdown view: a change applied with who made it glows, with their name', async () => {
+test('markdown view: a change applied to glow glows, with no name', async () => {
   await make('markdown', 'Alpha.\n\nBeta.\n');
-  await run(`view.applyText('Alpha.\\n\\nBeta two.\\n', { by: 'Ana' })`);
+  await run(`view.applyText('Alpha.\\n\\nBeta two.\\n', { glow: true })`);
   assert.equal(await run(`contract.drawn('.pj-flash')`), ' two');
-  assert.equal(await run(`contract.drawn('.pj-flag')`), 'Ana');
 });
 
 test('markdown view: the link card hides while its link is scrolled out of view', async () => {

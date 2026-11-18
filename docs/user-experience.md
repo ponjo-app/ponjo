@@ -224,12 +224,11 @@ and 30 days, and by model.
   is away it is greyed out; and when a run fails it shakes and flashes red
   once. No dots or badges. In the Team panel you see which teammates are
   here; a teammate sees who is here with them.
-- **Cursor.** Every teammate in the doc has a cursor in their color, with
-  their name beside it while they work or type; otherwise it is a plain line.
-  A person's stands where they are typing. An AI buddy asked to work stays
-  in the doc until it is closed or the AI buddy is gone: at the passage it was
-  last asked about, and at the end of its last edit when its run lands, until you
-  type. A cursor follows the text as it changes, and is hidden where its text
+- **Cursor.** Every teammate at work in the doc has one cursor, a blinking
+  line in their color with no name: a person's while they move or type and
+  a few seconds after, where they are typing; an AI buddy's while its run
+  goes, at the passage it was last asked about or the end of its last edit.
+  A cursor follows the text as it changes, and is hidden where its text
   is gone. It is only drawn: never in the file, and it takes no clicks.
 
 ## Around the doc

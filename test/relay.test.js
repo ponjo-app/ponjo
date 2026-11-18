@@ -638,7 +638,7 @@ test('C2 C6 D7 E1: the browser build asks a name, then shows the doc live at Edi
     const owner = await host.call('state');
     await host.call('submit', { ops: [{ from: TEXT.length, to: TEXT.length, insert: '\nThen ask for feedback.\n' }], rev: owner.rev, epoch: owner.epoch, id: 'w.1' });
     await waitFor(async () => (await text()).includes('Then ask for feedback.'), 10_000, 'the owner\'s typing');
-    assert.equal(await shown.evaluate(`document.querySelectorAll('.pj-flag, .pj-flash, .pj-flash-block').length`), 0, 'typing shows by its cursor, with no glow');
+    assert.equal(await shown.evaluate(`document.querySelectorAll('.pj-flash, .pj-flash-block').length`), 0, 'typing shows by its cursor, with no glow');
 
     // The project's tree, the doc marked, and no file menu: the files are the owner's.
     await mkdir(join(shared.folder, 'notes'));
@@ -665,10 +665,11 @@ test('C2 C6 D7 E1: the browser build asks a name, then shows the doc live at Edi
     const visible = (selector) => shown.evaluate(`[...document.querySelectorAll('${selector}')].filter((node) => node.offsetParent).length`);
     for (const selector of ['.pj-composer', '.pj-resolve', '.pj-toolbar [data-command]']) assert.equal(await visible(selector), 0, selector);
 
-    // The owner's cursor, named, in their colour; a writer's goes to the owner.
+    // The owner's cursor, unnamed, while they move, gone a few seconds after; a writer's goes to the owner.
     const now = await host.call('state');
     await host.call('cursor', { at: 6, rev: now.rev, epoch: now.epoch });
-    await waitFor(() => shown.evaluate(`document.querySelector('.pj-cursor')?.textContent === 'owner'`), 10_000, 'the owner\'s cursor');
+    await waitFor(() => shown.evaluate(`document.querySelectorAll('.pj-cursor').length === 1 && document.querySelector('.pj-cursor').textContent === ''`), 10_000, 'the owner\'s cursor');
+    await waitFor(() => shown.evaluate(`document.querySelectorAll('.pj-cursor').length === 0`), 10_000, 'the owner\'s cursor gone once they stop');
     await host.call('setLevel', { id: noor.id, level: 'write' });
     await waitFor(async () => (await editable()) === 'true', 30_000, 'the page at Edit');
     await shown.evaluate(`(async () => {

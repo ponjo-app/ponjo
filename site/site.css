@@ -76,7 +76,6 @@ a { color: var(--accent); }
 /* the slogan, its second half written once by Clippy, who then stays as a pet (its script in index.html) */
 .dl-page .hero { display: flex; flex-direction: column; align-items: center; gap: 16px; }
 .dl-page h1 { margin: 0; font-size: 36px; font-weight: 600; line-height: 1.6; letter-spacing: -0.02em; }
-.dl-page .hero .pj-cursor-name { display: block; }
 @media (min-width: 561px) { .dl-page h1 br { display: none; } } /* one line, but two on a phone from the start, so nothing jumps */
 @media (max-width: 560px) { .dl-page h1 { font-size: 24px; line-height: 2.2; } }
 .dl-pet { cursor: pointer; }

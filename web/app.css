@@ -471,25 +471,18 @@ del.pj-mark-del { margin-right: 0.15em; }
 @keyframes pj-replay-ins { from { opacity: 0; background: color-mix(in srgb, var(--green) 35%, transparent); } }
 @media (prefers-reduced-motion: reduce) { .pj-replay { animation: none !important; } }
 
-/* text someone just changed, labelled with their name, fading out */
+/* text someone just changed, fading out */
 .pj-flash { animation: pj-flash 6s ease-out forwards; border-radius: 0; }
 @keyframes pj-flash { 0%, 40% { background: var(--active); } 100% { background: transparent; } }
 /* what the change removed, as it was, deleted a character at a time (Erased in web/views/codemirror.js) */
 del.pj-flash-del { text-decoration: none; margin-right: 0.15em; }
 del.pj-flash-del:empty { margin-right: 0; }
-.pj-flag { position: relative; display: inline; }
-.pj-flag-label { position: absolute; bottom: 100%; left: -1px; z-index: 4; padding: 0 6px; border-radius: 4px 4px 4px 0; background: var(--buddy, var(--text)); color: var(--buddy-ink, var(--on-text)); font: 600 11px/1.6 var(--ui-font); white-space: nowrap; pointer-events: none; animation: pj-fade 6s ease-out forwards; }
-.pj-flag::before { content: ''; position: absolute; top: -0.1em; bottom: -0.1em; left: -1px; border-left: 2px solid var(--buddy, var(--text)); animation: pj-fade 6s ease-out forwards; }
-@keyframes pj-fade { 0%, 70% { opacity: 1; } 100% { opacity: 0; } }
 
-/* a buddy in the doc: its cursor stays where it last wrote; its name shows while it works */
+/* someone at work in the doc: one cursor each, a blinking line in their colour, no name; gone a few seconds after they stop */
 .pj-cursor { position: relative; display: inline-block; width: 0; height: 1.1em; vertical-align: text-bottom; pointer-events: none; }
-.pj-cursor::before { content: ''; position: absolute; top: 0; bottom: 0; left: -1px; border-left: 2px solid var(--buddy); }
-.pj-cursor-working::before { animation: pj-blink 1s steps(1) infinite; }
+.pj-cursor::before { content: ''; position: absolute; top: 0; bottom: 0; left: -1px; border-left: 2px solid var(--buddy); animation: pj-blink 1s steps(1) infinite; }
 @keyframes pj-blink { to { visibility: hidden; } }
-.pj-cursor-name { display: none; position: absolute; bottom: 100%; left: -1px; z-index: 4; padding: 0 6px; border-radius: 4px 4px 4px 0; background: var(--buddy); color: var(--buddy-ink); font: 600 11px/1.6 var(--ui-font); white-space: nowrap; }
-.pj-cursor-working .pj-cursor-name { display: block; }
-@media (prefers-reduced-motion: reduce) { .pj-cursor-working::before { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .pj-cursor::before { animation: none; } }
 
 /* a buddy's run as a revision: new text in its colour, removed text grey and struck through */
 .pj-buddy-edit { background: color-mix(in oklch, var(--buddy) 16%, transparent); box-shadow: inset 0 -2px 0 var(--buddy); border-radius: 0; }
@@ -943,7 +936,7 @@ label.pj-setting { cursor: pointer; }
   html, body { height: auto; background: none; }
   :root[data-files] body { padding-left: 0; }
   body > :not(.pj-canvas), .pj-canvas > :not(.pj-stage:first-child), .pj-margin, .pj-find, .pj-statusbar,
-  .pj-cursor, .pj-flag, .pj-buddy-del, .pj-flash-del, .pj-outline, .cm-gutters { display: none !important; }
+  .pj-cursor, .pj-buddy-del, .pj-flash-del, .pj-outline, .cm-gutters { display: none !important; }
   .pj-canvas, .pj-stage, .pj-stage[data-plain] { display: block; overflow: visible; padding: 0; }
   .pj-page, .pj-stage[data-plain] .pj-page { min-height: 0; padding: 0; border: 0; }
   .pj-editor .cm-editor .cm-content { min-height: 0; }
