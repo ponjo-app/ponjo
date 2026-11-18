@@ -1001,7 +1001,7 @@ numbers are \`LATENCY\` in \`web/views/index.js\`, which the tests read:
 | D3 | My undo: Cmd+Z undoes only my typing, and still works after others split or restyle my paragraph. |
 | D4 | IME: nothing is saved or sent mid-composition, and others' edits arriving meanwhile show once it ends (one in the text being composed would break it); they lose or double nothing. |
 | D5 | The view never rewrites: after \`applyText(t)\`, \`getText() === t\`; a view's own normalisation is never saved as anyone's edit. |
-| D6 | Clear marks: a teammate's typing shows only by their cursor; a buddy's change is flagged with its name; outside changes and restores glow. |
+| D6 | Clear marks: one unnamed cursor per teammate at work; a teammate's typing shows only by their cursor; a buddy's change, outside changes and restores glow. |
 | D7 | Drafts stay: a comment being written, and its anchor, survive others' edits. |
 | D8 | Comments follow their text: a thread stays on its text through others' edits, and through its buddy rewriting that text. |
 
@@ -1467,14 +1467,13 @@ The view's settings, on its page in Settings > Views:
 - **Comments:** commented text is yellow, the open thread's stronger. A
   bubble over a selection offers Comment.
 - **An AI buddy's revision:** when its turn lands, its new text is in its
-  color and what it removed is grey and struck through where it was, with
-  its name over the change for a moment. It stays until you type, press
+  color and what it removed is grey and struck through where it was. It stays until you type, press
   Escape or another turn lands; the count under its reply shows it again.
-- **Changes from outside** (\`git pull\`, another editor) glow for a moment,
-  with who made them.
-- **Cursors:** an AI buddy's, at the passage it was asked about, with its
-  name while it works. A person's, where they type, with their name while
-  they move or type. One inside hidden syntax is drawn at its edge.
+- **Changes from outside** (\`git pull\`, another editor) glow for a moment.
+- **Cursors:** one each, a blinking line in their color with no name, only
+  while they are at work: an AI buddy's at the passage it was asked about
+  during its run; a person's where they type, until a few seconds after
+  they stop. One inside hidden syntax is drawn at its edge.
 - **Two people typing:** see [Many writers](#many-writers).
 
 ### Earlier versions
@@ -2458,12 +2457,11 @@ and 30 days, and by model.
   is away it is greyed out; and when a run fails it shakes and flashes red
   once. No dots or badges. In the Team panel you see which teammates are
   here; a teammate sees who is here with them.
-- **Cursor.** Every teammate in the doc has a cursor in their color, with
-  their name beside it while they work or type; otherwise it is a plain line.
-  A person's stands where they are typing. An AI buddy asked to work stays
-  in the doc until it is closed or the AI buddy is gone: at the passage it was
-  last asked about, and at the end of its last edit when its run lands, until you
-  type. A cursor follows the text as it changes, and is hidden where its text
+- **Cursor.** Every teammate at work in the doc has one cursor, a blinking
+  line in their color with no name: a person's while they move or type and
+  a few seconds after, where they are typing; an AI buddy's while its run
+  goes, at the passage it was last asked about or the end of its last edit.
+  A cursor follows the text as it changes, and is hidden where its text
   is gone. It is only drawn: never in the file, and it takes no clicks.
 
 ## Around the doc
