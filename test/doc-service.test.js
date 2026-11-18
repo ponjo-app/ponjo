@@ -7,7 +7,7 @@ import { writeFileSync } from 'node:fs';
 import { appendFile, chmod, mkdir, open, readFile, readdir, realpath, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { sidecarPath } from '../src/store/files.js';
-import { openDoc } from '../src/host/doc-service.js';
+import { openDoc } from '../src/host/open-doc.js';
 import { apply } from '../src/core/ot.js';
 import { createAnchor } from '../src/core/anchor.js';
 import { readHistory } from '../src/store/history.js';

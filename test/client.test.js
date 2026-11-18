@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, writeFile } from 'node:fs/promises';
 import { createClient } from '../web/client.js';
-import { openDoc } from '../src/host/doc-service.js';
+import { openDoc } from '../src/host/open-doc.js';
 import { fakeConfig, readOnly, tempDoc, until } from './helpers.js';
 
 const TEXT = 'Alpha one.\n\nBeta two.\n\nGamma three.\n';

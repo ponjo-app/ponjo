@@ -574,7 +574,8 @@ declaration, listed in `VIEWS`, passing the contract test.
 | --- | --- | --- | --- |
 | Core | `src/core/` | compute on text, purely, the same in the host and the page: anchors, comments and asks, `diff`/`merge3`, `ot`, the prompt, the rules (`plan`), Translate | functions |
 | Store | `src/store/` | read, write, watch and move files: docs, comments, history, settings, buddies, agents, logs | `read`, `write`, `watch`, `move`, each file's parser |
-| Doc | `src/host/doc-service.js` | order every change to one doc, and write it | the door above; `subscribe(fromRev, fn)` |
+| Doc | `src/host/doc-service.js` | order every change to one doc, and write it | the door above; `door`, `subscribe(fn)` |
+| Opener | `src/host/open-doc.js` | join a doc and its buddies | `openDoc` |
 | Controller | `src/host/buddy-runtime.js` | run the doc's buddies as the rules say | `watch`, `retry`, `refillSteps`; event `buddies` |
 | Executor | `src/host/runner.js` | run the agent once on copies | `run(task, copies)` |
 | ProjectService | `src/host/project-service.js` | the project's files, the same for everyone | `list`, `read`, `open` |

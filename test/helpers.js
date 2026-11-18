@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
-import { openDoc } from '../src/host/doc-service.js';
+import { openDoc } from '../src/host/open-doc.js';
 import { diffOps } from '../src/core/ot.js';
 
 // Keep tests away from the real user's settings file.

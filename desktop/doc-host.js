@@ -33,7 +33,7 @@
 import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { realpath } from 'node:fs/promises';
-import { openDoc } from '../src/host/doc-service.js';
+import { openDoc } from '../src/host/open-doc.js';
 import { agentsFor } from '../src/host/buddy-runtime.js';
 import { projectService } from '../src/host/project-service.js';
 import { createRoom } from '../src/host/room.js';

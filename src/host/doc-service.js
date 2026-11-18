@@ -9,13 +9,12 @@
 // through Room (room.js), at the same door.
 
 import { createHash } from 'node:crypto';
-import { mkdir, readFile, realpath, stat } from 'node:fs/promises';
+import { mkdir, readFile, stat } from 'node:fs/promises';
 import { basename, dirname, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createAnchor, locate } from '../core/anchor.js';
 import { COMMENT_ID, newComment, newId, parseSidecar, peopleOf, serializeSidecar, threadsOf, validAnchor } from '../core/comments.js';
 import { sameName } from '../core/mentions.js';
-import { BuddyError, buddiesHere, checkBuddyPatch } from '../core/buddies.js';
 import { DEFAULT_SETTINGS, SettingsError } from '../core/settings.js';
 import { merge3 } from '../core/diff.js';
 import { apply, diffOps, mapOffset, transform } from '../core/ot.js';
@@ -23,18 +22,15 @@ import { PROTOCOL } from '../core/protocol.js';
 import { StoreError, formFor, hashText, moveDoc, readDoc, readSidecarText, sidecarPath, writeDoc, writeSidecar } from '../store/files.js';
 import { VERSION_ID, moveHistory, noteTaken, noteWritten, readHistory, readVersion, recordVersion, writtenEdits } from '../store/history.js';
 import { configDir, defaultName, ownerOf, readSettings, updateSettings, watchSettings } from '../store/settings.js';
-import { firstBuddies, projectBuddiesDir, readBuddies, removeBuddy, userBuddiesDir, writeBuddy } from '../store/buddies.js';
+import { buddiesFor, firstBuddies } from '../store/buddies.js';
 import { secretTails } from '../store/secrets.js';
 import { readTrace, readUsage, tracedRuns } from '../store/runs.js';
-import { watchDoc, watchFolder } from '../store/watch.js';
+import { watchDoc } from '../store/watch.js';
 import { agentsDir, installAgents, listAgents, SHIPPED_AGENTS } from '../store/agents.js';
-import { linkURL, projectService, saveImage } from './project-service.js';
-import { agentsFor, createBuddyRuntime } from './buddy-runtime.js';
+import { linkURL, pathInProject, projectService, saveImage } from './project-service.js';
 import { DocError, LEVELS, can } from './door.js';
 import { RoomError } from './room.js';
 
-// The settings that choose and set up the agent (settings.js), of settings as JSON.
-const agentOf = (json) => JSON.stringify((({ agent, agents }) => ({ agent, agents }))(JSON.parse(json ?? '{}')));
 
 // A comment's `by`: who wrote it.
 const byOf = ({ id, name, kind }) => ({ id, name, kind });
@@ -59,10 +55,11 @@ const OUTSIDE = { id: null, kind: 'outside' };
  * to moveDoc and may return the final path).
  * @returns {Promise<{ call: (type: string, arg: object | undefined, who: object) => Promise<object>, owner: () => Promise<object>, leave: (id: string) => void, hello: () => object, running: () => string[], docPath: () => string, moveTo: (newPath: string, move?: Function) => Promise<string>, setFolder: (folder: string | null, room: object | null) => void, close: () => Promise<void> }>}
  */
-export async function openDoc(docPath, { folder = null, room = null, settingsDir = configDir(), secrets = () => ({}), emit = () => {} } = {}) {
+export async function openDocService(docPath, { folder = null, room = null, settingsDir = configDir(), secrets = () => ({}), emit = () => {} } = {}) {
   const opened = await readDoc(docPath); // fail early on a missing doc
-  // The doc's path in the project, `/`-separated.
-  const placeInFolder = async () => relative(await realpath(folder).catch(() => folder), await realpath(docPath).catch(() => docPath)).split(sep).join('/');
+  // Who hears every change as it lands (subscribe): the doc's buddies.
+  const listeners = new Set();
+  const tell = (event) => { for (const fn of listeners) fn(event); };
   let lastSidecarHash = null;
   let lastSettings = null;
   let missing = false; // the doc was moved or deleted on disk while open
@@ -138,7 +135,7 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
     text = apply(text, ops);
     rev++;
     told.push(event);
-    runtime.changed(meta.by.kind === 'buddy' ? meta.by.id : null);
+    tell(event);
   }
   // The comments changed, by `by`: a change in the log too, with no
   // operations on the text, told to every window as the next commit tells
@@ -152,6 +149,7 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
     }
     rev++;
     told.push(event);
+    tell(event);
   }
 
   // Write what landed, then tell every window: what a window has heard of is
@@ -375,12 +373,10 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
       me: owner ? await me() : byOf(who),
       level: who.level,
       owner: (await me()).id, // whose face wears the crown
-      agents: agentsFor(who.level, runtime.statuses()),
-      steps: runtime.steps(),
       cursors: cursorsNow(),
       project: folder !== null, // whether the doc was opened from a project
       // The project's name and the doc's path in it, for a teammate's sidebar.
-      place: folder && { name: basename(folder), path: await placeInFolder() },
+      place: folder && { name: basename(folder), path: await pathInProject(folder, docPath) },
     };
   }
 
@@ -422,7 +418,6 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
     lastSidecarHash = await fileHash(sidecarPath(docPath)); // this service's own write
     changedComments(by);
     await commit().catch(() => {}); // the doc not saved holds the telling; it is tried again
-    runtime.look();
   }
 
   // A comment by `who`: a first comment (`anchor` on the doc's text, or
@@ -458,23 +453,9 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
   // ---- the doc's buddies ----
 
   // The user's buddies and, in a project, the project's.
-  async function buddies() {
-    return buddiesHere(folder ? await readBuddies(projectBuddiesDir(folder)) : [], await readBuddies(userBuddiesDir(settingsDir)));
-  }
-
-  // The doc's buddies at work (buddy-runtime.js): they read the doc and land
-  // their runs through these.
-  const runtime = await createBuddyRuntime({
-    door: { text: () => text, rev: () => rev, epoch: () => epoch, missing: () => missing, closed: () => closed, readComments, submit, comment },
-    place: () => ({ docPath, folder, room }),
-    pathInProject: placeInFolder, buddies, me, levelOf, settingsDir, secrets, emit,
-  });
-
-  // The level of the person with id `id` now: the owner's, a player's, or null.
-  async function levelOf(id) {
-    if (id === (await me()).id) return 'owner';
-    return room?.levelOf(id) ?? null;
-  }
+  const buddies = () => buddiesFor(folder, settingsDir);
+  // The names of the players in the project's room.
+  const playerNames = () => room?.names() ?? [];
 
   // ---- undo ----
 
@@ -515,66 +496,6 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
 
   // ---- buddy files ----
 
-  // The folder of a buddy `where` ('project' or 'user').
-  const dirOf = (where) => (where === 'project' ? projectBuddiesDir(folder) : userBuddiesDir(settingsDir));
-
-  // A buddy can be called anything but another buddy's name here (not
-  // buddy `id`'s), its owner's or a player's.
-  async function checkBuddy(fields, id = null) {
-    try {
-      checkBuddyPatch(fields);
-    } catch (error) {
-      throw new DocError(error.code, error.message);
-    }
-    if (fields.name === undefined) return;
-    const taken = [...(await buddies()).filter((b) => b.id !== id).map((b) => b.name), (await me()).name, ...playerNames()];
-    if (taken.some((n) => sameName(fields.name, n))) throw new DocError('bad_input', `the name ${fields.name} is taken`);
-  }
-
-  // The names of the players in the project's room.
-  const playerNames = () => room?.names() ?? [];
-
-  // The buddy here with id `id`.
-  async function buddyById(id) {
-    const found = (await buddies()).find((b) => b.id === id);
-    if (!found) throw new DocError('not_found', 'no such buddy');
-    return found;
-  }
-
-  // Write buddy files; a folder watch tells every window.
-  async function changeBuddies(work) {
-    try {
-      await work();
-    } catch (error) {
-      if (error instanceof BuddyError) throw new DocError(error.code, error.message);
-      throw error;
-    }
-    await runtime.sync();
-    return { agents: runtime.statuses() };
-  }
-
-  // A new buddy: in a project, the project's (in .ponjo/buddies/, made if
-  // missing); in a doc on its own, the user's.
-  async function createBuddy({ buddy } = {}) {
-    const fields = { about: '', ...buddy };
-    await checkBuddy(fields);
-    if (!fields.name) throw new DocError('bad_input', 'a buddy needs a name');
-    return changeBuddies(() => writeBuddy(dirOf(folder ? 'project' : 'user'), { id: newId('b'), ...fields }));
-  }
-
-  // Change buddy `id` here: its name (renames its file) or who it is.
-  async function updateBuddy({ id, patch = {} } = {}) {
-    const { where, ...was } = await buddyById(id);
-    await checkBuddy(patch, id);
-    return changeBuddies(() => writeBuddy(dirOf(where), { ...was, ...patch }, was.name));
-  }
-
-  // Delete buddy `id`'s file. Its comments stay.
-  async function deleteBuddy({ id } = {}) {
-    const found = await buddyById(id);
-    return changeBuddies(() => removeBuddy(dirOf(found.where), found.name));
-  }
-
   // Add the doc as it now reads to its history (one version at a time, in
   // order); a failure is logged and never stops a save.
   function noteVersion(text, change) {
@@ -603,7 +524,6 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
           changedComments(OUTSIDE);
           await commit().catch(() => {});
         });
-        await runtime.sync(); // a new ask
       }
     } catch (error) {
       if (!(error instanceof StoreError)) console.error(error);
@@ -648,11 +568,8 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
       const { settings } = await readSettings(settingsDir);
       const json = JSON.stringify(settings);
       if (json === lastSettings) return;
-      const agent = agentOf(lastSettings);
       lastSettings = json;
       emit('settings', settings);
-      if (agentOf(json) !== agent) runtime.agentChanged();
-      await runtime.sync();
     } catch (error) {
       console.error(error);
     }
@@ -669,7 +586,6 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
       if (missing) emit('missing', { missing: false, doc: basename(docPath) });
       missing = false;
       stopWatching = watchDoc(docPath, onFilesChanged);
-      await runtime.sync();
       emit('renamed', { doc: basename(docPath) });
       return docPath;
     });
@@ -682,13 +598,11 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
   lastSettings = JSON.stringify((await readSettings(settingsDir)).settings);
   let stopWatching = watchDoc(docPath, onFilesChanged);
   const stopWatchingSettings = watchSettings(onSettingsChanged, settingsDir);
-  let stopWatchingProjectBuddies = folder ? watchFolder(projectBuddiesDir(folder), runtime.sync) : () => {};
   let project = folder ? projectService(folder) : null;
   const inProject = () => {
     if (!project) throw new DocError('bad_input', 'a doc on its own has no project');
     return project;
   };
-  const stopWatchingUserBuddies = watchFolder(userBuddiesDir(settingsDir), runtime.sync);
   const inRoom = () => {
     if (!room) throw new DocError('bad_input', 'a doc on its own has no room');
     return room;
@@ -698,13 +612,9 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
     return room.list();
   }
   // The owner's windows follow the room (desktop/doc-host.js sends `room` to
-  // theirs alone), and so do the asks: who may ask changes with it.
-  const followRoom = () => room?.onChange(async () => {
-    emit('room', room.list());
-    await runtime.look();
-  }) ?? (() => {});
+  // theirs alone).
+  const followRoom = () => room?.onChange(() => emit('room', room.list())) ?? (() => {});
   let stopFollowingRoom = followRoom();
-  await runtime.sync(); // the asks the files hold are looked at once the doc opens
 
   // What a window may ask, by the level it needs (`can`). Each returns what
   // changed, for the window that asked.
@@ -746,9 +656,6 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
       comment: (body, who) => comment({ id: body?.id, thread: body?.thread, anchor: body?.anchor ?? null, body: body?.body, resolved: body?.resolved, after: body?.after }, who),
       restoreVersion: (body, who) => serial(() => restoreVersion(body, who)),
       undo: (body, who) => serial(() => undo(body, who)),
-      // A buddy watches this doc, or no longer ({ buddy, on }); the steps
-      // filled; a buddy run again where its last run failed ({ buddy }).
-      ...runtime.calls,
     },
     owner: {
       async saveSettings(patch) {
@@ -762,9 +669,6 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
           throw error;
         }
       },
-      createBuddy,
-      updateBuddy,
-      deleteBuddy,
       scripts: async () => ({ agents: await listAgents(settingsDir), shipped: SHIPPED_AGENTS, folder: agentsDir(settingsDir), secrets: secretTails(secrets()) }),
       // A shipped agent script, written again as it came.
       async resetScript(body) {
@@ -772,7 +676,6 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
         await installAgents(settingsDir, { reset: body.name });
         return { agents: await listAgents(settingsDir) };
       },
-      testAgent: () => runtime.testAgent(),
       // An image pasted or dropped into the doc: written beside it, the path to write in it.
       saveImage: async (body) => ({ src: await saveImage(dirname(docPath), body) }),
       runs: async () => ({ runs: await tracedRuns(settingsDir, docPath) }),
@@ -793,7 +696,23 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
     },
   };
 
-  return {
+  const api = {
+    /**
+     * The doc for a client in this process (the agent runtime): its text,
+     * rev, epoch, whether it is missing or closed, its comments as read
+     * (readComments), and `submit` and `comment` through the door.
+     */
+    door: {
+      text: () => text, rev: () => rev, epoch: () => epoch, missing: () => missing, closed: () => closed,
+      readComments: () => readComments(),
+      submit: (arg, who) => api.call('submit', arg, who),
+      comment: (arg, who) => api.call('comment', arg, who),
+    },
+    /** `fn(change)` hears each change as it lands, its `ops` event (land); returns how to stop. */
+    subscribe(fn) {
+      listeners.add(fn);
+      return () => listeners.delete(fn);
+    },
     // The door: every call comes through here, once, as `who`.
     async call(type, arg, who) {
       const level = LEVELS.find((l) => Object.hasOwn(calls[l], type));
@@ -814,11 +733,7 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
       tellCursors();
     },
     /** What a window hears first: the version of the messages, whether the doc is missing, and who is at work. */
-    hello: () => ({ protocol: PROTOCOL, missing, agents: runtime.statuses() }),
-    /** The agents' secrets changed: the failed asks run again. */
-    agentChanged: () => runtime.agentChanged(),
-    /** The names of the buddies at work on the doc. */
-    running: () => runtime.running(),
+    hello: () => ({ protocol: PROTOCOL, missing }),
     docPath: () => docPath,
     moveTo,
     setFolder(next, nextRoom) {
@@ -827,9 +742,6 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
       stopFollowingRoom();
       room = nextRoom;
       stopFollowingRoom = followRoom();
-      stopWatchingProjectBuddies();
-      stopWatchingProjectBuddies = folder ? watchFolder(projectBuddiesDir(folder), runtime.sync) : () => {};
-      runtime.sync();
     },
     // Closed even when its last write fails: what was not written is lost.
     async close() {
@@ -846,13 +758,11 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
         clearTimeout(retry);
         stopWatching();
         stopWatchingSettings();
-        stopWatchingProjectBuddies();
-        stopWatchingUserBuddies();
         stopFollowingRoom();
-        await runtime.close();
       }
     },
   };
+  return api;
 }
 
 // How many landed edits the log keeps: a window's edit from an older rev is stale.

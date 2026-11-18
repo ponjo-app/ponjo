@@ -3,12 +3,17 @@
 
 import { mkdir, readFile, readdir, rename, rm } from 'node:fs/promises';
 import { join } from 'node:path';
-import { BuddyError, buddyText, parseBuddy } from '../core/buddies.js';
+import { BuddyError, buddiesHere, buddyText, parseBuddy } from '../core/buddies.js';
 import { NAME_PATTERN, sameName } from '../core/mentions.js';
 import { writeAtomic } from './files.js';
 
 export const projectBuddiesDir = (folder) => join(folder, '.ponjo', 'buddies');
 export const userBuddiesDir = (settingsDir) => join(settingsDir, 'buddies');
+
+/** The buddies a doc reaches: the user's and, in project `folder` (or null), the project's. */
+export async function buddiesFor(folder, settingsDir) {
+  return buddiesHere(folder ? await readBuddies(projectBuddiesDir(folder)) : [], await readBuddies(userBuddiesDir(settingsDir)));
+}
 
 /** The buddies in `dir`, by name; none when it does not exist. A name twice (in another case) counts once. */
 export async function readBuddies(dir) {

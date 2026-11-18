@@ -42,6 +42,11 @@ const badImage = (message) => Object.assign(new Error(message), { code: 'bad_inp
  * made safe or a name of its own, never over a file there: the path to
  * write in the doc, relative to it.
  */
+/** The doc at `docPath`'s path in project `folder`, `/`-separated. */
+export async function pathInProject(folder, docPath) {
+  return relative(await realpath(folder).catch(() => folder), await realpath(docPath).catch(() => docPath)).split(sep).join('/');
+}
+
 export async function saveImage(dir, { name, type, data } = {}) {
   const ext = Object.keys(IMAGE_TYPES).find((e) => IMAGE_TYPES[e] === type && e !== '.jpeg');
   if (!ext || typeof data !== 'string') throw badImage('not an image the doc can show');
