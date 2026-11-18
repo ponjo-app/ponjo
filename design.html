@@ -6,8 +6,8 @@
   <title>Ponjo Design System</title>
   <!-- A live specimen: the app's own stylesheet and classes, so this page is
        always what the app looks like. Run `npm run build` to view it locally. -->
-  <link rel="stylesheet" href="./dist/web/app.css?v=04de4c8">
-  <link rel="stylesheet" href="site.css?v=04de4c8">
+  <link rel="stylesheet" href="./dist/web/app.css?v=46317d5">
+  <link rel="stylesheet" href="site.css?v=46317d5">
   <link rel="icon" href="./build/icon.svg" type="image/svg+xml">
 </head>
 <body>
@@ -199,7 +199,7 @@
   <p>A folder window with no doc shows only its sidebar and, in the page, <code>.pj-folder-empty</code>: "No docs here yet." in <code>.pj-empty</code>, then New doc (primary) and New folder (secondary).</p>
   <p>A sidebar is resized by dragging its edge: the cursor turns to <code>col-resize</code> and the edge shows a 2px <code>--text-faint</code> line; double-click the edge for the default width back.</p>
   <h3>Team panel</h3>
-  <p>The Team button opens an <code>.pj-panel</code>, 360px: a head with its title and, for the owner of a project, Open room, the panel's one primary button, while no room is open; once one is, Copy link, Lock (or Unlock) and Close room (secondary, Close room red). Then <code>.pj-people-row</code>s in groups headed <code>.pj-setting-group</code>: you, Players (Players · locked while locked), AI buddies, ending with New AI buddy. A player's row says Can read or Can edit, greyed while away; its card has Read or Edit (a <code>.pj-segmented</code>) and Kick (secondary, red). A player's page in a browser first asks their name in a card in the middle of the page; a page turned away shows only why, in that card.</p>
+  <p>The Team button opens an <code>.pj-panel</code>, 360px: a head with its title and, for the owner of a project, Open room, the panel's one primary button, while no room is open; once one is, Copy link, Lock (or Unlock) and Close room (secondary, Close room red). Then <code>.pj-people-row</code>s in groups headed <code>.pj-setting-group</code>: you, Teammates (Teammates · locked while locked), AI buddies, ending with New AI buddy. A teammate's row says Can read or Can edit, greyed while away; its card has Read or Edit (a <code>.pj-segmented</code>) and Kick (secondary, red). A teammate's page in a browser first asks their name in a card in the middle of the page; a page turned away shows only why, in that card.</p>
   <h3>A buddy's card</h3>
   <p>A face in the header, or a buddy's name, opens its card, an <code>.pj-panel</code>: its face at 44px, its name, and under it where it stands, 12px <code>--text-faint</code> ("Working…", "Watching this doc", "In all your docs"); then who it is, a field; then, for whoever may ask it, one <code>.pj-setting</code> row, "Watch this doc" and a <code>.pj-switch</code>, no hint: only a person turns it on or off; when its last run while watching failed, a <code>.pj-profile-problem</code> under it, "Its last run while watching failed.", the program's output for the owner in <code>.pj-profile-why</code> (12px, its lines kept, scrolling past 8), and Retry, a <code>.pj-link-button</code>, for whoever may ask, its standing "Watch failed"; for the owner, Delete.</p>
   <h3>Status bar</h3>
@@ -249,6 +249,6 @@
   </div>
 
 </main>
-<script type="module" src="site.js?v=04de4c8"></script>
+<script type="module" src="site.js?v=46317d5"></script>
 </body>
 </html>
