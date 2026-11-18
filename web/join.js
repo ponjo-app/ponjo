@@ -1,4 +1,4 @@
-// Who a player's page is, in a plain browser (docs/user-experience.md,
+// Who a teammate's page is, in a plain browser (docs/user-experience.md,
 // Hosting a room): a key made once in this browser, by which the host
 // knows them (it is never shown; their id is its hash), and the name they
 // pick the first time they open a link.
@@ -37,10 +37,10 @@ export function identity() {
   return { key, name: name ?? '' };
 }
 
-/** Whether the player has picked a name. */
+/** Whether the teammate has picked a name. */
 export const named = () => Boolean(name);
 
-/** Ask the player's name; resolves once it is picked. */
+/** Ask the teammate's name; resolves once it is picked. */
 export function askName() {
   const form = document.querySelector('.pj-join');
   const field = form.querySelector('input');

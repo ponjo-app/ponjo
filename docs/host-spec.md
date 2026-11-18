@@ -6,10 +6,6 @@ and [agent runtime](agent-runtime.md) first. Product: [product vision](product-v
 person sees and does: [user experience](user-experience.md); the comment
 format: [SPEC](../spec/SPEC.md); tests: [testing](testing-ci.md).
 
-This is the design the code moves to. Not built yet: the rest of the buddy
-runtime as [Buddies](#buddies) describes it (see [agent
-runtime](agent-runtime.md)), comments versioned with the text in one log,
-and `teammate`, which the code still calls `player`.
 
 ## Overview
 

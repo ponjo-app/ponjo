@@ -25,7 +25,7 @@ something.
 
 The **Team** button (after the faces) opens the panel: in a project, **Open
 room** or, once it is open, the room's link and **Lock** and **Close room**;
-You, the room's players, then the AI buddies, ending with **New AI
+You, the room's teammates, then the AI buddies, ending with **New AI
 buddy** (it starts with a random first name, which you can type over: Enter
 makes it and opens its card). Click a face anywhere for its card: a name that
 edits in place (yours, or an AI buddy's; a renamed AI buddy

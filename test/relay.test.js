@@ -1,4 +1,4 @@
-// A player's page reaching the owner's doc host through the relay
+// A teammate's page reaching the owner's doc host through the relay
 // (docs/host-spec.md, Sharing), run locally (test/relay/harness.js): the
 // page as web/relay.js and web/client.js in Node, then the browser build
 // itself in Electron.
@@ -17,7 +17,7 @@ import { LATENCY } from '../web/views/index.js';
 import { PROTOCOL } from '../src/core/protocol.js';
 import { launchElectron, waitFor } from '../scripts/devtools.js';
 import { until } from './helpers.js';
-import { idOf, page as playerPage, player, project as newProject, roomOf, startHost as hostOn, startRelay } from './relay/harness.js';
+import { idOf, page as playerPage, teammate, project as newProject, roomOf, startHost as hostOn, startRelay } from './relay/harness.js';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const TEXT = '# Plan\n\nShip the preview first.\n';
@@ -57,7 +57,7 @@ test('anyone with the link is in at once, at Edit, and writes and reads through 
   const shared = await project();
   const host = await startHost(shared);
   try {
-    const sam = player('Sam');
+    const sam = teammate('Sam');
     const teammate = page(host, sam); // no doc named: the project's first
     const { result: state } = await teammate.call('state');
     assert.equal(state.text, TEXT);
@@ -80,20 +80,20 @@ test('anyone with the link is in at once, at Edit, and writes and reads through 
     assert.deepEqual((await teammate.call('open', { path: 'plan.md' })).result, { path: 'plan.md' });
 
     for (const [name, named] of [['owner', 'owner2'], ['Clippy', 'Clippy2'], ['sam', 'sam2'], ['Sam', 'Sam3']]) {
-      assert.equal((await page(host, player(name)).call('state')).result.me.name, named, name);
+      assert.equal((await page(host, teammate(name)).call('state')).result.me.name, named, name);
     }
-    assert.deepEqual((await host.call('room')).players.map((p) => `${p.name} ${p.level}`), ['Sam write', 'owner2 write', 'Clippy2 write', 'sam2 write', 'Sam3 write']);
+    assert.deepEqual((await host.call('room')).teammates.map((p) => `${p.name} ${p.level}`), ['Sam write', 'owner2 write', 'Clippy2 write', 'sam2 write', 'Sam3 write']);
     await assert.rejects(host.call('createBuddy', { buddy: { name: 'Sam' } }), (error) => error.message === 'the name Sam is taken');
   } finally {
     host.kill();
   }
 });
 
-test('a player at Read is told so, and every write and owner-only call from a page is forbidden, whatever who it names', async () => {
+test('a teammate at Read is told so, and every write and owner-only call from a page is forbidden, whatever who it names', async () => {
   const shared = await project();
   const host = await startHost(shared);
   try {
-    const sam = player('Sam');
+    const sam = teammate('Sam');
     const teammate = page(host, sam);
     const { result: state } = await teammate.call('state');
     await host.call('setLevel', { id: idOf(sam.key), level: 'read' });
@@ -151,7 +151,7 @@ test('no credential is in an address: the host proves its secret, and a page say
   const shared = await project();
   const host = await startHost(shared);
   try {
-    await page(host, player('Sam'), 'plan.md').call('state');
+    await page(host, teammate('Sam'), 'plan.md').call('state');
     assert.deepEqual(sockets.filter((s) => s.url.includes(host.room)).map((s) => s.url), [`${relay.url}/rooms/${host.room}`]);
     assert.equal(new URL(host.link).search, `?room=${host.room}`, 'the link names the room alone');
 
@@ -160,7 +160,7 @@ test('no credential is in an address: the host proves its secret, and a page say
     const closed = new Promise((done) => impostor.addEventListener('close', ({ code }) => done(code)));
     impostor.addEventListener('open', () => impostor.send(JSON.stringify({ secret: 'guess' })));
     assert.equal(await closed, 4003);
-    assert.equal((await page(host, player('Ada')).call('state')).result.me.name, 'Ada', 'the host still in');
+    assert.equal((await page(host, teammate('Ada')).call('state')).result.me.name, 'Ada', 'the host still in');
   } finally {
     host.kill();
   }
@@ -175,7 +175,7 @@ test('a page reaches only what the project shows, and is told why not', async ()
       ['../plan.md', 'hidden'], ['/etc/hosts', 'hidden'],
       ['nothing.md', 'not_found', 'This doc is not in the shared project'],
     ]) {
-      const turnedAway = page(host, player(), doc);
+      const turnedAway = page(host, teammate(), doc);
       const { error } = await turnedAway.call('state');
       assert.equal(error.code, code, doc);
       if (message) assert.equal(error.message, message);
@@ -191,7 +191,7 @@ test('C5: a page whose line drops is offline at once, keeps nothing to send, and
   const shared = await project();
   const host = await startHost(shared);
   try {
-    const teammate = page(host, player('Sam'));
+    const teammate = page(host, teammate('Sam'));
     const { result: state } = await teammate.call('state');
     let shown = state.text;
     const client = createClient({
@@ -224,7 +224,7 @@ test('C6: a half-open line is noticed within 15 s, and made again', { timeout: 6
   const shared = await project();
   const host = await startHost(shared);
   try {
-    const teammate = page(host, player('Sam'));
+    const teammate = page(host, teammate('Sam'));
     await teammate.call('state');
     await new Promise((done) => setTimeout(done, 1000));
     const cutAt = Date.now();
@@ -239,7 +239,7 @@ test('C6: a half-open line is noticed within 15 s, and made again', { timeout: 6
 });
 
 test('a link no host is in says so, and the page waits for one', async () => {
-  const teammate = playerPage(relay.url, roomOf('a secret no host has'), player());
+  const teammate = playerPage(relay.url, roomOf('a secret no host has'), teammate());
   let answered = false;
   teammate.call('state').then(() => { answered = true; });
   await until(() => teammate.lines.length > 0, 'the line');
@@ -247,11 +247,11 @@ test('a link no host is in says so, and the page waits for one', async () => {
   assert.equal(answered, false, 'the call waits for a host');
 });
 
-test('Kick turns a player\'s pages away at once, and that browser cannot come back; a locked room lets no one new in, but its players back', async () => {
+test('Kick turns a teammate\'s pages away at once, and that browser cannot come back; a locked room lets no one new in, but its teammates back', async () => {
   const shared = await project();
   const host = await startHost(shared);
   try {
-    const sam = player('Sam');
+    const sam = teammate('Sam');
     const kicked = page(host, sam);
     await kicked.call('state');
     await host.call('kick', { id: idOf(sam.key) });
@@ -259,13 +259,13 @@ test('Kick turns a player\'s pages away at once, and that browser cannot come ba
     assert.equal((await kicked.call('state')).error.message, 'The host removed you from this room');
     assert.equal((await page(host, sam).call('state')).error.code, 'kicked', 'not again, from a new page');
 
-    const ada = player('Ada');
+    const ada = teammate('Ada');
     await page(host, ada).call('state');
-    assert.deepEqual(await host.call('lockRoom', { locked: true }), { link: host.link, locked: true, players: [{ id: idOf(ada.key), name: 'Ada', level: 'write' }] });
-    assert.equal((await page(host, player('Bo')).call('state')).error.code, 'locked');
-    assert.equal((await page(host, ada).call('state')).result.me.name, 'Ada', 'a player comes back');
+    assert.deepEqual(await host.call('lockRoom', { locked: true }), { link: host.link, locked: true, teammates: [{ id: idOf(ada.key), name: 'Ada', level: 'write' }] });
+    assert.equal((await page(host, teammate('Bo')).call('state')).error.code, 'locked');
+    assert.equal((await page(host, ada).call('state')).result.me.name, 'Ada', 'a teammate comes back');
     await host.call('lockRoom', { locked: false });
-    assert.equal((await page(host, player('Bo')).call('state')).result.me.name, 'Bo');
+    assert.equal((await page(host, teammate('Bo')).call('state')).result.me.name, 'Bo');
   } finally {
     host.kill();
   }
@@ -280,7 +280,7 @@ test('Close room, or closing the project\'s last window, turns every page away w
     // The ids the next docs opened get.
     const { docId: before } = await host.request('open', { docPath: join(shared.folder, 'notes', 'b.md'), folder: shared.folder });
     await host.request('close', { docId: before });
-    const pages = [page(host, player('Sam')), page(host, player('Ada'), 'notes/b.md')];
+    const pages = [page(host, teammate('Sam')), page(host, teammate('Ada'), 'notes/b.md')];
     for (const p of pages) await p.call('state'); // b.md opens again, for the page: before + 1
     const oldRoom = host.room;
     let closedAt = performance.now();
@@ -293,13 +293,13 @@ test('Close room, or closing the project\'s last window, turns every page away w
     const { link } = await host.call('openRoom');
     const room = new URL(link).searchParams.get('room');
     assert.notEqual(room, oldRoom);
-    const old = playerPage(relay.url, oldRoom, player('Sam'));
+    const old = playerPage(relay.url, oldRoom, teammate('Sam'));
     old.call('state');
     await until(() => old.lines.length > 0, 'the old link');
     assert.deepEqual(old.lines, ['nohost']);
-    assert.deepEqual(await host.call('room'), { link, locked: false, players: [] }, 'no one from before');
+    assert.deepEqual(await host.call('room'), { link, locked: false, teammates: [] }, 'no one from before');
 
-    const late = playerPage(relay.url, room, player('Sam'));
+    const late = playerPage(relay.url, room, teammate('Sam'));
     await late.call('state');
     await host.request('close', { docId: before + 2 });
     assert.ok(!late.lines.includes('refused closed'), 'the project still has a window');
@@ -312,13 +312,13 @@ test('Close room, or closing the project\'s last window, turns every page away w
   }
 });
 
-test('a player sees the owner\'s tree and opens any doc in it at once, nothing hidden', async () => {
+test('a teammate sees the owner\'s tree and opens any doc in it at once, nothing hidden', async () => {
   const shared = await project();
   await mkdir(join(shared.folder, 'notes'));
   await writeFile(join(shared.folder, 'notes', 'b.md'), 'B\n');
   const host = await startHost(shared);
   try {
-    const sam = player('Sam');
+    const sam = teammate('Sam');
     const first = (await page(host, sam).call('state')).result;
     assert.deepEqual(first.place, { name: basename(shared.folder), path: 'plan.md' });
     const teammate = page(host, sam);
@@ -343,8 +343,8 @@ test('B6: two writers see each other\'s cursor move, within the promise, followi
   const shared = await project();
   const host = await startHost(shared);
   try {
-    const samKey = player('Sam');
-    const noor = page(host, player('Noor'));
+    const samKey = teammate('Sam');
+    const noor = page(host, teammate('Noor'));
     await noor.call('state');
     const sam = page(host, samKey);
     const state = (await sam.call('state')).result;
@@ -393,7 +393,7 @@ test('C8: a doc too big for the relay: its page says so, alone; the host and the
   await writeFile(join(shared.folder, 'big.txt'), `${'x'.repeat(99)}\n`.repeat(9 * 2 ** 20 / 100));
   const host = await startHost(shared);
   try {
-    const sam = player('Sam');
+    const sam = teammate('Sam');
     const other = page(host, sam);
     await other.call('state');
     const big = page(host, sam, 'big.txt');
@@ -405,7 +405,7 @@ test('C8: a doc too big for the relay: its page says so, alone; the host and the
   }
 });
 
-test('the relay serves the player\'s page from its own origin, and only it', async () => {
+test('the relay serves the teammate\'s page from its own origin, and only it', async () => {
   const served = await fetch(`${relay.origin}/team?room=${'0'.repeat(64)}`);
   assert.equal(served.status, 200);
   const html = await served.text();
@@ -626,7 +626,7 @@ test('C2 C6 D7 E1: the browser build asks a name, then shows the doc live at Edi
     await waitFor(async () => (await editable()) === 'true', 30_000, 'the doc, at Edit at once');
     assert.ok((await text()).includes('Ship the preview first.'));
     assert.equal((await save())[0], 'Saved');
-    const [noor] = (await host.call('room')).players;
+    const [noor] = (await host.call('room')).teammates;
     assert.equal(noor.name, 'Noor');
 
     await host.call('setLevel', { id: noor.id, level: 'read' });

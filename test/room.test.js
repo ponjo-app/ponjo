@@ -46,8 +46,8 @@ test('anyone with the link is in at once, at Edit; a taken name gets a number; n
 
   await room.join({ id: 'p_a', name: 'Ada' });
   for (const [id, name] of [['p_b', 'ada'], ['p_c', 'FAN'], ['p_d', 'Editor'], ['p_e', 'Clippy'], ['p_f', 'Ada']]) await room.join({ id, name });
-  assert.deepEqual(room.list().players.map((p) => [p.name, p.level]), [['Ada', 'write'], ['ada2', 'write'], ['FAN2', 'write'], ['Editor2', 'write'], ['Clippy2', 'write'], ['Ada3', 'write']]);
-  await room.join({ id: 'p_a', name: 'Someone' }); // again, as after a dropped line: the same player
+  assert.deepEqual(room.list().teammates.map((p) => [p.name, p.level]), [['Ada', 'write'], ['ada2', 'write'], ['FAN2', 'write'], ['Editor2', 'write'], ['Clippy2', 'write'], ['Ada3', 'write']]);
+  await room.join({ id: 'p_a', name: 'Someone' }); // again, as after a dropped line: the same teammate
   assert.equal(room.nameOf('p_a'), 'Ada');
   assert.deepEqual(room.names(), ['Ada', 'ada2', 'FAN2', 'Editor2', 'Clippy2', 'Ada3']);
   for (const who of [{ id: '', name: 'Ada' }, { id: 'p_g', name: 'no spaces' }, { id: 'p_g' }]) await assert.rejects(room.join(who), { code: 'bad_input' });
@@ -56,10 +56,10 @@ test('anyone with the link is in at once, at Edit; a taken name gets a number; n
   assert.equal(room.levelOf('p_a'), 'read');
   assert.throws(() => room.setLevel('p_a', 'owner'), { code: 'bad_input' });
   assert.throws(() => room.setLevel('p_z', 'read'), { code: 'not_found' });
-  assert.deepEqual([await files(settingsDir), await files(folder)], before, 'nothing about players on disk');
+  assert.deepEqual([await files(settingsDir), await files(folder)], before, 'nothing about teammates on disk');
 });
 
-test('a locked room takes no new id, but its players come back; a kicked id never does', async () => {
+test('a locked room takes no new id, but its teammates come back; a kicked id never does', async () => {
   const { room } = await newRoom();
   await room.open();
   await room.join({ id: 'p_a', name: 'Ada' });
@@ -73,11 +73,11 @@ test('a locked room takes no new id, but its players come back; a kicked id neve
   room.kick('p_b');
   assert.equal(room.levelOf('p_b'), null);
   await assert.rejects(room.join({ id: 'p_b', name: 'Bo' }), { code: 'kicked' });
-  assert.deepEqual(room.list().players.map((p) => p.name), ['Ada']);
+  assert.deepEqual(room.list().teammates.map((p) => p.name), ['Ada']);
   assert.throws(() => room.kick('p_b'), { code: 'not_found' });
 });
 
-test('Close room ends it: its pages turned away, its players and kicks gone; the next room has a new secret', async () => {
+test('Close room ends it: its pages turned away, its teammates and kicks gone; the next room has a new secret', async () => {
   const { room, lines } = await newRoom();
   await room.open();
   await room.join({ id: 'p_a', name: 'Ada' });
@@ -90,7 +90,7 @@ test('Close room ends it: its pages turned away, its players and kicks gone; the
   await room.open();
   assert.notEqual(lines[1].secret, lines[0].secret);
   await room.join({ id: 'p_a', name: 'Ada' });
-  assert.deepEqual(room.list(), { link: `page?room=${lines[1].secret}`, locked: false, players: [{ id: 'p_a', name: 'Ada', level: 'write' }] });
+  assert.deepEqual(room.list(), { link: `page?room=${lines[1].secret}`, locked: false, teammates: [{ id: 'p_a', name: 'Ada', level: 'write' }] });
 });
 
 test('a room the relay cannot take stays closed, and says so; no relay, no room', async () => {

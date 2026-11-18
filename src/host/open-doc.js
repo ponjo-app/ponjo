@@ -54,7 +54,7 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
   // ---- the buddies' files ----
 
   // A buddy can be called anything but another buddy's name here (not
-  // buddy `id`'s), its owner's or a player's.
+  // buddy `id`'s), its owner's or a teammate's.
   async function checkBuddy(fields, id = null) {
     try {
       checkBuddyPatch(fields);

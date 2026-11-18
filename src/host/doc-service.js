@@ -454,8 +454,8 @@ export async function openDocService(docPath, { folder = null, room = null, sett
 
   // The user's buddies and, in a project, the project's.
   const buddies = () => buddiesFor(folder, settingsDir);
-  // The names of the players in the project's room.
-  const playerNames = () => room?.names() ?? [];
+  // The names of the teammates in the project's room.
+  const teammateNames = () => room?.names() ?? [];
 
   // ---- undo ----
 
@@ -660,8 +660,8 @@ export async function openDocService(docPath, { folder = null, room = null, sett
     owner: {
       async saveSettings(patch) {
         if (patch && Object.hasOwn(patch, 'id')) throw new DocError('bad_input', 'your id cannot be changed');
-        // Your name is no buddy's or player's here, as theirs are not yours.
-        if (typeof patch?.name === 'string' && [...(await buddies()).map((b) => b.name), ...playerNames()].some((n) => sameName(n, patch.name))) throw new DocError('bad_input', `the name ${patch.name} is taken`);
+        // Your name is no buddy's or teammate's here, as theirs are not yours.
+        if (typeof patch?.name === 'string' && [...(await buddies()).map((b) => b.name), ...teammateNames()].some((n) => sameName(n, patch.name))) throw new DocError('bad_input', `the name ${patch.name} is taken`);
         try {
           return { settings: await updateSettings(patch, settingsDir) };
         } catch (error) {

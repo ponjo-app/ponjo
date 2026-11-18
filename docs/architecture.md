@@ -57,9 +57,9 @@ Every client talks to a doc the same way:
 
 ```
 call(type, arg, who)       who = { id, name, kind, level }, set by the host
-  read  → { text, comments, rev }
-  submit / comment / undo  → a change, landed in order
-subscribe(fromRev, fn)     every change after fromRev
+  state                    → { text, threads, rev, ... }; with { since }, the changes missed
+  submit / comment / undo  → a change, landed in order, told to all as an `ops` event
+subscribe(fn)              every change as it lands (a client in the doc host)
 ```
 
 `who` comes from the connection, never from the message. Levels are

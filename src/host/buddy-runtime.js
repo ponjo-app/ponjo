@@ -109,7 +109,7 @@ export async function createBuddyRuntime({ door, place, pathInProject, buddies, 
     const here = await buddies();
     const { lines, problem } = await door.readComments();
     const text = door.text();
-    const editors = (place().room?.list()?.players ?? []).filter((p) => p.level === 'write').map((p) => p.id);
+    const editors = (place().room?.list()?.teammates ?? []).filter((p) => p.level === 'write').map((p) => p.id);
     const { settings } = await readSettings(settingsDir);
     const before = JSON.stringify(stepsView());
     steps = refilled(steps, { cap: settings.steps, every: settings.refillEvery * 1000 }, performance.now());

@@ -66,7 +66,7 @@ change, timer or finished run only means "look again":
 
 ```
 look():
-  state = door.read() + notes
+  state = the doc (door) + notes
   { start, stop, steps, wakeAt } = plan(state + notes, now)
   stop the runs in stop, start the runs in start
   set the one timer to wakeAt: people's pause ending, the next step

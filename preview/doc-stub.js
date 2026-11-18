@@ -318,13 +318,13 @@ const calls = {
   },
   room: () => s.room,
   openRoom() {
-    s.room = { link: `${location.origin}${location.pathname.replace(/[^/]*$/, '')}team.html?room=${newId('r')}`, locked: false, players: [{ id: 'p_noor', name: 'Noor', level: 'write' }, { id: 'p_sam', name: 'Sam', level: 'read' }] };
+    s.room = { link: `${location.origin}${location.pathname.replace(/[^/]*$/, '')}team.html?room=${newId('r')}`, locked: false, teammates: [{ id: 'p_noor', name: 'Noor', level: 'write' }, { id: 'p_sam', name: 'Sam', level: 'read' }] };
     return changeRoom((r) => r);
   },
   closeRoom: () => changeRoom(() => null),
   lockRoom: ({ locked }) => changeRoom((r) => ({ ...r, locked })),
-  setLevel: ({ id, level }) => changeRoom((r) => ({ ...r, players: r.players.map((p) => (p.id === id ? { ...p, level } : p)) })),
-  kick: ({ id }) => changeRoom((r) => ({ ...r, players: r.players.filter((p) => p.id !== id) })),
+  setLevel: ({ id, level }) => changeRoom((r) => ({ ...r, teammates: r.teammates.map((p) => (p.id === id ? { ...p, level } : p)) })),
+  kick: ({ id }) => changeRoom((r) => ({ ...r, teammates: r.teammates.filter((p) => p.id !== id) })),
   // An image the doc shows, `src` as written in it: preview/demo's.
   image: ({ src }) => DEMO.images[decodeURIComponent(new URL(src, `file:///${current}`).pathname.slice(1))] ?? refuse('no such image'),
   history: () => ({ versions: [] }),

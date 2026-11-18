@@ -97,7 +97,7 @@ export const api = {
     return data ? `data:${type};base64,${data}` : null;
   },
   /**
-   * The owner's: the project's room, { link, locked, players: [{ id, name,
+   * The owner's: the project's room, { link, locked, teammates: [{ id, name,
    * level }] } while it is open, else null, and changing it, each answered
    * with the room then. `level` is 'read' or 'write'.
    */
@@ -108,6 +108,6 @@ export const api = {
   closeRoom: () => call('closeRoom'),
   lockRoom: (locked) => call('lockRoom', { locked }),
   setLevel: (id, level) => call('setLevel', { id, level }),
-  /** Turn player `id` out of the room, for as long as it is open. */
+  /** Turn teammate `id` out of the room, for as long as it is open. */
   kick: (id) => call('kick', { id }),
 };
