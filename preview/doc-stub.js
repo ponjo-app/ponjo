@@ -559,7 +559,8 @@ landed. It holds names, revs and thread ids, never the doc's text.
 
 - **Ask:** a person's comment names it and it has not replied after it.
 - **Watch:** a person turned on its watch, and since its last run people
-  changed the doc and paused 5 s, or another buddy changed it. A buddy's own
+  changed the doc and paused 5 s, or another buddy changed it and its run
+  has ended, so the watcher sees the comment with the edit. A buddy's own
   change never counts. A run woken by another buddy costs one step.
 
 ## A run
@@ -1055,7 +1056,8 @@ the buddy or the app does changes it. It is noted on this machine, \`{ by }\`,
 never in the comments, and the buddy runs as whoever set it may, while they
 may ask. A watcher is due once set, then on another member's change since
 its last run started: people's once they pause for 5 s (\`SETTLE_MS\`), a
-buddy's at once, for it lands whole. Its own change never wakes it. A
+buddy's once that buddy's run has ended: its edits land before its
+comments, and the watcher sees both. Its own change never wakes it. A
 person editing again while a run only a watch started is on ends that run
 with no answer, for it saw the doc as it was. Each run is told what
 changed since its last (\`lineChanges\`); it reads the doc's threads in the
@@ -2060,7 +2062,7 @@ for a window), **e2e** (the packaged app, under xvfb on Linux).
 - Who is due, as a pure function of the threads, the host's notes and the
   time (\`test/due.test.js\`): a comment asks until answered or given to a
   run; a watcher is due once turned on, on people's changes once they pause
-  (free), on another buddy's at once (a step), never on its own, each
+  (free), on another buddy's once its run ended (a step), never on its own, each
   verdict with why in words; the steps
   gain one every interval up to the cap, none with 0, all on Refill.
 - A buddy a person sets watching looks at once and opens a thread of its
