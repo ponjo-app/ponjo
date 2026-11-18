@@ -16,6 +16,12 @@
 // look up to think (an o), a nod along. Finishing work, it looks up at you,
 // pleased. Few, so each one reads.
 //
+// A face you can click (a button or a name card that is just the face) can be
+// poked: pressed, it squashes; let go, it springs back and reacts as its state
+// would. Ready, it hops and smiles ^ ^ at you; working, it looks up at you,
+// pleased, and goes back to work; asleep, it starts awake, wide-eyed, and
+// dozes off again.
+//
 // The body barely moves: a breath and the head's slow lean, from the neck.
 // The eyes lead and the head follows a beat later, turning most of the way:
 // the head shifts and rolls toward where it looks, and its features slide
@@ -28,7 +34,8 @@
 // screen or detached are skipped. With reduced motion a face still shows its
 // state's expression, but goes there at once and holds still. Faces read
 // their state from the nearest [data-presence] and a failed run from
-// .pj-failed on their .pj-avatar, so callers change nothing.
+// .pj-failed on their .pj-avatar, so callers change nothing. A face in a
+// [data-follow] looks at the pointer wherever it is on the page.
 //
 // Lengths are in the face's 100×100 box; angles in degrees.
 
@@ -45,6 +52,7 @@ const TUNE = {
   curve: [9, 0.85], open: [11, 0.75], round: [12, 1], width: [9, 0.85], mx: [6, 1],
   down: [5, 0.9], // the face lowered to the doc
   hat: [6, 0.45],
+  squash: [16, 0.3], // pressed; let go, it bounces
 };
 
 function step(s, [freq, damp], dt) {
@@ -119,6 +127,22 @@ const MOMENTS = {
   // when its state changes
   settle: { dur: 0.9, at: (x, e) => { x.nod += 1.6 * bump(e, 0.9); } },
   done: { dur: 1.9, at: (x, e) => { const k = bump(e, 1.9); if (k > 0.2) x.shape = 'happy'; x.gaze = { x: 0, y: -0.5 }; x.curve += 0.45 * k; x.open += 0.55 * k; x.width += 1.5 * k; } },
+  // poked
+  poke: { dur: 1.3, at: (x, e) => {
+    const k = bump(e, 1.3);
+    if (k > 0.2) x.shape = 'happy';
+    x.gaze = { x: 0, y: -0.5 };
+    x.curve += 0.5 * k; x.open += 0.5 * k; x.width += 1.5 * k;
+    x.down *= 1 - k; x.round *= 1 - k; x.mx *= 1 - k; // working, it looks up from the doc
+    x.nod -= 5 * bump(e, 0.4); // a hop
+  } },
+  startle: { dur: 1.6, at: (x, e) => {
+    const k = bump(e, 1.6);
+    x.lid = k > 0.1 ? 1 : x.lid;
+    x.gaze = { x: 0, y: -0.5 };
+    x.size += 0.35 * k; x.round += k; x.open += 0.4 * k; x.curve *= 1 - k; x.width = 3;
+    x.nod -= 3 * k + 3 * bump(e, 0.35); x.tilt *= 1 - k; // the head comes up with a jolt, then sinks back
+  } },
   wake: { dur: 1.4, at: (x, e) => { const k = bump(e, 1.4); x.lid += 0.2 * k; x.open += 0.35 * k; x.round += k; x.curve *= 1 - k; x.width = 3; } },
   // a failed run: a wince and a shake of the head, then a frown that eases
   oops: { dur: 3, at: (x, e) => {
@@ -275,14 +299,14 @@ function tick(face, now, dt) {
     else m.at(x, e, face.moment.dir);
   }
 
-  // the pointer: a face near it looks at you, and smiles a little
+  // the pointer: a face near it (or one that follows it) looks at you, and smiles a little
   if (pointer && state !== 'away') {
     const r = face.svg.getBoundingClientRect();
     const dx = pointer.x - (r.left + r.width / 2), dy = pointer.y - (r.top + r.height / 2);
     const d = Math.hypot(dx, dy);
     const near = Math.max(r.width * 3, 140);
-    if (d < near) {
-      const warm = 1 - d / near;
+    if (d < near || face.svg.closest('[data-follow]')) {
+      const warm = Math.max(0, 1 - d / near);
       const pull = Math.min(1, d / (r.width * 0.9));
       if (state !== 'working' || warm > 0.6) x.gaze = { x: (dx / (d || 1)) * 5 * pull, y: (dy / (d || 1)) * 3.5 * pull };
       if (x.shape === 'open') x.curve += 0.3 * warm;
@@ -326,6 +350,7 @@ function aim(face, x, lean, bob, now = 0) {
   } else s.lid.t = now < face.shut && face.shape === 'open' ? 0 : x.lid;
   for (const k of ['size', 'curve', 'open', 'round', 'width', 'mx', 'down']) s[k].t = x[k];
   s.hat.t = s.tilt.x; // the hat chases the head, late and loose
+  s.squash.t = face.pressed && !reduce ? 1 : 0;
 }
 
 function paint(face, breath) {
@@ -333,7 +358,7 @@ function paint(face, breath) {
   const hx = s.headX.x, hy = s.headY.x;
   // the head turns from the neck: it shifts and rolls a little toward where
   // it looks and nods; the body only breathes
-  face.pose.setAttribute('transform', `translate(${f(hx * 0.6)} ${f(s.nod.x + hy * 0.4)}) rotate(${f(s.tilt.x + hx * 1.2)} 50 70) translate(50 97) scale(${f(1 - breath * 0.004, 1000)} ${f(1 + breath * 0.006, 1000)}) translate(-50 -97)`);
+  face.pose.setAttribute('transform', `translate(${f(hx * 0.6)} ${f(s.nod.x + hy * 0.4)}) rotate(${f(s.tilt.x + hx * 1.2)} 50 70) translate(50 97) scale(${f(1 - breath * 0.004 + s.squash.x * 0.1, 1000)} ${f(1 + breath * 0.006 - s.squash.x * 0.14, 1000)}) translate(-50 -97)`);
   // the features slide farther than the outline, round the front of the head
   face.look.setAttribute('transform', `translate(${f(hx)} ${f(hy * 0.9 + s.down.x)})`);
   face.paint({
@@ -356,6 +381,21 @@ if (typeof document !== 'undefined') {
   document.addEventListener('pointermove', move, { passive: true });
   document.addEventListener('pointerdown', move, { passive: true });
   document.addEventListener('pointerleave', () => { pointer = null; });
+
+  // a poke: on a face you can click, the press squashes it and the click sets it off
+  const poked = (e) => {
+    const hit = e.target.closest?.('button, [data-namecard]');
+    const avatar = hit?.matches('.pj-avatar') ? hit : hit?.children.length === 1 && hit.firstElementChild.matches('.pj-avatar') ? hit.firstElementChild : null;
+    return avatar ? [...faces].filter((face) => avatar.contains(face.svg)) : [];
+  };
+  const release = () => { for (const face of faces) face.pressed = false; };
+  document.addEventListener('pointerdown', (e) => { for (const face of poked(e)) face.pressed = true; }, { capture: true, passive: true });
+  document.addEventListener('pointerup', release, { capture: true, passive: true });
+  document.addEventListener('pointercancel', release, { capture: true, passive: true });
+  document.addEventListener('click', (e) => {
+    if (reduce) return;
+    for (const face of poked(e)) begin(face, presenceOf(face) === 'away' ? 'startle' : 'poke', performance.now());
+  }, { capture: true, passive: true });
 }
 
 const f = (n, k = 100) => (Math.round(n * k) / k).toString();
