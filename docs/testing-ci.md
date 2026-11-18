@@ -82,6 +82,11 @@ for a window), **e2e** (the packaged app, under xvfb on Linux).
   is not run again for it until someone writes there.
 - A look that cannot read the asks is tried again, later each time, with
   no event, and not again once one can.
+- Who is due, as a pure function of the threads, the host's notes and the
+  time (`test/due.test.js`): a comment asks until answered or given to a
+  run; a watcher is due once turned on, on people's changes once they pause
+  (free), on another buddy's at once (a step), never on its own; the steps
+  gain one every interval up to the cap, none with 0, all on Refill.
 - A buddy a person sets watching looks at once and opens its watch thread
   on the whole doc; then it runs once people's edits pause 5 s, not before,
   told what changed, saying nothing when nothing is due; set off, it runs

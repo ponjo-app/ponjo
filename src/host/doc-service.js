@@ -9,23 +9,25 @@
 // through Room (room.js), at the same door.
 
 import { createHash } from 'node:crypto';
-import { appendFile, mkdir, open, readFile, readdir, realpath, rm, stat } from 'node:fs/promises';
-import { basename, dirname, join, relative, sep } from 'node:path';
+import { mkdir, readFile, realpath, stat } from 'node:fs/promises';
+import { basename, dirname, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createAnchor, locate } from '../core/anchor.js';
-import { appendedComments, askedBy, movedAnchor, newComment, newId, parseSidecar, peopleOf, serializeSidecar, threadsOf, validAnchor } from '../core/comments.js';
+import { appendedComments, movedAnchor, newComment, newId, parseSidecar, peopleOf, serializeSidecar, threadsOf, validAnchor } from '../core/comments.js';
 import { sameName } from '../core/mentions.js';
 import { BuddyError, buddiesHere, checkBuddyPatch } from '../core/buddies.js';
 import { DEFAULT_SETTINGS, SettingsError } from '../core/settings.js';
-import { lineChanges, merge3 } from '../core/diff.js';
+import { merge3 } from '../core/diff.js';
+import { SETTLE_MS, whoIsDue } from '../core/due.js';
+import { filled, nextStepAt, refilled, take } from '../core/bucket.js';
 import { apply, diffOps, mapOffset, transform } from '../core/ot.js';
 import { PROTOCOL } from '../core/protocol.js';
-import { StoreError, formFor, hashText, moveDoc, readDoc, readSidecarText, sidecarPath, writeAtomic, writeDoc, writeSidecar } from '../store/files.js';
+import { StoreError, formFor, hashText, moveDoc, readDoc, readSidecarText, sidecarPath, writeDoc, writeSidecar } from '../store/files.js';
 import { VERSION_ID, moveHistory, noteTaken, noteWatching, noteWritten, readHistory, readTaken, readVersion, readWatching, recordVersion, writtenEdits } from '../store/history.js';
 import { configDir, defaultName, ownerOf, readSettings, settingsWithId, updateSettings, watchSettings } from '../store/settings.js';
 import { firstBuddies, projectBuddiesDir, readBuddies, removeBuddy, userBuddiesDir, writeBuddy } from '../store/buddies.js';
 import { secretTails } from '../store/secrets.js';
-import { readRuns, readUsage } from '../store/runs.js';
+import { logRun, readTrace, readUsage, tracedRuns } from '../store/runs.js';
 import { watchDoc, watchFolder } from '../store/watch.js';
 import { agentsDir, installAgents, listAgents, pickedAgent, SHIPPED_AGENTS } from '../store/agents.js';
 import { linkURL, projectService, saveImage } from './project-service.js';
@@ -475,16 +477,12 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
     return buddiesHere(folder ? await readBuddies(projectBuddiesDir(folder)) : [], await readBuddies(userBuddiesDir(settingsDir)));
   }
 
-  // The buddies asked now, each with its inbox (docs/architecture.md, Who
-  // answers): the threads that ask it and it has not answered, oldest
-  // first, and who asked. Only the comments of those who may write ask: the
-  // owner and the players who can edit, and only those this host took
-  // (comment), as they were taken: one that reached the sidecar another way
-  // is shown but asks no one. A comment a run of the buddy was given asks
-  // it no more, though the run posted nothing there (`looked`). A buddy
-  // watching the doc is in too, while whoever turned it on may ask, with its
-  // watch thread and what changed since it last looked (`watch`); `due`
-  // once it was turned on, or people's edits paused, since its last run.
+  // The buddies asked or watching now, each with its inbox (whoIsDue, in
+  // src/core/due.js; Runner's asks). Only the comments of those who may
+  // write ask: the owner and the players who can edit, and only those this
+  // host took (comment), as they were taken: one that reached the sidecar
+  // another way is shown but asks no one. A run woken by another buddy's
+  // change only takes a step (takeStep).
   async function asks() {
     if (closed) return [];
     const here = await buddies();
@@ -494,53 +492,14 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
     const editors = (room?.list()?.players ?? []).filter((p) => p.level === 'write').map((p) => p.id);
     const askers = [(await me()).id, ...editors];
     const taken = await readTaken(docPath, settingsDir);
-    const all = lines.map((l) => l.comment).filter(Boolean);
-    const inboxes = new Map(); // buddy id → { threads, askers, asked, watch }
-    const asking = new Set(); // `${buddy} ${thread}` of each ask
-    const open = new Map(); // thread id → the thread, unresolved
-    for (const thread of threadsOf(all, here.map(({ id, name }) => ({ id, name })), text)) {
-      if (!thread.resolved) open.set(thread.id, thread);
-      for (const [id, ask] of askedBy(thread, askers, taken)) {
-        asking.add(`${id} ${thread.id}`);
-        if (Date.parse(ask.at) <= (looked.get(id)?.get(thread.id) ?? -Infinity)) continue;
-        const inbox = inboxes.get(id) ?? { threads: [], askers: new Set() };
-        inbox.threads.push(thread);
-        inbox.askers.add(ask.by.id);
-        inbox.asked = true;
-        inboxes.set(id, inbox);
-      }
-    }
-    for (const [id, w] of watching) {
-      if (!here.some((b) => b.id === id) || !askers.includes(w.by)) continue;
-      const inbox = inboxes.get(id) ?? { threads: [], askers: new Set() };
-      const thread = w.thread !== null && open.has(w.thread) ? w.thread : null; // resolved or gone: it starts another
-      if (thread !== null && !inbox.threads.some((t) => t.id === thread)) inbox.threads.push(open.get(thread));
-      inbox.askers.add(w.by);
-      // Due on its watch turned on, or on another's change since it last
-      // looked: people's once they pause, free; a buddy's at once, for a
-      // step (takeStep).
-      let byPeople = w.looked === null;
-      let byBuddy = false;
-      for (const [by, at] of changedAt) {
-        if (by === id || at <= w.looked) continue;
-        if (by === null) byPeople ||= performance.now() - at >= SETTLE_MS;
-        else byBuddy = true;
-      }
-      inbox.watch = { due: byPeople || byBuddy, paid: !byPeople && byBuddy, thread, changes: w.base === null ? null : lineChanges(w.base, text) };
-      inboxes.set(id, inbox);
-    }
+    const threads = threadsOf(lines.map((l) => l.comment).filter(Boolean), here.map(({ id, name }) => ({ id, name })), text);
+    const { inboxes, asking } = whoIsDue({ buddies: here, threads, askers, taken, looked, watching, changedAt, text, now: performance.now() });
     refill((await readSettings(settingsDir)).settings);
     // A failure is shown while its thread still asks the buddy.
     let gone = false;
     for (const [id, failed] of failures) for (const thread of failed.keys()) if (!asking.has(`${id} ${thread}`)) gone = failed.delete(thread);
     if (gone) broadcastAgents();
-    return [...inboxes].map(([id, { threads, askers: by, asked = false, watch: w = null }]) => ({
-      buddy: here.find((b) => b.id === id), buddies: here, threads, askers: [...by],
-      watch: w && { thread: w.thread, changes: w.changes },
-      due: asked || Boolean(w?.due),
-      watchOnly: !asked && Boolean(w),
-      ...(!asked && w?.paid ? { pay: takeStep } : {}),
-    })).filter((inbox) => inbox.buddy); // a thread's opener may be gone
+    return inboxes.map(({ asked, paid, ...inbox }) => ({ ...inbox, buddies: here, watchOnly: !asked && inbox.watch !== null, ...(paid ? { pay: takeStep } : {}) }));
   }
   // What each buddy's runs were given: buddy → Map(thread → the time of the
   // last comment it was given there). A run that answered nothing there, or
@@ -580,49 +539,41 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
   // Refill (refillSteps). A run woken by another buddy's change takes one;
   // with none left it waits, until one comes (a timer, only then) or someone
   // refills them. In memory: a restart fills it.
-  const bucket = { left: null, cap: DEFAULT_SETTINGS.steps, every: DEFAULT_SETTINGS.refillEvery * 1000, at: performance.now(), timer: null };
-  // The bucket as `settings` make it now, refilled for the time gone by.
+  let bucket = { left: null, cap: DEFAULT_SETTINGS.steps, every: DEFAULT_SETTINGS.refillEvery * 1000, at: performance.now() };
+  let stepTimer = null;
+  // The bucket as `settings` make it now.
   function refill({ steps, refillEvery }) {
     const before = JSON.stringify(stepsView());
-    Object.assign(bucket, { cap: steps, every: refillEvery * 1000 });
-    if (bucket.left === null || bucket.left > steps) bucket.left = steps;
-    const now = performance.now();
-    if (bucket.left >= steps || !bucket.every) bucket.at = now;
-    else {
-      const gained = Math.floor((now - bucket.at) / bucket.every);
-      bucket.left = Math.min(steps, bucket.left + gained);
-      bucket.at = bucket.left >= steps ? now : bucket.at + gained * bucket.every;
-    }
+    bucket = refilled(bucket, { cap: steps, every: refillEvery * 1000 }, performance.now());
     if (JSON.stringify(stepsView()) !== before) emit('steps', stepsView());
   }
   // Take a step for a run woken by another buddy: false, with a look set for
   // when the next one comes, when none is left.
   function takeStep() {
-    if (bucket.left < 1) {
-      if (bucket.every && !bucket.timer) {
-        bucket.timer = setTimeout(() => {
-          bucket.timer = null;
-          runner.reconcile();
-        }, Math.max(0, bucket.at + bucket.every - performance.now()) + 5);
-        bucket.timer.unref?.();
-      }
-      return false;
+    const now = performance.now();
+    const step = take(bucket, now);
+    const next = nextStepAt(bucket);
+    if (!step.ok && next !== null && !stepTimer) {
+      stepTimer = setTimeout(() => {
+        stepTimer = null;
+        runner.reconcile();
+      }, Math.max(0, next - now) + 5);
+      stepTimer.unref?.();
     }
-    if (bucket.left >= bucket.cap) bucket.at = performance.now();
-    bucket.left -= 1;
+    if (!step.ok) return false;
+    bucket = step.bucket;
     emit('steps', stepsView());
     return true;
   }
   // The steps as the windows show them: { left, cap, next (when the next
   // comes, by the wall clock, or null) }.
   function stepsView() {
-    const next = bucket.left !== null && bucket.left < bucket.cap && bucket.every ? Date.now() + Math.max(0, bucket.at + bucket.every - performance.now()) : null;
-    return { left: bucket.left ?? bucket.cap, cap: bucket.cap, next: next && Math.round(next / 1000) * 1000 };
+    const next = nextStepAt(bucket);
+    return { left: bucket.left ?? bucket.cap, cap: bucket.cap, next: next === null ? null : Math.round((Date.now() + Math.max(0, next - performance.now())) / 1000) * 1000 };
   }
   // Someone refills the steps: all of them, and the buddies waiting go on.
   function refillSteps() {
-    bucket.left = bucket.cap;
-    bucket.at = performance.now();
+    bucket = filled(bucket, performance.now());
     emit('steps', stepsView());
     runner.reconcile();
     return {};
@@ -1165,7 +1116,7 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
       } finally {
         clearTimeout(retry);
         clearTimeout(settling);
-        clearTimeout(bucket.timer);
+        clearTimeout(stepTimer);
         stopWatching();
         stopWatchingSettings();
         stopWatchingProjectBuddies();
@@ -1184,8 +1135,6 @@ const RETRY_MS = 500;
 const MAX_RETRY_MS = 10_000;
 // Typing is a version once it pauses this long.
 const SAVE_DELAY_MS = 800;
-// People's edits to a doc have paused once none came for this long: each buddy watching it runs then.
-const SETTLE_MS = 5000;
 // A file changed outside is taken once it is unchanged this long, waiting at most STILL_TRIES times.
 const STILL_MS = 50;
 const STILL_TRIES = 20;
@@ -1224,52 +1173,4 @@ async function fileHash(path) {
   } catch {
     return null;
   }
-}
-
-// A line per run in the config folder's logs/runs.jsonl: what a slow or
-// missing reply was. With Trace runs on, its trace too (runner.js), in
-// logs/traces/<run>.json, the newest TRACES kept. Then each log there (an
-// agent's too) past LOG_LIMIT keeps its newest half, from a line's start:
-// old runs are worth less. Never fails a run.
-const LOG_LIMIT = 10 * 1024 * 1024;
-const TRACES = 200;
-async function logRun(dir, entry, trace) {
-  const logs = join(dir, 'logs');
-  try {
-    await mkdir(logs, { recursive: true });
-    await appendFile(join(logs, 'runs.jsonl'), `${JSON.stringify(entry)}\n`);
-    if ((await readSettings(dir)).settings.trace) await keepTrace(join(logs, 'traces'), { ...entry, ...trace });
-    for (const name of (await readdir(logs)).filter((n) => n.endsWith('.jsonl'))) {
-      const path = join(logs, name);
-      const { size } = await stat(path);
-      if (size <= LOG_LIMIT) continue;
-      const file = await open(path);
-      const { buffer } = await file.read({ buffer: Buffer.alloc(LOG_LIMIT / 2), position: size - LOG_LIMIT / 2 }).finally(() => file.close());
-      await writeAtomic(path, buffer.subarray(buffer.indexOf('\n') + 1));
-    }
-  } catch (error) {
-    console.error('Could not log a run:', error);
-  }
-}
-
-async function keepTrace(folder, trace) {
-  await mkdir(folder, { recursive: true });
-  await writeAtomic(join(folder, `${trace.run}.json`), JSON.stringify(trace)); // whole, for a window reading it meanwhile
-  const names = (await readdir(folder)).filter((name) => name.endsWith('.json'));
-  if (names.length <= TRACES) return;
-  const kept = await Promise.all(names.map(async (name) => ({ name, at: (await stat(join(folder, name))).mtimeMs })));
-  kept.sort((a, b) => b.at - a.at);
-  await Promise.all(kept.slice(TRACES).map(({ name }) => rm(join(folder, name), { force: true })));
-}
-
-// The runs of the doc at `docPath` that have a trace, as runs.jsonl has them, newest first.
-async function tracedRuns(dir, docPath) {
-  const traced = new Set(await readdir(join(dir, 'logs', 'traces')).catch(() => []));
-  return (await readRuns(dir)).filter((entry) => entry.doc === docPath && traced.has(`${entry.run}.json`)).reverse();
-}
-
-// Run `run`'s trace (logRun), or null.
-async function readTrace(dir, run) {
-  if (typeof run !== 'string' || !/^r_[a-z0-9]+$/.test(run)) return null;
-  return JSON.parse(await readFile(join(dir, 'logs', 'traces', `${run}.json`), 'utf8').catch(() => 'null'));
 }
