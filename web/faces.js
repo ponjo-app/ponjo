@@ -26,6 +26,7 @@ let slots = colorSlots([]);
 let looks = new Map();
 
 let names = new Map(); // buddy id → its name now
+let watchers = new Set(); // the ids of the buddies watching this doc
 let buddyIds = [];
 let people = []; // the names of the people in this doc
 let owner = null; // the owner's id: the one person with a crown
@@ -37,9 +38,10 @@ export function setOwner(id) {
 
 export const isOwner = (id) => id === owner;
 
-/** The buddies in this doc ([{ id, name }]), so their faces and colours differ. */
+/** The buddies in this doc ([{ id, name, watching }]), so their faces and colours differ, and watchers wear glasses. */
 export function setBuddies(buddies) {
   names = new Map(buddies.map((b) => [b.id, b.name]));
+  watchers = new Set(buddies.filter((b) => b.watching).map((b) => b.id.toLowerCase()));
   buddyIds = buddies.map((b) => b.id);
   looks = spread([...colorSlots(buddyIds).keys()]);
   recolor();
@@ -79,12 +81,12 @@ function colorOf(name) {
 let ids = 0; // gradient ids, unique per page
 
 /** @param {string} id @param look its parts, when not the ones it draws (the site's mascot wears the logo's) */
-export const agentFace = (id, look = looks.get(id.toLowerCase()) ?? drawn(id)) => face(id, look);
+export const agentFace = (id, look = looks.get(id.toLowerCase()) ?? drawn(id)) => face(id, look, look.body, null, () => watchers.has(id.toLowerCase()));
 
 /** @param {string} name @param {string} id */
 export const personFace = (name, id = name) => face(name, drawn(name), 'circle', isOwner(id) ? 'crown' : 'tophat');
 
-function face(name, look, kind = look.body, hat = null) {
+function face(name, look, kind = look.body, hat = null, watches = undefined) {
   const body = drawBody(kind, name);
   const svg = node('svg', { viewBox: '0 0 100 100', class: 'pj-face', 'aria-hidden': 'true' });
   const id = `pj-face-${++ids}`;
@@ -108,7 +110,7 @@ function face(name, look, kind = look.body, hat = null) {
   pose.append(tilted);
   svg.append(defs, pose);
   const parts = drawFace(features, look, body.cy, colorOf(name)[2]);
-  liven(svg, { pose, look: features, hat: lag, ...parts }, name);
+  liven(svg, { pose, look: features, hat: lag, ...parts }, name, watches);
   return svg;
 }
 
@@ -274,9 +276,9 @@ function drawFace(g, look, cy, hue) {
   const paintEyes = [-1, 1].map((side) => eyeOf(eyes, 50 + side * GAP, eyeY, side));
   g.append(eyes);
 
-  // Glasses it wears while it watches the doc (app.css), and only then: no
-  // face wears glasses of its own. Round lenses on its eyes, apart, with a
-  // bridge over the nose.
+  // Glasses a buddy wears for as long as it watches the doc, whatever it is
+  // doing (life.js, app.css), and only then: no face wears glasses of its
+  // own. Round lenses on its eyes, apart, with a bridge over the nose.
   const watch = node('g', { class: 'pj-face-watch' });
   const half = 17;
   for (const side of [-1, 1]) watch.append(node('circle', { cx: f(50 + side * half), cy: f(eyeY), r: '12', fill: 'rgba(255,255,255,0.28)', stroke: INK, 'stroke-width': '4' }));

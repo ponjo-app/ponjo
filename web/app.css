@@ -147,9 +147,9 @@ kbd { font: 500 11px/1 var(--ui-font); padding: 2px 6px; border-radius: 4px; bor
    little, and one away is greyed; one in the header you point at grows. */
 :where(.pj-agent-face, .pj-me):hover .pj-avatar { transform: scale(1.1); }
 [data-presence="working"] .pj-avatar { transform: scale(1.12); }
-/* A buddy watching the doc wears its glasses (faces.js) between its runs. */
+/* A buddy watching the doc wears its glasses (faces.js), whatever it is doing. */
 .pj-face-watch { display: none; }
-[data-presence="watching"] .pj-face-watch { display: inline; }
+.pj-face-watcher .pj-face-watch { display: inline; }
 [data-presence="away"] .pj-avatar { filter: grayscale(1); opacity: 0.45; }
 .pj-failed .pj-face-body { animation: pj-red 1s; }
 @keyframes pj-red { 0%, 70% { fill: var(--red); } }

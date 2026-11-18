@@ -186,7 +186,7 @@ export function createPeople({ root, invite, panel, me, getName, getId = () => n
       ...here.filter((p) => !isMe(p)).map((p) => ({ id: p.id, name: p.name, mode: !p.doc ? 'away' : movedAt.get(p.id) > now - WORKING_MS ? 'working' : 'idle' })),
       ...(owner() ? room?.teammates ?? [] : []).filter((p) => !here.some((h) => h.id === p.id)).map((p) => ({ id: p.id, name: p.name, mode: 'away' })),
     ].map((p) => ({ ...p, key: `person:${p.id}`, kind: 'human' }));
-    const buddies = agentsHere().map((name) => ({ id: idOf(name), name, mode: modeOf(statusOf(name)), failed: flinching(idOf(name)), key: `agent:${idOf(name)}`, kind: 'agent' }));
+    const buddies = agentsHere().map((name) => ({ id: idOf(name), name, mode: modeOf(statusOf(name)), watching: Boolean(statusOf(name)?.watching), failed: flinching(idOf(name)), key: `agent:${idOf(name)}`, kind: 'agent' }));
     const faces = [...people, ...buddies];
     for (const face of faces) if (since.get(face.key)?.[0] !== face.mode) since.set(face.key, [face.mode, now]);
     const rank = (face) => RANK[face.mode];
@@ -212,14 +212,14 @@ export function createPeople({ root, invite, panel, me, getName, getId = () => n
     if (agentShown() && !agentsHere().some((n) => same(n, agentShown())) && !editing) close();
   }
 
-  function queued({ id, name, kind, mode, failed, key }) {
+  function queued({ id, name, kind, mode, watching, failed, key }) {
     const wrap = el('span', 'pj-agent');
     wrap.dataset.key = key;
     wrap.dataset.presence = mode;
     const face = el('button', 'pj-agent-face');
     face.type = 'button';
     face.dataset[kind === 'agent' ? 'agent' : 'person'] = name;
-    const label = kind === 'agent' ? LABELS[mode] : `${isOwner(id) ? 'Owner' : 'Teammate'} · ${PERSON[mode]}`;
+    const label = kind === 'agent' ? (watching && mode === 'idle' ? 'Watching' : LABELS[mode]) : `${isOwner(id) ? 'Owner' : 'Teammate'} · ${PERSON[mode]}`;
     face.setAttribute('aria-label', `${name} · ${label}`);
     face.append(avatar(name, kind, false, id));
     if (failed) face.firstChild.classList.add('pj-failed');
@@ -496,7 +496,7 @@ export function createPeople({ root, invite, panel, me, getName, getId = () => n
     // Click the name to edit it right there.
     who.append(status && !viewOnly ? inPlace(status, 'Name') : el('div', 'pj-profile-name', name));
     if (viewOnly && introOf(name)) who.append(el('div', 'pj-profile-slogan', introOf(name)));
-    const standing = status?.watching && status.watchFailed && modeOf(status) === 'watching' ? 'Watch failed' : status ? (STANDING[modeOf(status)] ?? WHERE[status.where]) : 'Not in this doc';
+    const standing = !status ? 'Not in this doc' : modeOf(status) === 'working' ? 'Working…' : status.watching ? (status.watchFailed ? 'Watch failed' : 'Watching this doc') : WHERE[status.where];
     who.append(el('div', 'pj-profile-sub pj-profile-standing', standing));
     head.append(pic, who);
     return head;
@@ -725,12 +725,11 @@ export function createPeople({ root, invite, panel, me, getName, getId = () => n
 const FAILED_MS = 1000; // how long a failed run's moment plays (app.css: .pj-failed)
 
 // Where a buddy stands in this doc, on its card under its name.
-const STANDING = { working: 'Working…', watching: 'Watching this doc', away: 'Not running here' };
 const WHERE = { user: 'In all your docs', project: "This project's" };
 
-const LABELS = { working: 'Working…', watching: 'Watching', idle: 'Ready', away: 'Not here' };
+const LABELS = { working: 'Working…', idle: 'Ready', away: 'Not here' };
 const PERSON = { working: 'Working…', idle: 'In this doc', away: 'Away' };
-const RANK = { working: 0, watching: 1, idle: 1, away: 2 }; // the queue's order
+const RANK = { working: 0, idle: 1, away: 2 }; // the queue's order
 
 /** How long a person is at work after they move or type: while their cursor is named. */
 export const WORKING_MS = 3000;
@@ -738,11 +737,11 @@ export const WORKING_MS = 3000;
 // What a teammate may do, under their name.
 const LEVEL = { read: 'Can read', write: 'Can edit' };
 
-/** 'working', 'watching' (it watches the doc), 'idle' (answers when @mentioned), or 'away' (no status: not run here). */
+/** 'working', 'idle' (ready: it answers when @mentioned, or looks when it watches the doc), or 'away' (no status: not run here). */
 export function modeOf(status) {
   if (!status) return 'away';
   if (status.state === 'running') return 'working';
-  return status.watching ? 'watching' : 'idle';
+  return 'idle';
 }
 
 // A small icon-only button, labelled for screen readers and on hover.
