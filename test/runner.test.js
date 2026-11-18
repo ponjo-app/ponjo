@@ -221,6 +221,13 @@ test('a run whose agent cannot start fails once: it is not run again until asked
     await sleep(500);
     assert.equal((await runLog(settingsDir)).length, 1, 'not again on its own');
     assert.equal((await runLog(settingsDir))[0].outcome, 'failed');
+    const agentLog = () => readFile(join(settingsDir, 'logs', 'agents.log'), 'utf8').catch(() => '');
+    await until(async () => /look · run/.test(await agentLog()), 'the look after it');
+    const log = await agentLog();
+    assert.match(log, /^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d\.\d{3}  \S+\.md  look · asked to\n  X  due: asked in c_asked0001 · started (r_\w+)\n/, 'the agent log: why it looked, and why the buddy ran');
+    const [, run] = log.match(/started (r_\w+)/);
+    assert.match(log, new RegExp(`  run ${run} of X ended: failed: .*no such agent.* · Failed, 0 comments\n`));
+    assert.match(log, new RegExp(`look · run ${run} of X ended\n  X  not due: no ask, not watching\n`), 'given that ask, it is not asked again');
   });
 });
 

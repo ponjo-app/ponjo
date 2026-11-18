@@ -38,12 +38,12 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
     levelOf: async (id) => (id === (await me()).id ? 'owner' : room?.levelOf(id) ?? null),
   });
   // Every change to the doc: an edit to its text, by whom; or its comments.
-  const stopHearing = doc.subscribe((change) => (change.comments ? runtime.look() : runtime.changed(change.by.kind === 'buddy' ? change.by.id : null)));
+  const stopHearing = doc.subscribe(runtime.heard);
 
   // What else may change what is asked: the buddies' files, who may ask, the agent.
   const stopWatchingUserBuddies = watchFolder(userBuddiesDir(settingsDir), runtime.sync);
   let stopWatchingProjectBuddies = folder ? watchFolder(projectBuddiesDir(folder), runtime.sync) : () => {};
-  let stopFollowingRoom = room?.onChange(() => runtime.look()) ?? (() => {});
+  let stopFollowingRoom = room?.onChange(() => runtime.look('who is in the room changed')) ?? (() => {});
   let agent = agentOf((await readSettings(settingsDir)).settings);
   const stopWatchingSettings = watchSettings(async () => {
     const was = agent;
@@ -143,7 +143,7 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
       room = nextRoom;
       doc.setFolder(next, nextRoom);
       stopFollowingRoom();
-      stopFollowingRoom = room?.onChange(() => runtime.look()) ?? (() => {});
+      stopFollowingRoom = room?.onChange(() => runtime.look('who is in the room changed')) ?? (() => {});
       stopWatchingProjectBuddies();
       stopWatchingProjectBuddies = folder ? watchFolder(projectBuddiesDir(folder), runtime.sync) : () => {};
       runtime.sync();

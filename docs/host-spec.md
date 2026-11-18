@@ -90,7 +90,7 @@ The code says turn nowhere: a buddy answering is a run.
 | `secrets.bin` | config folder | agents' secret settings, encrypted with the system keychain | this user's |
 | `state.json` | config folder | recent docs and folders, window bounds | cache |
 | `history/<doc>/` | config folder | the doc's versions; the window edits its file was last written with; the comments this host took; the buddies watching it | this machine's |
-| `logs/` | config folder | `runs.jsonl`, a line per run; with Trace runs on, `traces/<run>.json` | this machine's |
+| `logs/` | config folder | `runs.jsonl`, a line per run; `agents.log`, why each look started what it did; with Trace runs on, `traces/<run>.json` | this machine's |
 
 The config folder is `~/Library/Application Support/Ponjo/` on macOS. Only
 the app writes it. Every file is written whole: a temporary file in the
@@ -388,13 +388,15 @@ one), the steps, and the runs going. It hears every change in the log: it
 notes `changedAt`, and a person's ends the runs only a watch started. Then,
 and whenever its one timer fires, it reads the doc and asks the rules:
 `plan({ threads, rev, changedAt, notes, running, steps, now })` → `{
-start, stop, spend, wakeAt }`. It starts and ends runs as told and sets its
+start, stop, steps, wakeAt, why }`, `why` each buddy's verdict in words. It starts and ends runs as told and sets its
 timer to `wakeAt`: the soonest of people's pause ending, the next step
 coming, and a failed read tried again (1 s, twice as long each time up to
 30 s). The same look at any time finds the same, so a look also comes
 every minute on the clock: what it starts while nothing was set to wake a
 look, an event that was lost should have, and it says so in the log, a bug
-to fix. Nothing else runs a buddy. A buddy has one run at a time in a doc, given every thread that asks
+to fix. Each look writes to `logs/agents.log` what woke it and each
+buddy's verdict, and each run's end a line: how it ended and what landed;
+never the doc's text. It is trimmed like the other logs. Nothing else runs a buddy. A buddy has one run at a time in a doc, given every thread that asks
 it and it has not been given; a comment written while it runs is for the
 next.
 
