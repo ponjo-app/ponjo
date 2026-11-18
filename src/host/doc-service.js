@@ -13,11 +13,12 @@ import { mkdir, readFile, realpath, stat } from 'node:fs/promises';
 import { basename, dirname, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createAnchor, locate } from '../core/anchor.js';
-import { appendedComments, movedAnchor, newComment, newId, parseSidecar, peopleOf, serializeSidecar, threadsOf, validAnchor } from '../core/comments.js';
+import { movedAnchor, newComment, newId, parseSidecar, peopleOf, serializeSidecar, threadsOf, validAnchor } from '../core/comments.js';
 import { sameName } from '../core/mentions.js';
 import { BuddyError, buddiesHere, checkBuddyPatch } from '../core/buddies.js';
 import { DEFAULT_SETTINGS, SettingsError } from '../core/settings.js';
 import { merge3 } from '../core/diff.js';
+import { toChanges } from '../core/translate.js';
 import { SETTLE_MS, whoIsDue } from '../core/due.js';
 import { filled, nextStepAt, refilled, take } from '../core/bucket.js';
 import { apply, diffOps, mapOffset, transform } from '../core/ot.js';
@@ -677,7 +678,6 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
     const threads = threadsOf(all, [], text);
     const open = new Map(threads.filter((t) => !t.resolved).map((t) => [t.id, t]));
     const asking = threadIds.filter((id) => open.has(id));
-    const kept = (c) => c.thread === undefined || open.has(c.thread);
     const failedHere = failures.get(buddyId) ?? new Map();
     failures.set(buddyId, failedHere);
     for (const thread of threadIds) failedHere.delete(thread);
@@ -687,22 +687,12 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
       broadcastAgents();
       return { comments: [], landed: 'Failed' };
     }
-    const added = appendedComments(comments.before, comments.after, { text: edited, by, at: '', threads: new Set(threads.map((t) => t.id)) });
-    let posts = added.map((a) => a.comment); // the comments to post, in order
-    let carried = []; // [{ comment, doc (the doc after its edits) }], in order
-    const byLine = new Map(added.map((a) => [a.line, a.comment]));
-    if (groups.length && groups.every((g) => byLine.has(g?.comment) && typeof g.doc === 'string') && groups.at(-1).doc === edited) {
-      carried = groups.map((g) => ({ comment: byLine.get(g.comment), doc: g.doc }));
-    } else if (edited !== base) {
-      if (!posts.length && asking.length) posts.push(newComment({ thread: asking[0], body: '' }, { by, at: '' }));
-      if (!posts.length) return { comments: [], landed: 'Dropped: the threads that asked it were resolved meanwhile' };
-      carried = [{ comment: posts.at(-1), doc: edited }];
-    }
-    posts = posts.filter(kept);
+    const { posts, carried, dropped } = toChanges({ by, base, edited, comments, groups, threads, asking: threadIds });
+    if (dropped) return { comments: [], landed: `Dropped: ${dropped}` };
     let prev = base;
     let conflict = false;
-    for (const { comment, doc } of carried) {
-      if (!missing && kept(comment) && doc !== prev) { // a doc gone has nothing to land on
+    for (const { comment, doc, lands } of carried) {
+      if (!missing && lands && doc !== prev) { // a doc gone has nothing to land on
         const merged = merge3(prev, text, doc);
         conflict ||= merged.conflicts > 0;
         await flushTyping();
