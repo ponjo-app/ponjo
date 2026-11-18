@@ -7,8 +7,9 @@ import { writeFileSync } from 'node:fs';
 import { appendFile, chmod, mkdir, open, readFile, readdir, realpath, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { sidecarPath } from '../src/store/files.js';
-import { openDoc } from '../src/host/doc-service.js';
+import { openDoc } from '../src/host/open-doc.js';
 import { apply } from '../src/core/ot.js';
+import { createAnchor } from '../src/core/anchor.js';
 import { readHistory } from '../src/store/history.js';
 import { SAMPLE, fakeConfig, fakeRuns, openTestDoc, tempDoc, until } from './helpers.js';
 
@@ -266,6 +267,53 @@ test('a reply comes after every comment in its thread, though its clock is behin
   });
 });
 
+test('one log: a comment through the door is a change by its author, the next rev; a window\'s edit names its author too', async () => {
+  await withDoc(async ({ call, edit, events, state }) => {
+    const { me } = await state();
+    await call('comment', { anchor: null, body: 'Fix this' });
+    await edit(`${(await state()).text}More.\n`);
+    const told = events.filter(([name]) => name === 'ops').map(([, e]) => [e.rev, Boolean(e.comments), e.by]);
+    assert.deepEqual(told, [[1, true, { id: me.id, kind: 'person' }], [2, false, { id: me.id, kind: 'person' }]]);
+    assert.equal((await state()).rev, 2);
+    const caught = await call('state', { since: { epoch: (await state()).epoch, rev: 0 } });
+    assert.deepEqual(caught.events.map((e) => e.rev), [1, 2], 'a window catching up hears both');
+  });
+});
+
+test('a comment sent again with its id is added once; with `after` a reply comes just after that time; a reply may move its thread', async () => {
+  await withDoc(async ({ call, docPath }) => {
+    const { id } = await call('comment', { anchor: null, body: 'Fix this' });
+    const later = await call('comment', { thread: id, body: 'Also this' });
+    const reply = { id: 'c_myreply01', thread: id, body: 'Fixed.', after: (await call('comment', { thread: id, body: '' })).threads[0].comments[0].at };
+    const first = await call('comment', reply);
+    assert.equal((await call('comment', reply)).at, first.at, 'answered as it was');
+    const lines = (await readFile(sidecarPath(docPath), 'utf8')).trimEnd().split('\n').slice(1).map((l) => JSON.parse(l));
+    assert.equal(lines.filter((c) => c.id === 'c_myreply01').length, 1);
+    const { threads } = await call('state');
+    assert.deepEqual(threads[0].comments.map((c) => c.body), ['Fix this', 'Fixed.', 'Also this', ''], 'just after the first, before what came later');
+    assert.ok(Date.parse(first.at) < Date.parse(later.threads[0].comments[1].at));
+    const { text } = await call('state');
+    const on = await call('comment', { anchor: createAnchor(text, 0, 5), body: 'On this' });
+    const moved = await call('comment', { thread: on.id, body: 'Moved.', anchor: createAnchor(text, 6, 11) });
+    assert.equal(moved.threads.find((t) => t.id === on.id).anchor.exact, text.slice(6, 11), 'a reply with an anchor moves its thread');
+    await assert.rejects(call('comment', { id: 'not an id', thread: id, body: 'x' }), refused('bad_input'));
+    await assert.rejects(call('comment', { anchor: null, body: 'x', after: first.at }), refused('bad_input'), 'only a reply comes after');
+  });
+});
+
+test('an edit sent as a group is its own version, hung on its comment, by whoever sent it', async () => {
+  await withDoc(async ({ call, docPath, settingsDir }) => {
+    const { id } = await call('comment', { anchor: null, body: 'Fix this' });
+    const { text, rev, epoch } = await call('state');
+    const at = text.indexOf('extra load');
+    await call('submit', { ops: [{ from: at, to: at + 5, insert: 'peak' }], rev, epoch, id: 'e_group', reply: 'c_reply0001', thread: id, conflict: true });
+    const versions = await readHistory(docPath, settingsDir);
+    const group = versions.find((v) => v.reply === 'c_reply0001');
+    assert.deepEqual([group.thread, group.conflict, group.author.kind], [id, true, 'human']);
+    await assert.rejects(call('submit', { ops: [], rev, epoch, id: 'e_bad', reply: 'c_reply0001' }), refused('bad_input'), 'a group names its thread');
+  });
+});
+
 test('the door: each call needs a level, and a comment is by whoever calls, never by what the call says', async () => {
   await withDoc(async ({ doc, state }) => {
     const owner = await doc.owner();
@@ -469,7 +517,7 @@ test('a comment changed outside since it was taken stops asking', { timeout: 30_
   });
 });
 
-test('a taken ask still unanswered asks again when the doc opens again, and after a rename in the app', { timeout: 30_000 }, async () => {
+test('a taken ask still unanswered asks again when the doc opens again; a rename in the app lets its run go on, and its answer lands at the new name', { timeout: 30_000 }, async () => {
   const docPath = await tempDoc();
   const settingsDir = await fakeConfig();
   const first = await openTestDoc(docPath, { settingsDir, buddies: PILOT });
@@ -479,8 +527,11 @@ test('a taken ask still unanswered asks again when the doc opens again, and afte
   const again = await openTestDoc(docPath, { settingsDir, buddies: PILOT });
   try {
     await until(async () => (await fakeRuns(settingsDir)).length === 2, 'the run after opening again');
-    await again.doc.moveTo(join(dirname(docPath), 'launch.md'));
-    await until(async () => (await fakeRuns(settingsDir)).length === 3, 'the run at the new name');
+    const moved = await again.doc.moveTo(join(dirname(docPath), 'launch.md'));
+    await writeFile(join(settingsDir, 'release-Pilot'), '');
+    await until(async () => (await again.state()).threads[0].comments.length === 2, 'its answer');
+    assert.equal((await fakeRuns(settingsDir)).length, 2, 'the same run, not another');
+    assert.match(await readFile(sidecarPath(moved), 'utf8'), /Pilot/, 'at the new name');
   } finally {
     await again.doc.close();
   }
@@ -506,13 +557,14 @@ test('a sidecar of another version, or without a header, is shown read-only; a b
   }, { sidecar: '{"comments":3}\nnot json\n' });
 });
 
-test('events: the sidecar changed on disk; the doc changed outside lands as an edit', { timeout: 15_000 }, async () => {
+test('one log: the comments changed on disk, then the doc changed outside, each a change by outside with its rev', { timeout: 15_000 }, async () => {
   await withDoc(async ({ events, docPath, state }) => {
     await writeFile(sidecarPath(docPath), '{"comments":3}\n');
-    await until(() => events.some(([name]) => name === 'sidecar'), 'a sidecar event');
+    const [, comments] = await until(() => events.find(([name, e]) => name === 'ops' && e.comments), 'a change to the comments');
+    assert.deepEqual([comments.rev, comments.ops, comments.by], [1, [], { id: null, kind: 'outside' }]);
     await writeFile(docPath, SAMPLE.replace('Q4 Launch Plan', 'Q4 Plan'));
-    const [, landed] = await until(() => events.find(([name]) => name === 'ops'), 'an ops event');
-    assert.deepEqual([landed.rev, landed.id], [1, null]);
+    const [, landed] = await until(() => events.find(([name, e]) => name === 'ops' && !e.comments), 'an edit');
+    assert.deepEqual([landed.rev, landed.id, landed.by], [2, null, { id: null, kind: 'outside' }]);
     assert.equal((await state()).text, SAMPLE.replace('Q4 Launch Plan', 'Q4 Plan'));
   });
 });

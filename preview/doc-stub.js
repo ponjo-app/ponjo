@@ -209,7 +209,7 @@ async function run(id, threads) {
         const merged = merge3(prev, text, group.doc).text;
         s.files[doc] = merged;
         versions().push({ id: comment.id, by: id, before: text, text: merged, changes: diffEdits(text, merged).length, undone: false });
-        emit('ops', { epoch, rev: ++rev, ops: diffOps(text, merged), id: null, reply: comment.id, by: id });
+        emit('ops', { epoch, rev: ++rev, ops: diffOps(text, merged), id: null, reply: comment.id, by: { id, kind: 'buddy' } });
         const anchor = comment.thread !== undefined && movedAnchor(threads.find((t) => t.id === comment.thread)?.anchor, prev, group.doc, merged);
         if (anchor) comment.anchor = anchor;
       }
@@ -218,7 +218,7 @@ async function run(id, threads) {
     comments().push(...added.map((a) => a.comment).filter(kept));
   }
   save();
-  emit('sidecar', {});
+  emit('ops', { epoch, rev: ++rev, ops: [], id: null, by: { id, kind: 'buddy' }, comments: true });
 }
 
 // What a turn can read at `path`: its copies, and in a project its files
@@ -234,6 +234,7 @@ function read(path, copies) {
 function add(comment) {
   comments().push(newComment(comment, { by: me(), at: new Date().toISOString() }));
   save();
+  emit('ops', { epoch, rev: ++rev, ops: [], id: null, by: { id: me().id, kind: 'person' }, comments: true });
   setTimeout(answer);
   return { ...view(), id: comments().at(-1).id };
 }
@@ -267,7 +268,7 @@ const calls = {
     if (from !== epoch || at !== rev) throw Object.assign(new Error('the doc has moved on'), { code: 'stale' });
     s.files[current] = apply(s.files[current], ops);
     save();
-    emit('ops', { epoch, rev: ++rev, ops, id });
+    emit('ops', { epoch, rev: ++rev, ops, id, by: { id: me().id, kind: 'person' } });
     return { rev };
   },
   comment: ({ thread, anchor, body, resolved }) => add({ thread, anchor, body, resolved }),
@@ -317,13 +318,13 @@ const calls = {
   },
   room: () => s.room,
   openRoom() {
-    s.room = { link: `${location.origin}${location.pathname.replace(/[^/]*$/, '')}team.html?room=${newId('r')}`, locked: false, players: [{ id: 'p_noor', name: 'Noor', level: 'write' }, { id: 'p_sam', name: 'Sam', level: 'read' }] };
+    s.room = { link: `${location.origin}${location.pathname.replace(/[^/]*$/, '')}team.html?room=${newId('r')}`, locked: false, teammates: [{ id: 'p_noor', name: 'Noor', level: 'write' }, { id: 'p_sam', name: 'Sam', level: 'read' }] };
     return changeRoom((r) => r);
   },
   closeRoom: () => changeRoom(() => null),
   lockRoom: ({ locked }) => changeRoom((r) => ({ ...r, locked })),
-  setLevel: ({ id, level }) => changeRoom((r) => ({ ...r, players: r.players.map((p) => (p.id === id ? { ...p, level } : p)) })),
-  kick: ({ id }) => changeRoom((r) => ({ ...r, players: r.players.filter((p) => p.id !== id) })),
+  setLevel: ({ id, level }) => changeRoom((r) => ({ ...r, teammates: r.teammates.map((p) => (p.id === id ? { ...p, level } : p)) })),
+  kick: ({ id }) => changeRoom((r) => ({ ...r, teammates: r.teammates.filter((p) => p.id !== id) })),
   // An image the doc shows, `src` as written in it: preview/demo's.
   image: ({ src }) => DEMO.images[decodeURIComponent(new URL(src, `file:///${current}`).pathname.slice(1))] ?? refuse('no such image'),
   history: () => ({ versions: [] }),
@@ -338,7 +339,7 @@ const calls = {
     s.files[current] = (redo ? merge3(found.before, text, found.text) : merge3(found.text, text, found.before)).text;
     found.undone = !redo;
     save();
-    emit('ops', { epoch, rev: ++rev, ops: diffOps(text, s.files[current]), id: null });
+    emit('ops', { epoch, rev: ++rev, ops: diffOps(text, s.files[current]), id: null, by: { id: me().id, kind: 'person' } });
     return view();
   },
 };

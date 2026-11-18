@@ -6,10 +6,6 @@ and [agent runtime](agent-runtime.md) first. Product: [product vision](product-v
 person sees and does: [user experience](user-experience.md); the comment
 format: [SPEC](../spec/SPEC.md); tests: [testing](testing-ci.md).
 
-This is the design the code moves to. Not built yet: the buddy runtime as
-[Buddies](#buddies) describes it (today `src/host/doc-service.js` also
-holds the buddies' notes, timers and landing, and comments are versioned
-apart from the text), and `teammate`, which the code still calls `player`.
 
 ## Overview
 
@@ -133,8 +129,10 @@ The owner's level is owner, a teammate's read or write. A buddy acts with
 the level of whoever asked it, at most write, as a Unix program runs as the
 user who started it. Behind the door, `who` only names a change's author.
 
-Events to every connection on the doc: `change` (each change in the log,
-below), `saved` (whether the file holds what was told, and why not),
+Events to every connection on the doc: `ops` (each change in the log,
+below: `{ epoch, rev, ops, id, by: { id, kind }, reply?, comments? }`, a
+change to the comments with no `ops` and `comments: true`), `saved`
+(whether the file holds what was told, and why not),
 `cursors`, `missing` (the file gone), `renamed`, and from the controller
 `buddies` (who is here, running, watching, failed; the steps).
 
@@ -155,6 +153,23 @@ The door transforms them over what landed since, by character
 then tells everyone. A whole text (a run, an outside change, an undo) is
 merged by line first (below) and lands as an edit on the current `rev`,
 like anyone's.
+
+The calls a change comes through:
+
+- `submit({ ops, epoch, rev, id, reply?, thread?, conflict? })`: an edit.
+  Sent again with its `id`, it is answered with the rev it made. With
+  `reply`, it is a group: the edits comment `reply` in `thread` carries, a
+  version of its own (`conflict` when the doc's lines stayed where it
+  collided); without, it is typing, a version once typing pauses.
+- `comment({ id?, thread?, anchor?, body, resolved?, after? })`: a first
+  comment (`anchor` on the text, or null for the whole doc) or a reply in
+  `thread`; a reply with `anchor` moves its thread (SPEC §3). A reply comes
+  after every comment in its thread, or with `after` (a time) just after
+  that. Sent again with its `id`, it is answered as it was.
+
+A buddy lands its run through these two, as the buddy: its groups first,
+then its comments, each reply just after the last comment the run was
+given in its thread.
 
 Only a comment that came through the door by a member asks: one found in
 the file is by `outside` and asks no one. The comments this host took are
@@ -555,8 +570,9 @@ declaration, listed in `VIEWS`, passing the contract test.
 | --- | --- | --- | --- |
 | Core | `src/core/` | compute on text, purely, the same in the host and the page: anchors, comments and asks, `diff`/`merge3`, `ot`, the prompt, the rules (`plan`), Translate | functions |
 | Store | `src/store/` | read, write, watch and move files: docs, comments, history, settings, buddies, agents, logs | `read`, `write`, `watch`, `move`, each file's parser |
-| Doc | `src/host/doc-service.js` | order every change to one doc, and write it | the door above; `subscribe(fromRev, fn)` |
-| Controller | `src/host/` | run the doc's buddies as the rules say | `watch`, `retry`, `refillSteps`; event `buddies` |
+| Doc | `src/host/doc-service.js` | order every change to one doc, and write it | the door above; `door`, `subscribe(fn)` |
+| Opener | `src/host/open-doc.js` | join a doc and its buddies | `openDoc` |
+| Controller | `src/host/buddy-runtime.js` | run the doc's buddies as the rules say | `watch`, `retry`, `refillSteps`; event `buddies` |
 | Executor | `src/host/runner.js` | run the agent once on copies | `run(task, copies)` |
 | ProjectService | `src/host/project-service.js` | the project's files, the same for everyone | `list`, `read`, `open` |
 | Room | `src/host/room.js` | who is in the room and at what level | the owner's `openRoom`, `closeRoom`, `lockRoom`, `setLevel`, `kick`, `room` |

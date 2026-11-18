@@ -1,4 +1,4 @@
-// Players who can edit (docs/host-spec.md, Sharing): a player at write
+// Teammates who can edit (docs/host-spec.md, Sharing): a teammate at write
 // comes through the door as the owner's windows do; their comments ask AI
 // buddies, whose turns act with the asker's level as it is when they end;
 // history credits whoever made each version. The agent is the fake script
@@ -14,7 +14,7 @@ import { fakeConfig, fakeRuns, openTestDoc, tempDoc, until } from './helpers.js'
 
 const TEXT = 'Alpha one.\n\nBeta two.\n';
 
-// A project doc, its owner's line to it, and Sam's, a player who can edit,
+// A project doc, its owner's line to it, and Sam's, a teammate who can edit,
 // in its room (on no relay).
 async function shared(fn) {
   const docPath = await tempDoc(TEXT);
@@ -39,7 +39,7 @@ async function shared(fn) {
 const versions = async (call) => (await call('history')).versions;
 const replies = async (call) => (await call('state')).threads.flatMap((t) => t.comments).filter((c) => c.by.kind === 'ai');
 
-test('a player who can edit types, comments, resolves, reopens and restores; history credits each, and typing together is one version by both', async () => {
+test('a teammate who can edit types, comments, resolves, reopens and restores; history credits each, and typing together is one version by both', async () => {
   await shared(async ({ docPath, owner, sam, type }) => {
     await type(sam, 'Alpha one, by Sam.\n\nBeta two.\n', 's.1');
     assert.equal(await readFile(docPath, 'utf8'), 'Alpha one, by Sam.\n\nBeta two.\n');
@@ -67,7 +67,7 @@ test('a player who can edit types, comments, resolves, reopens and restores; his
   });
 });
 
-test('a player\'s @mention starts a turn, undone by them; one whose asker is set to Read before it ends lands nothing', { timeout: 60_000 }, async () => {
+test('a teammate\'s @mention starts a turn, undone by them; one whose asker is set to Read before it ends lands nothing', { timeout: 60_000 }, async () => {
   await shared(async ({ docPath, settingsDir, room, owner, sam }) => {
     const { id } = await sam('comment', { anchor: null, body: '@Pilot replace "Alpha" with "ALPHA"' });
     const [reply] = await until(async () => (await replies(owner.call)).length === 1 && replies(owner.call), 'the reply');

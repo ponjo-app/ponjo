@@ -27,13 +27,14 @@
 // door (`openRoom`), and ends when they close it, or close the project's
 // last window: every page is turned away, `closed`. The relay is at
 // PONJO_RELAY (a ws: or wss: URL; empty: no sharing), by default the one
-// deployed (relay/wrangler.toml), and a link opens the player's page it
+// deployed (relay/wrangler.toml), and a link opens the teammate's page it
 // serves, at the same origin, with the room.
 
 import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { realpath } from 'node:fs/promises';
-import { agentsFor, openDoc } from '../src/host/doc-service.js';
+import { openDoc } from '../src/host/open-doc.js';
+import { agentsFor } from '../src/host/buddy-runtime.js';
 import { projectService } from '../src/host/project-service.js';
 import { createRoom } from '../src/host/room.js';
 import { renameFile } from './files.js';
@@ -69,7 +70,7 @@ const timed = process.env.PONJO_TIMING
 
 // docId → { service, folder, ports: Map(port → its who), opens: how many
 // times the app has it open }. A doc is open once however many reach it:
-// the app's windows and players' pages share it, and it closes when
+// the app's windows and teammates' pages share it, and it closes when
 // neither has it.
 const docs = new Map();
 let nextId = 0;
@@ -156,7 +157,7 @@ const handlers = {
   },
   // `moved`: the doc is already at `toPath` (its folder moved); the doc follows it.
   moveTo: ({ docId, toPath, moved }) => docOf(docId).service.moveTo(toPath, moved ? async () => toPath : renameFile),
-  running: ({ docId }) => docOf(docId).service.runner.statuses().map((s) => s.name),
+  running: ({ docId }) => docOf(docId).service.running(),
   setFolder({ docId, folder }) {
     const was = docOf(docId).folder;
     docOf(docId).folder = folder;
@@ -238,14 +239,14 @@ function tellHere(folder) {
 
 /**
  * Put `room`, the project in `folder`'s, on the relay, in the relay's room
- * named by the SHA-256 of `secret`: one WebSocket for every player's page,
+ * named by the SHA-256 of `secret`: one WebSocket for every teammate's page,
  * each a peer the relay numbers. The host's first message proves it holds
  * `secret`. A page's first names its doc by its path in the project (`doc`;
  * none: the project's first) and who it is: `key`, made once in its browser
- * (the player's id is its hash, so no one who sees an id can pose as them),
+ * (the teammate's id is its hash, so no one who sees an id can pose as them),
  * and `name`. The page joins the room (room.js) and is served as a window
- * is, at its player's level; one the room refuses (`locked`, `kicked`) is
- * turned away, and so is one whose player is kicked. A connection that
+ * is, at its teammate's level; one the room refuses (`locked`, `kicked`) is
+ * turned away, and so is one whose teammate is kicked. A connection that
  * drops is made again. Returns { link, joined: resolves once the host is
  * first in the room, rejects if its line drops before; stop(reason): ends
  * it, turning every page away with `reason` if one is given, and resolves
@@ -330,8 +331,8 @@ function share(folder, room, secret) {
     }
   }
 
-  // The room changed: a page whose player's level changed is told `level`,
-  // and one whose player was kicked is turned away.
+  // The room changed: a page whose teammate's level changed is told `level`,
+  // and one whose teammate was kicked is turned away.
   const stopFollowing = room.onChange(() => {
     for (const [peer, entry] of [...peers]) {
       if (entry.level === null) continue;

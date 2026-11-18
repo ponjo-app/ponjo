@@ -21,7 +21,7 @@ import assert from 'node:assert/strict';
 import { readFile, writeFile } from 'node:fs/promises';
 import { createClient } from '../../web/client.js';
 import { mapOffset } from '../../src/core/ot.js';
-import { openDoc } from '../../src/host/doc-service.js';
+import { openDoc } from '../../src/host/open-doc.js';
 import { readDoc } from '../../src/store/files.js';
 import { fakeConfig, openTestDoc, readOnly, tempDoc, until } from '../helpers.js';
 

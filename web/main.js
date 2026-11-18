@@ -77,7 +77,7 @@ let agents = []; // the agent statuses on screen
 let shownComments = ''; // the comments on screen, as JSON
 let missing = false; // the doc was moved or deleted on disk: nothing is saved
 let offline = false; // the line to the doc host is down (client.onLine)
-let lineDown = false; // a player's line to the host dropped: read only until it is back (showLine)
+let lineDown = false; // a teammate's line to the host dropped: read only until it is back (showLine)
 let stranded = false; // and it held typing not sent then: shown as left, to copy, until the page reloads
 let files; // the folder sidebar (desktop folder windows)
 let startTyping = false; // the doc was just made in the sidebar: the cursor starts in it
@@ -108,7 +108,7 @@ window.ponjoStay = () => {
 // so it hears the event.
 window.addEventListener('pagereveal', (event) => event.viewTransition && window.ponjoReady.then(() => event.viewTransition.skipTransition()));
 
-// How the line to the host is, in a player's page (web/relay.js). While it
+// How the line to the host is, in a teammate's page (web/relay.js). While it
 // is down the page is read only, and typing not sent is shown as it was
 // left, to copy, never sent later; once the host is back the page catches
 // up and edits again (`hello`), unless it shows such typing: that stays
@@ -169,7 +169,7 @@ async function start() {
     return;
   }
   api.line(showLine);
-  // A player's page in a browser: their name, picked once, joins them.
+  // A teammate's page in a browser: their name, picked once, joins them.
   if (!window.ponjoHost && !named()) await askName();
   let initial;
   try {
@@ -185,7 +185,7 @@ async function start() {
   inProject = initial.project;
   level = initial.level;
   setOwner(initial.owner);
-  // A player who can only read sees no tool that would be refused: no reply, Resolve, Undo or Restore.
+  // A teammate who can only read sees no tool that would be refused: no reply, Resolve, Undo or Restore.
   document.documentElement.toggleAttribute('data-reader', reading());
   // The settings are the owner's: anyone else's stay in this page.
   settings = createSettings(initial.settings, {
@@ -228,7 +228,7 @@ async function start() {
       if (state.level !== level) setLevel(state.level);
     },
     // An app window whose doc host stopped: a call fails as `offline`, and
-    // typing is saved once it is back. A player's page hears its line instead (showLine).
+    // typing is saved once it is back. A teammate's page hears its line instead (showLine).
     onLine: (online) => {
       if (!window.ponjoHost) return;
       offline = !online;
@@ -414,7 +414,6 @@ async function start() {
     if (!reading()) client.moved();
     countSelection();
   });
-  events.on('sidecar', () => afterTyping('sidecar', refreshThreads));
   events.on('history', () => {
     history.changed();
     afterTyping('sidecar', refreshThreads); // a buddy's turn's receipt is read from its version
@@ -433,14 +432,14 @@ async function start() {
     followViews(); // a new extension may open in another view
   });
   events.on('missing', (data) => setMissing(data.missing));
-  // The owner set this player to Read or Edit; a page whose line dropped
+  // The owner set this teammate to Read or Edit; a page whose line dropped
   // hears it when it catches up on its next connection.
   events.on('level', () => {
     if (!lineDown) client.catchUp();
   });
   // First on a new connection: the doc may have gone missing, or runs
   // started, since `state`, and the doc host may have started again. A
-  // player's page whose line dropped edits again once it has caught up.
+  // teammate's page whose line dropped edits again once it has caught up.
   events.on('hello', async (data) => {
     showProtocol(data.protocol ?? 1);
     if (stranded) return;
@@ -595,13 +594,18 @@ window.addEventListener('beforeunload', (event) => {
   client.landed();
 });
 
-// Others' edits landed and the view's text is now `text` (web/client.js).
-// A person's typing (an edit with an `id`) shows by their cursor alone;
-// anything else glows, a buddy's in its colour (`by`; with its `reply`
-// unless its ask stays open).
+// Others' changes landed and the view's text is now `text` (web/client.js).
+// Comments changed: the threads are read again. A person's typing (an edit
+// with an `id`) shows by their cursor alone; anything else glows, a buddy's
+// in its colour (`by`; with its `reply` unless its ask stays open).
 function showLanded(text, ops, event) {
+  if (event?.comments) {
+    afterTyping('sidecar', refreshThreads);
+    return;
+  }
   const reply = event?.reply;
-  editor.applyText(text, { by: event?.by ?? (event?.id ? null : asking ?? ON_DISK), buddy: Boolean(event?.by), ops });
+  const buddy = event?.by?.kind === 'buddy';
+  editor.applyText(text, { by: buddy ? event.by.id : event?.id ? null : asking ?? ON_DISK, buddy, ops });
   paintMarks();
   if (reply) {
     runLanded = reply;
@@ -1168,7 +1172,7 @@ function showUnsaved(reason) {
 // Offline; Read-only; Saving; Saved.
 const saveMark = document.querySelector('.pj-save');
 let unsaved = null; // why the doc host does not hold the doc as shown (showUnsaved), or null
-let lineWhy = null; // why a player's line is down (showLine), or null
+let lineWhy = null; // why a teammate's line is down (showLine), or null
 let savePainted = '';
 function saveState() {
   const typing = Boolean(client && !client.idle());

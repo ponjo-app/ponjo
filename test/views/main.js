@@ -19,7 +19,7 @@ import { mkdir, realpath, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { fakeConfig, tempDoc } from '../helpers.js';
-import { player } from '../relay/harness.js';
+import { newTeammate } from '../relay/harness.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -64,6 +64,6 @@ app.whenReady().then(async () => {
   ipcMain.handle('collab:release', () => writeFile(join(config, 'release-Pilot'), ''));
   ipcMain.handle('collab:share', async () => {
     const { link } = await request('call', { docId: doc.docId, call: 'openRoom' });
-    return { room: new URL(link).searchParams.get('room'), key: player().key, path: doc.path };
+    return { room: new URL(link).searchParams.get('room'), key: newTeammate().key, path: doc.path };
   });
 });

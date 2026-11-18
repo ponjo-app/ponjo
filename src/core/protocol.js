@@ -5,4 +5,4 @@
 // a page or host on the version before would misread raises it; the host
 // says its own in `hello`, and a page told another one says which side to
 // update. A host that says none is at 1.
-export const PROTOCOL = 1;
+export const PROTOCOL = 2;

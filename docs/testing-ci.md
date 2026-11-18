@@ -200,7 +200,7 @@ on machine B, on another network (a phone's hotspot will do), in a browser.
 1. **Open room.** A opens a project, Team > Open room, Copy link. The link
    is `https://share.ponjo.app/team?room=…`. B opens it, picks a name, and
    is in at once: the project's first doc, editable. B reloads: in at once.
-2. **Players.** A's Team panel lists B, live.
+2. **Teammates.** A's Team panel lists B, live.
 3. **Both typing.** Both type in the same paragraph at once for a minute.
    Each sees the other's keys as they type; nothing is lost, and the file
    on A holds both. A sets B to Read: B's tools go; back to Edit.

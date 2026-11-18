@@ -1,6 +1,6 @@
 // The relay run locally by wrangler (relay/; `npm ci --prefix relay` first),
 // a doc host forked as the app starts one, hosting a project's room
-// through it, and a player's page reaching it as web/relay.js does, in
+// through it, and a teammate's page reaching it as web/relay.js does, in
 // Node: for the relay test (test/relay.test.js) and the typing promise
 // (test/perf/typing.test.js).
 
@@ -16,7 +16,7 @@ import { relayHost } from '../../web/relay.js';
 const root = fileURLToPath(new URL('../..', import.meta.url));
 
 /**
- * The relay, started, serving the player's page from dist/web (`npm run
+ * The relay, started, serving the teammate's page from dist/web (`npm run
  * build` first): { url, its ws: URL; origin, its http: one; stop() }.
  */
 export async function startRelay() {
@@ -32,10 +32,10 @@ export async function startRelay() {
 /** The relay's room for `secret`. */
 export const roomOf = (secret) => createHash('sha256').update(secret).digest('hex');
 
-/** A player's browser: its key, made once, and their name. */
-export const player = (name = 'Sam') => ({ key: `k-${Math.random().toString(36).slice(2)}${Math.random().toString(36).slice(2)}`, name });
+/** A teammate's browser: its key, made once, and their name. */
+export const newTeammate = (name = 'Sam') => ({ key: `k-${Math.random().toString(36).slice(2)}${Math.random().toString(36).slice(2)}`, name });
 
-/** The id the host knows the player of `key` by (desktop/doc-host.js). */
+/** The id the host knows the teammate of `key` by (desktop/doc-host.js). */
 export const idOf = (key) => `p_${roomOf(key).slice(0, 24)}`;
 
 /**
@@ -88,7 +88,7 @@ export async function startHost({ folder, config, doc }, relay) {
 }
 
 /**
- * The page of player `who` ({ key, name }) in room `room` on `doc` (none:
+ * The page of teammate `who` ({ key, name }) in room `room` on `doc` (none:
  * the project's first): `call` resolves to { result } or { error },
  * `events` holds what it heard, `lines` how its line was, each change, and
  * `onEvent(fn)` hears each event.

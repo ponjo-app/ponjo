@@ -5,12 +5,12 @@
 // A card is where everyone is changed: on a buddy's, a click on its name
 // edits it in place, and who it is is a field right under it; your own
 // card edits your name the same way; the owner deletes a buddy from its
-// card; on a player's, the owner sets Read or Edit, or kicks them. Faces
+// card; on a teammate's, the owner sets Read or Edit, or kicks them. Faces
 // are drawn from names.
 //
 // A buddy answers when @mentioned. The Team panel (the button after the
 // faces) has you, in a project its room (Open room; once open its link,
-// Lock and Close room) and its players, then every buddy here; it deletes
+// Lock and Close room) and its teammates, then every buddy here; it deletes
 // a buddy and makes one (a project's in a project, else yours). Only the
 // owner runs the room and changes the buddies.
 //
@@ -125,9 +125,9 @@ export function createPeople({ root, invite, panel, me, getName, getId = () => n
     return `person:${playerNamed(name)?.name ?? writers.find((p) => same(p.name, name))?.name ?? name}`;
   }
 
-  // Only another person's card has nothing to change, but for the owner a player's.
+  // Only another person's card has nothing to change, but for the owner a teammate's.
   const editable = () => Boolean(showing) && (!showing.startsWith('person:') || Boolean(playerNamed(showing.slice(7))));
-  const playerNamed = (name) => room?.players.find((p) => same(p.name, name)) ?? null;
+  const playerNamed = (name) => room?.teammates.find((p) => same(p.name, name)) ?? null;
 
   // Under the header, or next to the name it opened from: below it, or above
   // when there is no room, kept inside the window.
@@ -165,7 +165,7 @@ export function createPeople({ root, invite, panel, me, getName, getId = () => n
   // name card, and it shows its state. Who is at work comes first (a buddy
   // running, a person who moved or typed in the last few seconds), then who
   // is here, then who is away (a person on another doc of the project, or,
-  // for the owner, a player not here). Among those at work, who started
+  // for the owner, a teammate not here). Among those at work, who started
   // first leads; among the rest, whoever changed state last. So a face
   // moves only when its state changes. Yours stays at the end, before Team.
 
@@ -184,7 +184,7 @@ export function createPeople({ root, invite, panel, me, getName, getId = () => n
     const flinching = (id) => failedAt.get(id) > now - FAILED_MS;
     const people = [
       ...here.filter((p) => !isMe(p)).map((p) => ({ id: p.id, name: p.name, mode: !p.doc ? 'away' : movedAt.get(p.id) > now - WORKING_MS ? 'working' : 'idle' })),
-      ...(owner() ? room?.players ?? [] : []).filter((p) => !here.some((h) => h.id === p.id)).map((p) => ({ id: p.id, name: p.name, mode: 'away' })),
+      ...(owner() ? room?.teammates ?? [] : []).filter((p) => !here.some((h) => h.id === p.id)).map((p) => ({ id: p.id, name: p.name, mode: 'away' })),
     ].map((p) => ({ ...p, key: `person:${p.id}`, kind: 'human' }));
     const buddies = agentsHere().map((name) => ({ id: idOf(name), name, mode: modeOf(statusOf(name)), failed: flinching(idOf(name)), key: `agent:${idOf(name)}`, kind: 'agent' }));
     const faces = [...people, ...buddies];
@@ -280,24 +280,24 @@ export function createPeople({ root, invite, panel, me, getName, getId = () => n
     return [head, about];
   }
 
-  // A player's card has, for the owner, Read or Edit and Kick.
+  // A teammate's card has, for the owner, Read or Edit and Kick.
   function personCard(name) {
-    const player = playerNamed(name);
+    const teammate = playerNamed(name);
     const present = here.find((p) => same(p.name, name));
-    if (!player) return [personHead(name, present ? (present.owner ? 'Owner' : 'Here') : 'Commented on this doc', present?.id ?? writers.find((p) => same(p.name, name))?.id)];
-    if (viewOnly) return [personHead(name, LEVEL[player.level], player.id)];
+    if (!teammate) return [personHead(name, present ? (present.owner ? 'Owner' : 'Here') : 'Commented on this doc', present?.id ?? writers.find((p) => same(p.name, name))?.id)];
+    if (viewOnly) return [personHead(name, LEVEL[teammate.level], teammate.id)];
     const level = el('div', 'pj-teammate-row');
-    level.append(levelChoice(player.level, (next) => changeRoom(() => api.setLevel(player.id, next))));
+    level.append(levelChoice(teammate.level, (next) => changeRoom(() => api.setLevel(teammate.id, next))));
     const kick = el('button', 'pj-secondary pj-danger', 'Kick');
     kick.type = 'button';
     kick.addEventListener('click', async () => {
-      if (!window.confirm(`Kick ${player.name}?\n\nTheir pages close at once, and their browser cannot come back to this room. Their comments stay.`)) return;
-      await changeRoom(() => api.kick(player.id));
+      if (!window.confirm(`Kick ${teammate.name}?\n\nTheir pages close at once, and their browser cannot come back to this room. Their comments stay.`)) return;
+      await changeRoom(() => api.kick(teammate.id));
       toggle('team');
     });
     const kickRow = el('div', 'pj-teammate-row');
     kickRow.append(kick);
-    return [personHead(name, 'Player', player.id), level, kickRow];
+    return [personHead(name, 'Teammate', teammate.id), level, kickRow];
   }
 
   // Read or Edit: `pick(level)` hears a change.
@@ -332,11 +332,11 @@ export function createPeople({ root, invite, panel, me, getName, getId = () => n
     }
   }
 
-  // You, then in a project the room's players, then every buddy here, one
+  // You, then in a project the room's teammates, then every buddy here, one
   // line each: a click opens a card, and a buddy is deleted from here. Then
   // New buddy, which makes one and opens its card. Only the
-  // owner sees the players and changes anything, and sees who is away,
-  // greyed; a player sees who is here.
+  // owner sees the teammates and changes anything, and sees who is away,
+  // greyed; a teammate sees who is here.
   function teamCard() {
     const runs = room !== undefined && owner(); // the owner runs the project's room
     const head = el('div', 'pj-card-head');
@@ -345,8 +345,8 @@ export function createPeople({ root, invite, panel, me, getName, getId = () => n
     const list = el('div', 'pj-people-list');
     list.append(meRow());
     if (runs && room) {
-      list.append(el('div', 'pj-setting-group', room.locked ? 'Players · locked' : 'Players'), ...room.players.map(playerRow));
-      if (room.players.length === 0) list.append(el('div', 'pj-people-none', 'No one yet: send them the link.'));
+      list.append(el('div', 'pj-setting-group', room.locked ? 'Teammates · locked' : 'Teammates'), ...room.teammates.map(playerRow));
+      if (room.teammates.length === 0) list.append(el('div', 'pj-people-none', 'No one yet: send them the link.'));
     } else if (!runs && here.some((p) => !isMe(p))) {
       list.append(el('div', 'pj-setting-group', 'Here'), ...here.filter((p) => !isMe(p)).map((p) => personRow(p, p.owner ? 'Owner' : 'Here', 'idle')));
     }
@@ -395,7 +395,7 @@ export function createPeople({ root, invite, panel, me, getName, getId = () => n
     return row;
   }
 
-  const playerRow = (player) => personRow(player, LEVEL[player.level], here.some((p) => p.id === player.id) ? 'idle' : 'away');
+  const playerRow = (teammate) => personRow(teammate, LEVEL[teammate.level], here.some((p) => p.id === teammate.id) ? 'idle' : 'away');
 
   // A person, greyed while away.
   function personRow({ id, name }, role, presence) {
@@ -446,7 +446,7 @@ export function createPeople({ root, invite, panel, me, getName, getId = () => n
     const error = el('div', 'pj-input-error');
     error.hidden = true;
     row.addEventListener('click', async () => {
-      const name = defaultName([...agentsHere(), getName(), ...writers.map((p) => p.name), ...(room?.players.map((p) => p.name) ?? [])]);
+      const name = defaultName([...agentsHere(), getName(), ...writers.map((p) => p.name), ...(room?.teammates.map((p) => p.name) ?? [])]);
       row.disabled = true;
       try {
         take(await api.createBuddy({ name }));
@@ -649,7 +649,7 @@ export function createPeople({ root, invite, panel, me, getName, getId = () => n
     if (nextWriters) writers = nextWriters;
     if (nextRoom !== undefined) room = nextRoom;
     if (nextHere) here = nextHere;
-    const recoloured = setPeople([getName(), ...writers.map((p) => p.name), ...here.map((p) => p.name), ...(room?.players.map((p) => p.name) ?? [])]);
+    const recoloured = setPeople([getName(), ...writers.map((p) => p.name), ...here.map((p) => p.name), ...(room?.teammates.map((p) => p.name) ?? [])]);
     paintFaces();
     // Not while a field on the card is being typed in (a switch is no field).
     if (showing && showing !== 'me' && !panel.querySelector('input:not([type="checkbox"]):focus, textarea:focus')) paintCard();
@@ -735,7 +735,7 @@ const RANK = { working: 0, watching: 1, idle: 1, away: 2 }; // the queue's order
 /** How long a person is at work after they move or type: while their cursor is named. */
 export const WORKING_MS = 3000;
 
-// What a player may do, under their name.
+// What a teammate may do, under their name.
 const LEVEL = { read: 'Can read', write: 'Can edit' };
 
 /** 'working', 'watching' (it watches the doc), 'idle' (answers when @mentioned), or 'away' (no status: not run here). */

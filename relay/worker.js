@@ -1,7 +1,7 @@
-// The relay and the player's page, at one origin (docs/architecture.md,
+// The relay and the teammate's page, at one origin (docs/architecture.md,
 // Sharing): a Cloudflare Worker that serves the page (dist/web/team.html,
 // as static assets; relay/wrangler.toml) and joins the owner's doc host to
-// each player's page, with one Durable Object per room. It stores nothing.
+// each teammate's page, with one Durable Object per room. It stores nothing.
 //
 // Both connect with a WebSocket to /rooms/<room>, the room being the hex
 // SHA-256 of a secret only the host knows, the host adding `?host`. No

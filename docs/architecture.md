@@ -44,7 +44,8 @@ merges their changes.
 
 | Component | Owns | Interface |
 | --- | --- | --- |
-| Doc | one open doc: its text, comments and change log, in memory | the door (below) |
+| Doc (`doc-service.js`) | one open doc: its text, comments and change log, in memory | the door (below) |
+| Opener (`open-doc.js`) | joins a doc to its [agent runtime](agent-runtime.md): the runtime hears each change and lands through the door | `openDoc` |
 | History | the doc's versions on disk | `record`, `list`, `read` |
 | Store | reading, writing and watching files | `read`, `write`, `watch`, `move` |
 | ProjectService | the project's file tree, as everyone sees it | `list`, `read`, `open` |
@@ -56,9 +57,9 @@ Every client talks to a doc the same way:
 
 ```
 call(type, arg, who)       who = { id, name, kind, level }, set by the host
-  read  → { text, comments, rev }
-  submit / comment / undo  → a change, landed in order
-subscribe(fromRev, fn)     every change after fromRev
+  state                    → { text, threads, rev, ... }; with { since }, the changes missed
+  submit / comment / undo  → a change, landed in order, told to all as an `ops` event
+subscribe(fn)              every change as it lands (a client in the doc host)
 ```
 
 `who` comes from the connection, never from the message. Levels are
