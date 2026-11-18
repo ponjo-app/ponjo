@@ -1,4 +1,4 @@
-// The Runner (docs/architecture.md, A buddy's turn): runs each buddy that
+// The Runner (docs/architecture.md, Buddies): runs each buddy that
 // a comment asks and it has not answered yet, or that watches the doc,
 // one run at a time, and ends the run of a buddy nothing asks any more. It
 // looks at the asks each time they may have changed (reconcile): a

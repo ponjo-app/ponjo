@@ -17,7 +17,7 @@
 // VIEWS. A doc opens in the view that is on and claims its extension, else in
 // the Plain text view, for any text file.
 //
-// A view keeps its latency promise (docs/architecture.md, Latency) only up to
+// A view keeps its latency promise (docs/architecture.md, Editing) only up to
 // a size, its `limits`: { chars, the doc's length }. A doc past them opens in the
 // Plain text view, unless the person chooses the view anyway; past the Plain
 // text view's limits too, it opens read-only. The Plain text view colours

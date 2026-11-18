@@ -10,7 +10,7 @@ export const plain = {
   about: 'Edit any other text file as it is, with no formatting.',
   extensions: null,
   always: true,
-  // docs/architecture.md, Latency: past `chars` a doc is read-only; past
+  // docs/architecture.md, Editing: past `chars` a doc is read-only; past
   // `colorBlockChars` in one run, its syntax is not coloured.
   limits: { chars: 5_000_000, colorBlockChars: 10_000 },
   createView: createPlainView,

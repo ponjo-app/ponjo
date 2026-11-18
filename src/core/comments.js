@@ -223,8 +223,8 @@ export function threadsOf(comments, mentionable = [], text = null) {
  * comment there: X's comment answers it. A comment asks whom it @mentions;
  * one that mentions no one asks the thread's others: the one that opened it
  * and each that an asker @mentioned there before, never an asker. An empty
- * one (it reopened the thread) asks no one (docs/architecture.md, Who
- * answers). Resolving drops what was asked before it, so reopening asks no one.
+ * one (it reopened the thread) asks no one (docs/architecture.md, Asks
+ * and watches). Resolving drops what was asked before it, so reopening asks no one.
  */
 export function askedOf(thread, askers) {
   return [...askedBy(thread, askers).keys()];

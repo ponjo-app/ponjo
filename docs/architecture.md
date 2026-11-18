@@ -1,179 +1,240 @@
 # Architecture
 
+How Ponjo is built. Product: [product vision](product-vision.md); what a
+person sees and does: [user experience](user-experience.md); the comment
+format: [SPEC](../spec/SPEC.md); tests: [testing](testing-ci.md).
+
+This is the design the code moves to. Not built yet: the buddy runtime as
+[Buddies](#buddies) describes it (today `src/host/doc-service.js` also
+holds the buddies' notes, timers and landing, and comments are versioned
+apart from the text), and `teammate`, which the code still calls `player`.
+
 ## Overview
 
-How Ponjo is built, in three parts. [The app](#the-app): the doc host, a
-background process that does every file write and runs the AI buddies, and
-the windows you edit in. [A buddy's turn](#a-buddys-turn): AI buddies are
-agents that answer comments, and a turn is one AI buddy answering one
-comment: the app starts an agent program on a copy of the doc, then merges
-what it changed back in. (The code calls a turn a run: `Runner`,
-`runs.jsonl`.) [Sharing](#sharing): how a friend's browser joins the same
-host, in a room the owner opens.
+People and AI buddies write the same files together. One process on the
+owner's machine, the doc host, holds each open doc and does every write to
+it, whoever the change is from: a person in a window or a browser, a buddy,
+or another program. A buddy is run by an agent, a program that edits a
+copy of the doc and appends comments to a copy of its comments.
 
-Sharing is built: the owner opens a room, friends join from its link at
-once, read or edit, and see who is here and where each person's cursor
-is; the room ends when the owner closes it or the project. Everything here
-is what the code does.
+```mermaid
+flowchart LR
+  person(["People<br>windows, teammates' pages"]) -- "edits, comments" --> door
+  outside(["Other programs<br>git pull, editors"]) -. "the file changed" .-> door
+  subgraph host["Doc host"]
+    door["Doc<br>the one writer"] -- "the log" --> ctl["Controller<br>one per doc"]
+    ctl -- "a buddy's changes" --> door
+    ctl -- "a run" --> agent["Agent<br>on copies"]
+  end
+  door -- "writes" --> files[("doc + .comments.jsonl")]
+```
 
-No backward compatibility with earlier formats: a sidecar this version must
-not write (another version, or no header) shows its comments read-only,
-with a way to fix it.
+### Words
+
+| Word | Means |
+| --- | --- |
+| member | anyone who changes a doc: a person or a buddy. Every change has one as its author; a file changed outside is by `outside` |
+| person | a human member: the owner, or a teammate |
+| owner | the person whose machine holds the files and runs the doc host |
+| teammate | a person who joined the owner's room from its link |
+| buddy | an AI member: an id, a name and a persona, in one file. It has no code and no state |
+| agent | the program that does every buddy's work, picked in Settings > Agents |
+| run | the agent working once as one buddy, on copies of one doc |
+| ask | a person's comment that names a buddy, open until the buddy comments after it |
+| watch | a buddy set by a person to run when the doc changes |
+
+The code says turn nowhere: a buddy answering is a run.
 
 ### Principles
 
-1. **Files are the truth.** Docs, sidecars and buddy files are plain files.
-   Everything else is a cache, rebuilt from them, or only costs undo if
-   lost.
-2. **Only the app writes them.** An agent gets only a copy. Any other
-   change (other editors, `git pull`) is seen and merged.
-3. **An agent is a filter:** prompt on stdin, copies of the doc and its
-   comments to edit, its comments appended there. It knows nothing of
-   Ponjo and remembers nothing.
-4. **No one resolves a conflict by hand.** An edit merges by how it comes,
-   not by who made it ([how edits merge](#how-edits-merge)). An edit made in
-   a window (typing, a paste) is merged by character, and nothing typed is
-   dropped. A whole text that arrives late (an AI buddy's turn, a change
-   from outside, an undo) is merged by line (`merge3`): where it changed
-   the same lines as what landed meanwhile, what landed stays. What does
-   not land is redone (ask the buddy again) or restored (history).
-5. **AI buddies always edit, and every edit can be undone.** See
-   [Undoing changes](#undoing-changes).
-6. **Only a person starts a turn:** a comment, mine or a player's who can
-   edit, which the buddy's reply answers; or, for a buddy a person set
-   watching the doc, that setting and the doc's changes (another buddy's
-   only while the doc has steps left). Nothing in a shared
-   file makes an AI buddy run, or chooses what program runs, on this
-   machine.
-7. **One component does one thing.** If it takes two sentences to say what
-   a component does, it is two components.
-8. **The fewest interfaces.** A new call is the last resort: first reuse one
-   that exists, or delete the need. Who a writer is (a person, a buddy) is
-   known only at the door every call comes through, never by the component
-   that merges.
-9. **Never take mutable state as the truth.** Find and join things by a
-   stable id; a name, a path or a color is an alias that may change, kept
-   only for show. A buddy is its id, not its name.
+1. **Files are the truth.** Docs, their comments and buddies are plain
+   files. Everything else is a cache rebuilt from them, or only costs undo
+   if lost. What runs on this machine (runs, failures, watches, steps) is
+   this machine's and never written to a shared file.
+2. **One door, one writer.** Every change, whoever makes it, comes through
+   the doc's one door, in one order. An agent gets only copies. A change
+   made outside (another editor, `git pull`) is seen and merged.
+3. **No one resolves a conflict by hand.** An edit merges by how it comes,
+   not by who made it: typing by character, so nothing typed is lost; a
+   whole text that arrives late (a run, an outside change, an undo) by
+   line, where the doc's lines win. What does not land can be asked for
+   again or found in history.
+4. **Every change can be undone**, a buddy's with the comment it came with.
+5. **Only a person starts work.** A buddy runs on a person's ask or a
+   person's watch. Buddies wake each other only within the doc's steps.
+   Nothing in a shared file makes a buddy run, or chooses what program
+   runs, on this machine.
+6. **Decide from state, not from events.** What should run is worked out
+   from the doc and this machine's notes whenever anything may have
+   changed; an event only says when to look. A look at any time finds the
+   same, so a missed event costs nothing.
+7. **An agent is a filter**: a prompt on stdin, copies in, copies out. It
+   knows nothing of Ponjo and remembers nothing. It is slow, costly and
+   not sure to agree with itself, so a run that fails is shown to people,
+   not tried again on its own.
+8. **One part does one thing, through the fewest calls.** If it takes two
+   sentences to say what a part does, it is two parts. A new call is the
+   last resort.
+9. **Never take mutable state as the truth.** Join things by a stable id;
+   a name, a path or a color is an alias, kept for show. A buddy is its
+   id, not its name.
 
-## The app
+## Data
 
-### Doc mode and project mode
+| File | Where | Holds | Is |
+| --- | --- | --- | --- |
+| a doc | anywhere; in a project, under its folder | the text | shared truth |
+| its comments | beside it, `<doc>.comments.jsonl` ([SPEC](../spec/SPEC.md)) | threads, anchored on the text | shared truth |
+| a project's buddies | `.ponjo/buddies/<name>.md` in the project ([PROJECT](../spec/PROJECT.md)) | each buddy: its id, its persona | shared truth |
+| the user's buddies | `buddies/` in the config folder | the same, for every doc | this user's |
+| `settings.json` | config folder | the user's id and name, editor and views' settings, the agent picked and its settings | this user's |
+| `agents/` | config folder | each agent: a program and its manifest ([agent config](agent-config.md#agents)) | this user's |
+| `secrets.bin` | config folder | agents' secret settings, encrypted with the system keychain | this user's |
+| `state.json` | config folder | recent docs and folders, window bounds | cache |
+| `history/<doc>/` | config folder | the doc's versions; the window edits its file was last written with; the comments this host took; the buddies watching it | this machine's |
+| `logs/` | config folder | `runs.jsonl`, a line per run; with Trace runs on, `traces/<run>.json` | this machine's |
 
-The app has two modes:
+The config folder is `~/Library/Application Support/Ponjo/` on macOS. Only
+the app writes it. Every file is written whole: a temporary file in the
+same folder, with the file's permissions, renamed over it.
 
-- **Doc mode:** a `.md` file opened on its own (from Finder, say). It
-  reaches the user's buddies. That holds even if the file sits in a
-  project folder.
-- **Project mode:** a folder opened from the home page. A file tree and
-  its docs, the user's buddies and the project's own. The project's live
-  in `.ponjo/buddies/` at the folder's root and travel with it
-  ([PROJECT](../spec/PROJECT.md)).
+Above the files, a doc is its text: UTF-8, no byte order mark, lines ending
+in `\n`. Its byte order mark and each line's end are put back when it is
+written, a new line ending as the line before it. A file that is not UTF-8
+does not open.
 
-| | Doc mode | Project mode |
-| --- | --- | --- |
-| Opened from | Finder: a `.md` file | The home page: a folder |
-| Window | One doc | File tree and docs |
-| Folder | none | the opened folder |
+**Doc mode and project mode.** A `.md` file opened on its own (from Finder)
+is doc mode: one doc, the user's buddies, no room. A folder opened from the
+home page is project mode: a file tree, the user's buddies and the
+project's, and a room to share. A project's buddy wins over one of the
+user's with its name; name, face and color follow one rule ([PROJECT
+§2](../spec/PROJECT.md)). The first start writes the user's first buddy,
+Clippy.
 
-The asymmetry is intentional: doc mode is a light editor for one person
-and their buddies, with no room and no sharing; project mode is the full
-experience, many docs, the project's buddies and its room.
+## The doc
 
-The user's buddies live in `buddies/` in their config folder and reach
-every doc; a project's reach its docs only. In a project, a project's
-buddy wins over one of the user's with its name. Otherwise they are
-alike: name, face and color follow one rule ([PROJECT §2](../spec/PROJECT.md)).
-The first run writes the user's first buddy, Clippy; then it is theirs.
+### The door
 
-### Components
+Every call to a doc comes as `call(type, arg, who)`, `who` being `{ id,
+name, kind, level }`, set by the host from the connection and never taken
+from a message. A connection is bound to one doc, so no call names one.
+Each call needs a level, `read < write < owner`; `can(who, level)` lets it
+through, once, and nothing behind it checks again.
 
-A solid arrow is an import: `npm run lint` allows no others
-(`.dependency-cruiser.js`), and no imports that go in a circle. A dotted
-line is a message between processes.
-
-```mermaid
-flowchart TD
-  subgraph web["web/"]
-    windows["Windows"]
-    views["Views<br>web/views/"]
-  end
-  shell["Shell<br>desktop/"]
-  host["DocService, Runner<br>src/host/"]
-  store["Store<br>src/store/"]
-  core["Core<br>src/core/"]
-  shell --> host & store & core
-  host --> store & core
-  web --> core
-  store --> core
-  web -. IPC .- shell
-  web -. message port .- host
-```
-
-| Component | Owns |
+| Calls | Level |
 | --- | --- |
-| Format | `X` + `X.comments.jsonl`, anchors on X's text ([SPEC](../spec/SPEC.md)) |
-| Core (`src/core/`) | computing on text, the same in the doc host and the page; no I/O: anchors, diff (Myers', `diff.js`) and the three-way merge by line (`merge3`), text operations and how they merge by character (`ot.js`), the sidecar's lines and threads, @mentions and the inbox, which buddies are due to run (`due.js`) and the steps they have to wake each other (`bucket.js`), from the threads and the host's notes and the time given, what a buddy file and the settings may hold |
-| Store (`src/store/`) | the files: a doc and its sidecar, each written whole (`files.js`), watched (`watch.js`), and the doc's versions (`history.js`); the runs' log and traces (`runs.js`); the settings and agents (programs and their manifests) in the config folder; buddy files (the user's there, a project's in its folder) |
-| DocService (`src/host/doc-service.js`) | every write to a doc and its sidecar, one at a time; outside changes; versions; what the host notes for its buddies (what their runs were given, who watches, who last changed the doc, the steps) |
-| Runner (`src/host/runner.js`) | which turns should start (the inbox), runs them, their status in memory |
-| ProjectService (`src/host/project-service.js`) | the project's files, the same for everyone: what a folder holds, a file to show or open, the files a search finds (`src/core/search.js`, as the find bar finds); every path resolved to its real path, inside the root, no part starting with `.` |
-| Windows (`web/`) | the doc page: editing and commenting, through DocService. The page talks to its editor, a view, in offsets on the doc's text, turns its typing into operations and takes others' back (`client.js`), and works out the marks a view draws (comments, a draft, a revision). The page knows no format. Also the home page (`start.js`) |
-| Views (`web/views/`) | built in; a doc's editor: what a person sees and types in. See Views. The Markdown view's parts are also in `web/`: `diagrams.js`, `markdown-schema.js`, `pm-text.js`, `review.js`; every view's find bar is `find.js` |
-| Shell (`desktop/`) | the app: windows, menus, dialogs, recent docs and folders, the owner's changes to a project's files (new, rename, move, delete); starts the doc host (`doc-host.js`) and gives each page its port to it (`preload.cjs`); decrypts the agents' secrets, the one process with the keychain, and hands them to the doc host. An open doc's files only through its DocService; the settings, the agent scripts and files that are not open, through Store |
-| Relay (`relay/`) | a Cloudflare Worker at `share.ponjo.app` that serves the player's page and joins the owner's doc host to players' pages, one Durable Object per room; stores nothing. See Sharing |
-| Room (`src/host/room.js`) | a project's room while the owner hosts it, in memory: whether it is locked, its players and their levels, the ids kicked out. See Sharing |
+| `state`, `history`, `version`, `cursor`, `image`; the project's `list`, `read`, `open` | read |
+| `submit`, `comment` (resolving and reopening too), `undo` | write |
+| everything else: `move`, settings, buddies, agents, `saveImage`, the room's own calls | owner |
 
-DocService, Runner, ProjectService and Room run in the doc host, the app's utility process.
-Windows reach it over Electron message ports; a player's page over the
-relay.
+The owner's level is owner, a teammate's read or write. A buddy acts with
+the level of whoever asked it, at most write, as a Unix program runs as the
+user who started it. Behind the door, `who` only names a change's author.
 
-### Views
+Events to every connection on the doc: `change` (each change in the log,
+below), `saved` (whether the file holds what was told, and why not),
+`cursors`, `missing` (the file gone), `renamed`, and from the controller
+`buddies` (who is here, running, watching, failed; the steps).
 
-A doc has one **view**, its editor, switched on or off alone
-(`settings.json`: `views`, by id). A view has state (caret, undo, marks),
-so it is built in and not an extension point.
+### The log
 
-| | View (`web/views/`) |
-| --- | --- |
-| Declared | `{ id, name, about, extensions, always?, limits?, createView, settings }` |
-| Picked by | `viewFor(name, settings)` in `web/views/index.js`: the first enabled view that claims the extension, else Plain text (`always`, any UTF-8 text file up to 20 MB); a view only for a doc within its `limits`, see [Editing](#editing) |
-| Its settings | an ordered list of fields `{ key, type: 'switch' \| 'choice' \| 'number', label, hint?, default, group?, when? }`, rendered as its page in Settings > Views; `viewSettings` keeps a stored value only if its field allows it |
-| Must satisfy | the view contract, `test/views.test.js` |
+Every change to a doc is a line in one ordered log, in memory: `{ rev, by:
+{ id, kind: person | buddy | outside }, at, edit? | comment?, group? }`.
+An `edit` is insert and delete operations, offsets in UTF-16 code units of
+the doc's text; a `comment` is a comment line ([SPEC](../spec/SPEC.md));
+`group` the comment an edit hangs on, to undo with it. `rev` counts the
+changes since the host opened the doc, which `epoch` names; one `rev`
+versions the text and the comments, so whether anything changed since a
+moment is a comparison of two numbers.
 
-Both views are one editor, CodeMirror, whose text is the doc's own
-(`web/views/codemirror.js`: the view interface, marks, others' edits, find,
-right to left), each with its own keys, language and display.
-The Plain text view (`web/views/plain/`) shows the text as it is,
-with CodeMirror's standard keys for code (Mod+/ comments out lines in a
-language that has comments); line numbers, wrapping, font size, whitespace
-marks, indent guides and indentation are its settings, with a status bar
-(`status.js`) whose menu and toggles save the same settings. The Markdown view (`web/views/markdown/`, [design](markdown-view.md)) is
-live preview: the text drawn formatted, its syntax showing on the lines
-being edited, and nothing but typing changing it. Its toolbar (and the
-standard keys), outline, focus mode and word count are parts of it,
-switched by its settings, not separate extensions.
+A window's edit is operations on the `{ epoch, rev }` it started from.
+The door transforms them over what landed since, by character
+(`transform` in `src/core/ot.js`), lands them, writes the file, and only
+then tells everyone. A whole text (a run, an outside change, an undo) is
+merged by line first (below) and lands as an edit on the current `rev`,
+like anyone's.
 
-How edits merge does not depend on the view or the format: a window's by
-character, a whole text by line ([how edits merge](#how-edits-merge)).
+Only a comment that came through the door by a member asks: one found in
+the file is by `outside` and asks no one. The comments this host took are
+noted in the doc's history, so this holds after a restart.
 
-**To add a view**: a folder in `web/views/` with its declaration, listed in
-`VIEWS`, passing the contract test. Its features are its own settings.
+### How edits merge
 
-Settings keep `views: { <id>: { enabled, ...values } }`;
-the core checks only that shape (values boolean, string or number) and keeps
-ids it does not know. Switching a view makes the affected views again from
-the same text in every window, the history's too, after saving pending
-typing; its own settings reach its view as they are.
+| Edit | Comes as | Merged | Where it collides |
+| --- | --- | --- | --- |
+| a window's: typing, a paste, a cut | operations on the rev the window last heard, milliseconds old | by character (`transform`) | both stay, in the order they reached the host |
+| a whole text: a run, an outside change, an undo | the text it ended on, from a base that may be minutes old | by line (`merge3(base, doc, late)` in `src/core/diff.js`) | the doc as it is stays; the late text is in history |
+
+An edit from a window says what it does, on text its writer saw a moment
+ago, so it moves over others' by character. A whole text says only where
+it ended: its operations are a diff's guess, and spliced by character into
+edits it never saw they make words no one wrote. By line, the collision
+shows. The doc as it is wins because people have seen it and keep working
+on it, while a late text can be made again or found in history. So a
+paste, however large, is a window's edit, and a person's edit saved in
+another editor gives way where it collides, as a run does.
+
+### Files on disk
+
+The door reads the doc and its comments when the doc opens, keeping a
+hash of each, and watches both: a folder watch, and a poll every 500 ms for
+file systems where watches miss changes. A doc file it did not write is a
+change by `outside`: taken once unchanged for 50 ms (up to a second), as
+another program may be half way through writing it; saved to history; then
+merged by line from the text the file last held, and landed. Before each
+write it checks the file is still what it last wrote, and lands an outside
+change first. A file whose size, mtime and inode are those of its own last
+write is not read again: a doc of millions of characters takes tens of
+milliseconds to read and hash.
+
+A write that fails (a read-only file, a lock, a full disk) does not undo
+the edit: it has landed, `submit` answers `not_saved`, and the door writes
+once it can, half a second later, then twice as long each time up to 10
+s. Every connection hears whether the file holds what it was told
+(`saved`), so a page shows Not saved, and why, exactly while it is so.
+
+### Catching up
+
+A window catches up one way, whatever it missed (a new connection, a missed
+event, an edit refused as `stale`): `state({ since: { epoch, rev } })`.
+While the log reaches back that far (the last 1,000 changes), the answer
+holds the changes missed, and the window takes them as any, knowing its own
+edit by its id. For a new epoch (the host started again) or a log that no
+longer reaches back, it takes `diffOps(the text it last heard, the new
+text)` and moves its typing over that. An edit lands at most once: one
+sent again with the same id and rev is answered with the rev it already
+made, however long ago, as the ids written to the file are noted in the
+doc's history through every restart. A whole text needs no log: each has
+its base (a run's copy, the file's last text, a version).
+
+### Versions and undo
+
+History records a version each time typing pauses (its authors each person
+who typed), before and after each buddy's group of edits, an outside
+change, an undo and a restore, each credited to who made it. A version
+never changes: it names its `parent`, and only the oldest go once the
+history is full.
+
+An undo is one edit: a version's change taken back, from its parent's text
+to its own, merged by line with everything since (`merge3`), so lines
+someone changed since stay. Three ways, each saving a version first:
+
+1. Cmd+Z: the editor's own history, a person's own typing, mapped over
+   others' edits. Its result is typing, merged by character.
+2. Undo on a buddy's comment: the edits of its group, and no other
+   comment's; then Redo, which undoes that undo.
+3. Undo in history, for a version or a row of them, whoever made it; or a
+   restore, a `submit` back to an old version's text.
 
 ### Editing
 
 What a person can count on when they edit, alone or with others. To a
-person, another writer changing their doc is one of three: a teammate, an
-AI buddy, or an outside program (`git pull`, another editor). Editing alone
-always has the last two, so alone is the case of one person. Every rule
-below holds for any number of people and any kind of other writer, there is
-one path for everyone (page → `web/client.js` → DocService), and one set of
-tests covers it all, by parameters ([testing](testing-ci.md#editing-tests)).
+person, another writer is one of three: a teammate, a buddy, or an outside
+program. Editing alone always has the last two, so alone is the case of one
+person. Every rule holds for any number of people and any kind of other
+writer: there is one path for everyone (page → `web/client.js` → the door),
+and one set of tests covers it all, by parameters
+([testing](testing-ci.md#editing-tests)).
 
 **Scope.** Docs within the views' limits (below); up to 8 people editing at
 once; a one-way network delay up to 150 ms. Past it editing may be slower,
@@ -186,7 +247,7 @@ but the A rules always hold and the person is told.
 | A1 | Converge: once writers stop, every page's text is the host's text is the file. |
 | A2 | Nothing lost: what a person typed and nobody deleted ends up in the file, through crashes, power loss and dropped lines. |
 | A3 | Nothing twice: an edit lands at most once, through resends, restarts and write failures. |
-| A4 | Typing is never merged away: a window's edits (typing, a paste) merge by character, and nothing typed is lost. A whole text that arrives late (a buddy's turn, an outside change, an undo) merges by line with the doc as it is when it lands: where both changed the same lines, the doc's lines stay, and the late text can be found in history. A window's edit on its way when one lands moves over it by character, as over anyone's. |
+| A4 | Typing is never merged away: a window's edits (typing, a paste) merge by character, and nothing typed is lost. A whole text that arrives late (a run, an outside change, an undo) merges by line with the doc as it is when it lands: where both changed the same lines, the doc's lines stay, and the late text can be found in history. A window's edit on its way when one lands moves over it by character, as over anyone's. |
 | A5 | Text intact: no split surrogate pair, no U+FFFD; each line's end (LF, CRLF, CR), the BOM and the file's permissions kept; unchanged blocks saved byte for byte. |
 | A6 | Shown is saved: whatever the page shows as saved is in the file; anything not saved is marked, with the reason. |
 
@@ -212,8 +273,8 @@ numbers are `LATENCY` in `web/views/index.js`, which the tests read:
 | C2 | Close: typing not landed lands before a window closes. |
 | C3 | An outside change while typing: my text stays; the outside version goes to history. |
 | C4 | A write that fails (a read-only file, a lock, a full disk): the page says Not saved, and why. Once the file can be written, the typing is saved, exactly once. |
-| C5 | Reconnect: within 5 s of the line or the host coming back (30 s for a host waking from sleep), the page has caught up on text, comments, cursors and level. A window of the app whose doc host started again saves the typing done meanwhile, once; a player's page saves nothing typed before its line dropped (C6). |
-| C6 | Line down: a player's page whose line drops, a half-open socket included, is read only at once and says so within 15 s; typing not sent then is shown as it was left, to copy (as in C7), never sent later. It edits again once caught up on the line made again, unless it shows such typing: then once reloaded. |
+| C5 | Reconnect: within 5 s of the line or the host coming back (30 s for a host waking from sleep), the page has caught up on text, comments, cursors and level. A window of the app whose doc host started again saves the typing done meanwhile, once; a teammate's page saves nothing typed before its line dropped (C6). |
+| C6 | Line down: a teammate's page whose line drops, a half-open socket included, is read only at once and says so within 15 s; typing not sent then is shown as it was left, to copy (as in C7), never sent later. It edits again once caught up on the line made again, unless it shows such typing: then once reloaded. |
 | C7 | Level: a level change applies within 2 s online, and on reconnect offline. Typing that can no longer be saved is never dropped silently: the page says so and shows that text, to copy. |
 | C8 | Isolation: one page's bad request or oversized message never disconnects the others. A doc too big for the relay (`MAX_MESSAGE` in `relay/worker.js`, room for the Plain view's longest) does not open through sharing, and its page says so; an event that big is left out. |
 
@@ -236,7 +297,7 @@ numbers are `LATENCY` in `web/views/index.js`, which the tests read:
 | --- | --- |
 | E1 | At any moment the page is in exactly one true state: Saved, Saving, Not saved (and why), Offline or Read-only. Alone too. The toolbar shows it (`paintSave` in `web/main.js`); other problems show apart, beside the doc's name. |
 
-A view keeps the B rules only up to a size, its `limits`: how long the doc is:
+A view keeps the B rules only up to a size, its `limits`:
 
 | View | Up to | Past it |
 | --- | --- | --- |
@@ -245,562 +306,260 @@ A view keeps the B rules only up to a size, its `limits`: how long the doc is:
 | Plain text's colour | no block over 10,000 characters | the doc opens without colour |
 
 The desktop app opens text files up to 20 MB, room for the plain view's
-limit in any script. `npm run test:perf` holds each view to the B rules at
-its limits, and a key to a teammate's page through the relay
-([testing](testing-ci.md#editing-tests)). A view sends each change the
-person makes as it is made (`onEdit`), one edit on its way at a time: keys
-typed while one is on its way go out together once it is answered, so
-typing reaches others while it goes on, not once it pauses; a teammate far
-from the relay sends one edit per round trip.
+limit in any script. A view sends each change as it is made (`onEdit`),
+one edit on its way at a time: keys typed meanwhile go out together once it
+is answered, so typing reaches others while it goes on.
 
-### Interfaces
+## Buddies
 
-The target: each component does one thing (principle 7) through the few
-calls below (principle 8). Done: one `comment` call and one function that
-builds a comment (#177), the Runner's `reconcile` (#178; the code calls
-`stop`/`resume` for `pause`), `DocService.move` (`moveTo`, which the Shell
-calls to rename an open doc), and every edit as operations on a revision,
-with the views' side of them (#215; a restore is still its own call,
-`restoreVersion`), and `undo` of any version (#286). Not
-yet: Config, History and Store as the components below (today they are the
-modules of `src/store/`), and the rest of what [Sharing](#sharing) needs:
-teammates who edit, and `cursor`. The door is built for the owner, AI
-buddies and a player's page (#223, #226); ProjectService (#229) and Room
-(#286) are behind it, and the Ponjo agent reads only what ProjectService
-shows (#230).
-
-**Every writer comes through one door.** A page's call comes as
-`call(type, arg, who)`, `who` being `{ id, name, kind, level }`. Each call
-needs a level, `read < write < owner`, and the door lets it through only
-when `who`'s level is at least that: `can(who, level)`, asked once; nothing
-behind it checks again. A buddy's finished turn lands as the buddy, with
-the level of whoever asked it. That is all
-a permission is. What a writer does with it is behavior, decided elsewhere:
-what an AI buddy comments is its prompt's business (only people resolve), and how an edit
-merges is its path's (a window's by character; a buddy's turn, an outside
-change and an undo by line, before they land). Behind the door DocService uses `who` only to
-put in a comment's `by`. A connection is bound to one doc at a time, as a
-window's port is, so no call names a doc.
-
-| Calls | Level |
-| --- | --- |
-| `state`, `history`, `version`, `cursor`, `image`; ProjectService's `list`, `read`, `open` | read |
-| `submit`, `undo`, `comment` (resolving and reopening too) | write |
-| everything else: `move`, settings, AI buddies, agent scripts, `saveImage` (an image pasted into the doc, written beside it), Room's own calls | owner |
-
-The owner's level is owner. An AI buddy's turn acts with the level of
-whoever asked it, at most write, as a Unix program runs as the user who
-started it; a player's is read or write.
-
-**Every edit is operations on a revision.** A submission is insert and delete
-operations (offsets in UTF-16 code units of the doc's text) on
-`{ epoch, rev }`, the revision it started from. DocService transforms it
-against what landed since, by character: `transform` (`src/core/ot.js`),
-which loses nothing typed. A buddy's turn, an outside change and an undo
-never go through it: the host merges each by line with the doc as it is
-(`merge3` in `src/core/diff.js`, from the text it started from), where
-the doc's lines win ([how edits merge](#how-edits-merge)), and lands the
-result as one edit at the current revision, like anyone's. So one kind of
-edit goes through the order, and a window's edit on its way when one lands
-moves over it by character, as over any. An edit lands on the text in memory, the file is written, and
-only then does it go to every window as `ops` (`{ epoch, rev, ops, id }`,
-`id` the window's name for its own edit; a buddy's `reply` and `by`): a
-window rebases what it has typed and not yet heard back (`web/client.js`).
-
-**A window catches up one way**, whatever it missed: on every new
-connection (`hello`), an event missed, an edit refused as `stale`, or an
-answer whose event never came (its own edit's event comes before the
-answer). It asks `state({ since: { epoch, rev } })`, and changes nothing
-before the answer. While the log reaches back that far, the answer holds
-the `events` missed, as they were told, and the window takes them as it
-takes any, so it knows its own edit by its id. Only for a new epoch (the
-doc host started again) or a log that no longer reaches back does it take
-`diffOps(the text it last heard, the new text)` as what landed and move
-its typing over that, as it was typed; its edit on its way is in that text
-if the answer lists it as `landed`, the ids the doc's history folder
-notes as written to the file, kept through every restart and every change
-made outside since. An edit is landed
-at most once: one whose fate a window does not know (the line dropped
-before the answer) is sent again as it was, same id, same rev, and the
-host answers one it already landed with its rev, never landing it again,
-however long ago; a window never moves such an edit. A write that fails (a
-read-only file, a lock, a full disk, a file made other than UTF-8 outside)
-is not a refusal: the edit has landed, `submit` answers `not_saved`, and
-the host writes it once it can, trying again half a second after, then
-twice as long each time up to 10 seconds, and tells it then. A buddy's turn,
-an undo and a restore that land meanwhile are landed all the same: the
-turn is answered, and runs no more until its thread has another comment,
-even if its reply could not be written. Every window hears whether the file
-holds what they were told (`saved`, with why not), and `state` says it
-too (`notSaved`), so a page shows Not saved, and why, exactly while it is so. When the doc
-host started again, a window gets a new port and catches up, as a
-teammate's page does on a new line. The log holds the last 1,000 edits, for windows' edits only: a buddy's turn, an
-outside change and an undo each have their base text (the turn's copy, the
-text the file last held, the version saved after the turn) and take
-`diffOps(that base, the text now)` as what landed since, so they need no
-log, after a restart or days later. History records a version each time
-typing pauses (once everyone typing has paused: its `authors` are each
-person who typed, #228), before and after each buddy's edit, an outside
-change, an undo or a restore, and when the history is opened, each
-credited to whoever made it. A version is never changed once written: each
-names its `parent`, the version before it, and only the oldest go once the
-history is full. The history view groups a burst of typing into one row.
-
-**Undo of a version is one edit**: the inverse of its change, from its
-parent's text to its own, merged by line with everything written since
-(`merge3`), so lines someone changed since stay. A row of several versions
-is undone as one, from the first's parent to the last. It works while the
-version and its parent are kept, however many came after. Cmd+Z is the
-editor's history, which holds only your own typing, mapped over what
-others put in; its result is your typing, merged by character.
-
-| Component | Its one thing | Interface |
-| --- | --- | --- |
-| Core | compute on text, purely; the page and the host share it | `diffOps(base, text)`, `transform(ops, landed, { first })` → ops, `apply(text, ops)`, `mapOffset(at, ops)`, `merge3(base, ours, theirs)` → `{ text, conflicts }`; `createAnchor`, `locate`; `parseSidecar`, `serializeSidecar`, `newComment`, `threadsOf`, `askedOf(thread, askers)` |
-| Store | read, write, watch and move files | `read(path)`, `write(path, text, { ifHash })`, `watch(path, fn)`, `move(from, to)`. Settings, buddies, agent scripts and history are paths and parsers over these, not interfaces of their own |
-| DocService | order every edit to a doc, and write it | `state({ since? })` → text, `{ epoch, rev }`, the `events` missed since, and what this connection may do; `submit({ ops, epoch, rev, id })` → `{ rev }`, or `stale`, or `not_saved`; `comment({ thread?, anchor?, body, resolved? })`; `undo({ id, from? })`, a version (or the versions from `from` to it) undone as above, a turn's from its reply; `cursor({ at, epoch, rev })`; `move(to)`; events `ops` (every landed edit, written), `saved` (`{ error }`: why the file does not hold them, or null), `sidecar`, `room`, `cursors`, `missing`; a window that connects again catches up with `state`. Cursors are never queued behind writes: each is kept at the last rev windows were told of, and moved with every edit told |
-| History | keep the doc as it was at each version | `record`, `list`, `read`; a version may have several authors |
-| Runner | make the running turns equal the asks the sidecar holds | `reconcile()`, `statuses()`. Each time the asks may have changed (a comment, the doc opening, a turn ending, a watch set on, people's edits pausing or another buddy's edit while a buddy watches), it runs each buddy asked or watching, one turn at a time, with every thread that asks it and it has not answered; never on a clock. The asks are people's comments: the owner's and those of players who can edit. A finished turn comes through the door as its buddy, then is logged with its trace |
-| Room | who plays in the project's room and what each may do, while it is open | for the owner `open()`, `close()`, `lock(locked)`, `setLevel(id, level)` with `level` `read` or `write`, `kick(id)` and `list()` (`{ link, locked, players }`, or null while closed), at the door as `openRoom`, `closeRoom`, `lockRoom`, `setLevel`, `kick` and `room`; a page that opens the link joins as `join({ id, name })`; the host asks it a player's level on each call; event `room` to the owner's windows |
-| ProjectService | the project's files, the same for everyone | `list(path)`, `read(path)`, `open(path)`, for the owner's windows and a teammate's page alike. A path must resolve inside the root and not start with `.`. An agent reads no more than this |
-| Config | own the settings, buddies and agents | `settings.get/patch`, `buddies.save/remove`, `scripts.list/reset` |
-| View | the doc's editor: what a person sees and types in | its contract as today (`getText`, `applyText(text, { by, ops })` with the operations that made `text`, after which `getText()` is `text` and the line on top of the page is where it was, `setMarks`, the selection, and `composing()`, while an IME composition is on: its text goes out only once it ends, as one edit); the page turns its text into operations and back (`web/client.js`, [plan A](markdown-view.md#many-writers)) |
-| Shell | windows, menus, dialogs, recent docs | an open doc's files only through `DocService` (renaming through `DocService.move`), the sidebar through ProjectService (a folder window with no doc: the folder's own, `list`, `read` and `open` only); the settings and agent scripts through Store and Config |
-| Agent | edit its copy, append its comments to its sidecar | none: it cannot call anything |
-
-The page's calls: `state`, `submit`, `comment`, `retry`, `watch`, `refillSteps`, `undo`, `cursor`, `history`,
-`version`, ProjectService's three, and for the owner settings, buddies,
-agent scripts and Room. `reply`, `resolve`, `reopen`, `saveDoc` and
-`restoreVersion` go: a reply, a resolve and a reopen are each `comment`; a
-restore is a `submit` of the operations back to an old version's text, so it
-needs edit, as typing it would.
-
-A **journal** of what happened (history, comments, `runs.jsonl`) is not a
-component: if it is wanted, a view joins the three by `reply` and `thread`
-when read. Nothing stores it.
-
-### How edits merge
-
-An edit merges by how it comes, not by who made it: the component that
-merges never knows the writer (principle 8).
-
-| Edit | Comes as | Merged | Where it collides |
-| --- | --- | --- | --- |
-| A window's: typing, a paste, a cut | operations on the revision the window last heard, milliseconds old | by character (`transform`) | both stay, in the order they reached the host |
-| A whole text: a buddy's turn, an outside change (another editor, `git pull`), an undo | the text it ended on, from a base that may be minutes old | by line (`merge3(base, doc, late)`) | the doc as it is stays; the late text is in history |
-
-Why two ways: an edit from a window says what it does, on text its writer
-saw a moment ago, so it can move over others' edits character by
-character. A whole text says only where it ended: its operations are
-guessed by a diff, against edits it never saw, and merged by character
-they splice two rewrites of one sentence into words neither wrote. By
-line, the collision shows. The doc as it is wins because people have
-seen what landed and keep working on it, while a late text can be made
-again (ask the buddy again) or found in history.
-
-So a person's edit saved in another editor gives way where it collides,
-as a buddy's turn does, and a buddy's turn that landed first holds
-against a later one. A paste is a window's edit, however large: pasting
-back a copy edited elsewhere replaces what is there, teammates' edits
-since included, and those are in history.
-
-### How files are read and written
-
-- DocService reads the doc and its sidecar when the doc opens, keeping a
-  hash of each. Windows never read the files; they ask DocService, which
-  holds the doc's text as its edits land (see Interfaces) and writes it as
-  each lands, before telling the windows.
-- It watches both files, through a folder watch and a poll every 500 ms
-  for file systems where watches miss changes. When the sidecar's hash
-  changes, it tells every window; a doc it did not write is a change from
-  outside: saved to history first, then merged by line (`merge3`) from the
-  text the file held when last written, and landed. Where it changed the
-  same lines as what was typed since, the typing wins and the outside
-  version is only in history. It is
-  taken once the file is unchanged for 50 ms (up to a second): another
-  program may be half way through writing it, emptied with the rest to
-  come.
-- Before writing, DocService checks the file is still what it last wrote;
-  if not, it lands the outside change first, the same way. A file whose
-  size, mtime and inode are still those of its own last write is not read
-  again, nor when the watch fires for that write: a doc of millions of
-  characters takes tens of milliseconds to read and hash, on every key
-  (#235).
-- Every file is written whole: a temporary file in the same folder, with
-  the file's permissions, renamed over it.
-- Above the files, a doc is its text: UTF-8, no byte order mark, lines
-  ending in `\n`. The file's byte order mark and each line's end are put
-  back when it is written, a new line ending as the line before it; a file
-  that is not UTF-8 does not open.
-
-### Undoing changes
-
-An undo takes some edits back, all at once, and keeps everything written
-since: where someone changed that text since, their text stays.
-
-1. **Your own typing:** Cmd+Z, which undoes only yours, as in shared docs.
-2. **An AI buddy's change:** Undo on the comment it came with: the change
-   of its version, and no other comment's; then Redo there, which undoes
-   that undo.
-3. **Any change:** Undo this change in history, for a version or a row of
-   them, whoever made it; or restore a whole version.
-
-Each saves a version first. An undo is the same `merge3` a buddy's turn
-goes through (see Interfaces): the version's change taken back, where no
-one changed its lines since. It works where the versions are, on the doc
-host, from any window of the team, as whoever clicked it. Cmd+Z is the
-editor's own history, your typing only, and its result is typing like any
-other: a person's edit, merged by character.
-
-### The config folder
-
-In the config folder (`~/Library/Application Support/Ponjo/` on macOS),
-written only by the app.
-
-| File | Holds |
-| --- | --- |
-| `settings.json` | the user's id and name; editor preferences; views' and agents' settings; which agent runs buddies |
-| `agents/` | agents: each a program and its manifest ([agent config](agent-config.md#agents)); Claude Code, Codex and the Ponjo agent ship |
-| `secrets.bin` | the agents' secret settings, such as API keys, encrypted with the system keychain |
-| `state.json` | recent docs and folders, window bounds |
-| `history/` | versions of each doc, saved each time typing pauses, before and after each buddy edit (tagged with the id of the comment it came with), before each outside change, undo and restore; and the windows' edits the doc's file was last written with; the comments this host took |
-| `logs/` | `runs.jsonl`, a line per turn; with Trace runs on, `traces/`, each turn's trace ([a buddy's turn](#a-buddys-turn)) |
-
-## A buddy's turn
-
-A person's comment asks AI buddy X (by id) until X comments in its thread
-after it: the owner's, or a player's who can edit. A comment asks whom it @mentions; one
-that mentions no one asks the thread's AI buddies: the one that opened it,
-and each @mentioned there before. An empty one (resolving, reopening) asks
-no one. That is computed from the sidecar, the comments this host took,
-and the ids of those who may ask. AI buddies run only on docs open in a
-window. Resolving a thread, which only people do, drops what it asked.
-
-### How a turn works
-
-1. Runner copies the doc and its sidecar into a new private folder, at the
-   doc's path in the project, which is how the prompt names them, and runs
-   the [agent script](agent-config.md) there, with the prompt (who the
-   buddy is, the rules, every thread that asks it) on stdin and the
-   buddy's name in `PONJO_BUDDY` (the name is for the script; the app goes
-   by id). A buddy has one turn at a time in a doc: its inbox. In project
-   mode it is given the project folder, to read only; what it may read
-   there is up to the agent ([permissions](agent-config.md#permissions)).
-2. The agent appends its comments to the sidecar copy and edits the doc
-   copy, each edit with the comment it comes with
-   ([groups](agent-config.md#groups)). A turn with nothing to do changes
-   nothing.
-3. On exit 0, DocService merges the doc copy with the doc as it is, from
-   the copy as it started (`merge3`, see Interfaces). Where people changed
-   none of the same lines meanwhile, each comment's edits land as their own
-   version, hung on it, and its comments are added as the buddy's: no edit
-   lands without a comment. Where they did, the doc's lines stay there, the
-   rest lands, and its versions say `conflict`. The turn lands as the
-   buddy's. In a thread
-   that asked it, its comments are dated just after the last comment the
-   turn was given, so one the user wrote meanwhile comes after them, still
-   to answer.
-4. The private folder is deleted, and the turn gets a line in the config
-   folder's `logs/runs.jsonl`: its run id, doc, buddy, threads, the
-   comments it posted, start, duration, `ok`, `failed`, `timedOut` or
-   `stopped` with the exit code, and, when its agent wrote it to its trace
-   (the Ponjo agent on the Claude API), its tokens and model (`usage`),
-   which Settings > Usage sums by day and model, with their cost at list
-   prices (`src/core/usage.js`). A `.jsonl` log there past 10 MB, an
-   agent's too, then keeps its newest half. With Settings > Agents > Trace
-   runs on (off by default), the turn also leaves its trace in
-   `logs/traces/<run>.json`, the newest 200 kept: the prompt, the steps
-   the agent wrote to `PONJO_TRACE` ([agent config](agent-config.md#traces)),
-   stdout and stderr, the doc and sidecar copies before and after, and what
-   landed. The owner's window reads them in the doc's Runs (`runs()`,
-   `trace({ run })`), and a buddy's comment links to its run's.
-
-Resolving every thread that asks a buddy ends its turn at once, with no
-answer; a reply in a thread resolved before its turn is merged is dropped,
-with its edits. Deleting a buddy ends its turns too.
-
-### When a buddy runs
-
-A buddy runs when it is asked, and only then. The Runner looks at the asks
-the files hold each time they may have changed: a comment written (a
-buddy's too), the sidecar changed outside, the doc opening, who may ask
-changing, a turn ending. It never looks on a clock, on an edit, or on a
-cursor or a person coming or going: those are what a turn reads, not what
-starts one. Each look starts a turn for each buddy asked that is not
-running, with every thread that asks it and it has not answered, so a
-comment written while its turn runs is answered by the next turn, which
-starts as soon as that one ends. A look that cannot read the asks (the
-sidecar locked by a sync tool, a buddy file gone as it is read) is tried
-again 1 s later, twice as long each time up to 30 s, until one can: no
-event may come to try it. A comment a turn was given asks no more,
-though the turn posted nothing there; after a restart it asks again. So a
-buddy costs a turn per comment that asks it, and nothing while people
-write or the doc sits open. What a comment asks that cannot be done yet
-("once I've finished this section"), the buddy says so, and it waits for a
-person to ask again: the app keeps no clock. A buddy's face, and the doc's
-status bar under the page in every view ("Clippy is working…"), show its
-turns.
-
-A buddy can also watch a doc, for a buddy whose part is to follow what
-people write (one that chats as you write, a proofreader), its persona
-saying what to do. Only a person sets it, in the buddy's card ("Watch this
-doc"), and only a person unsets it: nothing the buddy or the app does
-changes it. Setting it is an event: the buddy looks at once. Then people's
-edits to the doc, anywhere, once they pause for 5 s, run it again, and so
-does another buddy's edit, at once, for it lands whole: two buddies
-watching can play a game in the doc. A buddy's own edit never wakes it.
-So that buddies cannot wake each other for ever, a run woken by another
-buddy takes a step from the doc's steps, a bucket that holds 20 and gains
-one a minute (Settings > Agents sets both; 0 a minute: only on Refill);
-with none left the watchers wait, the status bar says "Out of steps",
-when the next comes, and Refill, which fills it, for whoever may ask.
-People's pauses take none. The bucket is the host's, in memory; event
-`steps` (`{ left, cap, next }`) tells the windows. Each run is
-told it watches the doc, what changed since it last looked (from the doc
-as its last run started; on its first run since the app started, to read
-the doc), and its watch thread: the first thread on the whole doc it
-opens, where it comments and where its edits hang, each to undo on its
-own; resolved, it opens another. With nothing due it posts nothing. A
-person editing again while a run only its watch started is on ends that
-run with no answer, for it saw the doc as it was; it runs again once they
-pause. Whether a watcher is due is told from who last changed the doc
-and when (people as one, each buddy on its own), which the host notes as
-each change lands, against when its last run started: so a look at any time finds the same, and a
-run that already saw some edits does not run again at their pause; the
-timer at the pause only wakes the look. These times are by a clock that
-never goes back (`performance.now()`), so no pause is missed when the
-system's clock is set back. A watch run that fails shows on the buddy, for it may have no
-thread yet: its card says "Watch failed", why to the owner alone, and
-Retry; it also runs again the next time people pause, or once its agent
-or key changes. Unset, it starts no more runs, and one running ends with
-no answer. The
-watch is the host's, `{ by, thread }` noted with the doc's history on this
-machine and never in the sidecar, for nothing in a shared file makes a
-buddy run here; it runs as whoever set it may, while they may ask. Its
-face wears glasses meanwhile, and the status bar says "Bob is watching ·
-14 steps" while no one works; Settings > Usage counts its runs.
-
-An AI buddy comments as a member does: new threads and replies in any
-thread. It does not resolve: a line that would is ignored
-([agent config](agent-config.md#comments)). The rules keep restraint as the
-default when a thread asks nothing of comments, not as a ban. Its comments
-start no turns (principle 6).
-
-### What the user sees after a turn
-
-What the app knows, the app shows, not the buddy's comment: under each
-comment with edits, how many places they changed, with Undo (once undone,
-Redo); a version that says `conflict` says that part of it was not
-applied. The comment says only what the app cannot (why, what to decide),
-and is empty only when the app posted it for an agent that edited without
-a word. The turn's edits land at once and glow with the buddy's name, as
-anyone's do; clicking the count shows them as a revision (new text in the
-buddy's color, removed text struck through) until the user next types.
-The count, the revision and Undo are read from the version saved after the
-comment's edits and the one before it, in every window of the team, since
-the versions are on the host.
-
-### Failures, retries and restarts
-
-A turn that fails (an exit other than 0, a timeout, or a run the host
-could not start or take back) lands nothing and writes nothing: a failure
-is this machine's, not the doc's, so it never reaches the sidecar. The
-host keeps it in memory, by buddy and thread, and tells every window with
-the buddies' statuses; the thread shows it as the buddy's last reply, in
-red, with Retry (`retry({ buddy })`). The owner's say why, the end of the
-program's output and the script that ran; a teammate's say only that the
-run failed. The ask stays open but is not run again on its own, for a run
-that failed once may well fail again at the same cost: it runs again when
-someone writes in the thread, on Retry, when the agent, its settings or
-its secrets change (a key set), and after a restart. Errors an agent can
-outlast, such as a busy API, it retries itself
-([Ponjo agent](ponjo-agent.md)). To redo what was not applied, ask the
-buddy again. Which turns are working and which failed lives only in
-memory: after a restart, unanswered asks run again.
-Buddies' turns go on at the same time; their merges are applied one at a
-time.
-
-### Where the buddy runtime is going
-
-Not built yet: the design the runtime above moves to, so that the doc and
-its buddies are apart and each part does one thing. Today
-`src/host/doc-service.js` holds both: the doc's writes, and the buddies'
-notes, timers and landing; `src/host/runner.js` carries the doc's notes
-for it.
-
-**One log.** Every change to a doc, to its text or its comments, is a line
-in one ordered log: `{ rev, by: { id, kind: person | buddy | outside }, at,
-edit? | comment?, group? }`, `group` the comment an edit hangs on, to undo
-with it. The doc file and its sidecar are what the log comes to, in the
-format as it is ([SPEC](../spec/SPEC.md)); a file changed outside is a
-change by `outside`. One `rev` versions both, so "has it changed since
-this buddy looked" is a comparison of two numbers. Only a comment that came
-through the doc's door, by an author it trusts, asks: one found in the
-file is by `outside` and asks no one (today's `taken`).
-
-**Five parts, each depending only on those before it.**
+A buddy runs only on docs open on this machine, and only for a person: on
+an ask, or while a person has it watch the doc. The doc knows nothing of
+buddies: a controller, one per open doc, reads the doc and its log through
+the door, decides what should run, runs the agent, and writes the run's
+changes back through the door as the buddy, as a window writes a person's.
 
 | Part | Does | Knows nothing of |
 | --- | --- | --- |
-| Doc | the door: `apply(change, who)` → rev, `read()` → `{ text, threads, rev }`, `subscribe(fromRev, fn)`; the one writer: orders, merges (OT), saves, versions, undoes by group | buddies |
-| Rules | pure: `plan({ threads, rev, changedAt, notes, running, steps, now })` → `{ start, stop, spend, wakeAt }` | files, clocks |
-| Controller | one per doc: keeps the notes, the steps and the runs going; subscribes to the log; one timer | the doc's insides |
-| Executor | `run(task, snapshot)` → the copies back: a private folder, the agent, the prompt on stdin | the doc |
-| Translate | pure: `toChanges(snapshot, result, now)` → the changes to apply: new comments, each with its edits as a group, merged with what people wrote meanwhile (`merge3`, their lines stay) | files |
+| Rules (`src/core/`) | pure: `plan(...)` → what to start and stop, the steps spent, when to look next | files, clocks |
+| Controller (`src/host/`) | keeps the notes, the steps and the runs; listens to the log; one timer | the doc's insides |
+| Executor (`src/host/runner.js`) | `run(task, copies)` → the copies back | the doc |
+| Translate (`src/core/`) | pure: a run's copies → the changes to apply | files |
 
-A buddy writes as a window does: the controller applies its changes through
-the door, as the buddy, with the level of whoever asked it. The doc has no
-path for buddies of its own.
+### Asks and watches
 
-**The controller.** Each change it hears notes who changed the doc at which
-rev (`changedAt`; people as one), and a person's ends the runs only a watch
-started. Then, and whenever its timer fires, it reads the doc, asks the
-rules what to start and stop, does that, and sets its one timer to
-`wakeAt`: the soonest of people's pause ending, the next step coming and a
-failed read's retry. Asked at any time it finds the same. A run that ends
-updates the buddy's notes (a pure function), and its changes are applied.
+**An ask.** A person's comment asks a buddy until the buddy comments in its
+thread after it. A comment asks whom it @mentions; one that mentions no one
+asks the thread's buddies: the one that opened it, and each @mentioned
+there before. An empty one (resolving, reopening) asks no one. Only the
+comments of those who may write ask (the owner, a teammate who can edit),
+and only those the door took. Resolving a thread, which only people do,
+drops what it asked. A comment a run was given asks no more, though the run
+posted nothing there, until someone writes in the thread again: a buddy
+that answers nothing is not run again and again.
 
-**A buddy's notes**, on this host only: `{ seen (thread → the rev it was
-given), lookedAt (the rev its last run started at), failed (thread or
-watch → why), watch ({ by } or null) }`. Its watch thread is not noted: it
-is the open thread on the whole doc it opened.
+**A watch.** A person sets a buddy watching the doc, or unsets it; nothing
+the buddy or the app does changes it. It is noted on this machine, `{ by }`,
+never in the comments, and the buddy runs as whoever set it may, while they
+may ask. A watcher is due once set, then on another member's change since
+its last run started: people's once they pause for 5 s (`SETTLE_MS`), a
+buddy's at once, for it lands whole. Its own change never wakes it. A
+person editing again while a run only a watch started is on ends that run
+with no answer, for it saw the doc as it was. Each run is told what
+changed since its last (`lineChanges`), and comments in its watch thread:
+its open thread on the whole doc, worked out from the comments; with none,
+it opens one.
 
-**What goes.** Two clocks (all but the 5 s pause is by rev); three timers;
-the rules split between the runner and the doc (`due: false`, `pay`, the
-"already running" check); a landing path of its own (`finishRun`); the
-runner carrying the doc's notes for it, and four flags for where a run is;
-reading the sidecar on each look; ending runs when the doc is renamed.
+**Steps.** So that buddies cannot wake each other for ever, a run woken by
+another buddy's change takes a step from the doc's steps: up to 20, one
+more a minute (Settings > Agents sets both; 0: only on Refill); with none
+left, watchers wait. People's changes take none. The steps are this
+machine's, in memory.
 
-**What stays.** The agent as a filter over copies, the file format, runtime
-state off the shared files, only people asking, the steps, failures left
-to people.
+### The controller
 
-**Getting there.** Rules, Translate and the controller are written beside
-the old code; then the doc service switches to them at once, and the old
-code goes. `test/runner.test.js` and `test/buddies.test.js` passing as
-they are is the acceptance; the rules and the translation are tested on
-their own, with no agent and no waiting (as `test/due.test.js` does now).
+The controller keeps, for each buddy here, its notes, on this machine
+only:
+
+```
+{ seen: thread → the rev of the last comment its runs were given there,
+  lookedAt: the rev its last run started at,
+  failed: thread or "watch" → why,
+  watch: { by } or null }
+```
+
+and, for the doc, who last changed it at which rev (`changedAt`, people as
+one), the steps, and the runs going. It hears every change in the log: it
+notes `changedAt`, and a person's ends the runs only a watch started. Then,
+and whenever its one timer fires, it reads the doc and asks the rules:
+`plan({ threads, rev, changedAt, notes, running, steps, now })` → `{
+start, stop, spend, wakeAt }`. It starts and ends runs as told and sets its
+timer to `wakeAt`: the soonest of people's pause ending, the next step
+coming, and a failed read tried again (1 s, twice as long each time up to
+30 s). The same look at any time finds the same; nothing else runs a
+buddy. A buddy has one run at a time in a doc, given every thread that asks
+it and it has not been given; a comment written while it runs is for the
+next.
+
+### A run
+
+1. The executor copies the doc and its comments into a new private folder,
+   at the doc's path in the project, which is how the prompt names them,
+   and starts the [agent](agent-config.md) there with the prompt on stdin:
+   who the buddy is, the other members, the rules, every thread that asks
+   it, and for a watcher what changed. In project mode it is given the
+   project folder to read; what it may read there is up to the agent
+   ([permissions](agent-config.md#permissions)), and the folder holds no
+   name starting with `.` the agent is shown.
+2. The agent edits the doc's copy and appends its comments to the
+   comments' copy, each comment's edits as a group
+   ([groups](agent-config.md#groups)). A run with nothing to do changes
+   nothing.
+3. On exit 0, Translate turns the copies into changes: the new comments,
+   each with its group of edits merged by line with the doc as it is now
+   (`merge3`, the doc's lines win, the version says `conflict`). An agent
+   that wrote no groups hangs its edits on its last comment, or on an empty
+   reply in the first thread that asked it: no edit lands without a
+   comment. A reply in a thread resolved meanwhile is dropped, with its
+   edits; a line that would resolve is ignored, as only people resolve. In
+   a thread that asked it, its comments come just after the last comment
+   it was given, so one written meanwhile is after them, still to answer.
+   The controller applies the changes through the door, as the buddy.
+4. The private folder is deleted, and the run gets a line in
+   `logs/runs.jsonl`: its id, doc, buddy, threads, the comments it posted,
+   start, duration, outcome (`ok`, `failed`, `timedOut`, `stopped`) and
+   exit code, and, when its agent wrote them, its tokens and model, which
+   Settings > Usage sums. A log there past 10 MB keeps its newest half.
+   With Trace runs on, it also leaves its trace (the prompt, the agent's
+   steps, its output, the copies before and after, what landed) in
+   `logs/traces/<run>.json`, the newest 200 kept, for the doc's Runs.
+
+A run that is ended (its asks resolved, its watch unset, its buddy deleted,
+a person typing while only a watch had it run) lands nothing. Runs of
+different buddies go on at once; their changes land one at a time, in the
+door's order.
+
+### Failures
+
+A run that fails (an exit other than 0, a timeout, a run the host could not
+start) lands nothing and writes nothing to a shared file: a failure is this
+machine's. It is noted in the buddy's `failed`, by thread or for its watch,
+and shown on the buddy and the thread with Retry (`retry({ buddy })`); why
+(the end of the output, the script) to the owner alone. It is not run
+again on its own, for it may well fail again at the same cost: it runs
+again when someone writes in the thread, on Retry, when the agent, its
+settings or its secrets change, and, for a watcher, when people next pause.
+Errors an agent can outlast, such as a busy API, it retries itself
+([Ponjo agent](ponjo-agent.md)). After a restart, the notes are gone: asks
+not answered run again.
 
 ## Sharing
 
 Sharing is hosting a room, as for an online game. In a project window the
-owner opens a room; friends join from its link in a browser, at once;
-the room ends when the owner closes it or the project. Built: a page
-reads a doc through the relay (#226); players who edit (#228); the relay
-deployed (#241); the project's tree and every doc in it (#242); rooms
-(#286). The files stay on the owner's machine. Players are trusted: in a
-doc a player who can edit does what the owner does. Doc mode has no
-sharing.
+owner opens a room; teammates join from its link in a browser, at once; the
+room ends when the owner closes it or the project. The files stay on the
+owner's machine. Teammates are trusted: one who can edit does in a doc what
+the owner does. Doc mode has no sharing.
 
-- **One host.** The owner's doc host holds the files, does every write and
-  runs the AI buddies, as always. A player's page is a client of it: it
-  keeps only what it shows, and a reload resyncs it from the host. A page
-  whose line drops is read only at once and says so (C6): it notices a
-  dropped or half-open line within 10 s, a ping unanswered (the relay
-  answers `ping` itself); typing it had not sent is shown to copy, never
-  sent later. It reconnects by itself and, caught up, edits again. The
-  app's own windows reach the host over message ports, not the relay: one
-  whose doc host started again saves its typing once caught up (C5).
-- **A room** (`src/host/room.js`) is `{ locked, players: id → { name,
-  level }, kicked }` in the doc host's memory, and dies with it: nothing
-  about players is written. Open room (the owner's `openRoom`) makes a
-  fresh random secret and puts the host on the relay in the room named by
-  its SHA-256, answering once the host is in. Close room, or closing the
-  project's last window of the app, ends it at once: every page is turned
-  away, `closed`, and docs only pages had open close. The next room has a
-  new secret, so an old link never opens a later room; a page on it hears
-  that no host is in (`nohost`).
-- **A relay** (`relay/worker.js`, a Cloudflare Worker, one Durable Object
-  per room) joins the host's outgoing WebSocket to each player's, over
-  TLS, and stores nothing. It is at `share.ponjo.app`, on the owner of
-  this repo's Cloudflare account, and serves the player's page too, so
-  page and relay share one origin (the page may connect to its own origin
-  only). There is no encryption of our own: the relay is
-  ours, and it could read what passes. The host has one connection for all
-  its pages: the relay numbers each page as a peer, which a page cannot
-  forge. No credential is in an address: the host's first message is the
-  secret, which the relay checks against the room before it takes the
-  host in, so a link, which names only the room, lets no one pose as the
-  host; a page's first message is its key, name and doc. The app's
-  relay is `wss://share.ponjo.app` unless `PONJO_RELAY` names another
-  (empty: nothing is shared).
-- **Versions.** The page comes from the relay, deployed from main with the
-  nightly, and the host from the app its owner installed, so the two can be
-  apart. The messages between them have a version (`PROTOCOL`,
-  `src/core/protocol.js`), raised by a change the other side would
-  misread; the host says its own in `hello`, and a page told another one
-  says which side to update: the owner's app, or the page (reload it).
+- **One host.** A teammate's page is a client of the owner's doc host, as a
+  window is: it keeps only what it shows, and a reload catches it up. A
+  page whose line drops is read only at once and says so (C6): it notices a
+  dropped or half-open line within 10 s, a ping unanswered; typing it had
+  not sent is shown to copy, never sent later. It reconnects by itself and,
+  caught up, edits again.
+- **A room** (`src/host/room.js`) is `{ locked, teammates: id → { name,
+  level }, kicked }` in the doc host's memory, and dies with it. Opening
+  one makes a fresh random secret and puts the host on the relay in the
+  room named by its SHA-256. Closing it, or the project's last window,
+  turns every page away (`closed`). The next room has a new secret, so an
+  old link never opens a later room (`nohost`).
+- **The relay** (`relay/worker.js`, a Cloudflare Worker at
+  `share.ponjo.app`, one Durable Object per room) joins the host's outgoing
+  WebSocket to each page's, over TLS, and stores nothing. It serves the
+  page too, so both share one origin. There is no encryption of our own:
+  the relay is ours, and could read what passes. The relay numbers each
+  page as a peer, which a page cannot forge. No credential is in an
+  address: the host's first message is the secret, which the relay checks
+  before it takes the host in; a page's first message is its key, name and
+  doc. The app's relay is `wss://share.ponjo.app` unless `PONJO_RELAY`
+  names another (empty: nothing is shared).
 - **Limits**, so the relay is no free pipe and stays within the Workers
-  free plan: at most 20 pages in a room (one more is turned away, `full`),
-  no message over 8 MiB characters (its sender is closed), and at most 60
-  hosts and 120 pages a minute from one address, so a leaked link cannot be
-  hammered. Sockets hibernate between messages, so an idle room costs
-  nothing; a page waiting for its host, and a host for the relay, try
-  again twice as long each time, up to 30 seconds.
-- **One seam.** A page talks to the host through `{ call, onEvent }`: in the
-  app a message port, in a browser the relay (`web/relay.js`). The host
-  serves both the same way (`serve` in `desktop/doc-host.js`), adding a
-  `who` to every call. `team.html` (built with the app's pages, in
-  `dist/web`) is the doc window on the relay; in the preview (`preview/`)
-  `doc-stub.js` plays the host instead, and runs its buddies' turns
-  (`agents/ponjo-core.mjs`) in the page, on Nemotron through the relay's
-  Worker deployed as the model's door (`infer.ponjo.app`, the `hackathon`
-  env in `relay/wrangler.toml`), which holds the key.
-  A page names its doc by its path in the project, or none for the
-  project's first; `state` tells it that path and the project's name
-  (`place`), for its sidebar (`web/files.js`), which reads the tree through
-  the door (`list`, `read`) and opens another doc as the page of the same
-  link on it, let in at once. The doc is open once however many windows
-  and pages have it. Anyone but the owner gets the default settings, not the
-  owner's, and a path in the project, not its real path. A page the host
-  turns away is told why (`closed`, `kicked`, `locked`, `not_found`,
-  `hidden`, `full`), and opens again with nothing but that (`?gone=`), so
-  nothing of the room stays in its memory, unsent typing included.
+  free plan: at most 20 pages in a room (`full`), no message over 8 MiB
+  characters, at most 60 hosts and 120 pages a minute from one address.
+  Sockets hibernate between messages; a page waiting for its host, and a
+  host for the relay, try again twice as long each time, up to 30 s.
+- **Versions.** The page comes from the relay, deployed from main, and the
+  host from the app its owner installed, so the two can be apart. Their
+  messages have a version (`PROTOCOL`, `src/core/protocol.js`), raised by
+  a change the other side would misread; a page told another one says
+  which side to update.
+- **Who.** Everyone is `{ id, name, kind, level }`, set by the host from
+  the connection. A teammate's id is the hash of a key made once in their
+  browser, which only that browser and the host see, so no one who reads an
+  id in a comment can pose as them; a buddy's is in its file. An id is for
+  credit only; what it may do lives in the room. Names are unique on a
+  project, people's and buddies' together: a teammate whose name is taken
+  gets a number (`Alice2`). A teammate joins at Edit; in the Team panel the
+  owner sets each to Read or Edit, kicks one (that id cannot come back to
+  this room), or locks the room (no new id gets in). A page hears its
+  `level` when it changes and on every catch-up; typing it can no longer
+  save is shown to copy, never dropped (C7).
+- **Scope is the project folder**, served by `ProjectService` to the
+  owner's windows and teammates' pages alike (`list`, `read`, `open`). A
+  path is resolved to its real path and must be inside the root; a link
+  out of it, or a name starting with `.`, is refused. A page names its doc
+  by its path in the project; anyone but the owner gets the default
+  settings and never a real path. A page turned away is told why
+  (`closed`, `kicked`, `locked`, `not_found`, `hidden`, `full`) and keeps
+  nothing of the room.
 - **Presence.** The host tells everyone on a project who has a window or
-  page on any of its docs (`here`), each person once and whether on the
-  same doc; a person not there is away, greyed. Each person's cursor goes
-  to the host once their typing has landed (`cursor`, on the rev they
-  have), and the host tells it to everyone on the doc (`cursors`); a page
-  moves it over the edits it hears of and its own typing not landed yet
-  (`web/client.js`), so it stays where its text is.
-- **Everyone is a participant**: `{ id, name, kind, level }`. The host sets
-  `who` from the connection and never trusts one sent in a message. A
-  player's id is the hash of a key made once in their browser, which
-  only that browser and the host (through the relay) see, so no one who
-  reads an id in a comment can pose as them; an AI buddy's is in its file.
-  An id is for credit on comments and edits only; what it may do lives in
-  the room. Names are unique on a project, people's and AI buddies'
-  together: a player whose name is taken gets a number (`Alice2`), and
-  DocService refuses a buddy's or the owner's name a player has.
-  `can(who, level)` is the one place that decides:
-  - *Owner:* rename, move, delete and create files; settings, AI buddies
-    and agent scripts; and all a player who can edit may.
-  - *A player's access*, Read or Edit (write), Edit when they join and
-    changed in the Team panel. Edit is everything the owner does in
-    a doc: edit, comment, resolve, ask AI buddies. A page is told `level`
-    when it changes and catches up; every catch-up brings the page's level,
-    so a page away at the change, or one whose edit is refused as
-    `forbidden`, learns it then. It opens again as the new level. Typing it
-    can no longer save is kept, never dropped: shown as it was left, in a
-    view that cannot be edited, to copy, with Not saved; and saved if the
-    page is set back to Edit.
-  - *An AI buddy* acts with the level of whoever asked it, at most write.
-  - A comment's `kind` (`human`, `ai`) says only whether an agent is behind
-    it; it decides nothing.
-- **Joining.** The link names the room, and opens the page the relay
-  serves at the same origin (`https://share.ponjo.app/team?room=<room>`).
-  The page asks a name once, kept in the browser, and joins with it and
-  its key: anyone with the link is in at once, at Edit. In the Team panel
-  the owner sees the players, live, sets each to Read or Edit, and kicks
-  one: their pages are turned away and that id cannot come back to this
-  room (a fresh browser can, until the room is locked). Lock lets no new
-  id in; players already in come back after a dropped line.
-- **Scope is the project folder**, served by a `ProjectService` to the
-  owner's windows and players alike, so both see the same tree. A path is
-  resolved to its real path and must be inside the root; a link out of it,
-  or a name starting with `.`, is refused. An AI buddy's agent reads no more
-  than that, so nothing hidden reaches a doc through it.
-- **One order.** The host orders every edit to a doc, people's and AI
-  buddies' alike, and a person's typing is never dropped; see
-  [Interfaces](#interfaces). How the Markdown view takes part is
-  [its own design](markdown-view.md#many-writers).
+  page on any of its docs (`here`). Each person's cursor goes to the host
+  once their typing has landed (`cursor`, on their rev), and to everyone on
+  the doc (`cursors`); a page moves it over the edits it hears of, so it
+  stays on its text.
+
+## Processes and views
+
+The app's processes, and the one seam between a page and the host:
+
+```mermaid
+flowchart TD
+  subgraph web["web/"]
+    windows["Pages"]
+    views["Views<br>web/views/"]
+  end
+  shell["Shell<br>desktop/"]
+  host["Doc, Controller, Executor,<br>ProjectService, Room<br>src/host/"]
+  store["Store<br>src/store/"]
+  core["Core<br>src/core/"]
+  shell --> host & store & core
+  host --> store & core
+  web --> core
+  store --> core
+  web -. IPC .- shell
+  web -. "message port, or the relay" .- host
+```
+
+A solid arrow is an import; `npm run lint` allows no others
+(`.dependency-cruiser.js`) and none in a circle. A dotted line is a message
+between processes. The doc host is the app's utility process. A page talks
+to it through `{ call, onEvent }`: in the app a message port, in a browser
+the relay (`web/relay.js`); the host serves both the same way (`serve` in
+`desktop/doc-host.js`), adding `who`. `team.html` is the doc page on the
+relay; in the [preview](../preview/) `doc-stub.js` plays the host, and runs
+its buddies' runs in the page through the relay's model door
+(`infer.ponjo.app`).
+
+**Views.** A doc has one view, its editor, switched on or off alone
+(`settings.json`: `views`, by id). A view has state (caret, undo, marks),
+so it is built in, not an extension point.
+
+| | View (`web/views/`) |
+| --- | --- |
+| Declared | `{ id, name, about, extensions, always?, limits?, createView, settings }` |
+| Picked by | `viewFor(name, settings)`: the first enabled view that claims the extension, else Plain text (`always`, any UTF-8 text file up to 20 MB), and only for a doc within its `limits` |
+| Its settings | an ordered list of fields `{ key, type: 'switch' \| 'choice' \| 'number', label, hint?, default, group?, when? }`, its page in Settings > Views |
+| Must satisfy | the view contract, `test/views.test.js`: `getText`, `applyText(text, { by, ops })` after which `getText()` is `text` and the line on top stays, `setMarks`, the selection, `composing()` |
+
+Both views are one editor, CodeMirror, whose text is the doc's own
+(`web/views/codemirror.js`). Plain text (`web/views/plain/`) shows the text
+as it is; the [Markdown view](markdown-view.md) (`web/views/markdown/`) is
+live preview, nothing but typing changing it. How edits merge does not
+depend on the view. To add a view: a folder in `web/views/` with its
+declaration, listed in `VIEWS`, passing the contract test.
+
+## Code map
+
+| Part | Where | Its one thing | Its calls |
+| --- | --- | --- | --- |
+| Core | `src/core/` | compute on text, purely, the same in the host and the page: anchors, comments and asks, `diff`/`merge3`, `ot`, the prompt, the rules (`plan`), Translate | functions |
+| Store | `src/store/` | read, write, watch and move files: docs, comments, history, settings, buddies, agents, logs | `read`, `write`, `watch`, `move`, each file's parser |
+| Doc | `src/host/doc-service.js` | order every change to one doc, and write it | the door above; `subscribe(fromRev, fn)` |
+| Controller | `src/host/` | run the doc's buddies as the rules say | `watch`, `retry`, `refillSteps`; event `buddies` |
+| Executor | `src/host/runner.js` | run the agent once on copies | `run(task, copies)` |
+| ProjectService | `src/host/project-service.js` | the project's files, the same for everyone | `list`, `read`, `open` |
+| Room | `src/host/room.js` | who is in the room and at what level | the owner's `openRoom`, `closeRoom`, `lockRoom`, `setLevel`, `kick`, `room` |
+| Shell | `desktop/` | windows, menus, dialogs, recent docs; the owner's file changes; starts the doc host; the keychain | IPC |
+| Pages | `web/` | the doc page and the home page: typing into operations and back (`client.js`), marks | `{ call, onEvent }` |
+| Views | `web/views/` | a doc's editor | the view contract |
+| Relay | `relay/` | join the host to teammates' pages; serve the page | WebSocket |
+| Agent | `agents/`, the config folder | edit its copy, append its comments | none |

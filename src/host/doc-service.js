@@ -511,8 +511,8 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
   // at, why }), in memory only: a failure is this machine's, not the doc's.
   const failures = new Map();
 
-  // The buddies watching this doc on this host (docs/architecture.md, When
-  // a buddy runs): buddy → { by (who turned it on), thread (its watch
+  // The buddies watching this doc on this host (docs/architecture.md, Asks
+  // and watches): buddy → { by (who turned it on), thread (its watch
   // thread, or null), looked (when its last run started, by
   // performance.now(), a clock that never goes back; null: never since it
   // was turned on or retried, so it looks at once), base (the doc then, or
@@ -744,7 +744,7 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
 
   // ---- undo ----
 
-  // Undo version `id` (docs/architecture.md, Undoing changes), or every
+  // Undo version `id` (docs/architecture.md, Versions and undo), or every
   // version from `from` to it: the change from the parent of `from` to `id`
   // taken back, merged with everything landed since (merge3), so lines
   // anyone changed since stay. On the machine that has the versions; by
