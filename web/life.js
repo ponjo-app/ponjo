@@ -6,7 +6,6 @@
 //   working       absorbed: eyes wide and bright, down on the doc, reading
 //                 along the line, a small round mouth, the head dipping as it
 //                 types; now and then ^ ^ at what it wrote
-//   watching      the same, in its glasses, reading more slowly
 //   away          asleep: eyes shut ‿ ‿, the head low, breathing slow
 //   failed        a wince > < and a shake of the head, then a sulk, eyes
 //                 down and lip out, that eases back to its state
@@ -15,6 +14,10 @@
 // a smile (^ ^ and an open mouth), a tilt of the head, a glance at you, a
 // look up to think (an o), a nod along. Finishing work, it looks up at you,
 // pleased. Few, so each one reads.
+//
+// A buddy that watches the doc is a watcher, whatever its state: it wears its
+// glasses throughout, and when ready it now and then reads over the doc, a
+// line at a time, then looks up again.
 //
 // A face you can click (a button or a name card that is just the face) can be
 // poked: pressed, it squashes; let go, it springs back and reacts as its state
@@ -96,17 +99,6 @@ const STATES = {
     moments: ['pleased', 'think', 'nod'],
     every: [3500, 7000],
   },
-  watching: {
-    face: { ...FACE, curve: 0.4, width: 5, tilt: 2 },
-    blink: [3000, 6500],
-    gaze: (face) => {
-      face.line = (face.line ?? -3.5) + rand(1.1, 1.9);
-      if (face.line > 3.5) face.line = -3.5;
-      return { x: face.line, y: 2.5, hold: [500, 1000] };
-    },
-    moments: ['glance', 'nod'],
-    every: [6000, 12000],
-  },
   away: {
     face: { ...FACE, lid: 0, curve: 0.25, width: 3.5, tilt: 5, nod: 3 },
     blink: null,
@@ -123,6 +115,12 @@ const MOMENTS = {
   glance: { dur: 1.6, at: (x, e) => { x.gaze = { x: 0, y: -0.5 }; x.curve += 0.3 * bump(e, 1.6); } },
   pleased: { dur: 1.5, at: (x, e) => { const k = bump(e, 1.5); if (k > 0.25) x.shape = 'happy'; x.curve += 0.55 * k; x.open += 0.4 * k; x.width += 1.5 * k; x.mx *= 1 - k; x.down *= 1 - 0.5 * k; } },
   think: { dur: 2.2, at: (x, e, d) => { const k = bump(e, 2.2); x.gaze = { x: 4 * d, y: -4 }; x.tilt += 4 * d * k; x.nod -= 1.5 * k; x.curve *= 1 - k; x.open += 0.4 * k; x.round += k; x.width -= 2 * k; x.down *= 1 - k; } },
+  // a watcher reading over the doc: along a line in small steps, the face lowered to it
+  read: { dur: 3, at: (x, e, d) => {
+    const k = Math.min(1, e / 0.4, (3 - e) / 0.4);
+    x.gaze = { x: -3.5 + Math.floor(e / 0.45) * 1.2, y: 3 };
+    x.down += 1.5 * k; x.tilt += 2 * d * k; x.curve -= 0.15 * k;
+  } },
   nod: { dur: 0.8, at: (x, e) => { x.nod += 2.4 * bump(e, 0.4) + 1.2 * bump(e - 0.4, 0.4); } },
   // when its state changes
   settle: { dur: 0.9, at: (x, e) => { x.nod += 1.6 * bump(e, 0.9); } },
@@ -179,12 +177,14 @@ const watcher = typeof IntersectionObserver === 'function'
 /**
  * Bring a face drawn by faces.js to life. `parts` are its groups: pose (the
  * whole face, hat and all), look (its features), hat (or null), and paint,
- * which redraws its eyes and mouth from an expression.
+ * which redraws its eyes and mouth from an expression. `watches` says
+ * whether it is a watcher now.
  */
-export function liven(svg, parts, name) {
+export function liven(svg, parts, name, watches = () => false) {
   const h = phaseSeed(name);
   const face = {
-    svg, ...parts,
+    svg, ...parts, watches,
+    watcher: false,
     phase: [0, 1, 2, 3].map((i) => ((h >>> (i * 6)) & 63) / 63 * Math.PI * 2),
     rate: 0.88 + ((h >>> 26) & 15) / 15 * 0.24,
     s: Object.fromEntries(Object.keys(TUNE).map((k) => [k, spring(k in FACE ? FACE[k] : 0)])),
@@ -231,7 +231,7 @@ function frame(now) {
 
 function presenceOf(face) {
   const p = face.svg.closest('[data-presence]')?.dataset.presence;
-  return p === 'working' || p === 'watching' || p === 'away' ? p : 'idle';
+  return p === 'working' || p === 'away' ? p : 'idle';
 }
 
 function begin(face, name, now) {
@@ -257,6 +257,8 @@ function tick(face, now, dt) {
       else if (from === 'away') begin(face, 'wake', now);
     }
   }
+  const watcher = face.watches();
+  if (watcher !== face.watcher) face.svg.classList.toggle('pj-face-watcher', (face.watcher = watcher)); // its glasses (app.css)
   const failed = face.svg.closest('.pj-avatar')?.classList.contains('pj-failed') ?? false;
   if (failed && !face.wasFailed && !reduce) begin(face, 'oops', now);
   face.wasFailed = failed;
@@ -266,7 +268,7 @@ function tick(face, now, dt) {
 
   if (reduce) {
     // the state's face, at once and still
-    face.gaze = state === 'working' || state === 'watching' ? { x: 0, y: 3 } : { x: 0, y: 0 };
+    face.gaze = state === 'working' ? { x: 0, y: 3 } : { x: 0, y: 0 };
     face.shape = x.shape;
     aim(face, x, 0, 0);
     for (const k in s) { s[k].x = s[k].t; s[k].v = 0; }
@@ -289,7 +291,7 @@ function tick(face, now, dt) {
   }
   if (face.again && now >= face.again) { face.shut = now + 80; face.again = 0; }
   if (!face.moment && now >= face.momentAt && conf.moments.length) {
-    begin(face, pick(conf.moments), now);
+    begin(face, pick(watcher && state === 'idle' ? [...conf.moments, 'read', 'read'] : conf.moments), now);
     face.momentAt = now + rand(...conf.every);
   }
   if (face.moment) {

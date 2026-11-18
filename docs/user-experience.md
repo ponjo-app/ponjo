@@ -72,7 +72,8 @@ AI buddies.
    write, a proofreader) can watch the doc instead: turn on **Watch this
    doc** in its card. It looks at once, then each time you pause, and
    comments where it will, as any member; it wears glasses
-   while it watches, and stops only when you turn it off. If you start
+   for as long as it watches, at work or not, and stops only when you
+   turn it off. If you start
    typing again while it works, it stops and looks again at your next
    pause. If a run fails, its card says "Watch failed", with why and
    **Retry**. Each buddy watching also runs when another buddy changes

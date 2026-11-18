@@ -82,7 +82,6 @@ export function createDocBar(bar, { onRefill = () => {}, canRefill = () => false
       workingText.textContent = working.length ? `${listed(working.map((a) => a.name))} ${working.length === 1 ? 'is' : 'are'} working…` : '';
       watchingPart.hidden = working.length > 0 || watching.length === 0;
       watchingPart.replaceChildren(...watching.slice(0, 1).map((a) => avatar(a.name, 'agent', true, a.id)), `${listed(watching.map((a) => a.name))} ${watching.length === 1 ? 'is' : 'are'} watching`);
-      watchingPart.dataset.presence = 'watching';
       watchers = watching.length;
       paintSteps();
     },
