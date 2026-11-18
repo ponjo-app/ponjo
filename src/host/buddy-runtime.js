@@ -101,7 +101,8 @@ export async function createBuddyRuntime({ door, place, pathInProject, buddies, 
           lookAgainMs = Math.min(lookAgainMs * 2, LOOK_AGAIN_MAX_MS);
         }
       } while (again && !stopped);
-    })().finally(() => { looking = null; });
+      looking = null; // at once: a look asked for after the last one began is never lost
+    })();
     return looking;
   }
   async function lookOnce() {
