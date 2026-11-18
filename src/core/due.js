@@ -29,7 +29,8 @@ export const SETTLE_MS = 5000;
  * A comment asks a buddy until it comments after it, or a run was given it.
  * A watcher, while whoever turned it on may ask, is due once turned on, and
  * on another member's change since its last run started: people's once
- * they pause SETTLE_MS, a buddy's at once, for a step. Its own never counts.
+ * they pause SETTLE_MS, a buddy's once its run ended (so the watcher sees
+ * the comment that came with it), for a step. Its own never counts.
  */
 export function plan({ buddies, threads, askers, taken, notes, changedAt, running, steps, text, now }) {
   const noteOf = (id) => notes.get(id) ?? { seen: new Map(), lookedAt: null, base: null, watch: null };
@@ -67,10 +68,11 @@ export function plan({ buddies, threads, askers, taken, notes, changedAt, runnin
         changed.push(`itself at rev ${rev}, which does not count`);
         continue;
       }
-      if (by !== null) byBuddy = true;
-      else if (now - at >= SETTLE_MS) byPeople = true;
-      else soonest(at + SETTLE_MS); // people still typing: look once they pause
-      changed.push(`${nameOf(by)} at rev ${rev}${by === null && now - at < SETTLE_MS ? ', still typing' : ''}`);
+      // A buddy's counts once its run has landed, the comment with the edit.
+      if (by !== null && !running.has(by)) byBuddy = true;
+      else if (by === null && now - at >= SETTLE_MS) byPeople = true;
+      else if (by === null) soonest(at + SETTLE_MS); // people still typing: look once they pause
+      changed.push(`${nameOf(by)} at rev ${rev}${by === null && now - at < SETTLE_MS ? ', still typing' : ''}${by !== null && running.has(by) ? ', still landing' : ''}`);
     }
     const since = note.lookedAt === null ? 'its first look' : changed.length ? `changed by ${changed.join(', ')}, after its look at rev ${note.lookedAt}` : `no change since its look at rev ${note.lookedAt}`;
     task.watch = { changes: note.base === null ? null : lineChanges(note.base, text), due: byPeople || byBuddy, paid: !byPeople && byBuddy, since };
