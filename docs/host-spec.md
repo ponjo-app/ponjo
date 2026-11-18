@@ -6,10 +6,10 @@ and [agent runtime](agent-runtime.md) first. Product: [product vision](product-v
 person sees and does: [user experience](user-experience.md); the comment
 format: [SPEC](../spec/SPEC.md); tests: [testing](testing-ci.md).
 
-This is the design the code moves to. Not built yet: the buddy runtime as
-[Buddies](#buddies) describes it (today `src/host/doc-service.js` also
-holds the buddies' notes, timers and landing, and comments are versioned
-apart from the text), and `teammate`, which the code still calls `player`.
+This is the design the code moves to. Not built yet: the rest of the buddy
+runtime as [Buddies](#buddies) describes it (see [agent
+runtime](agent-runtime.md)), comments versioned with the text in one log,
+and `teammate`, which the code still calls `player`.
 
 ## Overview
 
@@ -573,7 +573,7 @@ declaration, listed in `VIEWS`, passing the contract test.
 | Core | `src/core/` | compute on text, purely, the same in the host and the page: anchors, comments and asks, `diff`/`merge3`, `ot`, the prompt, the rules (`plan`), Translate | functions |
 | Store | `src/store/` | read, write, watch and move files: docs, comments, history, settings, buddies, agents, logs | `read`, `write`, `watch`, `move`, each file's parser |
 | Doc | `src/host/doc-service.js` | order every change to one doc, and write it | the door above; `subscribe(fromRev, fn)` |
-| Controller | `src/host/` | run the doc's buddies as the rules say | `watch`, `retry`, `refillSteps`; event `buddies` |
+| Controller | `src/host/buddy-runtime.js` | run the doc's buddies as the rules say | `watch`, `retry`, `refillSteps`; event `buddies` |
 | Executor | `src/host/runner.js` | run the agent once on copies | `run(task, copies)` |
 | ProjectService | `src/host/project-service.js` | the project's files, the same for everyone | `list`, `read`, `open` |
 | Room | `src/host/room.js` | who is in the room and at what level | the owner's `openRoom`, `closeRoom`, `lockRoom`, `setLevel`, `kick`, `room` |

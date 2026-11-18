@@ -13,57 +13,28 @@ import { mkdir, readFile, realpath, stat } from 'node:fs/promises';
 import { basename, dirname, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createAnchor, locate } from '../core/anchor.js';
-import { COMMENT_ID, movedAnchor, newComment, newId, parseSidecar, peopleOf, serializeSidecar, threadsOf, validAnchor } from '../core/comments.js';
+import { COMMENT_ID, newComment, newId, parseSidecar, peopleOf, serializeSidecar, threadsOf, validAnchor } from '../core/comments.js';
 import { sameName } from '../core/mentions.js';
 import { BuddyError, buddiesHere, checkBuddyPatch } from '../core/buddies.js';
 import { DEFAULT_SETTINGS, SettingsError } from '../core/settings.js';
 import { merge3 } from '../core/diff.js';
-import { toChanges } from '../core/translate.js';
-import { SETTLE_MS, whoIsDue } from '../core/due.js';
-import { filled, nextStepAt, refilled, take } from '../core/bucket.js';
 import { apply, diffOps, mapOffset, transform } from '../core/ot.js';
 import { PROTOCOL } from '../core/protocol.js';
 import { StoreError, formFor, hashText, moveDoc, readDoc, readSidecarText, sidecarPath, writeDoc, writeSidecar } from '../store/files.js';
-import { VERSION_ID, moveHistory, noteTaken, noteWatching, noteWritten, readHistory, readTaken, readVersion, readWatching, recordVersion, writtenEdits } from '../store/history.js';
-import { configDir, defaultName, ownerOf, readSettings, settingsWithId, updateSettings, watchSettings } from '../store/settings.js';
+import { VERSION_ID, moveHistory, noteTaken, noteWritten, readHistory, readVersion, recordVersion, writtenEdits } from '../store/history.js';
+import { configDir, defaultName, ownerOf, readSettings, updateSettings, watchSettings } from '../store/settings.js';
 import { firstBuddies, projectBuddiesDir, readBuddies, removeBuddy, userBuddiesDir, writeBuddy } from '../store/buddies.js';
 import { secretTails } from '../store/secrets.js';
-import { logRun, readTrace, readUsage, tracedRuns } from '../store/runs.js';
+import { readTrace, readUsage, tracedRuns } from '../store/runs.js';
 import { watchDoc, watchFolder } from '../store/watch.js';
-import { agentsDir, installAgents, listAgents, pickedAgent, SHIPPED_AGENTS } from '../store/agents.js';
+import { agentsDir, installAgents, listAgents, SHIPPED_AGENTS } from '../store/agents.js';
 import { linkURL, projectService, saveImage } from './project-service.js';
-import { Runner, testAgent } from './runner.js';
+import { agentsFor, createBuddyRuntime } from './buddy-runtime.js';
+import { DocError, LEVELS, can } from './door.js';
 import { RoomError } from './room.js';
-
-/**
- * A call refused: `code` says why ('bad_input', 'not_found', 'read_only',
- * 'stale', 'forbidden'); or 'not_saved', an edit that landed but whose
- * file could not be written: it is written once it can be, and told then.
- */
-class DocError extends Error {
-  constructor(code, message) {
-    super(message);
-    this.code = code;
-  }
-}
 
 // The settings that choose and set up the agent (settings.js), of settings as JSON.
 const agentOf = (json) => JSON.stringify((({ agent, agents }) => ({ agent, agents }))(JSON.parse(json ?? '{}')));
-
-// What a call may need, each level allowing the ones before it.
-const LEVELS = ['read', 'write', 'owner'];
-
-/**
- * The buddies' statuses as someone at `level` sees them: why a run failed
- * is the owner's machine's, so only the owner hears it.
- */
-export function agentsFor(level, agents) {
-  if (level === 'owner') return agents;
-  return agents.map((a) => ({ ...a, failed: a.failed.map(({ thread, at }) => ({ thread, at })), watchFailed: a.watchFailed && { at: a.watchFailed.at } }));
-}
-
-// Whether `who` ({ id, name, kind, level }) may make a call that needs `level`.
-const can = (who, level) => LEVELS.indexOf(who?.level) >= LEVELS.indexOf(level);
 
 // A comment's `by`: who wrote it.
 const byOf = ({ id, name, kind }) => ({ id, name, kind });
@@ -87,23 +58,8 @@ const byOf = ({ id, name, kind }) => ({ id, name, kind });
  */
 export async function openDoc(docPath, { folder = null, room = null, settingsDir = configDir(), secrets = () => ({}), emit = () => {} } = {}) {
   const opened = await readDoc(docPath); // fail early on a missing doc
-  const broadcastAgents = () => emit('agents', agentStatuses());
-  const pickAgent = async () => {
-    const { settings } = await readSettings(settingsDir);
-    return pickedAgent(settings, secrets()[settings.agent], settingsDir);
-  };
   // The doc's path in the project, `/`-separated.
   const placeInFolder = async () => relative(await realpath(folder).catch(() => folder), await realpath(docPath).catch(() => docPath)).split(sep).join('/');
-  const runner = new Runner({
-    asks: () => asks(),
-    doc: async () => ({ path: folder ? await placeInFolder() : basename(docPath), text, comments: await readSidecarText(docPath) }),
-    agent: pickAgent,
-    folder: async () => folder,
-    human: async () => ({ name: (await me()).name, about: (await settingsWithId(settingsDir)).about.trim() }),
-    finish: (result) => finishRun(result),
-    onChange: () => broadcastAgents(),
-    log: (entry, trace) => logRun(settingsDir, { doc: docPath, ...entry }, trace),
-  });
   let lastSidecarHash = null;
   let lastSettings = null;
   let missing = false; // the doc was moved or deleted on disk while open
@@ -179,17 +135,7 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
     text = apply(text, ops);
     rev++;
     told.push(event);
-    changedAt.set(meta.by ?? null, performance.now());
-    if (!meta.by) {
-      wakeOnPause();
-      // A watcher's run on now saw the doc as it was: it ends, as looked,
-      // and runs again once the edits pause.
-      for (const { id, from } of runner.interrupt()) if (watching.has(id)) watching.get(id).looked = from;
-    } else {
-      // A buddy's edit wakes each other buddy watching the doc, at once: it
-      // lands whole, with no typing to wait out.
-      if (watching.size) runner.reconcile();
-    }
+    runtime.changed(meta.by ?? null);
   }
 
   // Write what landed, then tell every window: what a window has heard of is
@@ -413,8 +359,8 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
       me: owner ? await me() : byOf(who),
       level: who.level,
       owner: (await me()).id, // whose face wears the crown
-      agents: agentsFor(who.level, agentStatuses()),
-      steps: stepsView(),
+      agents: agentsFor(who.level, runtime.statuses()),
+      steps: runtime.steps(),
       cursors: cursorsNow(),
       project: folder !== null, // whether the doc was opened from a project
       // The project's name and the doc's path in it, for a teammate's sidebar.
@@ -456,7 +402,7 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
     const next = await change(current.lines);
     if (next === current.lines) return;
     await writeSidecar(docPath, serializeSidecar(next));
-    runner.reconcile();
+    runtime.look();
   }
 
   // A comment by `who`: a first comment (`anchor` on the doc's text, or
@@ -496,256 +442,18 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
     return buddiesHere(folder ? await readBuddies(projectBuddiesDir(folder)) : [], await readBuddies(userBuddiesDir(settingsDir)));
   }
 
-  // The buddies asked or watching now, each with its inbox (whoIsDue, in
-  // src/core/due.js; Runner's asks). Only the comments of those who may
-  // write ask: the owner and the players who can edit, and only those this
-  // host took (comment), as they were taken: one that reached the sidecar
-  // another way is shown but asks no one. A run woken by another buddy's
-  // change only takes a step (takeStep).
-  async function asks() {
-    if (closed) return [];
-    const here = await buddies();
-    if (here.length === 0) return [];
-    const { lines, problem } = await readComments();
-    if (problem) return []; // a buddy could not post its comments
-    const editors = (room?.list()?.players ?? []).filter((p) => p.level === 'write').map((p) => p.id);
-    const askers = [(await me()).id, ...editors];
-    const taken = await readTaken(docPath, settingsDir);
-    const threads = threadsOf(lines.map((l) => l.comment).filter(Boolean), here.map(({ id, name }) => ({ id, name })), text);
-    const { inboxes, asking } = whoIsDue({ buddies: here, threads, askers, taken, looked, watching, changedAt, text, now: performance.now() });
-    refill((await readSettings(settingsDir)).settings);
-    // A failure is shown while its thread still asks the buddy.
-    let gone = false;
-    for (const [id, failed] of failures) for (const thread of failed.keys()) if (!asking.has(`${id} ${thread}`)) gone = failed.delete(thread);
-    if (gone) broadcastAgents();
-    return inboxes.map(({ asked, paid, ...inbox }) => ({ ...inbox, buddies: here, watchOnly: !asked && inbox.watch !== null, ...(paid ? { pay: takeStep } : {}) }));
-  }
-  // What each buddy's runs were given: buddy → Map(thread → the time of the
-  // last comment it was given there). A run that answered nothing there, or
-  // whose comments could not be written, is not run again until someone
-  // writes more, so a sidecar that cannot be written never makes runs land
-  // edits again and again.
-  const looked = new Map();
-  // The threads where each buddy's last run failed: buddy → Map(thread → {
-  // at, why }), in memory only: a failure is this machine's, not the doc's.
-  const failures = new Map();
-
-  // The buddies watching this doc on this host (docs/host-spec.md, Asks
-  // and watches): buddy → { by (who turned it on), thread (its watch
-  // thread, or null), looked (when its last run started, by
-  // performance.now(), a clock that never goes back; null: never since it
-  // was turned on or retried, so it looks at once), base (the doc then, or
-  // null before its first run here), failed (null, or { at, why } when its
-  // last run failed: shown on the buddy, as it may have no thread yet) }. Only a person changes it
-  // (watch); kept on this host (noteWatching), never in the sidecar. People's
-  // edits since it looked, once they pause for SETTLE_MS, run each watcher.
-  const watching = new Map(Object.entries(await readWatching(docPath, settingsDir)).map(([id, { by, thread }]) => [id, { by, thread: thread ?? null, looked: performance.now(), base: null, failed: null }]));
-  // Who last changed the doc, and when (performance.now()), noted as each
-  // change lands: a buddy by its id, people (and the doc changed outside)
-  // as null. asks() tells from it, against when each watcher last looked,
-  // whether it is due, so a look at any time finds the same.
-  const changedAt = new Map();
-  // Look again once people's edits pause: only a wake-up.
-  let settling = null;
-  function wakeOnPause() {
-    if (!watching.size) return;
-    clearTimeout(settling);
-    settling = setTimeout(() => runner.reconcile(), SETTLE_MS + 5);
-    settling.unref?.();
-  }
-  // The steps the doc's buddies have to wake each other: up to `steps`
-  // (settings), one more every `refillEvery` seconds (0: none), all on
-  // Refill (refillSteps). A run woken by another buddy's change takes one;
-  // with none left it waits, until one comes (a timer, only then) or someone
-  // refills them. In memory: a restart fills it.
-  let bucket = { left: null, cap: DEFAULT_SETTINGS.steps, every: DEFAULT_SETTINGS.refillEvery * 1000, at: performance.now() };
-  let stepTimer = null;
-  // The bucket as `settings` make it now.
-  function refill({ steps, refillEvery }) {
-    const before = JSON.stringify(stepsView());
-    bucket = refilled(bucket, { cap: steps, every: refillEvery * 1000 }, performance.now());
-    if (JSON.stringify(stepsView()) !== before) emit('steps', stepsView());
-  }
-  // Take a step for a run woken by another buddy: false, with a look set for
-  // when the next one comes, when none is left.
-  function takeStep() {
-    const now = performance.now();
-    const step = take(bucket, now);
-    const next = nextStepAt(bucket);
-    if (!step.ok && next !== null && !stepTimer) {
-      stepTimer = setTimeout(() => {
-        stepTimer = null;
-        runner.reconcile();
-      }, Math.max(0, next - now) + 5);
-      stepTimer.unref?.();
-    }
-    if (!step.ok) return false;
-    bucket = step.bucket;
-    emit('steps', stepsView());
-    return true;
-  }
-  // The steps as the windows show them: { left, cap, next (when the next
-  // comes, by the wall clock, or null) }.
-  function stepsView() {
-    const next = nextStepAt(bucket);
-    return { left: bucket.left ?? bucket.cap, cap: bucket.cap, next: next === null ? null : Math.round((Date.now() + Math.max(0, next - performance.now())) / 1000) * 1000 };
-  }
-  // Someone refills the steps: all of them, and the buddies waiting go on.
-  function refillSteps() {
-    bucket = filled(bucket, performance.now());
-    emit('steps', stepsView());
-    runner.reconcile();
-    return {};
-  }
-
-  // Note who watches, and tell the windows.
-  function keepWatching() {
-    const noted = Object.fromEntries([...watching].map(([id, { by, thread }]) => [id, { by, thread }]));
-    noteWatching(docPath, settingsDir, noted).catch((error) => console.error('Could not note the buddies watching:', error));
-    broadcastAgents();
-  }
-  // Buddy `buddy` watches the doc (`on`), or no longer, as `who` says: it
-  // looks at once; turned off, a run of it on now ends with no answer
-  // unless something else asks it.
-  async function watch({ buddy, on } = {}, who) {
-    if (typeof buddy !== 'string' || typeof on !== 'boolean') throw new DocError('bad_input', 'expected { buddy, on }');
-    if (!(await buddies()).some((b) => b.id === buddy)) throw new DocError('not_found', 'no such buddy here');
-    if (on && !watching.has(buddy)) watching.set(buddy, { by: who.id, thread: null, looked: null, base: null, failed: null });
-    if (!on) watching.delete(buddy);
-    keepWatching();
-    runner.reconcile();
-    return {};
-  }
-
-  // The agent or its settings changed: the failed asks run again.
-  function retryFailed(buddy = null) {
-    for (const [id, failed] of failures) {
-      if (buddy !== null && id !== buddy) continue;
-      for (const thread of failed.keys()) looked.get(id)?.delete(thread);
-    }
-    for (const [id, w] of watching) if (w.failed && (buddy === null || id === buddy)) w.looked = null; // it looks again at once
-    runner.reconcile();
-  }
+  // The doc's buddies at work (buddy-runtime.js): they read the doc and land
+  // their runs through these.
+  const runtime = await createBuddyRuntime({
+    door: { text: () => text, rev: () => rev, epoch: () => epoch, missing: () => missing, closed: () => closed, readComments, submit, comment },
+    place: () => ({ docPath, folder, room }),
+    pathInProject: placeInFolder, buddies, me, levelOf, settingsDir, secrets, emit,
+  });
 
   // The level of the person with id `id` now: the owner's, a player's, or null.
   async function levelOf(id) {
     if (id === (await me()).id) return 'owner';
     return room?.levelOf(id) ?? null;
-  }
-
-  // The buddies the doc reaches, which are at work, the threads where each
-  // one's last run failed ([{ thread, at, why }]), whether it watches the doc,
-  // and whether its last watch run failed ({ at, why } or null); `why` for
-  // the owner alone (agentsFor).
-  let shownBuddies = [];
-  function agentStatuses() {
-    const statuses = runner.statuses();
-    return shownBuddies.map((b) => {
-      const threadIds = statuses.find((r) => r.id === b.id)?.threadIds ?? [];
-      const failed = [...(failures.get(b.id) ?? [])].map(([thread, { at, why }]) => ({ thread, at, why }));
-      return { ...b, state: threadIds.length ? 'running' : 'ready', threadIds, failed, watching: watching.has(b.id), watchFailed: watching.get(b.id)?.failed ?? null };
-    });
-  }
-
-  // The buddies or the sidecar changed: show who is here, and start the runs due.
-  async function syncAgents() {
-    if (closed) return;
-    try {
-      shownBuddies = await buddies();
-    } catch (error) {
-      console.error('Could not read the buddies:', error);
-    }
-    broadcastAgents();
-    await runner.reconcile();
-  }
-
-  // A run ended (runner.js): each comment it appended is posted, and the
-  // edits each carries (its group, PONJO_GROUPS) land as a version of their
-  // own, hung on it and merged with what landed since (merge3), so each
-  // comment's edits are undone on their own. An agent that wrote no groups
-  // lands its edits on its last comment, or, with none, on an empty reply
-  // in the first thread that asked it: no edit lands without a comment.
-  // Where people changed the same lines meanwhile, their lines stay, the
-  // rest lands, and its versions say `conflict`. A reply in a thread resolved
-  // meanwhile is dropped, with its edits. In a thread that asked it, its
-  // comments come just after the last comment it saw, so one written while
-  // it worked is after them, still to answer; elsewhere, after the latest.
-  // Only people resolve: a line's `resolved` is ignored (appendedComments).
-  // A failed run posts nothing: it is kept as this buddy's failure in each
-  // thread that asked it (failures), and asks again only when someone
-  // writes there, Retry is pressed, or the agent or its settings change.
-  // The buddy acts with the level of whoever asked it, at most write, asked
-  // now: a run one of whose askers was removed or set to Read meanwhile
-  // lands nothing. A watcher's run notes when it looked and at what, and the
-  // first thread on the whole doc it opens is its watch thread. Run in
-  // `serial`. Resolves to the ids of the comments it posted and what
-  // landed, in words, for its trace.
-  async function finishRun({ id: buddyId, name, threadIds, askers, seen, from, watched = false, base, edited, comments, groups = [], failed, body }) {
-    const saw = looked.get(buddyId) ?? new Map();
-    for (const [thread, at] of Object.entries(seen)) saw.set(thread, Date.parse(at));
-    looked.set(buddyId, saw);
-    const watcher = watching.get(buddyId);
-    if (watcher) {
-      watcher.looked = from;
-      if (!failed) watcher.base = base;
-      if (watched) watcher.failed = failed ? { at: new Date().toISOString(), why: body } : null;
-    }
-    for (const asker of askers) if (!can({ level: await levelOf(asker) }, 'write')) return { comments: [], landed: 'Dropped: whoever asked can no longer edit' };
-    const by = { id: buddyId, name, kind: 'ai' };
-    const all = (await readComments()).lines.map((l) => l.comment).filter(Boolean);
-    const threads = threadsOf(all, [], text);
-    const open = new Map(threads.filter((t) => !t.resolved).map((t) => [t.id, t]));
-    const asking = threadIds.filter((id) => open.has(id));
-    const failedHere = failures.get(buddyId) ?? new Map();
-    failures.set(buddyId, failedHere);
-    for (const thread of threadIds) failedHere.delete(thread);
-    if (failed) {
-      const at = new Date().toISOString();
-      for (const thread of asking) failedHere.set(thread, { at, why: body });
-      broadcastAgents();
-      return { comments: [], landed: 'Failed' };
-    }
-    const { posts, carried, dropped } = toChanges({ by, base, edited, comments, groups, threads, asking: threadIds });
-    if (dropped) return { comments: [], landed: `Dropped: ${dropped}` };
-    // Through the door, as the buddy: each comment's edits, merged by line
-    // with the doc as it is, then its comments.
-    const who = { ...by, level: 'write' };
-    let prev = base;
-    let conflict = false;
-    for (const { comment, doc, lands } of carried) {
-      if (!missing && lands && doc !== prev) { // a doc gone has nothing to land on
-        const now = { text, rev };
-        const merged = merge3(prev, now.text, doc);
-        conflict ||= merged.conflicts > 0;
-        const thread = comment.thread ?? comment.id;
-        await submit({ ops: diffOps(now.text, merged.text), rev: now.rev, epoch, id: newId('e'), reply: comment.id, thread, conflict: merged.conflicts > 0 }, who)
-          .catch((error) => { if (error.code !== 'not_saved') throw error; }); // landed: windows hear it is not saved
-        // A reply whose edits rewrote its thread's text moves the thread (SPEC §3).
-        const anchor = comment.thread !== undefined && movedAnchor(open.get(comment.thread).anchor, prev, doc, text);
-        if (anchor) comment.anchor = anchor;
-      }
-      prev = doc;
-    }
-    if (!posts.length) return { comments: [], landed: 'Nothing to do' };
-    // A reply comes just after the last comment the run was given in its
-    // thread, each after the one before it.
-    const after = new Map(Object.entries(seen));
-    try {
-      for (const c of posts) {
-        const { at } = await comment({ id: c.id, thread: c.thread, anchor: c.anchor ?? null, body: c.body, after: c.thread !== undefined ? after.get(c.thread) : undefined }, who);
-        if (c.thread !== undefined && after.has(c.thread)) after.set(c.thread, at);
-      }
-    } catch (error) {
-      console.error(`Could not post ${name}'s comments:`, error);
-      return { comments: [], landed: 'Its comments were not posted' };
-    }
-    // The first thread on the whole doc a watcher opens is its watch thread.
-    const opened = posts.find((c) => c.thread === undefined && !c.anchor);
-    if (watcher && watching.get(buddyId) === watcher && opened && !(watcher.thread !== null && open.has(watcher.thread))) {
-      watcher.thread = opened.id;
-      keepWatching();
-    }
-    return { comments: posts.map((c) => c.id), landed: conflict ? 'Posted; where it collided with people, their lines stayed' : 'Posted' };
   }
 
   // ---- undo ----
@@ -821,8 +529,8 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
       if (error instanceof BuddyError) throw new DocError(error.code, error.message);
       throw error;
     }
-    await syncAgents();
-    return { agents: agentStatuses() };
+    await runtime.sync();
+    return { agents: runtime.statuses() };
   }
 
   // A new buddy: in a project, the project's (in .ponjo/buddies/, made if
@@ -872,7 +580,7 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
       if (sidecarHash !== lastSidecarHash) {
         lastSidecarHash = sidecarHash;
         emit('sidecar', { hash: sidecarHash });
-        await syncAgents(); // a new ask
+        await runtime.sync(); // a new ask
       }
     } catch (error) {
       if (!(error instanceof StoreError)) console.error(error);
@@ -920,8 +628,8 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
       const agent = agentOf(lastSettings);
       lastSettings = json;
       emit('settings', settings);
-      if (agentOf(json) !== agent) retryFailed();
-      await syncAgents();
+      if (agentOf(json) !== agent) runtime.agentChanged();
+      await runtime.sync();
     } catch (error) {
       console.error(error);
     }
@@ -931,7 +639,7 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
     return serial(async () => {
       const target = (await move(docPath, newPath)) ?? newPath;
       stopWatching();
-      await runner.stop(); // their asks run again once the doc is at its new name
+      await runtime.runner.stop(); // their asks run again once the doc is at its new name
       await chronicle;
       await moveHistory(docPath, target, settingsDir).catch((error) => console.error('Could not move the history:', error));
       docPath = target;
@@ -939,8 +647,8 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
       if (missing) emit('missing', { missing: false, doc: basename(docPath) });
       missing = false;
       stopWatching = watchDoc(docPath, onFilesChanged);
-      runner.resume();
-      await syncAgents();
+      runtime.runner.resume();
+      await runtime.sync();
       emit('renamed', { doc: basename(docPath) });
       return docPath;
     });
@@ -953,13 +661,13 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
   lastSettings = JSON.stringify((await readSettings(settingsDir)).settings);
   let stopWatching = watchDoc(docPath, onFilesChanged);
   const stopWatchingSettings = watchSettings(onSettingsChanged, settingsDir);
-  let stopWatchingProjectBuddies = folder ? watchFolder(projectBuddiesDir(folder), syncAgents) : () => {};
+  let stopWatchingProjectBuddies = folder ? watchFolder(projectBuddiesDir(folder), runtime.sync) : () => {};
   let project = folder ? projectService(folder) : null;
   const inProject = () => {
     if (!project) throw new DocError('bad_input', 'a doc on its own has no project');
     return project;
   };
-  const stopWatchingUserBuddies = watchFolder(userBuddiesDir(settingsDir), syncAgents);
+  const stopWatchingUserBuddies = watchFolder(userBuddiesDir(settingsDir), runtime.sync);
   const inRoom = () => {
     if (!room) throw new DocError('bad_input', 'a doc on its own has no room');
     return room;
@@ -972,10 +680,10 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
   // theirs alone), and so do the asks: who may ask changes with it.
   const followRoom = () => room?.onChange(async () => {
     emit('room', room.list());
-    await runner.reconcile();
+    await runtime.look();
   }) ?? (() => {});
   let stopFollowingRoom = followRoom();
-  await syncAgents(); // the asks the files hold are looked at once the doc opens
+  await runtime.sync(); // the asks the files hold are looked at once the doc opens
 
   // What a window may ask, by the level it needs (`can`). Each returns what
   // changed, for the window that asked.
@@ -1017,16 +725,9 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
       comment: (body, who) => comment({ id: body?.id, thread: body?.thread, anchor: body?.anchor ?? null, body: body?.body, resolved: body?.resolved, after: body?.after }, who),
       restoreVersion: (body, who) => serial(() => restoreVersion(body, who)),
       undo: (body, who) => serial(() => undo(body, who)),
-      // A buddy watches this doc, or no longer: { buddy, on }.
-      watch: (body, who) => watch(body, who),
-      // Fill the steps the doc's buddies have to wake each other.
-      refillSteps,
-      // Run a buddy again where its last run failed.
-      retry: (body) => {
-        if (typeof body?.buddy !== 'string') throw new DocError('bad_input', 'expected { buddy }');
-        retryFailed(body.buddy);
-        return {};
-      },
+      // A buddy watches this doc, or no longer ({ buddy, on }); the steps
+      // filled; a buddy run again where its last run failed ({ buddy }).
+      ...runtime.calls,
     },
     owner: {
       async saveSettings(patch) {
@@ -1050,7 +751,7 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
         await installAgents(settingsDir, { reset: body.name });
         return { agents: await listAgents(settingsDir) };
       },
-      testAgent: async () => testAgent(await pickAgent()),
+      testAgent: () => runtime.testAgent(),
       // An image pasted or dropped into the doc: written beside it, the path to write in it.
       saveImage: async (body) => ({ src: await saveImage(dirname(docPath), body) }),
       runs: async () => ({ runs: await tracedRuns(settingsDir, docPath) }),
@@ -1092,10 +793,10 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
       tellCursors();
     },
     /** What a window hears first: the version of the messages, whether the doc is missing, and who is at work. */
-    hello: () => ({ protocol: PROTOCOL, missing, agents: agentStatuses() }),
+    hello: () => ({ protocol: PROTOCOL, missing, agents: runtime.statuses() }),
     /** The agents' secrets changed: the failed asks run again. */
-    agentChanged: () => retryFailed(),
-    runner,
+    agentChanged: () => runtime.agentChanged(),
+    runner: runtime.runner,
     docPath: () => docPath,
     moveTo,
     setFolder(next, nextRoom) {
@@ -1105,8 +806,8 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
       room = nextRoom;
       stopFollowingRoom = followRoom();
       stopWatchingProjectBuddies();
-      stopWatchingProjectBuddies = folder ? watchFolder(projectBuddiesDir(folder), syncAgents) : () => {};
-      syncAgents();
+      stopWatchingProjectBuddies = folder ? watchFolder(projectBuddiesDir(folder), runtime.sync) : () => {};
+      runtime.sync();
     },
     // Closed even when its last write fails: what was not written is lost.
     async close() {
@@ -1121,14 +822,12 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
         });
       } finally {
         clearTimeout(retry);
-        clearTimeout(settling);
-        clearTimeout(stepTimer);
         stopWatching();
         stopWatchingSettings();
         stopWatchingProjectBuddies();
         stopWatchingUserBuddies();
         stopFollowingRoom();
-        await runner.stop();
+        await runtime.close();
       }
     },
   };

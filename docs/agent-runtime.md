@@ -4,7 +4,12 @@ How buddies run against a doc. It uses only the doc's public door
 ([architecture](architecture.md#the-door)), as any client does; the doc
 knows nothing about buddies.
 
-Not built yet: today this logic lives inside `src/host/doc-service.js`.
+Built so far: the runtime is `src/host/buddy-runtime.js`, landing runs
+through the door's `submit` and `comment`; Rules are `src/core/due.js` and
+`src/core/bucket.js`, Translate `src/core/translate.js`. Not yet: the doc
+still creates the runtime and calls it directly, rather than the host
+joining them; and the controller still times by clock and keeps three
+timers, not one.
 
 ## Principles
 

@@ -11,7 +11,7 @@ import { tmpdir } from 'node:os';
 import { basename, delimiter, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildPrompt } from '../src/core/prompt.js';
-import { agentsFor } from '../src/host/doc-service.js';
+import { agentsFor } from '../src/host/buddy-runtime.js';
 import { Runner } from '../src/host/runner.js';
 import { agentScript, agentsDir, installAgents, listAgents } from '../src/store/agents.js';
 import { readSecrets, secretTails, writeSecrets } from '../src/store/secrets.js';
