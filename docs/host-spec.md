@@ -1,8 +1,8 @@
 # Host spec
 
 Every rule, limit and call of the doc host, for building and checking it.
-For the picture and the reasons, read [architecture](architecture.md)
-first. Product: [product vision](product-vision.md); what a
+For the design and its principles, read [architecture](architecture.md)
+and [agent runtime](agent-runtime.md) first. Product: [product vision](product-vision.md); what a
 person sees and does: [user experience](user-experience.md); the comment
 format: [SPEC](../spec/SPEC.md); tests: [testing](testing-ci.md).
 
