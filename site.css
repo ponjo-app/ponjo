@@ -81,14 +81,6 @@ a { color: var(--accent); }
 @media (max-width: 560px) { .dl-page h1 { font-size: 24px; line-height: 2.2; } }
 .dl-pet { cursor: pointer; }
 .dl-pet .pj-avatar { --size: 96px; }
-.dl-pet .pj-face-look { transition: transform 0.2s ease-out; }
-.dl-pet .pj-face-eyes { transform-box: fill-box; transform-origin: center; animation: dl-blink 5s infinite; }
-.dl-pet .pj-face + .pj-face, .dl-happy .pj-face:first-child { display: none; }
-.dl-happy .pj-face + .pj-face { display: block; }
-.dl-happy .pj-avatar { animation: dl-hop 0.5s ease-out; }
-@keyframes dl-blink { 0%, 95%, 100% { transform: none; } 97% { transform: scaleY(0.1); } }
-@keyframes dl-hop { 40% { transform: translateY(-16px) scale(0.96, 1.04); } 75% { transform: scale(1.06, 0.94); } }
-@media (prefers-reduced-motion: reduce) { .dl-pet .pj-face-eyes, .dl-happy .pj-avatar { animation: none; } }
 
 .dl-page .download { display: flex; flex-direction: column; align-items: center; gap: 12px; }
 .dl-page .platforms { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; }

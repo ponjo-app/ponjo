@@ -6,8 +6,8 @@
   <title>Ponjo Avatars</title>
   <!-- A live specimen: the app's own stylesheet and classes, so this page is
        always what the app looks like. Run `npm run build` to view it locally. -->
-  <link rel="stylesheet" href="./dist/web/app.css?v=46317d5">
-  <link rel="stylesheet" href="site.css?v=46317d5">
+  <link rel="stylesheet" href="./dist/web/app.css?v=5839efb">
+  <link rel="stylesheet" href="site.css?v=5839efb">
   <link rel="icon" href="./build/icon.svg" type="image/svg+xml">
 </head>
 <body>
@@ -72,7 +72,7 @@
     <li><strong>Away</strong>: asleep, eyes shut ‿ ‿, the head low, breathing slow, greyed out. Back, it wakes wide-eyed.</li>
     <li><strong>Failed</strong>, a moment: a wince &gt; &lt; and a shake of the head, then a sulk, eyes down, for a second or two, and the face flashes red once. The thread says what happened.</li>
   </ul>
-  <p>The body barely moves: a breath, and the head's slow lean from the neck. The eyes lead and the head follows. A face near your pointer looks at you. No two faces breathe in step. With reduced motion, a face shows its state's expression and holds still.</p>
+  <p>The body barely moves: a breath, and the head's slow lean from the neck. The eyes lead and the head follows. A face near your pointer looks at you. A face you can click can be poked: pressed, it squashes; let go, it springs back and reacts as its state would. Ready, it hops and smiles ^ ^ at you; working, it looks up at you, pleased, and goes back to work; asleep, it starts awake, wide-eyed, and dozes off again. No two faces breathe in step. With reduced motion, a face shows its state's expression and holds still.</p>
   <div class="ds-box ds-faces" data-faces="states"></div>
   <div class="ds-box ds-faces" data-faces="person-states"></div>
   <h2>The header</h2>
@@ -82,7 +82,7 @@
 
 </main>
 <script type="module">
-  import { agentFace, personFace, setBuddies, setOwner } from './dist/web/faces.js?v=46317d5';
+  import { agentFace, personFace, setBuddies, setOwner } from './dist/web/faces.js?v=5839efb';
 
   const BUDDIES = ['Clippy', 'Ada', 'Rex', 'Juno', 'Milo', 'Vera', 'Otto', 'Pip'];
   setBuddies(BUDDIES.map((name) => ({ id: name, name })));
@@ -133,6 +133,6 @@
   flinch();
   setInterval(flinch, 3000);
 </script>
-<script type="module" src="site.js?v=46317d5"></script>
+<script type="module" src="site.js?v=5839efb"></script>
 </body>
 </html>

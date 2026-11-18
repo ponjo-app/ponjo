@@ -6,8 +6,8 @@
 <title>Download Ponjo</title>
 <meta name="description" content="Co-author your own text files with your human and AI buddies. Download Ponjo for macOS or Windows.">
 <link rel="icon" href="./build/icon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="./dist/web/app.css?v=46317d5">
-<link rel="stylesheet" href="site.css?v=46317d5">
+<link rel="stylesheet" href="./dist/web/app.css?v=5839efb">
+<link rel="stylesheet" href="site.css?v=5839efb">
 </head>
 <body>
 <header class="site-header">
@@ -55,10 +55,10 @@
 </main>
 <script type="module">
   // The slogan's second half is written once by Clippy, with the app's own face
-  // and cursor, and left marked as its edit. Then Clippy stays as a pet: its eyes
-  // follow the pointer, it blinks, and a click makes it hop, happy. With reduced
-  // motion the slogan is there at once.
-  import { agentFace, buddyColor } from './dist/web/faces.js?v=46317d5';
+  // and cursor, and left marked as its edit. Then Clippy stays as a pet: its face
+  // lives as in the app (life.js), looking at the pointer wherever it is, and a
+  // click pokes it. With reduced motion the slogan is there at once.
+  import { agentFace, buddyColor } from './dist/web/faces.js?v=5839efb';
 
   // A phone gets a note instead of the downloads; a computer, its own system's download as the primary button.
   const ua = navigator.userAgent;
@@ -84,8 +84,9 @@
   const pet = el('button', 'pj-agent-face dl-pet');
   pet.type = 'button';
   pet.setAttribute('aria-label', 'Pet Clippy');
+  pet.dataset.follow = '';
   const avatar = el('span', 'pj-avatar pj-avatar-agent');
-  avatar.append(agentFace('Clippy', CLIPPY), agentFace('Clippy', { ...CLIPPY, eye: 'happy' }));
+  avatar.append(agentFace('Clippy', CLIPPY));
   pet.append(avatar);
   const typed = el('span', 'pj-buddy-edit');
   const cursor = el('span', 'pj-cursor');
@@ -108,24 +109,7 @@
   working(false);
   await sleep(1200);
   cursor.remove();
-
-  // The pet: its face turns toward the pointer, a little more the farther it is.
-  addEventListener('pointermove', (event) => {
-    const box = pet.getBoundingClientRect();
-    const dx = event.clientX - (box.left + box.width / 2);
-    const dy = event.clientY - (box.top + box.height / 2);
-    const reach = (Math.min(1, Math.hypot(dx, dy) / 300) * 6) / (Math.hypot(dx, dy) || 1);
-    for (const look of pet.querySelectorAll('.pj-face-look')) look.style.transform = `translate(${dx * reach}px, ${dy * reach}px)`;
-  });
-  let happy;
-  pet.addEventListener('click', () => {
-    pet.classList.remove('dl-happy');
-    void pet.offsetWidth; // restarts the hop on a quick second click
-    pet.classList.add('dl-happy');
-    clearTimeout(happy);
-    happy = setTimeout(() => pet.classList.remove('dl-happy'), 900);
-  });
 </script>
-<script type="module" src="site.js?v=46317d5"></script>
+<script type="module" src="site.js?v=5839efb"></script>
 </body>
 </html>
