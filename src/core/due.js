@@ -15,13 +15,16 @@ export const SETTLE_MS = 5000;
  * the comments this host took (askedBy); `notes` buddy → { seen (thread →
  * the time of the last comment its runs were given there), lookedAt (the
  * rev its last run started at, or null: look at once), base (the doc then,
- * or null), watch ({ by }, who turned it on, or null) }; `changedAt` who last
+ * or null), heard (the ids of the comments then, a Set, or null), watch ({
+ * by }, who turned it on, or null) }; `changedAt` who last
  * changed the doc's text → { rev, at (when, on the clock of `now`) }, people
  * as one (null); `running` the ids of the buddies running; `steps` the
  * bucket buddies wake each other from (bucket.js); `text` the doc now.
  *
  * Returns { start ([{ buddy, buddies, threads, askers, watch (null, or {
- * changes }), watchOnly }]), stop (ids), steps (the bucket, less
+ * changes, threads (the open ones with another member's comment since it
+ * last looked), heard (the ids of the comments now) }), watchOnly }]),
+ * stop (ids), steps (the bucket, less
  * those spent), wakeAt (when to look again, or null), asking (a Set of
  * `${buddy} ${thread}`, each ask, looked at or not), why (buddy id → why it
  * starts or not, in words: the agent log's) }.
@@ -33,7 +36,8 @@ export const SETTLE_MS = 5000;
  * the comment that came with it), for a step. Its own never counts.
  */
 export function plan({ buddies, threads, askers, taken, notes, changedAt, running, steps, text, now }) {
-  const noteOf = (id) => notes.get(id) ?? { seen: new Map(), lookedAt: null, base: null, watch: null };
+  const noteOf = (id) => notes.get(id) ?? { seen: new Map(), lookedAt: null, base: null, heard: null, watch: null };
+  const heard = new Set(threads.flatMap((t) => t.comments.map((c) => c.id)));
   const tasks = new Map(); // buddy id → { threads, askers, asked, watch }
   const taskOf = (id) => tasks.get(id) ?? tasks.set(id, { threads: [], askers: new Set(), asked: false, watch: null }).get(id);
   const asking = new Set();
@@ -75,7 +79,9 @@ export function plan({ buddies, threads, askers, taken, notes, changedAt, runnin
       changed.push(`${nameOf(by)} at rev ${rev}${by === null && now - at < SETTLE_MS ? ', still typing' : ''}${by !== null && running.has(by) ? ', still landing' : ''}`);
     }
     const since = note.lookedAt === null ? 'its first look' : changed.length ? `changed by ${changed.join(', ')}, after its look at rev ${note.lookedAt}` : `no change since its look at rev ${note.lookedAt}`;
-    task.watch = { changes: note.base === null ? null : lineChanges(note.base, text), due: byPeople || byBuddy, paid: !byPeople && byBuddy, since };
+    // What members said since it looked, as what they wrote: its own words it knows.
+    const said = note.heard === null ? [] : threads.filter((t) => !t.resolved && t.comments.some((c) => c.by.id !== id && !note.heard.has(c.id)));
+    task.watch = { changes: note.base === null ? null : lineChanges(note.base, text), threads: said, heard, due: byPeople || byBuddy, paid: !byPeople && byBuddy, since };
   }
   const start = [];
   for (const [id, task] of tasks) {
@@ -101,7 +107,7 @@ export function plan({ buddies, threads, askers, taken, notes, changedAt, runnin
       steps = step.bucket;
       why.set(id, `due: ${reason} · a step taken, ${steps.left} left`);
     } else why.set(id, `due: ${reason}`);
-    start.push({ buddy, buddies, threads: task.threads, askers: [...task.askers], watch: task.watch && { changes: task.watch.changes }, watchOnly: !task.asked && task.watch !== null });
+    start.push({ buddy, buddies, threads: task.threads, askers: [...task.askers], watch: task.watch && { changes: task.watch.changes, threads: task.watch.threads, heard }, watchOnly: !task.asked && task.watch !== null });
   }
   const wanted = new Set([...tasks.keys()].filter((id) => buddies.some((b) => b.id === id)));
   const stop = [...running].filter((id) => !wanted.has(id));

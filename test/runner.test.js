@@ -486,6 +486,7 @@ test('a buddy\'s change wakes each other buddy watching, never itself, each such
     await sleep(1000);
     assert.equal(await moves(), 5, 'each first look free, then three steps');
     assert.deepEqual((await runs()).map((r) => r.buddy), ['Ada', 'Ben', 'Ada', 'Ben', 'Ada'], 'each on the other\'s move');
+    assert.match((await runs())[2].prompt, /on the whole doc, new since you last looked:\n\n<thread>\nBen: Watching\./, 'told what the other said with its move');
     assert.equal((await state()).steps.next, null, 'none comes on its own');
 
     await edit(`${(await state()).text}A person's line.\n`);
@@ -762,7 +763,11 @@ test('the prompt tells a buddy who the other members are, as the app shows them'
   assert.match(withUser, /You can do what any member can: edit a\.md in place, .* reply in any thread; start a thread .* Only people resolve threads\./);
   assert.match(withUser, /What every member keeps to, as the doc is shared: each change you make to the doc comes with a comment that says why.* at most 280 characters, in the language of the thread\./, 'the etiquette, for every buddy');
   assert.doesNotMatch(withUser, /Edit only when asked/, 'how it answers is its persona\'s');
-  assert.match(withUser, /The situation now:\n\nThe threads that ask you, each oldest comment first:\n\nThread c_thread01, on the whole doc:/, 'each by its id, in the situation, last');
+  assert.match(withUser, /The situation now:\n\nThe threads with something new for you, each oldest comment first:\n\nThread c_thread01, on the whole doc, which asks you:/, 'each by its id, in the situation, last');
+  const move = { id: 'c_game0001', anchor: { exact: '# Go' }, comments: [{ by: { name: 'Ben' }, body: '@Ada, your move.' }] };
+  const watching = buildPrompt({ buddy: buddies[0], buddies, docName: 'a.md', sidecarName: 'a.md.comments.jsonl', threads: [], watch: { changes: [], threads: [move] } });
+  assert.match(watching, /The situation now:\n\nThe threads with something new for you, each oldest comment first:\n\nThread c_game0001, on the text "# Go", new since you last looked:\n\n<thread>\nBen: @Ada, your move\.\n<\/thread>\n\nYou watch the doc\./, 'a watcher is told what members said since it looked, as what changed');
+  assert.match(buildPrompt({ buddy: buddies[0], buddies, docName: 'a.md', sidecarName: 'a.md.comments.jsonl', threads: [], watch: { changes: [], threads: [] } }), /The situation now:\n\nYou watch the doc\./, 'nothing new: no list, and no word of what is not there');
   assert.doesNotMatch(prompt, /I write novels/, 'nothing about an owner who wrote nothing');
 });
 
