@@ -92,7 +92,9 @@ landed. It holds names, revs and thread ids, never the doc's text.
 - **Watch:** a person turned on its watch, and since its last run people
   changed the doc and paused 5 s, or another buddy changed it and its run
   has ended, so the watcher sees the comment with the edit. A buddy's own
-  change never counts. A run woken by another buddy costs one step.
+  change never counts. A run woken by another buddy costs one step. It is
+  told what changed since its last: the doc's lines, and each thread another
+  member wrote in, whole, as a person watching sees new comments.
 
 ## A run
 

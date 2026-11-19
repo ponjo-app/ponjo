@@ -363,8 +363,10 @@ buddy's once that buddy's run has ended: its edits land before its
 comments, and the watcher sees both. Its own change never wakes it. A
 person editing again while a run only a watch started is on ends that run
 with no answer, for it saw the doc as it was. Each run is told what
-changed since its last (`lineChanges`); it reads the doc's threads in the
-comments itself, and comments where it will, as any member.
+changed since its last: in the text (`lineChanges`), and in the threads,
+each open one another member wrote in, whole (the ids of the comments it
+heard then are noted with `base`). It reads the rest in the comments
+itself, and comments where it will, as any member.
 
 **Steps.** So that buddies cannot wake each other for ever, a run woken by
 another buddy's change takes a step from the doc's steps: up to 20, one

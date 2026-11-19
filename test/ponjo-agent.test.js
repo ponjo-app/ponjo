@@ -112,7 +112,7 @@ test('the prompt\'s situation comes after the doc, apart: the rules and the doc 
   assert.equal(rules.cache, true);
   assert.ok(rules.content.startsWith('You are Clippy') && rules.content.includes('as read gives it:\n\n1\t# Q4 Launch Plan'), 'the rules, then the doc');
   assert.ok(!rules.content.includes(SITUATION) && !rules.content.includes('c_asked'), 'nothing that changes from run to run');
-  assert.ok(situation.content.startsWith(`${SITUATION}\n\nThe threads that ask you`) && situation.content.includes('<thread>\nFan: Hi\n</thread>'));
+  assert.ok(situation.content.startsWith(`${SITUATION}\n\nThe threads with something new for you`) && situation.content.includes('<thread>\nFan: Hi\n</thread>'));
   assert.equal(situation.cache, undefined);
 });
 

@@ -33,12 +33,13 @@ import { delimiter, join } from 'node:path';
 let prompt = '';
 for await (const chunk of process.stdin) prompt += chunk;
 const { PONJO_DOC: doc, PONJO_COMMENTS: comments, PONJO_PROJECT: project, PONJO_GROUPS: groups, PONJO_BUDDY: buddy, FAKE_DIR: dir } = process.env;
-// The prompt's threads, each { id, ask (its latest comment), mine (whether that is this buddy's) }.
-const threads = [...prompt.matchAll(/Thread (c_[\w-]+), [^\n]*\n\n<thread>\n([\s\S]*?)\n<\/thread>/g)].map(([, id, said]) => {
+// The prompt's threads, each { id, ask (its latest comment), mine (whether
+// that is this buddy's), asks (whether it asks it, or is only new to a watcher) }.
+const threads = [...prompt.matchAll(/Thread (c_[\w-]+), [^\n]*, (which asks you|new since you last looked):\n\n<thread>\n([\s\S]*?)\n<\/thread>/g)].map(([, id, why, said]) => {
   const ask = said.split(/\n\n(?=[^\s:]+: )/).at(-1); // a comment starts with its writer's name
-  return { id, ask, mine: ask.startsWith(`${buddy}: `) };
+  return { id, ask, mine: ask.startsWith(`${buddy}: `), asks: why === 'which asks you' };
 });
-const todo = threads.filter((t) => !t.mine);
+const todo = threads.filter((t) => t.asks && !t.mine); // the others it reads, as it watches
 const ask = todo.map((t) => t.ask).join('\n\n');
 const settings = Object.fromEntries(Object.entries(process.env).filter(([key]) => key.startsWith('PONJO_SETTING_')));
 const onPath = (process.env.PATH ?? '').split(delimiter).some((d) => d && ['ponjo', 'ponjo.cmd'].some((f) => existsSync(join(d, f))));
