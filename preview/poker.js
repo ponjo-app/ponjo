@@ -291,12 +291,12 @@ function seatNode(id) {
   node.dataset.id = id;
   const face = el('span', 'pj-agent-face');
   face.dataset.presence = 'idle';
-  face.append(faceOf(id), el('div', 'pk-hole'));
+  face.append(faceOf(id));
   const plate = el('div', 'pk-plate');
   const name = el('span', 'pk-name', label(id));
   name.append(el('span', 'pk-position'));
   plate.append(name, el('span', 'pk-stack'), el('span', 'pk-tag'));
-  node.append(face, plate);
+  node.append(face, plate, el('div', 'pk-hole'));
   return node;
 }
 // An empty seat: a player can be asked to sit there.
