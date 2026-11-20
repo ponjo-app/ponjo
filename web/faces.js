@@ -312,6 +312,9 @@ const halfArc = (x, y, r, h) =>
 const halfArcBack = (x, y, r, h) =>
   `C${f(x + r)} ${f(y + K * h)} ${f(x + K * r)} ${f(y + h)} ${f(x)} ${f(y + h)}C${f(x - K * r)} ${f(y + h)} ${f(x - r)} ${f(y + K * h)} ${f(x - r)} ${f(y)}`;
 
+// Shows or hides a part. Shown, it inherits: 'visible' would show it inside a hidden face.
+const show = (el, on) => el.setAttribute('visibility', on ? 'inherit' : 'hidden');
+
 // One eye at x, y (`side` -1 left, 1 right), and how to repaint it.
 function eyeOf(g, x, y, side) {
   const oval = node('ellipse', { fill: INK });
@@ -319,7 +322,6 @@ function eyeOf(g, x, y, side) {
   const glint2 = node('circle', { class: 'pj-face-glint', fill: '#fff' }); // a small second one in a big eye
   const line = stroke('', 4.6);
   g.append(oval, glint, glint2, line);
-  const show = (el, on) => el.setAttribute('visibility', on ? 'visible' : 'hidden');
   return (e) => {
     const lid = clamp(e.lid, 0, 1.25);
     const cx = x + e.ex, cy = y + e.ey;
@@ -386,7 +388,7 @@ function mouthOf(g, x, y, hue) {
     el.setAttribute('stroke-width', filled ? '3' : '4.6');
     // a tongue in a happy open mouth, not in an o or a frown
     const showTongue = filled && curve > 0.2 && open > 0.35 && e.round < 0.5;
-    tongue.setAttribute('visibility', showTongue ? 'visible' : 'hidden');
+    show(tongue, showTongue);
     if (showTongue) {
       tongue.setAttribute('cx', f(cx));
       tongue.setAttribute('cy', f(y - lift + top / 2 + depth * 0.75));

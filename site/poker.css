@@ -164,6 +164,7 @@ body:is(.pk-setting-up, .pk-buying-in) .pk-page { filter: blur(1px); opacity: 0.
 .pk-msg:has(+ .pk-msg[data-more]) .pj-avatar { visibility: hidden; } /* the face goes with the last of a run */
 .pk-msg-col { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; max-width: 80%; }
 .pk-msg-name { margin: 0 0 2px 12px; color: var(--text-soft); font-size: 12px; }
+.pk-msg-name small { margin-left: 4px; color: var(--text-faint); } /* to whom, or what: "last words" (game-page.js) */
 .pk-msg-text { padding: 6px 12px; border-radius: 14px 14px 14px 4px; background: var(--bg-soft); font-size: 14px; line-height: 1.4; overflow-wrap: anywhere; }
 .pk-msg[data-mine] { justify-content: flex-end; }
 .pk-msg[data-mine] .pk-msg-col { align-items: flex-end; }
