@@ -6,7 +6,7 @@
 
 /* global document, window */
 
-import { agentFace, buddyColor, personFace, setBuddies, setOwner, setPeople } from '../web/faces.js';
+import { INK, agentFace, buddyColor, personFace, setBuddies, setOwner, setPeople } from '../web/faces.js';
 
 const still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 const STOPPED = Symbol('stopped');
@@ -17,6 +17,7 @@ setOwner('You');
 setPeople(['You']);
 
 const el = (tag, className = '', text = '') => Object.assign(document.createElement(tag), { className, textContent: text });
+const f = (n) => n.toFixed(1);
 
 function button(text, className = 'pj-secondary') {
   const node = el('button', className, text);
@@ -57,12 +58,33 @@ const PROPS = {
   write: [['arch-prop arch-prop-pen', 'M55 -13 L62 -12 L62 2 L59 6 L55 2 Z']],
   dazed: [['arch-prop', 'M58 -6 Q52 -8 56 -14 Q56 -22 64 -19 Q70 -25 74 -17 Q81 -15 77 -9 Q76 -2 69 -5 Q63 0 58 -6 Z']],
 };
-// What a face shows over its own eyes and mouth, in its 100×100 box: brows
-// set hard and a drop of sweat, running; worried brows and spiral eyes, dazed.
-const spiral = (x, y) => `M${x} ${y} a1 1 0 0 1 2 0 a2 2 0 0 1 -4 0 a3.5 3.5 0 0 1 7 0 a5 5 0 0 1 -10 0`;
+// Looks a face has only in these scenes, drawn in its own ink in place of
+// its eyes and mouth, in its 100×100 box: [kind, path], a 'fill' solid, a
+// 'drop' filled with paper. Running: brows down, eyes set, a frown and a
+// drop of sweat. Dazed: worried brows, spiral eyes, a wobbly mouth.
+// a spiral round (x, y): half turns that grow by `gap` each full turn
+function spiral(x, y, turns = 2, gap = 3.4) {
+  let [at, r] = [x - gap / 4, gap / 2];
+  let d = `M${f(at)} ${y}`;
+  for (let i = 0; i < turns * 2; i++) {
+    at += (i % 2 ? -2 : 2) * r;
+    d += ` A${f(r)} ${f(r)} 0 0 1 ${f(at)} ${y}`;
+    r += gap / 2;
+  }
+  return d;
+}
 const LOOKS = {
-  run: ['M29 30 L41 35 M71 30 L59 35', 'M82 8 L82 9'],
-  dazed: ['M29 33 L41 29 M71 33 L59 29', spiral(36, 46), spiral(62, 46)],
+  run: [
+    ['line', 'M27 31 L42 37 M73 31 L58 37'],
+    ['fill', 'M34 44 a3.5 4.5 0 1 0 7 0 a3.5 4.5 0 1 0 -7 0 M59 44 a3.5 4.5 0 1 0 7 0 a3.5 4.5 0 1 0 -7 0'],
+    ['line', 'M43 62 Q50 55 57 62'],
+    ['drop', 'M84 6 Q92 18 84 22 Q76 18 84 6 Z'],
+  ],
+  dazed: [
+    ['line', 'M27 32 L40 28 M73 32 L60 28'],
+    ['thin', `${spiral(36, 46)} ${spiral(62, 46)}`],
+    ['line', 'M40 63 q5 -5 10 0 q5 5 10 0'],
+  ],
 };
 
 const svg = (viewBox, className) => {
@@ -96,9 +118,13 @@ function actor(name, presence) {
     }
   }
   const looks = svg('0 0 100 100', 'arch-looks');
-  for (const [look, ds] of Object.entries(LOOKS)) {
+  for (const [look, strokes] of Object.entries(LOOKS)) {
     const g = document.createElementNS(NS, 'g');
-    g.append(...ds.map((d) => path(d)));
+    for (const [kind, d] of strokes) {
+      const line = path(d, `arch-look-${kind}`);
+      line.setAttribute(kind === 'fill' ? 'fill' : 'stroke', INK);
+      g.append(line);
+    }
     parts[`look-${look}`] = g;
     looks.append(g);
   }
@@ -116,7 +142,8 @@ function pose(member, { arms = 'stand', legs = 'stand', look = null, right = fal
   for (const [key, g] of Object.entries(member.parts)) {
     g.style.display = [`arms-${arms}`, `legs-${legs}`, `look-${look}`].includes(key) ? '' : 'none';
   }
-  member.figure.dataset.look = look ?? '';
+  if (look) member.figure.dataset.look = look;
+  else delete member.figure.dataset.look;
   member.figure.classList.toggle('arch-right', right);
 }
 
@@ -136,7 +163,6 @@ function bar(width) {
 // ---- a diagram: straight arrows, and nodes at points on it ----
 
 const NS = 'http://www.w3.org/2000/svg';
-const f = (n) => n.toFixed(1);
 
 // A straight arrow from `from` to `to`: the shaft and the head.
 function arrow([x0, y0], [x1, y1]) {
@@ -246,7 +272,7 @@ function cover(scene) {
   pet.dataset.follow = '';
   pet.setAttribute('aria-label', 'Poke Clippy');
   const title = el('h1', '', 'People and agents on one board');
-  const lead = el('p', '', 'How Ponjo’s agents run, in two contrasts: how you work with agents, and how a runtime decides when they run.');
+  const lead = el('p', '', 'How Ponjo’s agents work, in two contrasts: how you work with them, and when they run.');
   scene.stage.classList.add('arch-cover');
   scene.stage.append(pet, title, lead);
 }
@@ -446,10 +472,10 @@ async function events(scene) {
     s.place(member.node, at);
     return [name, member];
   }));
-  const foot = el('p', 'arch-foot', 'A runtime that starts a run per event loses the work with the event: ');
-  const link = el('a', '', 'even OpenHands drops requests when a poll fails');
+  const foot = el('p', 'arch-foot');
+  const link = el('a', '', 'Even OpenHands drops requests when a poll fails.');
   link.href = OPENHANDS;
-  foot.append(link, '.');
+  foot.append(link);
   scene.stage.append(foot);
 
   // an ask on the doc: a highlighted line with the face of the buddy asked
@@ -490,10 +516,10 @@ async function events(scene) {
 
 // [eyebrow, the idea in a line, the scene]
 const CHAPTERS = [
-  ['', 'Two contrasts, a picture each: Next goes on.', cover],
-  ['How you work with agents · Delegate', 'Delegate: each agent works on its own copy, in a room of its own. Neither sees the other’s work, so what they hand back can clash, and you merge it by hand.', delegate],
-  ['How you work with agents · Blackboard', 'Blackboard: everyone works in front of one board. Each change lands where everyone sees it at once: nothing is handed out, and nothing is merged back.', blackboard],
-  ['How a runtime decides · Triggered by events', 'Triggered by events: each change sends a message, and an agent runs only when its message arrives. Lose a message, and the work is lost with it.', events],
+  ['', 'Press Start.', cover],
+  ['How you work · Delegate', 'Delegate: each agent works alone on its own copy. The copies clash, and you merge them by hand.', delegate],
+  ['How you work · Blackboard', 'Blackboard: everyone works on one board and sees every change. Nothing to hand off, nothing to merge.', blackboard],
+  ['When agents run · Events', 'Triggered by events: an agent runs only when a message reaches it. Lose the message, lose the work.', events],
 ];
 
 // ---- the story: a chapter at a time, with Back, Next and a dot for each ----
