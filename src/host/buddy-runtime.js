@@ -384,9 +384,11 @@ export async function createBuddyRuntime({ door, place, pathInProject, buddies, 
     /**
      * A change landed in the doc's log (doc-service.js, subscribe): { rev,
      * by: { id, kind }, comments }. Comments changed: look. The text: a
-     * person's (or outside) ends the runs only a watch started, for they saw
-     * the doc as it was, and the watchers look again once people pause; a
-     * buddy's has them look at once.
+     * person's ends the runs only a watch started, for they saw the doc as
+     * it was; one found on disk does not, as a program may write more often
+     * than a run lasts: the run lands merged by line, and runs again on it.
+     * Either has the watchers look again once people pause; a buddy's has
+     * them look at once.
      */
     heard({ rev, by: author, comments }) {
       const who = author.kind === 'buddy' ? nameOf(author.id) : author.kind === 'person' ? 'a person' : 'outside the app';
@@ -402,7 +404,7 @@ export async function createBuddyRuntime({ door, place, pathInProject, buddies, 
         return;
       }
       for (const run of runs.values()) {
-        if (!run.task.watchOnly || run.landing || run.cancelled) continue;
+        if (author.kind === 'outside' || !run.task.watchOnly || run.landing || run.cancelled) continue;
         noteOf(run.task.buddy.id).lookedAt = run.from;
         end(run);
       }
