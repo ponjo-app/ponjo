@@ -39,7 +39,7 @@ const ai = models(() => {
 // due and times the turn; that is all it does. While the narrator is behind
 // the game at dawn, the day waits for it: no one speaks in the dark.
 function changed() {
-  if (!game) return;
+  if (!game || hellos.going) return void draw();
   const held = draw();
   if (!held || game.state.phase === 'night') for (const due of plan(game, running)) run(due);
   timeTurn();
@@ -140,7 +140,29 @@ function startGame(size) {
   for (const node of seats) node.remove();
   seats = game.players.map((id, i) => seatNode(id, i, game.players.length));
   $('.ww-ring').append(...seats);
+  greet();
+}
+
+// Before the first night, the players say hello round the fire, each in
+// seat order, a line every second or so: lines written for them, so no
+// model is asked. Then night falls.
+const HELLO_MS = 1400;
+let hellos = { going: false, said: [] };
+function greet() {
+  const here = game;
+  const players = game.players.flatMap((id, seat) => (isPerson(id) ? [] : [{ seat, text: PERSONAS.find((p) => p.id === id).hello }]));
+  hellos = { going: true, said: [] };
   changed();
+  players.forEach((line, k) => setTimeout(() => {
+    if (here !== game) return;
+    hellos.said.push(line);
+    changed();
+  }, 600 + k * HELLO_MS));
+  setTimeout(() => {
+    if (here !== game) return;
+    hellos.going = false;
+    changed();
+  }, 600 + players.length * HELLO_MS + 1200);
 }
 
 // ---- the clearing ----
@@ -256,7 +278,7 @@ function presence(v, i) {
 
 function drawRing(v) {
   const died = deaths(v);
-  const said = v.log.findLast((e) => (e.type === 'speech' || e.type === 'last') && e.day === v.day && !e.silent);
+  const said = v.phase === 'gather' ? hellos.said.at(-1) : v.log.findLast((e) => (e.type === 'speech' || e.type === 'last') && e.day === v.day && !e.silent);
   for (const [i, node] of seats.entries()) {
     const id = game.players[i];
     node.toggleAttribute('data-dead', !v.seats[i].alive);
@@ -319,11 +341,11 @@ function drawCenter(v) {
   const alive = v.seats.filter((s) => s.alive).length;
   $('.ww-board').dataset.time = v.phase === 'night' ? 'night' : 'day';
   document.documentElement.dataset.theme = v.phase === 'night' ? 'dark' : 'light'; // the game's clock is the page's theme
-  $('.ww-phase').textContent = v.phase === 'over' ? (v.winner === 'village' ? 'The village wins' : 'The werewolves win')
+  $('.ww-phase').textContent = v.phase === 'gather' ? 'Round the fire' : v.phase === 'over' ? (v.winner === 'village' ? 'The village wins' : 'The werewolves win')
     : `${v.phase === 'night' ? 'Night' : 'Day'} ${v.day}${v.phase === 'vote' ? ' · Vote' : v.phase === 'last' ? ' · Last words' : ''}`;
   const dawn = v.log.findLast((e) => e.type === 'dawn');
   const firstWord = v.phase === 'day' && !v.log.some((e) => e.type === 'speech' && e.day === v.day);
-  $('.ww-sub').textContent = v.phase === 'over' ? `${(v.role === 'wolf') === (v.winner === 'wolves') ? 'You won' : 'You lost'}. Every role is shown.`
+  $('.ww-sub').textContent = v.phase === 'gather' ? 'Everyone says hello before night falls.' : v.phase === 'over' ? `${(v.role === 'wolf') === (v.winner === 'wolves') ? 'You won' : 'You lost'}. Every role is shown.`
     : v.phase === 'night' ? CALL_TEXT[CALLS[Math.min(call.at, CALLS.length - 1)]]
       : v.phase === 'vote' ? `${v.voted.length} of ${alive} have voted.`
         : `${firstWord && dawn?.day === v.day ? `The sun rises. ${dawn.deaths.length ? `${dawn.deaths.map(name).join(' and ')} died in the night.` : 'No one died.'} ` : ''}${v.speaker === v.seat ? (v.phase === 'last' ? 'Your last words.' : 'Your turn to speak.') : `${name(v.speaker)} ${v.phase === 'last' ? 'gives last words' : 'is speaking'}.`}`;
@@ -434,7 +456,10 @@ function openMenu(node) {
     draw();
   }, notes.get(i) === role);
   const head = el('li', 'pk-menu-head');
-  head.append(faceOf(id), el('b', '', i === v.seat ? 'You' : id));
+  const who = el('span', 'pk-menu-text');
+  who.append(el('b', '', i === v.seat ? 'You' : id));
+  if (!isPerson(id)) who.append(el('span', '', PERSONAS.find((p) => p.id === id).blurb));
+  head.append(faceOf(id), who);
   const items = [head];
   if (act) {
     const doIt = item(`${act.verb} ${label(id)}`, () => perform(act.type, i));
@@ -489,6 +514,7 @@ function drawFeed(v) {
     rows.push(row);
     last = null;
   };
+  for (const h of hellos.said) say(h.seat, h.text, '');
   for (const e of v.log) {
     const secret = SECRET[e.type];
     if (e.type === 'night') line(`Night ${e.day} falls. Everyone closes their eyes.`);
@@ -528,10 +554,16 @@ function drawFeed(v) {
   if (stick) feed.scrollTop = feed.scrollHeight;
 }
 
-// Draws the person's view, or, while the narrator has not yet called dawn,
-// the night as it was. Returns whether the narrator is behind the game.
+// Draws the person's view: while the players say hello, round the fire
+// before night falls; while the narrator has not yet called dawn, the night
+// as it was. Returns whether the narrator is behind the game.
 function draw() {
   if (!game) return false;
+  if (hellos.going) {
+    const v = { ...show(game), phase: 'gather', due: null, log: [] };
+    for (const part of [drawRing, drawCenter, drawMe, drawFeed, drawVotes]) part(v);
+    return true;
+  }
   const held = pace();
   const v = held && game.state.phase !== 'night' && shown ? { ...shown, due: null } : show(game);
   shown = v;
