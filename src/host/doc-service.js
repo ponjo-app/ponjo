@@ -698,12 +698,12 @@ export async function openDocService(docPath, { folder = null, room = null, sett
 
   const api = {
     /**
-     * The doc for a client in this process (the agent runtime): its text,
-     * rev, epoch, whether it is missing or closed, its comments as read
-     * (readComments), and `submit` and `comment` through the door.
+     * The doc for a client in this process (the doc world): its text, rev,
+     * epoch, whether it is missing, its comments as read (readComments),
+     * and `submit` and `comment` through the door.
      */
     door: {
-      text: () => text, rev: () => rev, epoch: () => epoch, missing: () => missing, closed: () => closed,
+      text: () => text, rev: () => rev, epoch: () => epoch, missing: () => missing,
       readComments: () => readComments(),
       submit: (arg, who) => api.call('submit', arg, who),
       comment: (arg, who) => api.call('comment', arg, who),

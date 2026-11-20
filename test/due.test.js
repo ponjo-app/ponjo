@@ -1,10 +1,14 @@
-// What a doc's buddies should do now (src/core/due.js, plan) and the steps
-// they have to wake each other (src/core/bucket.js): pure, so each case is
-// a time and the host's notes, with no agent and no waiting.
+// What a doc's buddies should do now (src/core/due.js, plan, given the
+// doc's asks as its world finds them, asksIn), what a watcher is told is new
+// (newSince), and the steps they have to wake each other
+// (src/core/bucket.js): pure, so each case is a time and the host's notes,
+// with no agent and no waiting.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { asksIn } from '../src/core/comments.js';
 import { OUTSIDE, SETTLE_MS, plan } from '../src/core/due.js';
+import { newSince } from '../src/core/prompt.js';
 import { filled, nextStepAt, refilled, take } from '../src/core/bucket.js';
 
 const ME = 'u_me000001';
@@ -12,15 +16,22 @@ const buddies = [{ id: 'b_ada', name: 'Ada' }, { id: 'b_ben', name: 'Ben' }];
 const say = (by, body, at, mentions = []) => ({ by: { id: by }, body, at, mentions });
 const thread = (id, comments, resolved = false) => ({ id, resolved, anchor: null, comments });
 const full = { left: 3, cap: 3, every: 60_000, at: 0 };
-const note = (over = {}) => ({ seen: new Map(), lookedAt: null, base: null, heard: null, watch: null, ...over });
-const look = (over = {}) => plan({ buddies, threads: [], askers: [ME], taken: () => true, notes: new Map(), changedAt: new Map(), running: new Set(), steps: full, text: 'Text.\n', now: 100_000, ...over });
-const started = (result) => result.start.map((t) => t.buddy.id);
+const note = (over = {}) => ({ seen: new Map(), lookedAt: null, watch: null, ...over });
+// The plan on a doc holding `threads` and `text`: its asks (asksIn), and
+// the watchers whose wake lines the text holds, whole.
+function look(over = {}) {
+  const s = { threads: [], askers: [ME], taken: () => true, relayed: new Map(), notes: new Map(), changedAt: new Map(), running: new Set(), steps: full, text: 'Text.\n', now: 100_000, ...over };
+  const lines = new Set(s.text.split(/\r?\n/));
+  const woken = new Set([...s.notes].filter(([, n]) => n.wake?.some((l) => lines.has(l))).map(([id]) => id));
+  return plan({ agents: buddies, asks: asksIn(s.threads, s.askers, s.taken, s.relayed), askers: s.askers, notes: s.notes, changedAt: s.changedAt, running: s.running, steps: s.steps, woken, now: s.now });
+}
+const started = (result) => result.start.map((t) => t.agent.id);
 const watching = (lookedAt, over = {}) => new Map([['b_ada', note({ watch: { by: ME }, lookedAt, ...over })]]);
 
 test('a person\'s comment asks the buddy it names until the buddy comments after it, or a run was given it', () => {
   const asked = thread('c_1', [say(ME, '@Ada look', '2026-11-18T10:00:00.000Z', ['b_ada'])]);
   const result = look({ threads: [asked] });
-  assert.deepEqual(result.start.map((t) => [t.buddy.id, t.threads.map((x) => x.id), t.askers, t.watchOnly]), [['b_ada', ['c_1'], [ME], false]]);
+  assert.deepEqual(result.start.map((t) => [t.agent.id, t.asks.map((x) => x.id), t.askers, t.watchOnly]), [['b_ada', ['c_1'], [ME], false]]);
   assert.deepEqual([...result.asking], ['b_ada c_1']);
   assert.deepEqual(started(look({ threads: [thread('c_1', [...asked.comments, say('b_ada', 'Done.', '2026-11-18T10:00:05.000Z')])] })), []);
   const given = look({ threads: [asked], notes: new Map([['b_ada', note({ seen: new Map([['c_1', Date.parse('2026-11-18T10:00:00.000Z')]]) })]]) });
@@ -34,7 +45,7 @@ test('a buddy\'s comment posted by a run here asks the buddies it @mentions, for
   const handed = thread('c_1', [said('c_1', ME, '@Ada start', '2026-11-18T10:00:00.000Z', ['b_ada']), said('c_2', 'b_ada', '@Ben your turn', '2026-11-18T10:00:05.000Z', ['b_ben'])]);
   const relayed = new Map([['c_2', [ME]]]);
   const result = look({ threads: [handed], relayed });
-  assert.deepEqual(result.start.map((t) => [t.buddy.id, t.threads.map((x) => x.id), t.askers, t.watchOnly]), [['b_ben', ['c_1'], [ME], false]]);
+  assert.deepEqual(result.start.map((t) => [t.agent.id, t.asks.map((x) => x.id), t.askers, t.watchOnly]), [['b_ben', ['c_1'], [ME], false]]);
   assert.equal(result.steps.left, 2, 'a step');
   assert.equal(result.why.get('b_ben'), 'due: asked in c_1 by a buddy · a step taken, 2 left');
   assert.deepEqual(started(look({ threads: [handed] })), [], 'a buddy\'s comment found in the file asks no one');
@@ -106,16 +117,16 @@ test('a watcher whose last run named lines to wake it is due only on a change wh
 
 test('a watcher is in only while whoever turned it on may ask, told what changed, given only the threads that ask it; a run nothing wants is stopped', () => {
   const its = thread('c_w', [say('b_ada', 'Watching.', '2026-11-18T10:00:00.000Z')]);
-  const [task] = look({ notes: watching(null, { base: 'Text.\n' }), threads: [its], text: 'Text.\nMore.\n' }).start;
-  assert.deepEqual([task.threads, task.askers, task.watchOnly], [[], [ME], true], 'it reads every thread in the comments itself');
-  assert.deepEqual(task.watch.changes, [{ before: '', after: 'More.\n' }]);
+  const [task] = look({ notes: watching(null), threads: [its], text: 'Text.\nMore.\n' }).start;
+  assert.deepEqual([task.asks, task.askers, task.watch, task.watchOnly], [[], [ME], true, true], 'it reads every thread in the comments itself');
+  const told = (over) => newSince({ agent: 'b_ada', base: 'Text.\n', heard: null, text: 'Text.\nMore.\n', threads: [], ...over });
+  assert.deepEqual(told().changes, [{ before: '', after: 'More.\n' }]);
   const said = (id, by, at) => ({ ...say(by, 'Your move.', at), id });
   const game = thread('c_g', [said('c_g', ME, '2026-11-18T10:00:00.000Z'), said('c_m1', 'b_ben', '2026-11-18T10:00:05.000Z')]);
   const mine = thread('c_w2', [said('c_w2', 'b_ada', '2026-11-18T10:00:01.000Z')]);
-  const told = look({ notes: watching(null, { base: 'Text.\n', heard: new Set(['c_g', 'c_w2']) }), threads: [game, mine, thread('c_old', [said('c_old', ME, '2026-11-18T09:00:00.000Z'), said('c_x', 'b_ben', '2026-11-18T09:00:01.000Z')], true)] }).start[0];
-  assert.deepEqual(told.watch.threads.map((t) => t.id), ['c_g'], 'the open threads another member wrote in since it looked; not its own words, nor a resolved thread');
-  assert.deepEqual([...told.watch.heard].sort(), ['c_g', 'c_m1', 'c_old', 'c_w2', 'c_x'], 'what it hears now, for the next look');
-  assert.deepEqual(look({ notes: watching(null), threads: [game] }).start[0].watch.threads, [], 'on its first look it reads them all itself');
+  const threads = [game, mine, thread('c_old', [said('c_old', ME, '2026-11-18T09:00:00.000Z'), said('c_x', 'b_ben', '2026-11-18T09:00:01.000Z')], true)];
+  assert.deepEqual(told({ heard: new Set(['c_g', 'c_w2']), threads }).threads.map((t) => t.id), ['c_g'], 'the open threads another member wrote in since it looked; not its own words, nor a resolved thread');
+  assert.deepEqual(told({ base: null, threads: [game] }), { changes: null, threads: [] }, 'on its first look it reads them all itself');
   const gone = look({ notes: watching(null, { watch: { by: 'u_gone00001' } }), running: new Set(['b_ada', 'b_ben']) });
   assert.deepEqual([started(gone), gone.stop], [[], ['b_ada', 'b_ben']], 'nothing wants them');
 });

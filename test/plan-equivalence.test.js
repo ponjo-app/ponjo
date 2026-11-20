@@ -1,10 +1,15 @@
 // The plan (src/core/due.js) decides as the plan before #431 did
 // (test/fixtures/old-plan.js), on 10,000 random states of a doc: whom it
-// starts and stops, what it spends, when it looks again, and why.
+// starts and stops, what it spends, when it looks again, and why. The old
+// one read the doc's threads and text; the new one is given the doc
+// world's asks (asksIn), whose views hold what wakes them, and a watcher is
+// told what is new (newSince) by its view.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { asksIn } from '../src/core/comments.js';
 import * as now from '../src/core/due.js';
+import { newSince } from '../src/core/prompt.js';
 import * as old from './fixtures/old-plan.js';
 
 const BUDDIES = [{ id: 'b_ada', name: 'Ada' }, { id: 'b_ben', name: 'Ben' }, { id: 'b_cal', name: 'Cal' }];
@@ -57,14 +62,34 @@ function state(rand) {
   };
 }
 
-// The plan of `module` on state `s`, as the two can be compared.
-function decided(module, s) {
-  const changedAt = new Map([...s.changedAt].map(([by, c]) => [by === 'outside' ? module.OUTSIDE : by, c]));
-  const r = module.plan({ ...s, taken: (c) => s.taken.has(c.id), changedAt, now: NOW });
-  return {
-    start: r.start.map((t) => ({ buddy: t.buddy.id, threads: t.threads.map((x) => x.id), askers: t.askers, watchOnly: t.watchOnly, watch: t.watch && { changes: t.watch.changes, threads: t.watch.threads.map((x) => x.id), heard: [...t.watch.heard] } })),
-    stop: r.stop, steps: r.steps, wakeAt: r.wakeAt, asking: [...r.asking], why: [...r.why],
-  };
+// What a plan starts, as the two can be compared: each run's agent, asks,
+// askers, whether it watches, and what it is told is new.
+const compared = (r, told) => ({
+  start: r.start.map(({ w, ...t }) => ({ ...t, told: told({ ...t, w }) })), stop: r.stop, steps: r.steps, wakeAt: r.wakeAt, asking: [...r.asking], why: [...r.why],
+});
+const ids = (list) => list.map((x) => x.id);
+
+// The old plan on state `s`.
+function before(s) {
+  const changedAt = new Map([...s.changedAt].map(([by, c]) => [by === 'outside' ? old.OUTSIDE : by, c]));
+  const r = old.plan({ ...s, taken: (c) => s.taken.has(c.id), changedAt, now: NOW });
+  return compared({ ...r, start: r.start.map((t) => ({ agent: t.buddy.id, asks: ids(t.threads), askers: t.askers, watch: t.watch !== null, watchOnly: t.watchOnly, w: t.watch })) },
+    (t) => t.w && { changes: t.w.changes, threads: ids(t.w.threads) });
+}
+
+// The new plan on the same state, given what the doc world makes of it.
+function after(s) {
+  const changedAt = new Map([...s.changedAt].map(([by, c]) => [by === 'outside' ? now.OUTSIDE : by, c]));
+  const lines = new Set(s.text.split(/\r?\n/));
+  const woken = new Set([...s.notes].filter(([, n]) => n.wake?.some((l) => lines.has(l))).map(([id]) => id));
+  const asks = asksIn(s.threads, s.askers, (c) => s.taken.has(c.id), s.relayed);
+  const r = now.plan({ agents: s.buddies, asks, askers: s.askers, notes: s.notes, changedAt, running: s.running, steps: s.steps, woken, now: NOW });
+  return compared({ ...r, start: r.start.map((t) => ({ agent: t.agent.id, asks: ids(t.asks), askers: t.askers, watch: t.watch, watchOnly: t.watchOnly })) }, (t) => {
+    if (!t.watch) return null;
+    const note = s.notes.get(t.agent);
+    const told = newSince({ agent: t.agent, base: note.base, heard: note.heard, text: s.text, threads: s.threads });
+    return { changes: told.changes, threads: ids(told.threads) };
+  });
 }
 
 // A seeded random number generator (mulberry32): the same states each run.
@@ -82,8 +107,8 @@ test('the plan decides as the old one did, on 10,000 random states', () => {
   let started = 0;
   for (let i = 0; i < 10_000; i++) {
     const s = state(rand);
-    const got = decided(now, s);
-    assert.deepEqual(got, decided(old, s), `state ${i}`);
+    const got = after(s);
+    assert.deepEqual(got, before(s), `state ${i}`);
     started += got.start.length;
   }
   assert.ok(started > 2000, `the states start runs often enough to tell (${started})`);

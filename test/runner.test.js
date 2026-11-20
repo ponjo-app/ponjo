@@ -13,6 +13,7 @@ import { fileURLToPath } from 'node:url';
 import { SETTLE_MS } from '../src/core/due.js';
 import { buildPrompt } from '../src/core/prompt.js';
 import { agentsFor, createBuddyRuntime } from '../src/host/buddy-runtime.js';
+import { createDocWorld } from '../src/host/doc-world.js';
 import { noteTaken } from '../src/store/history.js';
 import { agentScript, agentsDir, installAgents, listAgents } from '../src/store/agents.js';
 import { readSecrets, secretTails, writeSecrets } from '../src/store/secrets.js';
@@ -188,7 +189,7 @@ test('a script that exits 1 writes nothing: the buddy\'s status says the thread 
   });
 });
 
-// The controller over a door that only holds threads, for what it does
+// The runtime over a doc world whose door only holds threads, for what it does
 // whatever the doc: `read()` gives the sidecar's lines, or throws.
 async function withRuntime(read, fn, options = {}) {
   const settingsDir = await fakeConfig();
@@ -196,16 +197,16 @@ async function withRuntime(read, fn, options = {}) {
   const ask = { id: 'c_asked0001', anchor: null, by: { id: 'u_me000001', name: 'me', kind: 'human' }, at: '2026-11-17T10:00:00.000Z', body: '@X look' };
   await noteTaken(docPath, settingsDir, ask, [ask.id]);
   const landed = [];
-  const runtime = await createBuddyRuntime({
+  const world = createDocWorld({
     door: {
-      text: () => 'Text.\n', rev: () => 0, epoch: () => 'e_1', missing: () => false, closed: () => false,
+      text: () => 'Text.\n', rev: () => 0, epoch: () => 'e_1', missing: () => false,
       readComments: async () => ({ lines: read(ask).map((comment) => ({ comment })), problem: null }),
       submit: async () => ({}), comment: async (arg) => { landed.push(arg); return { at: new Date().toISOString() }; },
     },
-    place: () => ({ docPath, folder: null, room: null }), pathInProject: async () => 'doc.md',
-    buddies: async () => [{ id: 'b_x', name: 'X', about: '' }], me: async () => ({ id: 'u_me000001', name: 'me' }), levelOf: async () => 'owner',
-    settingsDir, secrets: () => ({}), emit: () => {}, ...options,
+    subscribe: () => {}, place: () => ({ docPath, folder: null, room: null }), pathInProject: async () => 'doc.md',
+    buddies: async () => [{ id: 'b_x', name: 'X', about: '' }], me: async () => ({ id: 'u_me000001', name: 'me' }), settingsDir,
   });
+  const runtime = await createBuddyRuntime({ world, docPath: () => docPath, settingsDir, secrets: () => ({}), emit: () => {}, ...options });
   try {
     await fn({ runtime, landed, settingsDir });
   } finally {
