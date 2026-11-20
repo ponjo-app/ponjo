@@ -318,8 +318,10 @@ export const INFER = {
   // Anthropic's web fetch, which runs at Anthropic and opens only a URL
   // already in the messages: one in the thread or the doc, or on a page it
   // read. A step it pauses, fetching, is asked to go on, as one answer.
+  // The last header lets a page call it with its visitor's own key
+  // (site/poker.html); elsewhere it does nothing.
   anthropic: ({ model, key, effort, web = false }, url = 'https://api.anthropic.com/v1') => async (messages, tools) => {
-    const request = (sent) => post(`${url}/messages`, { 'x-api-key': key, 'anthropic-version': '2023-06-01' }, {
+    const request = (sent) => post(`${url}/messages`, { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' }, {
       model,
       max_tokens: 16_000,
       output_config: { effort },
