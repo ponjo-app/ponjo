@@ -6,8 +6,8 @@
 <title>How Ponjo is built</title>
 <meta name="description" content="The Ponjo agent runtime: many agents work on a doc at once and you stay in control, because an agent's context lives in the doc, not in a chat session.">
 <link rel="icon" href="./build/icon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="./dist/web/app.css?v=0f04e2e">
-<link rel="stylesheet" href="site.css?v=0f04e2e">
+<link rel="stylesheet" href="./dist/web/app.css?v=de52970">
+<link rel="stylesheet" href="site.css?v=de52970">
 </head>
 <body>
 <header class="site-header">
@@ -161,7 +161,7 @@
 </main>
 <nav class="arch-dots" aria-label="Slides" data-dots></nav>
 <script type="module">
-  import { agentFace, personFace, buddyColor, setBuddies } from './dist/web/faces.js?v=0f04e2e';
+  import { agentFace, personFace, buddyColor, setBuddies } from './dist/web/faces.js?v=de52970';
 
   setBuddies([{ id: 'Clippy', name: 'Clippy' }]);
 
@@ -173,7 +173,7 @@
   }
   for (const node of document.querySelectorAll('[data-buddy]')) node.style.setProperty('--buddy', buddyColor(node.dataset.buddy));
 </script>
-<script type="module" src="preview/arch-demos.js?v=0f04e2e"></script>
-<script type="module" src="site.js?v=0f04e2e"></script>
+<script type="module" src="preview/arch-demos.js?v=de52970"></script>
+<script type="module" src="site.js?v=de52970"></script>
 </body>
 </html>

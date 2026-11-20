@@ -6,7 +6,7 @@
 body:is(.pk-setting-up, .pk-buying-in) .pk-page { filter: blur(1px); opacity: 0.6; pointer-events: none; }
 
 /* sizes, one step up on a big screen (at the end) */
-.pk-page { --face: 56px; --hole: 20px; --shown: 40px; --board: 60px; --mine: 72px; --seat-w: 120px; --table-max: 720px; --chrome: 526px; --chat-w: 320px; --small: 13px; --big: 16px; }
+.pk-page { --face: 56px; --hole: 20px; --shown: 32px; --board: 60px; --mine: 72px; --seat-w: 120px; --table-max: 720px; --chrome: 526px; --chat-w: 320px; --small: 13px; --big: 16px; }
 .pk-page { display: grid; grid-template-columns: minmax(0, 1fr) var(--chat-w); gap: 24px; max-width: 1280px; min-height: calc(100vh - 53px); margin: 0 auto; padding: 24px 16px; }
 .pk-page:has(.pk-chat[hidden]) { grid-template-columns: minmax(0, 1fr); }
 .pk-room { position: relative; display: flex; flex-direction: column; min-width: 0; }
@@ -41,24 +41,24 @@ body:is(.pk-setting-up, .pk-buying-in) .pk-page { filter: blur(1px); opacity: 0.
 .pk-between { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
 .pk-between button { height: 32px; }
 
-/* a seat, outside the rail, the same at every place: the face with its
-   cards tucked by it, over a plate with its name, stack and what it did */
+/* six places round the oval, one every 60°, this page's own at the bottom:
+   a seat outside the rail, its cards on the rail in front of it, its bet
+   on the felt, the dealer button by the bet */
+:is(.pk-seat, .pk-empty, .pk-bet, .pk-puck)[data-pos="bottom"] { --a: 90deg; }
+:is(.pk-seat, .pk-empty, .pk-bet, .pk-puck)[data-pos="left"] { --a: 150deg; }
+:is(.pk-seat, .pk-empty, .pk-bet, .pk-puck)[data-pos="top-left"] { --a: 210deg; }
+:is(.pk-seat, .pk-empty, .pk-bet, .pk-puck)[data-pos="top"] { --a: 270deg; }
+:is(.pk-seat, .pk-empty, .pk-bet, .pk-puck)[data-pos="top-right"] { --a: 330deg; }
+:is(.pk-seat, .pk-empty, .pk-bet, .pk-puck)[data-pos="right"] { --a: 30deg; }
+.pk-seat, .pk-empty { --out-x: calc(var(--seat-w) / 2); --out-y: calc(var(--face) / 2 + 44px); left: calc(50% + cos(var(--a)) * (50% + var(--out-x))); top: calc(50% + sin(var(--a)) * (50% + var(--out-y))); translate: -50% -50%; }
+
+/* a seat, the same at every place: the face over a plate with its name, stack and what it did */
 .pk-seat { position: absolute; z-index: 2; display: flex; flex-direction: column; align-items: center; gap: 6px; width: var(--seat-w); transition: opacity 0.3s; }
-.pk-seat:is([data-pos="top"], [data-pos="top-left"], [data-pos="top-right"]) { bottom: calc(100% + 12px); translate: -50% 0; }
-.pk-seat[data-pos="top"] { left: 50%; }
-.pk-seat[data-pos="top-left"] { left: 20%; }
-.pk-seat[data-pos="top-right"] { left: 80%; }
 .pk-seat:not([data-id="you"]) :is(.pj-agent-face, .pk-plate) { cursor: pointer; }
 /* an empty seat: a dashed ring with a +, where a player can be asked to sit */
-.pk-empty { position: absolute; z-index: 2; display: flex; flex-direction: column; align-items: center; gap: 6px; border: 0; padding: 0; background: none; color: var(--text-faint); font-size: var(--small); }
+.pk-empty { position: absolute; width: var(--seat-w); z-index: 2; display: flex; flex-direction: column; align-items: center; gap: 6px; border: 0; padding: 0; background: none; color: var(--text-faint); font-size: var(--small); }
 .pk-empty:hover { color: var(--text); }
 .pk-empty-ring { display: flex; align-items: center; justify-content: center; width: var(--face); height: var(--face); border: 2px dashed currentColor; border-radius: 50%; font-size: calc(var(--face) / 2); font-weight: 400; }
-.pk-empty[data-pos="left"] { top: 50%; right: calc(100% + 12px + (var(--seat-w) - var(--face)) / 2); translate: 0 -50%; }
-.pk-empty[data-pos="right"] { top: 50%; left: calc(100% + 12px + (var(--seat-w) - var(--face)) / 2); translate: 0 -50%; }
-.pk-empty:is([data-pos="top"], [data-pos="top-left"], [data-pos="top-right"]) { bottom: calc(100% + 12px); translate: -50% 0; }
-.pk-empty[data-pos="top"] { left: 50%; }
-.pk-empty[data-pos="top-left"] { left: 20%; }
-.pk-empty[data-pos="top-right"] { left: 80%; }
 /* a seat's menu: who could sit there, or to leave */
 .pk-menu { min-width: 260px; }
 .pk-menu li { justify-content: flex-start; gap: 8px; }
@@ -67,9 +67,6 @@ body:is(.pk-setting-up, .pk-buying-in) .pk-page { filter: blur(1px); opacity: 0.
 .pk-menu-text span { color: var(--text-soft); font-size: 12px; }
 .pk-menu .pk-menu-head { cursor: default; border-bottom: 1px solid var(--border); border-radius: 6px 6px 0 0; margin-bottom: 4px; padding-bottom: 8px; }
 .pk-menu .pk-menu-head:hover { background: none; }
-.pk-seat[data-pos="left"] { top: 50%; right: calc(100% + 12px); translate: 0 -50%; }
-.pk-seat[data-pos="right"] { top: 50%; left: calc(100% + 12px); translate: 0 -50%; }
-.pk-seat[data-pos="bottom"] { top: calc(100% + 12px); left: 50%; translate: -50% 0; }
 .pk-seat[data-folded] { opacity: 0.5; }
 .pk-seat .pj-agent-face { position: relative; isolation: isolate; transition: filter 0.2s; }
 .pk-seat .pj-avatar { --size: var(--face); }
@@ -86,11 +83,8 @@ body:is(.pk-setting-up, .pk-buying-in) .pk-page { filter: blur(1px); opacity: 0.
 .pk-tag { display: block; max-width: 100%; min-height: 1.3em; overflow: hidden; color: var(--text); font-size: 12px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 .pk-tag[data-kind="fold"], .pk-tag[data-kind="wait"] { color: var(--text-soft); font-weight: 400; }
 .pk-tag[data-kind="failed"] { color: var(--red); }
-/* face down, the cards are only a sign the player is in: small, tucked behind the face; shown, they are big beside it */
-.pk-seat .pk-hole { position: absolute; z-index: -1; bottom: 0; left: calc(100% - var(--hole) * 0.9); display: flex; }
-.pk-seat[data-pos="right"] .pk-hole { left: auto; right: calc(100% - var(--hole) * 0.9); } /* on the table side of the face */
-.pk-seat[data-shown] .pk-hole { z-index: 1; left: calc(100% - 6px); }
-.pk-seat[data-pos="right"][data-shown] .pk-hole { left: auto; right: calc(100% - 6px); }
+/* its cards, on the rail in front of it: face down, small, only a sign it is in; shown, big */
+.pk-seat .pk-hole { --cw: var(--hole); position: absolute; left: 50%; top: 50%; display: flex; translate: calc(-50% - cos(var(--a)) * (var(--out-x) + var(--cw))) calc(-50% - sin(var(--a)) * (var(--out-y) + var(--cw) * 0.3)); pointer-events: none; }
 .pk-seat .pk-hole .pk-card { --w: var(--hole); margin-left: calc(var(--hole) * -0.4); }
 .pk-seat .pk-hole .pk-card:first-child { margin-left: 0; rotate: -6deg; }
 .pk-seat .pk-hole .pk-card + .pk-card { rotate: 6deg; }
@@ -104,24 +98,16 @@ body:is(.pk-setting-up, .pk-buying-in) .pk-page { filter: blur(1px); opacity: 0.
 /* bets on the felt, in front of each seat */
 .pk-bet { position: absolute; z-index: 1; display: flex; align-items: center; gap: 4px; color: var(--felt-ink); font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35); }
 .pk-bet:empty { display: none; }
-.pk-bet[data-pos="top"] { top: 13%; left: 50%; translate: -50% 0; }
-.pk-bet[data-pos="top-left"] { top: 20%; left: 22%; }
-.pk-bet[data-pos="top-right"] { top: 20%; right: 22%; }
-.pk-bet[data-pos="left"] { top: 50%; left: 15%; translate: 0 -50%; }
-.pk-bet[data-pos="right"] { top: 50%; right: 15%; translate: 0 -50%; }
-.pk-bet[data-pos="bottom"] { bottom: 22%; left: 50%; translate: -50% 0; }
-.pk-puck { position: absolute; z-index: 1; display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; background: var(--card); color: var(--card-ink); box-shadow: 0 2px 0 var(--rail-deep); font-size: 12px; font-weight: 600; transition: top 0.4s, left 0.4s, right 0.4s, bottom 0.4s; }
-.pk-puck[data-pos="top"] { top: 12%; left: calc(50% + 56px); }
-.pk-puck[data-pos="top-left"] { top: 30%; left: 22%; }
-.pk-puck[data-pos="top-right"] { top: 30%; right: 22%; }
-.pk-puck[data-pos="left"] { top: calc(50% + 32px); left: 15%; }
-.pk-puck[data-pos="right"] { top: calc(50% + 32px); right: 15%; }
-.pk-puck[data-pos="bottom"] { bottom: 20%; left: calc(50% + 72px); }
+.pk-bet { left: calc(50% + cos(var(--a)) * 31%); top: calc(50% + sin(var(--a)) * 30%); translate: -50% -50%; }
+.pk-puck { position: absolute; z-index: 1; display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; background: var(--card); color: var(--card-ink); box-shadow: 0 2px 0 var(--rail-deep); font-size: 12px; font-weight: 600; transition: top 0.4s, left 0.4s; }
+.pk-puck { left: calc(50% + cos(var(--a) + 22deg) * 36%); top: calc(50% + sin(var(--a) + 22deg) * 36%); translate: -50% -50%; } /* a little round from its seat's bet */
 
-/* chips: a little stack of discs, edge stripes in white */
-.pk-stack-chips { display: inline-flex; flex-direction: column-reverse; padding-top: 2px; }
-.pk-chip { width: 18px; height: 6px; margin-top: -2px; border-radius: 50%; background: var(--c, var(--chip-red)); box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, 0.55), 0 1px 0 rgba(0, 0, 0, 0.35); }
-.pk-chip[data-c="white"] { --c: var(--chip-white); box-shadow: inset 0 0 0 1.5px var(--chip-red), 0 1px 0 rgba(0, 0, 0, 0.35); }
+/* chips: a stack of them seen from a little above, each a disc with its
+   edge spots in white (white chips, in red) and its side in shadow */
+.pk-stack-chips { display: inline-flex; flex-direction: column-reverse; padding-top: 3px; }
+.pk-chip { --spot: rgba(255, 255, 255, 0.9); width: 22px; height: 11px; margin-top: -8px; border-radius: 50%; background: radial-gradient(ellipse at center, var(--c) 0 48%, var(--spot) 49% 54%, transparent 55%), repeating-conic-gradient(from 15deg, var(--c) 0 30deg, var(--spot) 30deg 45deg); box-shadow: 0 2px 0 color-mix(in srgb, var(--c), black 35%), 0 3px 2px rgba(0, 0, 0, 0.3); }
+.pk-chip:last-child { margin-top: 0; }
+.pk-chip[data-c="white"] { --c: var(--chip-white); --spot: var(--chip-red); }
 .pk-chip[data-c="red"] { --c: var(--chip-red); }
 .pk-chip[data-c="blue"] { --c: var(--chip-blue); }
 .pk-chip[data-c="black"] { --c: var(--chip-black); }
@@ -246,12 +232,12 @@ body:is(.pk-setting-up, .pk-buying-in) .pk-page { filter: blur(1px); opacity: 0.
 /* ---- narrower: the chat under the table; a phone: a taller table ---- */
 
 @media (min-width: 1600px) and (min-height: 900px) {
-  .pk-page { --face: 72px; --hole: 26px; --shown: 52px; --board: 80px; --mine: 96px; --seat-w: 150px; --table-max: 1040px; --chrome: 610px; --chat-w: 380px; --small: 14px; --big: 20px; max-width: 1760px; }
+  .pk-page { --face: 72px; --hole: 26px; --shown: 42px; --board: 80px; --mine: 96px; --seat-w: 150px; --table-max: 1040px; --chrome: 610px; --chat-w: 380px; --small: 14px; --big: 20px; max-width: 1760px; }
   .pk-buttons button { height: 44px; font-size: 16px; }
   .pk-msg-text { font-size: 16px; }
 }
 @media (min-width: 2200px) and (min-height: 1250px) {
-  .pk-page { --face: 96px; --hole: 34px; --shown: 68px; --board: 108px; --mine: 128px; --seat-w: 190px; --table-max: 1440px; --chrome: 750px; --chat-w: 440px; --small: 16px; --big: 24px; max-width: 2400px; }
+  .pk-page { --face: 96px; --hole: 34px; --shown: 54px; --board: 108px; --mine: 128px; --seat-w: 190px; --table-max: 1440px; --chrome: 750px; --chat-w: 440px; --small: 16px; --big: 24px; max-width: 2400px; }
   .pk-buttons button { height: 48px; min-width: 120px; }
   .pk-sizes button { height: 32px; font-size: 14px; }
   .pk-msg-text, .pk-say .pj-input { font-size: 16px; }
@@ -269,28 +255,17 @@ body:is(.pk-setting-up, .pk-buying-in) .pk-page { filter: blur(1px); opacity: 0.
   .pk-felt::before { inset: 14px; }
   .pk-seat { width: 68px; gap: 4px; }
   .pk-seat .pj-avatar { --size: 40px; }
-  .pk-seat[data-pos="left"] { right: calc(100% + 6px); }
-  .pk-seat[data-pos="right"] { left: calc(100% + 6px); }
-  .pk-seat[data-pos="top-left"], .pk-empty[data-pos="top-left"] { left: 0; } /* to the corners: room for each face and its cards */
-  .pk-seat[data-pos="top-right"], .pk-empty[data-pos="top-right"] { left: 100%; }
+  .pk-seat, .pk-empty { --out-x: 30px; --out-y: calc(var(--face) / 2 + 36px); }
   .pk-plate { width: 68px; padding: 2px 4px 4px; }
   .pk-seat .pk-hole .pk-card { --w: 16px; margin-left: -6px; }
-  .pk-seat[data-shown] .pk-hole .pk-card { --w: 30px; }
+  .pk-seat[data-shown] .pk-hole .pk-card { --w: 26px; }
   .pk-tag { max-width: 64px; }
   .pk-board { flex-wrap: wrap; justify-content: center; gap: 4px; max-width: 200px; min-height: 0; }
   .pk-board .pk-card { --w: 36px; }
   .pk-center { gap: 6px; }
   .pk-pot { font-size: 13px; }
   .pk-bet { flex-direction: column; gap: 0; font-size: 12px; }
-  .pk-bet[data-pos="top"] { top: 7%; }
-  .pk-bet[data-pos="bottom"] { bottom: 7%; }
-  .pk-bet[data-pos="left"] { left: 5%; top: 24%; translate: 0 0; }
-  .pk-bet[data-pos="right"] { right: 5%; top: 24%; translate: 0 0; }
   .pk-puck { width: 20px; height: 20px; font-size: 11px; }
-  .pk-puck[data-pos="top"] { top: 7%; left: calc(50% + 32px); }
-  .pk-puck[data-pos="bottom"] { bottom: 7%; left: calc(50% + 32px); }
-  .pk-puck[data-pos="left"] { left: 5%; top: 70%; }
-  .pk-puck[data-pos="right"] { right: 5%; top: 70%; }
   .pk-hole-mine .pk-card { --w: 60px; }
   .pk-act { min-width: 0; width: 100%; }
 }
