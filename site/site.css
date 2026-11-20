@@ -109,9 +109,13 @@ a { color: var(--accent); }
    what it shows as one, no frame; on a screen taller than wide, the page instead, as tall as the window */
 .arch-slides { display: grid; place-items: center; height: calc(100dvh - 53px); overflow: hidden; }
 .arch-story { box-sizing: border-box; display: flex; flex-direction: column; gap: 16px; width: 1280px; height: 720px; padding: 40px 64px 28px; scale: var(--fit, 1); }
-.arch-title { min-height: 1.5em; margin: 0; color: var(--text-soft); font-size: 20px; font-weight: 600; text-align: center; }
+.arch-head { display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center; }
+.arch-head:has(:empty + :empty) { display: none; }
+.arch-kicker { margin: 0; color: var(--text-faint); font-size: 16px; font-weight: 600; }
+.arch-heading { margin: 0; color: var(--text); font-size: 36px; font-weight: 600; line-height: 1.25; letter-spacing: -0.02em; text-wrap: balance; }
+.arch-heading:empty { display: none; }
 .arch-stage { position: relative; flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 24px; overflow: hidden; }
-.arch-say { min-height: 3em; max-width: 960px; margin: 0 auto; color: var(--text); font-size: 24px; line-height: 1.5; text-align: center; text-wrap: balance; }
+.arch-say { min-height: 3em; max-width: 880px; margin: 0 auto; color: var(--text-soft); font-size: 24px; line-height: 1.45; text-align: center; text-wrap: balance; }
 .arch-nav { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .arch-nav > button { min-width: 88px; height: 32px; }
 .arch-dots { display: flex; }
@@ -120,8 +124,9 @@ a { color: var(--accent); }
 @media (max-aspect-ratio: 6/5), (max-width: 720px) {
   .arch-slides { display: block; height: auto; overflow: visible; }
   .arch-story { width: auto; height: calc(100dvh - 53px); min-height: 560px; padding: 16px; gap: 12px; scale: none; }
-  .arch-title { font-size: 16px; }
-  .arch-say { min-height: 4.5em; font-size: 20px; }
+  .arch-kicker { font-size: 13px; }
+  .arch-heading { font-size: 24px; }
+  .arch-say { min-height: 4.5em; font-size: 16px; line-height: 1.5; }
 }
 
 /* the cover: Clippy, the title and what the story is about */
@@ -221,8 +226,7 @@ a { color: var(--accent); }
 /* the outcome: what you get, then the numbers as tiles */
 .arch-stage.arch-outcome { justify-content: safe center; overflow-y: auto; }
 .arch-outcome-body { display: flex; flex-direction: column; gap: 24px; width: 100%; max-width: 720px; }
-.arch-outcome h2 { margin: 0; font-size: 24px; font-weight: 600; letter-spacing: -0.02em; }
-.arch-gets { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0; list-style: none; color: var(--text-soft); font-size: 14px; line-height: 1.5; }
+.arch-gets { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0; list-style: none; color: var(--text-soft); font-size: 16px; line-height: 1.5; }
 .arch-gets b { color: var(--text); font-weight: 600; }
 .arch-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 .arch-stat { display: flex; flex-direction: column; gap: 4px; padding: 16px; border-radius: 10px; background: var(--bg-soft); }

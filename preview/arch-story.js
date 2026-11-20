@@ -862,7 +862,7 @@ async function outcome(scene) {
   link.href = 'poker.html';
   foot.append(link, ', built apart with a small runtime of its own, came to the same shape: a pure plan, a view per player, a writer that refuses stale moves.');
   const body = el('div', 'arch-outcome-body');
-  body.append(el('h2', '', 'What you get'), list, stats, foot);
+  body.append(list, stats, foot);
   scene.stage.append(body);
 
   for (const item of items) {
@@ -885,30 +885,32 @@ async function outcome(scene) {
 outcome.once = true;
 
 // [eyebrow, the idea in a line, the scene]
+// [the part it is in, its title, the idea in a line, the scene]
 const CHAPTERS = [
-  ['', 'Press Start.', cover],
-  ['How you work', '', point('Agents work beside you, in front of a blackboard,', 'instead of apart from you, in an isolated room.')],
-  ['How you work · Delegate', 'Delegate: each agent works alone on its own copy. The copies clash, and you merge them by hand.', delegate],
-  ['How you work · Blackboard', 'Blackboard: everyone works on one board and sees every change. Nothing to hand off, nothing to merge.', blackboard],
-  ['When agents run', '', point('Agent orchestration is a state reconciliation problem,', 'instead of an event triggering problem.')],
-  ['When agents run · Events', 'Triggered by events: each agent runs when the one before hands it on. Miss one handoff, and the race stops.', events],
-  ['When agents run · State', 'Reconciled from state: the runtime reads the board and calls whoever’s leg isn’t run, again until it is. Nobody wires who goes next, and a missed call costs nothing.', state],
-  ['Architecture · Event-triggered', 'The common way: state lives in messages in flight and in each agent’s memory. Lose a message and the work is lost, and someone has to wire who triggers whom.', eventsArchitecture],
-  ['Architecture · Blackboard', 'One board, one writer: people and agents propose changes, the writer lands them in order, and the runtime reads the board to start whoever is due.', architecture],
-  ['Summary', 'Two ways to run many agents, side by side.', summary],
-  ['Outcome', 'What emerges when the board is the only state, and the runtime decides from it.', outcome],
+  ['', '', '', cover],
+  ['How you work', '', '', point('Agents work beside you, in front of a blackboard,', 'instead of apart from you, in an isolated room.')],
+  ['How you work', 'Delegate', 'Each agent works alone on its own copy. The copies clash, and you merge them by hand.', delegate],
+  ['How you work', 'Blackboard', 'Everyone works on one board and sees every change. Nothing to hand off, nothing to merge.', blackboard],
+  ['When agents run', '', '', point('Agent orchestration is a state reconciliation problem,', 'instead of an event triggering problem.')],
+  ['When agents run', 'Triggered by events', 'Each agent runs when the one before hands it on. Miss one handoff, and the race stops.', events],
+  ['When agents run', 'Reconciled from state', 'The runtime reads the board and calls whoever’s leg isn’t run, again until it is. Nobody wires who goes next, and a missed call costs nothing.', state],
+  ['Architecture', 'Event-triggered, the common way', 'State lives in messages in flight and in each agent’s memory. Lose a message and the work is lost, and someone has to wire who triggers whom.', eventsArchitecture],
+  ['Architecture', 'Blackboard', 'One board, one writer. People and agents propose changes, the writer lands them in order, and the runtime reads the board to start whoever is due.', architecture],
+  ['Summary', 'Two ways to run many agents', '', summary],
+  ['Outcome', 'What you get', 'What emerges when the board is the only state, and the runtime decides from it.', outcome],
 ];
 
 // ---- the story: a chapter at a time, with Back, Next and a dot for each ----
 
 const stage = document.querySelector('[data-stage]');
 const caption = document.querySelector('[data-say]');
-const title = document.querySelector('[data-title]');
+const kicker = document.querySelector('[data-kicker]');
+const heading = document.querySelector('[data-heading]');
 const back = document.querySelector('[data-back]');
 const next = document.querySelector('[data-next]');
 const dots = CHAPTERS.map(([name], i) => {
   const dot = button('', 'arch-dot');
-  dot.setAttribute('aria-label', name || 'Start');
+  dot.setAttribute('aria-label', [name, CHAPTERS[i][1]].filter(Boolean).join(': ') || 'Start');
   dot.addEventListener('click', () => open(i));
   return dot;
 });
@@ -921,8 +923,9 @@ let scene = null;
 async function open(i) {
   scene?.stop();
   current = i;
-  const [eyebrow, idea, play] = CHAPTERS[i];
-  title.textContent = eyebrow;
+  const [part, name, idea, play] = CHAPTERS[i];
+  kicker.textContent = part;
+  heading.textContent = name;
   caption.textContent = idea;
   dots.forEach((dot, j) => dot.toggleAttribute('aria-current', i === j));
   back.disabled = i === 0;
