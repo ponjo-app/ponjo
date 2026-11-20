@@ -6,8 +6,8 @@
   <title>Ponjo Design System</title>
   <!-- A live specimen: the app's own stylesheet and classes, so this page is
        always what the app looks like. Run `npm run build` to view it locally. -->
-  <link rel="stylesheet" href="./dist/web/app.css?v=f4eedf0">
-  <link rel="stylesheet" href="site.css?v=f4eedf0">
+  <link rel="stylesheet" href="./dist/web/app.css?v=2478c3c">
+  <link rel="stylesheet" href="site.css?v=2478c3c">
   <link rel="icon" href="./build/icon.svg" type="image/svg+xml">
 </head>
 <body>
@@ -49,7 +49,7 @@
   <ol>
     <li><strong>Reuse before adding.</strong> Use an existing class (<code>.pj-primary</code>, <code>.pj-secondary</code>, <code>.pj-icon-btn</code>, <code>.pj-input</code>, <code>.pj-segmented</code>, <code>.pj-switch</code>, <code>.pj-radio</code>, <code>.pj-panel</code>…) before writing a new rule.</li>
     <li><strong>Colours are tokens.</strong> No hex, <code>rgb()</code>, <code>oklch()</code>, <code>black</code> or <code>white</code> outside the token blocks at the top of <code>app.css</code>. A colour with a new meaning gets a token there, and a line on this page, first.</li>
-    <li><strong>Colour means something.</strong> Grey for the UI; ink for the one primary action and for what is on or selected; a buddy's own colour only for that buddy; red for danger and deletions (a buddy's deletions are grey); green for insertions and online; yellow for commented text; blue only for focus, text selection, found text and links; the game table's own colours (felt, cards, chips) only on its table.</li>
+    <li><strong>Colour means something.</strong> Grey for the UI; ink for the one primary action and for what is on or selected; a buddy's own colour only for that buddy; red for danger and deletions (a buddy's deletions are grey); green for insertions and online; yellow for commented text; blue only for focus, text selection, found text and links; the game table's own colours (felt, cards, chips) only on its table; the running track's (track, lane lines, field) only on its track.</li>
     <li><strong>Sizes come from the scales.</strong> Font sizes 11, 12, 13, 14, 16, 20, 24px, and 36px only for a site page's headline; weights 400, 500, 600; radii 0, 4, 6, 10, 14px or full; spacing 2, 4, 6, 8, 12, 16, 24, 32, 48px; control heights 24, 28, 32px (36 and 40 for bars and big buttons).</li>
     <li><strong>One of each control.</strong> Icon buttons are <code>.pj-icon-btn</code>: 28px, 32 in the header, 24 inside a row. Menu and list rows share one size, set once in <code>app.css</code>: 28px tall, 8px side padding, radius 6, 13px; grey on hover, <code>--active</code> when selected or current.</li>
     <li><strong>One primary button per view.</strong> Everything else is secondary, ghost or a link button.</li>
@@ -90,6 +90,14 @@
     <div class="ds-swatch"><i style="background: var(--suit-red)"></i><b>--suit-red</b><span>Hearts and diamonds</span></div>
     <div class="ds-swatch"><i style="background: var(--card-back)"></i><b>--card-back</b><span>A card face down</span></div>
     <div class="ds-swatch"><i style="background: linear-gradient(90deg, var(--chip-white) 20%, var(--chip-red) 20% 40%, var(--chip-blue) 40% 60%, var(--chip-black) 60% 80%, var(--chip-gold) 80%)"></i><b>--chip-*</b><span>White, red, blue, black; gold for the pot</span></div>
+  </div>
+
+  <h3>The running track</h3>
+  <p>Only the <a href="architecture.html">architecture page</a>'s relay uses these: a running track as anyone knows one, so colour there means the track, never the UI. A grey track with white lane lines and a staggered start, round a green field. In dark mode the track and field go deeper and the lines stay light. The runners on it and everything around it stay paper and ink.</p>
+  <div class="ds-grid">
+    <div class="ds-swatch"><i style="background: var(--track)"></i><b>--track</b><span>The track</span></div>
+    <div class="ds-swatch"><i style="background: var(--track-line); box-shadow: inset 0 0 0 1px var(--border-strong)"></i><b>--track-line</b><span>Its lane lines</span></div>
+    <div class="ds-swatch"><i style="background: var(--field)"></i><b>--field</b><span>The field inside it</span></div>
   </div>
 
   <h2>Type</h2>
@@ -282,6 +290,6 @@
   </div>
 
 </main>
-<script type="module" src="site.js?v=f4eedf0"></script>
+<script type="module" src="site.js?v=2478c3c"></script>
 </body>
 </html>

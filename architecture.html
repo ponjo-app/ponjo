@@ -6,8 +6,8 @@
 <title>Blackboard Multi-agent System</title>
 <meta name="description" content="How Ponjo's agents run: people and AI buddies watch one board and improve it together, told as a story with Clippy.">
 <link rel="icon" href="./build/icon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="./dist/web/app.css?v=f4eedf0">
-<link rel="stylesheet" href="site.css?v=f4eedf0">
+<link rel="stylesheet" href="./dist/web/app.css?v=2478c3c">
+<link rel="stylesheet" href="site.css?v=2478c3c">
 </head>
 <body>
 <header class="site-header">
@@ -40,8 +40,12 @@
 <!-- The blackboard agent runtime (docs/runtime-vision.md) as a story in
      chapters, played by preview/arch-story.js. The doc is the truth; change
      this page with it. -->
-<main class="arch-story">
-  <p class="arch-title" data-title></p>
+<main class="arch-slides">
+<div class="arch-story">
+  <header class="arch-head">
+    <p class="arch-kicker" data-kicker></p>
+    <h2 class="arch-heading" data-heading></h2>
+  </header>
   <div class="arch-stage" data-stage></div>
   <p class="arch-say" data-say aria-live="polite"></p>
   <nav class="arch-nav" aria-label="Chapters">
@@ -49,8 +53,9 @@
     <span class="arch-dots" data-dots></span>
     <button class="pj-secondary" type="button" data-next>Next</button>
   </nav>
+</div>
 </main>
-<script type="module" src="preview/arch-story.js?v=f4eedf0"></script>
-<script type="module" src="site.js?v=f4eedf0"></script>
+<script type="module" src="preview/arch-story.js?v=2478c3c"></script>
+<script type="module" src="site.js?v=2478c3c"></script>
 </body>
 </html>
