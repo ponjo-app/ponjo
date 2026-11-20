@@ -179,13 +179,21 @@ function bar(width) {
 
 const NS = 'http://www.w3.org/2000/svg';
 
-// The diagram's paper, W×H, upright on a phone: an SVG for the lines,
-// `ink` to draw one, and `place` to put a node at a point, `size` across.
+// The scene's paper, W×H, wide or upright, whichever the stage holds bigger,
+// and scaled to fill it (refit whenever the window changes): an SVG for the
+// lines, `ink` to draw one, and `place` to put a node at a point, `size`
+// across. Sizes are the stage's own, not as a slide's scale shows them.
+let fitting = null;
 function sketch(stage) {
-  const [W, H] = stage.clientWidth < 560 ? [400, 520] : [760, 420];
+  const fit = ([w, h]) => Math.min(stage.clientWidth / w, stage.clientHeight / h);
+  const [W, H] = fit([400, 520]) > fit([760, 420]) * 1.15 ? [400, 520] : [760, 420];
   const box = el('div', 'arch-sketch');
-  box.style.aspectRatio = `${W} / ${H}`;
-  box.style.width = `min(100%, ${W}px)`;
+  box.style.width = `${W}px`;
+  box.style.height = `${H}px`;
+  fitting = () => {
+    box.style.scale = String(fit([W, H]));
+  };
+  fitting();
   const svg = document.createElementNS(NS, 'svg');
   svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
   box.append(svg);
@@ -922,6 +930,7 @@ async function open(i) {
   const run = (scene = new Scene(stage));
   try {
     do {
+      fitting = null;
       stage.replaceChildren();
       stage.className = 'arch-stage';
       await play(run);
@@ -930,6 +939,18 @@ async function open(i) {
     if (error !== STOPPED) throw error;
   }
 }
+
+// On a screen wider than tall, the story is a slide, 1280×720, scaled to the
+// window (site.css); otherwise it runs down the page as it is.
+const deck = document.querySelector('.arch-story');
+const portrait = window.matchMedia('(max-aspect-ratio: 6/5), (max-width: 720px)');
+function fitDeck() {
+  const header = document.querySelector('.site-header').offsetHeight;
+  deck.style.setProperty('--fit', portrait.matches ? 1 : Math.min((window.innerWidth - 32) / 1280, (window.innerHeight - header - 16) / 720));
+  fitting?.();
+}
+window.addEventListener('resize', fitDeck);
+fitDeck();
 
 back.addEventListener('click', () => open(current - 1));
 next.addEventListener('click', () => open((current + 1) % CHAPTERS.length));
