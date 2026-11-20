@@ -471,6 +471,15 @@ test('a watcher whose run named a line in PONJO_WAKE runs again only once the do
     await edit(`${(await state()).text}One more.\n`);
     await until(async () => (await runs()).length === 3, 'that run named no line: any change wakes it', 10_000);
   }, { content: `${SAMPLE}\nwake-line Your turn, Clippy.\n` });
+test('a buddy\'s @mention asks the buddy it names, for a step: it runs and answers in the thread', { timeout: 30_000 }, async () => {
+  await withDoc(async ({ call, state, runs }) => {
+    await comment(call, '@Ada append {"body":"\\u0040Ben over to you"}'); // the person names Ada alone
+    const handed = async () => (await state()).threads.find((t) => t.comments[0].by.name === 'Ada');
+    await until(async () => (await handed())?.comments.length === 2, 'Ada\'s thread, then Ben\'s answer there');
+    assert.deepEqual((await handed()).comments.map((c) => [c.by.name, c.body]), [['Ada', '@Ben over to you'], ['Ben', 'Nothing to change.']]);
+    assert.deepEqual((await runs()).map((r) => r.buddy), ['Ada', 'Ben']);
+    assert.equal((await state()).steps.left, (await state()).steps.cap - 1, 'one step');
+  }, { buddies: { Ada: 'Hands over.\n', Ben: 'Answers.\n' } });
 });
 
 test('a watch run is ended when a person types again, with no answer, and runs again once they pause', { timeout: 60_000 }, async () => {
