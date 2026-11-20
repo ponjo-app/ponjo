@@ -6,9 +6,9 @@
 <title>Poker with AI players · Ponjo</title>
 <meta name="description" content="Play No-Limit Texas Hold'em with three AI players who read the rules, watch the table and decide for themselves when to act and talk. Play chips only, with your own API key.">
 <link rel="icon" href="./build/icon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="./dist/web/app.css?v=d8d1092">
-<link rel="stylesheet" href="site.css?v=d8d1092">
-<link rel="stylesheet" href="poker.css?v=d8d1092">
+<link rel="stylesheet" href="./dist/web/app.css?v=f4f3cef">
+<link rel="stylesheet" href="site.css?v=f4f3cef">
+<link rel="stylesheet" href="poker.css?v=f4f3cef">
 </head>
 <body>
 <header class="site-header">
@@ -63,13 +63,13 @@
       <input class="pj-input" name="text" placeholder="Say something to the table" autocomplete="off" maxlength="240" aria-label="Message">
       <button class="pj-secondary" type="submit">Send</button>
     </form>
-    <p class="pk-fine">Play chips only, no real money. <button class="pj-link-button" type="button" data-action="key">Your key</button></p>
+    <p class="pk-fine">Play chips only, no real money. <span class="pk-model"></span> <button class="pj-link-button" type="button" data-action="key">Use your own key</button></p>
   </aside>
 </main>
 
 <form class="pj-join pk-setup" hidden>
-  <h1 class="pk-setup-title">Poker with three AI players</h1>
-  <p class="pj-join-text">Wren, Dash and Sage read the rules, watch the table and decide for themselves when to bet and when to talk. Play chips only, no real money.</p>
+  <h1 class="pk-setup-title">Use your own key</h1>
+  <p class="pj-join-text">Wren, Dash and Sage run on Claude Haiku 5.5, on Ponjo. With your own key, they run on the model you pick.</p>
   <div class="pj-segmented" role="radiogroup" aria-label="Provider">
     <button type="button" role="radio" aria-checked="true" data-provider="anthropic">Anthropic</button>
     <button type="button" role="radio" aria-checked="false" data-provider="openai">OpenAI-compatible</button>
@@ -86,7 +86,10 @@
   <label class="pk-field" data-for="openai">Model<input class="pj-input" name="model" placeholder="gpt-5-mini" autocomplete="off"></label>
   <p class="pj-join-text">Your key stays in this browser and goes only to <span data-host>api.anthropic.com</span>, never to a Ponjo server. Each AI move is one call billed to your key.</p>
   <p class="pk-error" hidden></p>
-  <button class="pj-primary" type="submit">Deal me in</button>
+  <div class="pk-setup-buttons">
+    <button class="pj-secondary" type="button" data-action="cancel">Cancel</button>
+    <button class="pj-primary" type="submit">Use my key</button>
+  </div>
 </form>
 
 <dialog class="pk-thinking" aria-label="Their thinking">
@@ -94,7 +97,7 @@
   <div class="pj-trace pk-thinking-body"></div>
 </dialog>
 
-<script type="module" src="preview/poker.js?v=d8d1092"></script>
-<script type="module" src="site.js?v=d8d1092"></script>
+<script type="module" src="preview/poker.js?v=f4f3cef"></script>
+<script type="module" src="site.js?v=f4f3cef"></script>
 </body>
 </html>
