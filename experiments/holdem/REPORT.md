@@ -127,4 +127,4 @@ It creates the table, the buddies Alice, Bob and Cara with a playing style each,
 2. Pick "Hold'em seat" in Settings > Agents: Fake, or Claude Code.
 3. Turn on Watch this doc on each buddy's card.
 4. Run the dealer it prints.
-5. Type your move after `act=` on your seat line when the action is on you.
+5. On your turn the doc shows a "Your move" list: tick one box. The dealer is started with `--humans <you>`, and the table is in a code block so it reads line by line.

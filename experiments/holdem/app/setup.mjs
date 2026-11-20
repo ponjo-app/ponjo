@@ -38,6 +38,7 @@ Agent script: ${join(agents, 'holdem')}
 2. Settings > Agents: pick "Hold'em seat", and its Player: Fake (instant) or Claude Code.
 3. On the cards of Alice, Bob and Cara: turn on Watch this doc.
 4. Deal (3 hands; Ctrl+C to stop):
-   node "${dealer}" "${join(folder, 'table.md')}" "${join(folder, '.holdem')}" 3 --seats Alice,Bob,Cara,${you}
-5. When the doc says "Action on: ${you}", type check, call, fold or raise after act= on the line "Seat ${you}:".
-   While a buddy thinks, don't type in the doc: a person typing stops a watch run, and it starts over.`);
+   node "${dealer}" "${join(folder, 'table.md')}" "${join(folder, '.holdem')}" 3 --seats ${you},Alice,Bob,Cara --humans ${you}
+5. A buddy moves first. On your turn the doc shows "Your move, ${you}": tick one box.
+   While a buddy thinks ("Waiting for ..."), don't type in the doc: a person typing stops a watch run, and it starts over.
+   Nothing moves? Settings > Agents > Agent log says why each buddy ran or not.`);

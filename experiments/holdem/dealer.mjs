@@ -1,7 +1,9 @@
 // The dealer: a separate program that owns the table by writing the doc file
 // directly (an outside change to Ponjo). It deals open cards, polls the file
 // for the action of the seat on turn, applies it, and moves the action on.
-// Usage: node dealer.mjs <doc> <out dir> <hands> [--seats Alice,Bob,Cara,You] [--heartbeat ms] [--stall ms (0: never)]
+// Usage: node dealer.mjs <doc> <out dir> <hands> [--seats Alice,Bob,Cara,You] [--humans You] [--heartbeat ms] [--stall ms (0: never)]
+// A seat in --humans plays by ticking a box: on its turn the doc gets a
+// "Your move" list of the moves it may make, and the dealer takes the one ticked.
 // A seat's act= takes effect once it reads check, call, fold or raise: a person
 // typing it letter by letter is waited for.
 // Logs each write and each action seen to <out>/dealer.jsonl.
@@ -16,6 +18,8 @@ const STALL = opt('stall', 0);
 const seatsAt = rest.indexOf('--seats');
 const PLAYERS = seatsAt < 0 ? ['Alice', 'Bob', 'Cara'] : rest[seatsAt + 1].split(',');
 const ACTS = ['check', 'call', 'fold', 'raise'];
+const humansAt = rest.indexOf('--humans');
+const HUMANS = new Set(humansAt < 0 ? [] : rest[humansAt + 1].split(','));
 const SB = 5;
 const BB = 10;
 const MAX_RAISES = 1;
@@ -64,10 +68,23 @@ const N = PLAYERS.length;
 
 function render() {
   const seats = PLAYERS.map((p) => `Seat ${p}: cards=${T.hole[p].join(' ')} stack=${stacks[p]} bet=${T.bet[p]} status=${T.folded.has(p) ? 'folded' : 'in'} act=`);
+  const p = T.on;
+  const toCall = p ? T.current - T.bet[p] : 0;
+  const moves = [...(toCall > 0 ? [`call (${toCall})`, 'fold'] : ['check', 'fold']), ...(T.raises < MAX_RAISES ? [`raise (to ${T.current + BB})`] : [])];
+  const yours = p && HUMANS.has(p) ? `## Your move, ${p}
+
+Tick one:
+
+${moves.map((m) => `- [ ] ${m}`).join('\n')}
+
+` : p ? `## Waiting for ${p}
+
+` : '';
   return `# Open-card Hold'em
 
-## Table
+${yours}## Table
 
+\`\`\`text
 Hand: ${T.n}
 Street: ${T.street}
 Board: ${T.board.length ? T.board.join(' ') : '-'}
@@ -80,6 +97,7 @@ Clock: ${clock}
 ${seats.join('\n')}
 
 Last result: ${lastResult}
+\`\`\`
 
 ## Rules
 
@@ -178,7 +196,8 @@ for (;;) {
   if (others.length) log({ type: 'anomaly', what: 'act out of turn', seats: others, hand: T.n, on: T.on });
   const handInDoc = text.match(/^Hand: (\d+)$/m)?.[1];
   if (Number(handInDoc) !== T.n) log({ type: 'anomaly', what: `doc says hand ${handInDoc}`, hand: T.n });
-  const act = actOf(seatOf(text, T.on));
+  const ticked = HUMANS.has(T.on) ? text.match(/^- \[[xX]\] (check|call|fold|raise)\b/m)?.[1] : undefined;
+  const act = ticked ?? actOf(seatOf(text, T.on));
   if (act && !ACTS.includes(act)) continue; // still being typed
   if (!act) { log({ type: 'change', what: 'a change with no action of the seat on turn', hand: T.n, on: T.on }); if (others.length) write('clear'); continue; }
   const p = T.on;
