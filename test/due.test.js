@@ -70,6 +70,21 @@ test('a watcher is due once turned on, on people\'s changes once they pause, and
   assert.deepEqual([started(none), none.wakeAt], [[], 150_000], 'no step left: look when the next comes');
 });
 
+test('a watcher whose last run named lines to wake it is due only on a change while the doc holds one, whoever made it', () => {
+  const people = new Map([[null, { rev: 7, at: 0 }]]);
+  const waits = look({ notes: watching(5, { wake: ['Action on: Ada'] }), changedAt: people, text: 'Action on: Ben\n' });
+  assert.deepEqual(started(waits), []);
+  assert.equal(waits.why.get('b_ada'), 'not due: changed by people at rev 7, after its look at rev 5, but the doc holds no line that wakes it');
+  assert.deepEqual(started(look({ notes: watching(5, { wake: ['Action on: Ada'] }), changedAt: people, text: 'Pot: 10\nAction on: Ada\n' })), ['b_ada'], 'the line, whole');
+  assert.deepEqual(started(look({ notes: watching(5, { wake: ['Action on: Ada'] }), changedAt: people, text: 'Action on: Adam\n' })), [], 'not part of a line');
+  const ben = look({ notes: watching(5, { wake: ['Action on: Ada'] }), changedAt: new Map([['b_ben', { rev: 7, at: 0 }]]), text: 'Action on: Ben\n' });
+  assert.deepEqual([started(ben), ben.steps.left], [[], 3], 'another buddy\'s change: no step spent on it');
+  assert.deepEqual(started(look({ notes: watching(5, { wake: ['Action on: Ada'] }), text: 'Action on: Ada\n' })), [], 'still only on a change');
+  assert.deepEqual(started(look({ notes: watching(null, { wake: ['Action on: Ada'] }), text: '' })), ['b_ada'], 'turned on, or Retry: it looks at once');
+  const asked = thread('c_1', [say(ME, '@Ada look', '2026-11-18T10:00:00.000Z', ['b_ada'])]);
+  assert.deepEqual(started(look({ threads: [asked], notes: watching(5, { wake: ['Action on: Ada'] }), text: '' })), ['b_ada'], 'an ask runs it whatever the lines');
+});
+
 test('a watcher is in only while whoever turned it on may ask, told what changed, given only the threads that ask it; a run nothing wants is stopped', () => {
   const its = thread('c_w', [say('b_ada', 'Watching.', '2026-11-18T10:00:00.000Z')]);
   const [task] = look({ notes: watching(null, { base: 'Text.\n' }), threads: [its], text: 'Text.\nMore.\n' }).start;
