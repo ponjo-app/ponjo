@@ -15,7 +15,8 @@ export const SETTLE_MS = 5000;
  * the comments this host took (askedBy); `notes` buddy → { seen (thread →
  * the time of the last comment its runs were given there), lookedAt (the
  * rev its last run started at, or null: look at once), base (the doc then,
- * or null), heard (the ids of the comments then, a Set, or null), watch ({
+ * or null), heard (the ids of the comments then, a Set, or null), wake (the
+ * lines of the doc its last run said wake it, or null: any), watch ({
  * by }, who turned it on, or null) }; `changedAt` who last
  * changed the doc's text → { rev, at (when, on the clock of `now`) }, people
  * as one (null); `running` the ids of the buddies running; `steps` the
@@ -33,10 +34,12 @@ export const SETTLE_MS = 5000;
  * A watcher, while whoever turned it on may ask, is due once turned on, and
  * on another member's change since its last run started: people's once
  * they pause SETTLE_MS, a buddy's once its run ended (so the watcher sees
- * the comment that came with it), for a step. Its own never counts.
+ * the comment that came with it), for a step. Its own never counts. One
+ * whose last run named lines to wake it is due only while the doc holds one.
  */
 export function plan({ buddies, threads, askers, taken, notes, changedAt, running, steps, text, now }) {
-  const noteOf = (id) => notes.get(id) ?? { seen: new Map(), lookedAt: null, base: null, heard: null, watch: null };
+  const noteOf = (id) => notes.get(id) ?? { seen: new Map(), lookedAt: null, base: null, heard: null, wake: null, watch: null };
+  const lines = new Set(text.split(/\r?\n/));
   const heard = new Set(threads.flatMap((t) => t.comments.map((c) => c.id)));
   const tasks = new Map(); // buddy id → { threads, askers, asked, watch }
   const taskOf = (id) => tasks.get(id) ?? tasks.set(id, { threads: [], askers: new Set(), asked: false, watch: null }).get(id);
@@ -78,7 +81,13 @@ export function plan({ buddies, threads, askers, taken, notes, changedAt, runnin
       else if (by === null) soonest(at + SETTLE_MS); // people still typing: look once they pause
       changed.push(`${nameOf(by)} at rev ${rev}${by === null && now - at < SETTLE_MS ? ', still typing' : ''}${by !== null && running.has(by) ? ', still landing' : ''}`);
     }
-    const since = note.lookedAt === null ? 'its first look' : changed.length ? `changed by ${changed.join(', ')}, after its look at rev ${note.lookedAt}` : `no change since its look at rev ${note.lookedAt}`;
+    let since = note.lookedAt === null ? 'its first look' : changed.length ? `changed by ${changed.join(', ')}, after its look at rev ${note.lookedAt}` : `no change since its look at rev ${note.lookedAt}`;
+    // Its last run said which lines wake it: not before the doc holds one.
+    if (note.lookedAt !== null && note.wake && !note.wake.some((l) => lines.has(l))) {
+      if (byPeople || byBuddy) since += ', but the doc holds no line that wakes it';
+      byPeople = false;
+      byBuddy = false;
+    }
     // What members said since it looked, as what they wrote: its own words it knows.
     const said = note.heard === null ? [] : threads.filter((t) => !t.resolved && t.comments.some((c) => c.by.id !== id && !note.heard.has(c.id)));
     task.watch = { changes: note.base === null ? null : lineChanges(note.base, text), threads: said, heard, due: byPeople || byBuddy, paid: !byPeople && byBuddy, since };

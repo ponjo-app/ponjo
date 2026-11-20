@@ -20,7 +20,8 @@
 // reads it), else "Saw <n> new lines." in it, n the lines the changes put in;
 // nothing when one of them says quiet. Watching a doc that says fail-watch,
 // it fails; one that says hold-watch, it waits for release-<buddy> first;
-// one that says ping-pong, it adds the line "<buddy> moved." too.
+// one that says ping-pong, it adds the line "<buddy> moved." too; for each
+// line "wake-line <text>", it names <text> in PONJO_WAKE, the line that wakes it next.
 // Commands after the first may follow `;;`. It prints Done. A reply is `say`'s text, else
 // what it replaced, else "Nothing to change.". A reply that carries edits
 // writes them, as its group, to PONJO_GROUPS.
@@ -101,6 +102,7 @@ if (watch && !/^\+.*\bquiet\b/m.test(watch)) {
   const parsed = lines.slice(1).filter(Boolean).map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
   const own = parsed.find((c) => c.thread === undefined && !c.anchor && c.by?.name === buddy && !parsed.some((r) => r.thread === c.id && r.resolved))?.id;
   append(JSON.stringify(own ? { thread: own, body: `Saw ${(watch.match(/^\+/gm) ?? []).length} new lines.` } : { body: 'Watching.' }));
+  for (const [, line] of text.matchAll(/^wake-line (.*)$/gm)) appendFileSync(process.env.PONJO_WAKE, `${JSON.stringify({ line })}\n`);
   if (text.includes('ping-pong')) {
     text += `${buddy} moved.\n`;
     if (groups) appendFileSync(groups, `${JSON.stringify({ comment: appended - 1, doc: text })}\n`);

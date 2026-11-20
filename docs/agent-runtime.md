@@ -52,6 +52,7 @@ All in memory, on this machine only. Never written to the shared files.
 per buddy:  seen     thread → time of the last comment its runs were given
             lookedAt rev its last run started at
             base     the doc as its last run started
+            wake     the lines its last run said wake it, or null: any
             failed   thread or watch → why
             watch    { by } or null (also noted in the config folder)
 per doc:    changedAt  author → rev (and time) of their last change to the text
@@ -94,7 +95,9 @@ landed. It holds names, revs and thread ids, never the doc's text.
   has ended, so the watcher sees the comment with the edit. A buddy's own
   change never counts. A run woken by another buddy costs one step. It is
   told what changed since its last: the doc's lines, and each thread another
-  member wrote in, whole, as a person watching sees new comments.
+  member wrote in, whole, as a person watching sees new comments. If its
+  last run named lines in `PONJO_WAKE`, it is due only while the doc holds
+  one of them ([agent config](agent-config.md#wake)).
 
 ## A run
 
