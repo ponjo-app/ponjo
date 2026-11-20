@@ -361,11 +361,13 @@ may ask. A watcher is due once set, then on another member's change since
 its last run started: people's once they pause for 5 s (`SETTLE_MS`); a
 file written outside the app at once, for it is whole (the door took it
 once it held still); a buddy's once that buddy's run has ended: its edits
-land before its comments, and the watcher sees both. Its own change never wakes it. A
-person editing again while a run only a watch started is on ends that run
-with no answer, for it saw the doc as it was. Each run is told what
-changed since its last: in the text (`lineChanges`), and in the threads,
-each open one another member wrote in, whole (the ids of the comments it
+land before its comments, and the watcher sees both. Its own change never
+wakes it. A person editing again while a run only a watch started is on
+ends that run with no answer, for it saw the doc as it was. A file written
+outside the app does not: a program may write more often than a run lasts,
+which would end every run. The run lands, merged by line, and runs again on
+the change. Each run is told what changed since its last: in the text
+(`lineChanges`), and in the threads, each open one another member wrote in, whole (the ids of the comments it
 heard then are noted with `base`). It reads the rest in the comments
 itself, and comments where it will, as any member.
 

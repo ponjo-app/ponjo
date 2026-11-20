@@ -384,10 +384,11 @@ export async function createBuddyRuntime({ door, place, pathInProject, buddies, 
     /**
      * A change landed in the doc's log (doc-service.js, subscribe): { rev,
      * by: { id, kind }, comments }. Comments changed: look. The text: a
-     * person's (or outside) ends the runs only a watch started, for they saw
-     * the doc as it was, and the watchers look again once people pause, or
-     * at once for a file written outside, which is whole; a buddy's has them
-     * look at once.
+     * person's ends the runs only a watch started, for they saw the doc as
+     * it was, and the watchers look again once people pause; one found on
+     * disk ends none (a program may write more often than a run lasts: the
+     * run lands merged by line, and runs again on it) and, being whole, has
+     * them look at once, as a buddy's does.
      */
     heard({ rev, by: author, comments }) {
       const who = author.kind === 'buddy' ? nameOf(author.id) : author.kind === 'person' ? 'a person' : 'outside the app';
@@ -398,7 +399,7 @@ export async function createBuddyRuntime({ door, place, pathInProject, buddies, 
       const by = author.kind === 'buddy' ? author.id : author.kind === 'outside' ? OUTSIDE : null;
       changedAt.set(by, { rev, at: performance.now() });
       if (![...notes.values()].some((n) => n.watch)) return;
-      if (by !== null && by !== OUTSIDE) {
+      if (by !== null) {
         look(`an edit by ${who}, rev ${rev}`);
         return;
       }
@@ -406,10 +407,6 @@ export async function createBuddyRuntime({ door, place, pathInProject, buddies, 
         if (!run.task.watchOnly || run.landing || run.cancelled) continue;
         noteOf(run.task.buddy.id).lookedAt = run.from;
         end(run);
-      }
-      if (by === OUTSIDE) {
-        look(`an edit by ${who}, rev ${rev}`);
-        return;
       }
       wake(performance.now() + SETTLE_MS, `an edit by ${who}, rev ${rev}, once people pause`);
     },
