@@ -317,14 +317,39 @@ function spark([x, y], points = 8) {
   return `${d.join(' ')}Z`;
 }
 
-// `member` runs (or walks, slower) along `points`: its legs and arms step,
-// it bobs and leans the way it goes, and faces that way. `arms` and `look`
-// hold while it goes ('carry' keeps its arms on what it holds); `carry` moves
-// other nodes alongside it, each at an offset from it.
-function run(scene, s, member, points, ms, { walk = false, arms = null, look = null, carry = [] } = {}) {
+// Motion, after the old principles of animation: a figure crouches before it
+// runs (anticipation), speeds up and slows down on its way (ease in and out),
+// leans on past its stop and settles (follow-through), squashes on a hit and
+// stretches on a jump; its scale and lean are from its feet.
+const EASE_RUN = 'cubic-bezier(0.45, 0, 0.25, 1)';
+const SPRING = 'cubic-bezier(0.34, 1.56, 0.64, 1)'; // past the mark, and back
+
+// `member` hops: stretched on the way up, squashed as it lands.
+function hop(scene, member, height = 10, ms = 480) {
+  return scene.move(member.figure, [
+    { translate: '0 0', scale: '1 1' },
+    { translate: `0 -${height}px`, scale: '0.9 1.14', offset: 0.35 },
+    { translate: '0 0', scale: '1.12 0.88', offset: 0.75 },
+    { translate: '0 0', scale: '1 1' },
+  ], ms, 'ease-out');
+}
+
+// `member` runs (or walks, slower) along `points`: it crouches first if it
+// runs from a standstill (`ready`), its legs and arms step, it bobs and leans
+// the way it goes and faces that way, and, with `stop`, slows to a halt and
+// settles; without, it is still going full tilt at the end (into a crash).
+// `arms` and `look` hold while it goes; `carry` moves other nodes alongside
+// it, each at an offset from it.
+async function run(scene, s, member, points, ms, { walk = false, arms = null, look = null, carry = [], ready = !walk, stop = true } = {}) {
   const step = walk ? 340 : 220;
   const right = points.at(-1)[0] > points[0][0];
   const lean = (right ? 1 : -1) * (walk ? 3 : 10);
+  const { figure } = member;
+  if (ready) {
+    pose(member, { arms, look, right });
+    await scene.move(figure, [{ scale: '1 1', rotate: '0deg' }, { scale: '1.12 0.86', rotate: `${-lean * 0.8}deg` }], 220, 'ease-out');
+    scene.move(figure, [{ scale: '1.12 0.86', rotate: `${-lean * 0.8}deg` }, { scale: '0.94 1.08', rotate: `${lean}deg`, offset: 0.4 }, { scale: '1 1', rotate: '0deg' }], 300, 'ease-out').catch(() => {});
+  }
   let k = 0;
   const stride = () => pose(member, { legs: k ? 'a' : 'b', arms: arms ?? (k ? 'a' : 'b'), look, right });
   stride();
@@ -333,19 +358,23 @@ function run(scene, s, member, points, ms, { walk = false, arms = null, look = n
     stride();
   }, step / 2);
   if (!still) {
-    member.figure.animate([
+    figure.animate([
       { transform: 'translateY(0) rotate(0deg)' },
       { transform: `translateY(${walk ? -3 : -7}px) rotate(${lean}deg)` },
       { transform: 'translateY(0) rotate(0deg)' },
     ], { duration: step, iterations: Math.max(1, Math.round(ms / step)) });
   }
-  return Promise.all([
-    scene.move(member.node, points.map((point) => s.at(point)), ms, 'linear'),
-    ...carry.map(([node, [dx, dy]]) => scene.move(node, points.map(([x, y]) => s.at([x + dx, y + dy])), ms, 'linear')),
-  ]).finally(() => {
+  const easing = stop ? EASE_RUN : 'cubic-bezier(0.4, 0, 1, 1)';
+  try {
+    await Promise.all([
+      scene.move(member.node, points.map((point) => s.at(point)), ms, easing),
+      ...carry.map(([node, [dx, dy]]) => scene.move(node, points.map(([x, y]) => s.at([x + dx, y + dy])), ms, easing)),
+    ]);
+  } finally {
     clearInterval(timer);
     pose(member, { arms: arms ?? 'stand', look, right });
-  });
+  }
+  if (stop && !walk) scene.move(figure, [{ rotate: `${lean}deg`, scale: '1.06 0.94' }, { rotate: '0deg', scale: '1 1' }], 360, SPRING).catch(() => {});
 }
 
 // Delegate, with two agents, each in a room of its own: a copy of the doc
@@ -411,28 +440,42 @@ async function delegate(scene) {
   // and meet head on
   const near = up ? { Clippy: [meet[0] - 30, meet[1]], Otto: [meet[0] + 30, meet[1]] } : { Clippy: [meet[0], meet[1] - 34], Otto: [meet[0], meet[1] + 34] };
   for (const copy of Object.values(copies)) copy.style.opacity = '0'; // now in their hands
-  await Promise.all(['Clippy', 'Otto'].map((name) => run(scene, s, buddies[name], [seat[name], table[name], door[name], near[name]], 1500, { arms: 'carry', look: 'run' })));
+  // Otto sets off a beat later and runs a beat faster: they meet all the same
+  await Promise.all(['Clippy', 'Otto'].map(async (name, i) => {
+    await scene.wait(i * 160);
+    await run(scene, s, buddies[name], [seat[name], table[name], door[name], near[name]], 1500 - i * 160, { arms: 'carry', look: 'run', stop: false });
+  }));
+  // the hit: both squashed flat against each other, and a beat of stillness
+  const flat = up ? '0.8 1.14' : '1.14 0.8';
+  await Promise.all(['Clippy', 'Otto'].map((name) => scene.move(buddies[name].figure, [{ scale: '1 1' }, { scale: flat }], 70, 'ease-out')));
   const bang = svg('-24 -24 48 48', 'arch-spark');
   bang.append(path(spark([0, 0])));
   s.place(bang, meet, [72, 72]);
-  scene.move(bang, [{ scale: 0, opacity: 1 }, { scale: 1.3, opacity: 1, offset: 0.4 }, { scale: 1, opacity: 0 }], 800).catch(() => {});
+  scene.move(bang, [{ scale: 0, opacity: 1 }, { scale: 1.4, opacity: 1, offset: 0.3 }, { scale: 1.1, opacity: 0 }], 700, 'ease-out').catch(() => {});
+  await scene.wait(160);
   const knocked = up ? { Clippy: [meet[0] - 70, meet[1] - 20], Otto: [meet[0] + 70, meet[1] - 20] } : { Clippy: [meet[0] + 24, meet[1] - 80], Otto: [meet[0] + 24, meet[1] + 80] };
   const strewn = up ? { Clippy: [home[0] - 34, home[1] - 34], Otto: [home[0] + 34, home[1] - 28] } : { Clippy: [home[0] + 8, home[1] - 30], Otto: [home[0] + 14, home[1] + 26] };
   for (const name of ['Clippy', 'Otto']) pose(buddies[name], { arms: 'dazed', look: 'dazed', right: up && name === 'Otto' });
   await Promise.all(['Clippy', 'Otto'].flatMap((name, i) => [
-    scene.move(buddies[name].node, [s.at(near[name]), s.at(knocked[name])], 450, 'cubic-bezier(0.2, 1.4, 0.4, 1)'),
-    scene.move(buddies[name].figure, [{ rotate: '0deg' }, { rotate: `${i ? 20 : -20}deg` }, { rotate: '0deg' }], 900),
+    scene.move(buddies[name].node, [s.at(near[name]), s.at(knocked[name])], 500, 'cubic-bezier(0.2, 1.4, 0.4, 1)'),
+    scene.move(buddies[name].figure, [{ scale: flat, rotate: '0deg' }, { scale: '1 1', rotate: `${i ? 22 : -22}deg`, offset: 0.35 }, { scale: '1 1', rotate: `${i ? -6 : 6}deg`, offset: 0.7 }, { scale: '1 1', rotate: '0deg' }], 1000, 'ease-out'),
     scene.move(copies[name], [{ ...s.at(near[name]), rotate: '0deg', opacity: 1, scale: 0.4 }, { ...s.at(strewn[name]), rotate: `${i ? 14 : -16}deg`, opacity: 1, scale: 1 }], 700, 'cubic-bezier(0.2, 0.9, 0.3, 1.1)'),
   ]));
+  // a beat to take it in, then you flinch
+  await scene.wait(500);
   const yours = me.face.querySelector('.pj-avatar');
   yours.classList.add('pj-failed');
-  await scene.wait(1400);
+  await hop(scene, me, 6, 360);
+  await scene.wait(1000);
   yours.classList.remove('pj-failed');
 
   // they walk back to their rooms, and you are left to merge the two
   me.face.dataset.presence = 'working';
   me.tag.textContent = 'Merging by hand';
-  await Promise.all(['Clippy', 'Otto'].map((name) => run(scene, s, buddies[name], [knocked[name], door[name], seat[name]], 1600, { walk: true })));
+  await Promise.all(['Clippy', 'Otto'].map(async (name, i) => {
+    await scene.wait(i * 220);
+    await run(scene, s, buddies[name], [knocked[name], door[name], seat[name]], 1700, { walk: true });
+  }));
   for (const name of ['Clippy', 'Otto']) pose(buddies[name], {});
   await scene.wait(1800);
 }
@@ -457,7 +500,11 @@ async function blackboard(scene) {
   }
 
   await scene.wait(800);
-  await Promise.all(Object.values(who).map((member) => run(scene, s, member, [[member.x, back], [member.x, close]], 900, { walk: true })));
+  const walk = (from, to) => Promise.all(Object.values(who).map(async (member, i) => {
+    await scene.wait([1, 0, 2][i] * 140); // you first, then Clippy, then Otto
+    await run(scene, s, member, [[member.x, from], [member.x, to]], 900, { walk: true });
+  }));
+  await walk(back, close);
   const lines = [['You', 55], ['Clippy', 75], ['Otto', 45]].map(async ([name, width], i) => {
     const line = bar(width);
     paint(line, name);
@@ -466,13 +513,14 @@ async function blackboard(scene) {
     who[name].face.dataset.presence = 'working';
     pose(who[name], { arms: 'write' });
     if (!still) who[name].parts['arms-write'].animate([{ rotate: '-6deg' }, { rotate: '8deg' }, { rotate: '-6deg' }], { duration: 300, iterations: 6 });
-    await scene.move(line, [{ width: '0%' }, { width: `${width}%` }], 1800);
+    await scene.move(line, [{ width: '0%' }, { width: `${width}%` }], 1800, 'ease-in-out');
     who[name].face.dataset.presence = 'idle';
     pose(who[name], {});
+    await hop(scene, who[name], 8);
   });
   await Promise.all(lines);
   await scene.wait(600);
-  await Promise.all(Object.values(who).map((member) => run(scene, s, member, [[member.x, close], [member.x, back]], 900, { walk: true })));
+  await walk(close, back);
   pose(who.You, {});
   await scene.wait(2200);
 }
@@ -527,7 +575,7 @@ function docScene(scene, { runtime = false } = {}) {
     await scene.wait(300);
     who[name].face.dataset.presence = 'working';
     who[name].tag.textContent = '';
-    await scene.wait(300);
+    await hop(scene, who[name], 12);
     await run(scene, s, who.Runtime, [near, from], 900, { walk: true });
     pose(who.Runtime, {});
   };
@@ -573,8 +621,9 @@ function race(scene, { headsets = false } = {}) {
   }
   // `name` runs its leg, and is pleased with itself
   t.runs = async (name) => {
-    await run(scene, s, who[name], [[start[name], y], [start[name] + leg, y]], 1100, { look: 'run' });
+    await run(scene, s, who[name], [[start[name], y], [start[name] + leg, y]], 1200, { look: 'run' });
     pose(who[name], { right: true });
+    await hop(scene, who[name], 6, 360); // done: a little hop
   };
   return t;
 }
@@ -597,20 +646,29 @@ async function events(scene) {
   await run(scene, t.s, who.Otto, [[t.start.Otto, t.y], [to, t.y]], 1400, { arms: 'baton', look: 'run' });
   pose(who.Otto, { arms: 'reach', right: true });
   who.Otto.tag.textContent = 'Here!';
-  await scene.wait(900);
-  // nobody takes it: it falls to the track
+  await scene.wait(500);
+  await hop(scene, who.Otto, 4, 300); // a nudge: take it!
+  await scene.wait(600);
+  // nobody takes it: it slips, falls to the track and bounces, less each time
   pose(who.Otto, { arms: 'tap', right: true });
   who.Otto.tag.textContent = '';
   const baton = t.s.place(svg('-14 -5 28 10', 'arch-baton'), [to + 34, t.y - 4], [28, 10]);
   baton.append(path('M-13 -4 H13 V4 H-13 Z'));
-  await scene.move(baton, [{ ...t.s.at([to + 34, t.y - 4]), rotate: '0deg' }, { ...t.s.at([to + 44, t.track - 4]), rotate: '80deg' }], 600, 'cubic-bezier(0.5, 0, 1, 1)');
-  await scene.move(baton, [{ ...t.s.at([to + 44, t.track - 4]), rotate: '80deg' }, { ...t.s.at([to + 56, t.track - 8]), rotate: '150deg', offset: 0.4 }, { ...t.s.at([to + 62, t.track - 3]), rotate: '180deg' }], 500, 'ease-out');
+  const at = (x, y, turn) => ({ ...t.s.at([to + x, y]), rotate: `${turn}deg` });
+  const floor = t.track - 4;
+  await scene.move(baton, [at(34, t.y - 4, 0), at(44, floor, 70)], 420, 'cubic-bezier(0.5, 0, 1, 1)');
+  await scene.move(baton, [at(44, floor, 70), at(52, floor - 18, 130)], 200, 'cubic-bezier(0, 0, 0.5, 1)');
+  await scene.move(baton, [at(52, floor - 18, 130), at(58, floor, 175)], 200, 'cubic-bezier(0.5, 0, 1, 1)');
+  await scene.move(baton, [at(58, floor, 175), at(62, floor - 5, 185), at(64, floor, 180)], 240, 'ease-in-out');
   const otto = who.Otto.face.querySelector('.pj-avatar');
   otto.classList.add('pj-failed');
+  await scene.wait(600);
+  // Pip, still waiting, bounces on its toes
   who.Pip.tag.textContent = 'Waiting…';
-  await scene.wait(1200);
+  if (!still) who.Pip.figure.animate([{ translate: '0 0' }, { translate: '0 -3px' }, { translate: '0 0' }], { duration: 500, iterations: Infinity, easing: 'ease-in-out' });
+  await scene.wait(600);
   otto.classList.remove('pj-failed');
-  await scene.wait(2800);
+  await scene.wait(2600);
 }
 
 // Reconciled from state: no baton. The runtime reads the board and calls,
@@ -648,9 +706,10 @@ async function state(scene) {
   await call('Clippy'); // asleep: nothing
   await scene.wait(900);
   await call('Clippy', true); // again, since leg 2 is still not run
-  t.zzz.remove();
+  scene.fade(t.zzz, 0, 200).catch(() => {});
   who.Clippy.face.dataset.presence = 'idle';
-  await scene.wait(400);
+  await hop(scene, who.Clippy, 16, 520); // it starts awake
+  await scene.wait(250);
   await t.runs('Clippy');
   ran('Clippy');
   await scene.wait(400);
