@@ -97,7 +97,7 @@ subscribe(fn)              every change as it lands (a client in the doc host)
 ## Code layout
 
 ```
-src/core/   pure logic, shared by host and page
+src/core/   logic with no I/O of its own, shared by host, page and Worker
 src/store/  files
 src/host/   the doc host's components
 web/        pages and editors

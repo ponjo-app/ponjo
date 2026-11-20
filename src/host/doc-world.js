@@ -121,7 +121,7 @@ export function createDocWorld({ door, subscribe, place, pathInProject, buddies,
       const agents = await buddies();
       const { threads } = await threadsNow(agents.map(({ id, name }) => ({ id, name })));
       const given = new Set(asks.map((a) => a.id));
-      const heard = since?.comments == null ? null : new Set(parseSidecar(since.comments).lines.map((l) => l.comment?.id).filter(Boolean));
+      const heard = since ? new Set(parseSidecar(since.comments ?? '').lines.map((l) => l.comment?.id).filter(Boolean)) : null;
       const prompt = buildPrompt({
         buddy: agent, buddies: agents, docName: files.path, sidecarName: files.path + SIDECAR_SUFFIX, project: Boolean(folder),
         threads: threads.filter((t) => given.has(t.id)),
