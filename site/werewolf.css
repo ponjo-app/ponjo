@@ -1,0 +1,46 @@
+/* The werewolf page (site/werewolf.html): the players round a circle, what
+   you may do under it, the village's log beside. Paper and ink only: the
+   game has no colours of its own. Its plates, tags, log, cards and dialogs
+   are the poker page's (poker.css). */
+
+.ww-room { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.ww-board { position: relative; width: min(100%, 600px, calc(100vh - 380px)); min-width: 360px; margin: 56px auto 64px; }
+.ww-ring { position: relative; aspect-ratio: 1; border-radius: 50%; background: var(--bg-soft); }
+.ww-seat { --r: 46%; position: absolute; left: calc(50% + cos(var(--a)) * var(--r)); top: calc(50% + sin(var(--a)) * var(--r)); translate: -50% -50%; z-index: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; width: 104px; padding: 0; border: 0; background: none; color: inherit; font: inherit; cursor: default; transition: opacity 0.3s; }
+.ww-seat[data-dead] { opacity: 0.45; }
+.ww-seat .pj-avatar { --size: 56px; }
+.ww-role-of { font-size: 12px; color: var(--text-soft); }
+.ww-role-of:empty { display: none; }
+.ww-seat .pj-agent-face { transition: transform 0.25s cubic-bezier(0.3, 1.5, 0.5, 1); }
+.ww-seat[data-turn] .pj-agent-face { transform: scale(1.15); }
+.ww-seat:is([data-turn], [aria-pressed="true"]) .pk-plate { box-shadow: 0 0 0 2px var(--text); }
+.ww-ring[data-picking] .ww-seat[aria-disabled="false"] { cursor: pointer; }
+.ww-ring[data-picking] .ww-seat[aria-disabled="false"]:hover .pk-plate { background: var(--hover); }
+.ww-center { position: absolute; inset: 24%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; text-align: center; }
+.ww-phase { margin: 0; font-size: 20px; font-weight: 600; }
+.ww-sub { margin: 0; color: var(--text-soft); font-size: 13px; }
+.ww-sub:empty { display: none; }
+
+.ww-me { display: flex; flex-direction: column; align-items: center; gap: 12px; width: min(100%, 560px); margin: 0 auto; }
+.ww-role { margin: 0; font-size: 14px; text-align: center; }
+.ww-role b { font-weight: 600; }
+.ww-act { display: flex; flex-direction: column; gap: 8px; width: 100%; }
+.ww-ask { margin: 0; font-size: 14px; font-weight: 600; text-align: center; }
+.ww-text { width: 100%; box-sizing: border-box; min-height: 3lh; max-height: 8lh; field-sizing: content; resize: none; font: 14px/1.5 var(--ui-font); }
+.ww-buttons { flex-wrap: wrap; justify-content: center; }
+.ww-clock { margin: 0; color: var(--text-faint); font-size: 12px; text-align: center; }
+.ww-clock:empty { display: none; }
+
+.pk-dealer[data-secret] { color: var(--text-soft); }
+.pk-msg-name small { margin-left: 4px; color: var(--text-faint); }
+.ww-start { width: 360px; max-width: calc(100vw - 32px); }
+.ww-start .pj-segmented { align-self: flex-start; }
+
+@media (max-width: 640px) {
+  .ww-board { width: calc(100% - 64px); min-width: 0; margin: 48px auto 0; }
+  .ww-center { position: static; padding-top: 64px; } /* under the circle, clear of its seats */
+  .ww-seat { width: 68px; gap: 4px; }
+  .ww-seat .pj-avatar { --size: 40px; }
+  .ww-phase { font-size: 16px; }
+  .ww-sub { font-size: 12px; }
+}
