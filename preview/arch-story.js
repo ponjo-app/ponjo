@@ -532,13 +532,12 @@ async function blackboard(scene) {
 }
 
 // A relay round an oval track: Clippy, Pip and Otto, each a leg of it, Pip
-// asleep with z's over it. With `headsets`, each wears one, and the board in
-// the middle says which legs are run. Places on the track are angles, in
-// degrees clockwise from the right.
+// asleep with z's over it. Places on the track are angles, in degrees
+// clockwise from the right.
 const RUNNERS = { Clippy: 180, Pip: 270, Otto: 360 };
-const LEGS = { Clippy: [180, 240], Pip: [270, 320], Otto: [360, 520] }; // each stops short of the next
+const LEGS = { Clippy: [180, 240] }; // the leg Clippy runs, stopping short of Pip
 
-function race(scene, { headsets = false } = {}) {
+function race(scene) {
   const s = sketch(scene.stage);
   const up = s.upright;
   const [cx, cy] = up ? [200, 290] : [380, 220];
@@ -567,24 +566,13 @@ function race(scene, { headsets = false } = {}) {
   }
   const who = {};
   for (const [name, deg] of Object.entries(RUNNERS)) {
-    who[name] = actor(name, name === 'Pip' ? 'away' : 'idle', { headset: headsets });
+    who[name] = actor(name, name === 'Pip' ? 'away' : 'idle');
     s.place(who[name].node, at(deg));
   }
   const [zx, zy] = at(RUNNERS.Pip);
   const zzz = s.place(el('span', 'arch-zzz'), [zx + 34, zy - 66]);
   zzz.append(...'zzz'.split('').map((z) => el('i', '', z)));
   const t = { s, up, at, arc, who, zzz, middle: [cx, cy] };
-  if (headsets) {
-    const board = t.board = s.place(el('div', 'arch-paper arch-score'), [cx, cy - 6], up ? [160, 120] : [200, 108]);
-    board.append(el('b', '', 'Board'));
-    t.marks = {};
-    Object.keys(RUNNERS).forEach((name, i) => {
-      const row = el('div', 'arch-leg');
-      t.marks[name] = el('span', 'arch-mark', '—');
-      row.append(el('span', '', `Leg ${i + 1}`), face(name), t.marks[name]);
-      board.append(row);
-    });
-  }
   // `name` runs its leg round the track, and is pleased with itself
   t.runs = async (name, { arms = null, to = LEGS[name][1] } = {}) => {
     await run(scene, s, who[name], arc(LEGS[name][0], to), 1300 + (to - LEGS[name][0]) * 4, { arms, look: 'run' });
@@ -641,51 +629,139 @@ async function events(scene) {
   await scene.wait(2400);
 }
 
-// Reconciled from state: no baton. The runtime reads the board in the
-// middle and calls, in its headset, whoever's leg is not run yet, and calls
-// again while it is not: Pip sleeps through the first call and wakes at the
-// second.
+// The runtime as an eye on a round body, which watches the board: its lid
+// half shut while nothing changes, open when something does; its pupil
+// reads along the board's lines and turns to whoever is due.
+function eye() {
+  const node = svg('-50 -50 100 100', 'arch-eye');
+  node.append(
+    path('M-22 -40 L-28 -54 M-6 -44 L-7 -60 M10 -43 L14 -58 M25 -36 L34 -48', 'arch-eye-lash'),
+    path('M-44 0 a44 44 0 1 0 88 0 a44 44 0 1 0 -88 0', 'arch-eye-body'),
+    path('M-30 0 a30 22 0 1 0 60 0 a30 22 0 1 0 -60 0', 'arch-eye-white'),
+  );
+  const pupil = document.createElementNS(NS, 'g');
+  pupil.append(path('M-10 0 a10 10 0 1 0 20 0 a10 10 0 1 0 -20 0', 'arch-eye-pupil'), path('M2 -5 a3 3 0 1 0 6 0 a3 3 0 1 0 -6 0', 'arch-eye-glint'));
+  const lid = path('M-32 -24 H32 V24 H-32 Z', 'arch-eye-lid');
+  const clip = document.createElementNS(NS, 'clipPath');
+  clip.id = `arch-eye-${Math.random().toString(36).slice(2)}`;
+  clip.append(path('M-30 0 a30 22 0 1 0 60 0 a30 22 0 1 0 -60 0'));
+  const inside = document.createElementNS(NS, 'g');
+  inside.setAttribute('clip-path', `url(#${clip.id})`);
+  inside.append(pupil, lid);
+  node.append(clip, inside, path('M-30 0 a30 22 0 1 0 60 0 a30 22 0 1 0 -60 0', 'arch-eye-rim'));
+  return { node, pupil, lid };
+}
+
+// Reconciled from state: the runtime is an eye that watches the board, and
+// a wire runs from it to each one's headset. A change on the board opens
+// it; it reads the board, finds who is due and calls only them, in their
+// headset, again while they sleep on; done, they sleep again. Clippy's edit
+// leaves Otto's line due, so Otto is next: nobody wires that. Pip, with
+// nothing due, sleeps all through.
 async function state(scene) {
   watching(false);
-  const t = race(scene, { headsets: true });
-  const { who, marks } = t;
-  const where = { ...RUNNERS };
-  // a call from the board to `name`'s headset: a dashed line, and the waves
-  // at its ear pulse; louder, they are bigger
+  const s = sketch(scene.stage);
+  const up = s.upright;
+  const ROWS = ['Clippy', 'Otto', 'Pip'];
+  const [bx, by] = up ? [200, 84] : [380, 86];
+  const [bw, bh] = up ? [300, 128] : [320, 128];
+  const board = s.place(paper('Board', []), [bx, by], [bw, bh]);
+  board.classList.add('arch-board');
+  const lines = Object.fromEntries(ROWS.map((name) => {
+    const line = el('div', 'arch-ask arch-quiet');
+    line.style.setProperty('--buddy', buddyColor(name));
+    line.append(bar(60), face(name));
+    board.append(line);
+    return [name, line];
+  }));
+  const middle = up ? [200, 250] : [380, 236];
+  const seats = up ? { Clippy: [70, 370], Pip: [200, 450], Otto: [330, 370] } : { Clippy: [120, 330], Pip: [380, 368], Otto: [640, 330] };
+  // the wires, from under the eye to each one's ear
+  const wires = {};
+  for (const [name, [x, y]] of Object.entries(seats)) {
+    const ear = [x + (x < middle[0] ? 26 : x > middle[0] ? -26 : 0), y - 22];
+    const d = `M${f(middle[0])} ${f(middle[1] + 30)} C${f(middle[0])} ${f(middle[1] + 90)} ${f(ear[0])} ${f(ear[1] + 80)} ${f(ear[0])} ${f(ear[1])}`;
+    s.ink(d, 'arch-ink arch-wire');
+    wires[name] = d;
+  }
+  const { node, pupil, lid } = eye();
+  s.place(node, middle, [92, 92]);
+  const who = {};
+  const zzz = {};
+  for (const [name, at] of Object.entries(seats)) {
+    who[name] = actor(name, 'away', { headset: true });
+    s.place(who[name].node, at);
+    zzz[name] = s.place(el('span', 'arch-zzz'), [at[0] + 32, at[1] - 70]);
+    zzz[name].append(...'zzz'.split('').map((z) => el('i', '', z)));
+  }
+
+  const half = { scale: '1 0.55' };
+  lid.style.scale = '1 0.55';
+  const blink = (to) => scene.move(lid, [{ scale: lid.style.scale }, { scale: '1 1', offset: 0.4 }, { scale: `1 ${to}` }], 320, 'ease-in-out').then(() => { lid.style.scale = `1 ${to}`; });
+  const look = (to, ms = 260) => {
+    const [dx, dy] = [to[0] - middle[0], to[1] - middle[1]];
+    const k = 12 / Math.max(1, Math.hypot(dx, dy));
+    return scene.move(pupil, [{ translate: pupil.style.translate || '0 0' }, { translate: `${f(dx * k)}px ${f(dy * k)}px` }], ms, 'ease-in-out').then(() => { pupil.style.translate = `${f(dx * k)}px ${f(dy * k)}px`; });
+  };
+  // it reads the board, line by line, left to right
+  const read = async () => {
+    for (let i = 0; i < ROWS.length; i++) {
+      const y = by - bh / 2 + 52 + i * 26;
+      await look([bx - bw / 3, y], 160);
+      await look([bx + bw / 3, y], 220);
+    }
+  };
+  // a call down `name`'s wire: a pulse runs along it, and the headset buzzes
   const call = async (name, loud = false) => {
-    const [x, y] = t.at(where[name]);
-    const line = t.s.ink(`M${f(t.middle[0])} ${f(t.middle[1])} L${f(x)} ${f(y - 30)}`, 'arch-ink arch-call');
+    await look(seats[name]);
+    const pulse = s.ink(wires[name], 'arch-ink arch-pulse');
+    await scene.draw(pulse, 500);
     const waves = who[name].parts.waves;
     waves.style.display = '';
-    waves.style.scale = loud ? '1.4' : '1';
-    await scene.move(waves, [{ opacity: 0 }, { opacity: 1 }, { opacity: 0 }, { opacity: 1 }, { opacity: 0 }], 900, 'linear');
+    waves.style.scale = loud ? '1.5' : '1';
+    await scene.move(waves, [{ opacity: 0 }, { opacity: 1 }, { opacity: 0 }, { opacity: 1 }, { opacity: 0 }], 800, 'linear');
     waves.style.display = 'none';
-    line.remove();
+    pulse.remove();
   };
-  const leg = async (name) => {
-    await t.runs(name);
-    where[name] = LEGS[name][1];
-    marks[name].textContent = '✓';
-    marks[name].classList.add('arch-done');
-    await hop(scene, who[name], 6, 360); // done: a little hop
+  // `name` wakes with a start, does its line, and sleeps again
+  const wake = async (name) => {
+    zzz[name].style.opacity = '0';
+    who[name].face.dataset.presence = 'idle';
+    pose(who[name], { look: 'shocked' });
+    await hop(scene, who[name], 14, 480);
+    pose(who[name], {});
+    who[name].face.dataset.presence = 'working';
+    await scene.wait(1100);
+    lines[name].classList.remove('arch-found');
+    lines[name].classList.add('arch-edited');
+    who[name].face.dataset.presence = 'away';
+    zzz[name].style.opacity = '';
+  };
+  const due = async (name) => {
+    lines[name].classList.remove('arch-quiet', 'arch-edited');
+    await blink(0);
+    await read();
+    lines[name].classList.add('arch-found');
   };
 
-  await scene.wait(800);
-  await call('Clippy');
-  await leg('Clippy');
-  await scene.wait(500);
-  await call('Pip'); // asleep: nothing
   await scene.wait(900);
-  await call('Pip', true); // again, since leg 2 is still not run
-  scene.fade(t.zzz, 0, 200).catch(() => {});
-  who.Pip.face.dataset.presence = 'idle';
-  await hop(scene, who.Pip, 16, 520); // it starts awake
-  await scene.wait(250);
-  await leg('Pip');
-  await scene.wait(400);
+  // someone asks Clippy on the board: the eye opens, reads, and calls Clippy
+  await due('Clippy');
+  await call('Clippy');
+  await wake('Clippy');
+  // Clippy's edit leaves Otto's line due: the eye sees it, and calls Otto,
+  // who sleeps through the first call, so it calls again
+  await due('Otto');
   await call('Otto');
-  await leg('Otto');
-  await scene.wait(2600);
+  await scene.wait(700);
+  await call('Otto', true);
+  await wake('Otto');
+  // nothing due: it reads the board once more, and its lid falls
+  await read();
+  await look(middle, 300);
+  await scene.move(lid, [{ scale: '1 0' }, half], 700, 'ease-in-out');
+  lid.style.scale = '1 0.55';
+  await scene.wait(2400);
 }
 
 // An architecture as boxes, then arrows drawn in the order a change goes
@@ -927,7 +1003,7 @@ const CHAPTERS = [
   ['How you work', 'Blackboard', 'Everyone works on one board and sees every change. Nothing to hand off, nothing to merge.', blackboard],
   ['When agents run', '', '', point('Agent orchestration is a state reconciliation problem,', 'instead of an event triggering problem.')],
   ['When agents run', 'Triggered by events', 'Each agent runs when the one before hands it on. Miss one handoff, and the race stops.', events],
-  ['When agents run', 'Reconciled from state', 'The runtime reads the board and calls whoever’s leg isn’t run, again until it is. Nobody wires who goes next, and a missed call costs nothing.', state],
+  ['When agents run', 'Reconciled from state', 'The runtime watches the board and calls only whoever is due, again until it is done. The rest sleep on; nobody wires who goes next, and a missed call costs nothing.', state],
   ['Architecture', 'Event-triggered, the common way', 'State lives in messages in flight and in each agent’s memory. Lose a message and the work is lost, and someone has to wire who triggers whom.', eventsArchitecture],
   ['Architecture', 'Blackboard', 'One board, one writer. People and agents propose changes, the writer lands them in order, and the runtime reads the board to start whoever is due.', architecture],
   ['Summary', 'Two ways to run many agents', '', summary],
