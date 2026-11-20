@@ -16,9 +16,11 @@ export const OUTSIDE = Symbol('outside');
  * may ask: an agent's ask (one with `for`) is for those of its people who
  * still may; `notes` agent → { seen (ask id → the time of the latest comment
  * its runs were given there), lookedAt (the version its last run started
- * at, or null: look at once), wake (what its last run said wakes it, or
- * null: any change), watch ({ by }, who turned it on, or null) }; `woken`
- * the ids of the agents whose view holds what wakes them; `changedAt` who
+ * at, or null: look at once), print (its view's fingerprint then, or
+ * null: not known), wake (what its last run said wakes it, or null: any
+ * change), watch ({ by }, who turned it on, or null) }; `prints` agent →
+ * its view's fingerprint now; `woken` the ids of the agents whose view
+ * holds what wakes them; `changedAt` who
  * last changed the world → { rev, at (when, on the clock of `now`) }, people
  * as one (null), another program as OUTSIDE; `running` the ids of the
  * agents running; `steps` the bucket agents wake each other from (bucket.js).
@@ -35,11 +37,13 @@ export const OUTSIDE = Symbol('outside');
  * on another member's change since its last run started: people's once
  * they pause SETTLE_MS, a file written outside at once (it is whole: the
  * door took it once it held still), an agent's once its run ended (so the
- * watcher sees all it did), for a step. Its own never counts. One whose
- * last run named what wakes it is due only while its view holds that.
+ * watcher sees all it did), for a step. Its own never counts, nor a
+ * change its view no longer shows: one whose view is as it was when its
+ * last run started is not due. One whose last run named what wakes it is
+ * due only while its view holds that.
  */
-export function plan({ agents, asks, askers, notes, changedAt, running, steps, woken, now }) {
-  const noteOf = (id) => notes.get(id) ?? { seen: new Map(), lookedAt: null, wake: null, watch: null };
+export function plan({ agents, asks, askers, notes, changedAt, running, steps, prints, woken, now }) {
+  const noteOf = (id) => notes.get(id) ?? { seen: new Map(), lookedAt: null, print: null, wake: null, watch: null };
   const tasks = new Map(); // agent id → { asks, askers, asked, relayed, watch }
   const taskOf = (id) => tasks.get(id) ?? tasks.set(id, { asks: [], askers: new Set(), asked: false, relayed: false, watch: null }).get(id);
   const asking = new Set();
@@ -87,6 +91,12 @@ export function plan({ agents, asks, askers, notes, changedAt, running, steps, w
     // Its last run said what wakes it: not before its view holds that.
     if (note.lookedAt !== null && note.wake && !woken.has(id)) {
       if (byPeople || byBuddy) since += ', but the doc holds no line that wakes it';
+      byPeople = false;
+      byBuddy = false;
+    }
+    // Its view is as it was when its last run started: nothing to see.
+    if (note.lookedAt !== null && note.print != null && prints.get(id) === note.print && (byPeople || byBuddy)) {
+      since += ', but its view is as it was';
       byPeople = false;
       byBuddy = false;
     }

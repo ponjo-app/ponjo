@@ -23,7 +23,7 @@ function look(over = {}) {
   const s = { threads: [], askers: [ME], taken: () => true, relayed: new Map(), notes: new Map(), changedAt: new Map(), running: new Set(), steps: full, text: 'Text.\n', now: 100_000, ...over };
   const lines = new Set(s.text.split(/\r?\n/));
   const woken = new Set([...s.notes].filter(([, n]) => n.wake?.some((l) => lines.has(l))).map(([id]) => id));
-  return plan({ agents: buddies, asks: asksIn(s.threads, s.askers, s.taken, s.relayed), askers: s.askers, notes: s.notes, changedAt: s.changedAt, running: s.running, steps: s.steps, woken, now: s.now });
+  return plan({ agents: buddies, asks: asksIn(s.threads, s.askers, s.taken, s.relayed), askers: s.askers, notes: s.notes, changedAt: s.changedAt, running: s.running, steps: s.steps, prints: s.prints ?? new Map(), woken, now: s.now });
 }
 const started = (result) => result.start.map((t) => t.agent.id);
 const watching = (lookedAt, over = {}) => new Map([['b_ada', note({ watch: { by: ME }, lookedAt, ...over })]]);
@@ -98,6 +98,15 @@ test('a watcher is due once turned on, on people\'s changes once they pause, and
   assert.deepEqual(started(look({ notes: watching(5), changedAt: new Map([['b_ada', { rev: 7, at: 99_000 }]]) })), [], 'its own change');
   const none = look({ notes: watching(5), changedAt: new Map([['b_ben', { rev: 7, at: 99_000 }]]), steps: { ...full, left: 0, at: 90_000 } });
   assert.deepEqual([started(none), none.wakeAt], [[], 150_000], 'no step left: look when the next comes');
+});
+
+test('a watcher whose view is as it was when its last run started is not due, whoever changed it meanwhile', () => {
+  const people = new Map([[null, { rev: 7, at: 0 }]]);
+  const same = look({ notes: watching(5, { print: 'p1' }), changedAt: people, prints: new Map([['b_ada', 'p1']]) });
+  assert.deepEqual([started(same), same.why.get('b_ada')], [[], 'not due: changed by people at rev 7, after its look at rev 5, but its view is as it was']);
+  assert.deepEqual(started(look({ notes: watching(5, { print: 'p1' }), changedAt: people, prints: new Map([['b_ada', 'p2']]) })), ['b_ada'], 'changed');
+  assert.deepEqual(started(look({ notes: watching(5, { print: 'p1' }), changedAt: new Map([['b_ben', { rev: 7, at: 0 }]]), prints: new Map([['b_ada', 'p1']]) })), [], 'a buddy\'s change undone');
+  assert.deepEqual(started(look({ notes: watching(null, { print: 'p1' }), prints: new Map([['b_ada', 'p1']]) })), ['b_ada'], 'turned on, or Retry: it looks at once');
 });
 
 test('a watcher whose last run named lines to wake it is due only on a change while the doc holds one, whoever made it', () => {

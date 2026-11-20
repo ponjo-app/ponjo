@@ -7,6 +7,7 @@
 // doc-world.js). Nothing of it is written to a shared file; what it does
 // and why is written to this machine's agent log (logLoop).
 
+import { createHash } from 'node:crypto';
 import { basename } from 'node:path';
 import { filled, nextStepAt, refilled } from '../core/bucket.js';
 import { newId } from '../core/comments.js';
@@ -24,6 +25,9 @@ import { execute, killTree, testAgent } from './runner.js';
 // long each time, up to LOOK_AGAIN_MAX_MS: no change may come to try it.
 const LOOK_AGAIN_MS = 1000;
 const LOOK_AGAIN_MAX_MS = 30_000;
+
+// A view's fingerprint: its doc's text's (its comments wake no watcher).
+const printOf = (files) => createHash('sha256').update(files.text).digest('base64url');
 
 // A time as the agent log writes it, on this machine's clock: 2026-11-18 21:40:12.203.
 const stamp = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${d.toTimeString().slice(0, 8)}.${String(d.getMilliseconds()).padStart(3, '0')}`;
@@ -44,19 +48,21 @@ export function agentsFor(level, agents) {
  * ends a run that hangs.
  */
 export async function createBuddyRuntime({ world, docPath, settingsDir, secrets, emit, timeoutMs }) {
-  // What this machine notes of each buddy (plan): { seen, lookedAt, since
+  // What this machine notes of each buddy (plan): { seen, lookedAt, print
+  // (its view's fingerprint as its last watch run started, or null), since
   // (the files of its last watch run's view, or null), wake (the lines that
   // run named, or null), failed (ask, or 'watch' for its watch, → { at, why
   // }), watch }. The watch is noted with the doc's history too
   // (noteWatching), as only a person changes it; the rest is gone on a restart.
   const notes = new Map();
-  const noteOf = (id) => notes.get(id) ?? notes.set(id, { seen: new Map(), lookedAt: null, since: null, wake: null, failed: new Map(), watch: null }).get(id);
+  const noteOf = (id) => notes.get(id) ?? notes.set(id, { seen: new Map(), lookedAt: null, print: null, since: null, wake: null, failed: new Map(), watch: null }).get(id);
   for (const [id, { by }] of Object.entries(await readWatching(docPath(), settingsDir))) noteOf(id).watch = { by };
   let version = (await world.wait(Infinity, 0)).rev; // the world's version, as last read from its log
   for (const note of notes.values()) note.lookedAt = version; // no run on opening
   const changedAt = new Map(); // who last changed the text → { rev, at }, people as null
   let steps = { left: null, cap: DEFAULT_SETTINGS.steps, every: DEFAULT_SETTINGS.refillEvery * 1000, at: performance.now() };
-  // The runs going: buddy → { task, from (the version it started at), child,
+  // The runs going: buddy → { task, from (the version it started at), print
+  // (its view's fingerprint, once it has it), child,
   // cancelled, landing (its agent is done; it lands whatever happens), done }.
   const runs = new Map();
   let shown = []; // the buddies the windows were last told of
@@ -140,7 +146,7 @@ export async function createBuddyRuntime({ world, docPath, settingsDir, secrets,
     const p = problem || here.length === 0 // a buddy could not post its comments, or there is none
       ? { start: [], stop: [...runs.keys()], steps, wakeAt: null, asking: new Set() }
       : plan({
-        agents: here, asks, askers: members.filter((m) => m.mayAsk).map((m) => m.id), woken: await woken(here),
+        agents: here, asks, askers: members.filter((m) => m.mayAsk).map((m) => m.id), ...(await viewed(here)),
         notes, changedAt, running: new Set(runs.keys()), steps, now: performance.now(),
       });
     steps = p.steps;
@@ -158,17 +164,20 @@ export async function createBuddyRuntime({ world, docPath, settingsDir, secrets,
     tell(`look · ${why || 'asked to'}`, ...rows.map(([name, reason]) => `${name.padEnd(width)}  ${reason}`));
     if (p.wakeAt !== null) wake(p.wakeAt, 'what a look waited for: people to pause, or a step');
   }
-  // The watchers among `here` whose last run named lines that wake them, and
-  // whose view holds one, whole.
-  async function woken(here) {
-    const ids = new Set();
+  // What the watchers among `here` see now: { prints (each one's view's
+  // fingerprint), woken (those whose last run named lines that wake them,
+  // and whose view holds one, whole) }.
+  async function viewed(here) {
+    const prints = new Map();
+    const woken = new Set();
     for (const [id, note] of notes) {
       const agent = here.find((b) => b.id === id);
-      if (!note.watch || !note.wake || !agent) continue;
-      const lines = new Set((await world.view(agent, {})).files.text.split(/\r?\n/));
-      if (note.wake.some((l) => lines.has(l))) ids.add(id);
+      if (!note.watch || !agent) continue;
+      const { files } = await world.view(agent, {});
+      prints.set(id, printOf(files));
+      if (note.wake?.some((l) => files.text.split(/\r?\n/).includes(l))) woken.add(id);
     }
-    return ids;
+    return { prints, woken };
   }
 
   // ---- runs ----
@@ -203,6 +212,7 @@ export async function createBuddyRuntime({ world, docPath, settingsDir, secrets,
     try {
       view = await world.view(task.agent, { since: task.watch ? noteOf(task.agent.id).since : undefined, asks: task.asks });
       run.from = view.rev;
+      run.print = printOf(view.files);
       const { settings } = await readSettings(settingsDir);
       result = await execute({
         buddy: task.agent, files: view.files, prompt: view.prompt, timeoutMs,
@@ -245,6 +255,7 @@ export async function createBuddyRuntime({ world, docPath, settingsDir, secrets,
     for (const a of task.asks) note.seen.set(a.id, Date.parse(a.until));
     if (note.watch) {
       note.lookedAt = run.from;
+      note.print = run.print ?? null;
       if (!failed) note.since = { text: view.files.text, comments: task.watch ? view.files.comments ?? '' : null };
       note.wake = !failed && result.wake?.length ? result.wake : null; // until its next run: what wakes it
     }
@@ -291,8 +302,8 @@ export async function createBuddyRuntime({ world, docPath, settingsDir, secrets,
     if (typeof buddy !== 'string' || typeof on !== 'boolean') throw new DocError('bad_input', 'expected { buddy, on }');
     if (!(await world.members()).some((b) => b.kind === 'agent' && b.id === buddy)) throw new DocError('not_found', 'no such buddy here');
     const note = noteOf(buddy);
-    if (on && !note.watch) Object.assign(note, { watch: { by: who.id }, lookedAt: null, since: null, wake: null });
-    if (!on) Object.assign(note, { watch: null, since: null, wake: null });
+    if (on && !note.watch) Object.assign(note, { watch: { by: who.id }, lookedAt: null, print: null, since: null, wake: null });
+    if (!on) Object.assign(note, { watch: null, print: null, since: null, wake: null });
     if (!on) note.failed.delete('watch');
     keepWatching();
     look(`${nameOf(buddy)}'s watch turned ${on ? 'on' : 'off'}`);
@@ -360,7 +371,7 @@ export async function createBuddyRuntime({ world, docPath, settingsDir, secrets,
     }
     for (const run of runs.values()) {
       if (!run.task.watchOnly || run.landing || run.cancelled) continue;
-      noteOf(run.task.agent.id).lookedAt = run.from;
+      Object.assign(noteOf(run.task.agent.id), { lookedAt: run.from, print: run.print ?? null });
       end(run);
     }
     wake(at + SETTLE_MS, `an edit by ${who}, rev ${rev}, once people pause`);

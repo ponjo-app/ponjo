@@ -191,8 +191,9 @@ test('a script that exits 1 writes nothing: the buddy\'s status says the thread 
 
 // The runtime over a doc world whose door only holds threads, for what it does
 // whatever the doc: `read()` gives the sidecar's lines, or throws.
-// `change(change, told)` lands a change in the door's log ({ by, comments }),
-// and tells the world of it unless `told` is false.
+// `change(change, told)` lands a change in the door's log ({ by, comments,
+// text: the doc's text after it }), and tells the world of it unless `told`
+// is false.
 async function withRuntime(read, fn) {
   const settingsDir = await fakeConfig();
   const docPath = await tempDoc('Text.\n');
@@ -201,13 +202,15 @@ async function withRuntime(read, fn) {
   const landed = [];
   const changes = [];
   const listeners = [];
-  const change = (c, told = true) => {
+  let text = 'Text.\n';
+  const change = ({ text: after = text, ...c }, told = true) => {
+    text = after;
     changes.push({ rev: changes.length + 1, at: performance.now(), comments: false, ...c });
     if (told) for (const listener of listeners) listener();
   };
   const world = createDocWorld({
     door: {
-      text: () => 'Text.\n', rev: () => changes.length, epoch: () => 'e_1', missing: () => false, changes: (since) => changes.slice(Math.max(0, since)),
+      text: () => text, rev: () => changes.length, epoch: () => 'e_1', missing: () => false, changes: (since) => changes.slice(Math.max(0, since)),
       readComments: async () => ({ lines: read(ask).map((comment) => ({ comment })), problem: null }),
       submit: async () => ({}), comment: async (arg) => { landed.push(arg); return { at: new Date().toISOString() }; },
     },
@@ -262,7 +265,7 @@ test('a change the world was not told of is in the log its next wait reads: a pe
   await withRuntime(() => [], async ({ runtime, landed, change }) => {
     await runtime.calls.watch({ buddy: 'b_x', on: true }, { id: 'u_me000001' });
     await until(() => landed.length === 1 && runtime.running().length === 0, 'its first look');
-    change({ by: { id: 'u_me000001', kind: 'person' } }, false); // its notification lost
+    change({ by: { id: 'u_me000001', kind: 'person' }, text: 'Text.\nMore.\n' }, false); // its notification lost
     change({ by: { id: 'u_me000001', kind: 'person' }, comments: true });
     await until(() => landed.length === 2, 'a run on the edit, once people pause', 10_000);
   });
@@ -488,6 +491,20 @@ test('a buddy\'s @mention asks the buddy it names, for a step: it runs and answe
     assert.deepEqual((await runs()).map((r) => r.buddy), ['Ada', 'Ben']);
     assert.equal((await state()).steps.left, (await state()).steps.cap - 1, 'one step');
   }, { buddies: { Ada: 'Hands over.\n', Ben: 'Answers.\n' } });
+});
+
+test('typing that is then deleted wakes no watcher: its view is as it was', { timeout: 60_000 }, async () => {
+  await withDoc(async ({ settingsDir, call, edit, state, runs }) => {
+    await call('watch', { buddy: 'Clippy', on: true });
+    await until(async () => (await runs()).length === 1 && (await state()).agents.every((a) => a.state === 'ready'), 'its first look');
+    const { text } = await state();
+    await edit(`${text}Not for long.\n`);
+    await edit(text);
+    const log = () => readFile(join(settingsDir, 'logs', 'agents.log'), 'utf8');
+    await until(async () => /but its view is as it was/.test(await log()), 'the look once people pause', 10_000);
+    await sleep(500);
+    assert.equal((await runs()).length, 1, 'no run');
+  });
 });
 
 test('a watch run is ended when a person types again, with no answer, and runs again once they pause', { timeout: 60_000 }, async () => {

@@ -130,7 +130,6 @@ What the code does differently from the runtime above:
 
 - One runtime per open doc (`src/host/open-doc.js`); it stops when the doc
   closes.
-- It notes the doc's text at each look, not a fingerprint of a view.
 - Chains are limited by steps (`src/core/bucket.js`): up to 20, one more a
   minute; a run woken or asked by an agent takes one. There is no depth and
   no breaker.

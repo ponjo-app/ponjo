@@ -3,7 +3,8 @@
 // starts and stops, what it spends, when it looks again, and why. The old
 // one read the doc's threads and text; the new one is given the doc
 // world's asks (asksIn), whose views hold what wakes them, and a watcher is
-// told what is new (newSince) by its view.
+// told what is new (newSince) by its view. Here each watcher's view changed
+// since it last looked, as the old plan took any change to mean.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -83,7 +84,7 @@ function after(s) {
   const lines = new Set(s.text.split(/\r?\n/));
   const woken = new Set([...s.notes].filter(([, n]) => n.wake?.some((l) => lines.has(l))).map(([id]) => id));
   const asks = asksIn(s.threads, s.askers, (c) => s.taken.has(c.id), s.relayed);
-  const r = now.plan({ agents: s.buddies, asks, askers: s.askers, notes: s.notes, changedAt, running: s.running, steps: s.steps, woken, now: NOW });
+  const r = now.plan({ agents: s.buddies, asks, askers: s.askers, notes: s.notes, changedAt, running: s.running, steps: s.steps, prints: new Map(), woken, now: NOW });
   return compared({ ...r, start: r.start.map((t) => ({ agent: t.agent.id, asks: ids(t.asks), askers: t.askers, watch: t.watch, watchOnly: t.watchOnly })) }, (t) => {
     if (!t.watch) return null;
     const note = s.notes.get(t.agent);
