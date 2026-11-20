@@ -6,8 +6,8 @@
 <title>Blackboard Multi-agent System</title>
 <meta name="description" content="How Ponjo's agents run: people and AI buddies watch one board and improve it together, told as a story with Clippy.">
 <link rel="icon" href="./build/icon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="./dist/web/app.css?v=fedbe84">
-<link rel="stylesheet" href="site.css?v=fedbe84">
+<link rel="stylesheet" href="./dist/web/app.css?v=d89b913">
+<link rel="stylesheet" href="site.css?v=d89b913">
 </head>
 <body>
 <header class="site-header">
@@ -55,7 +55,23 @@
   </nav>
 </div>
 </main>
-<script type="module" src="preview/arch-story.js?v=fedbe84"></script>
-<script type="module" src="site.js?v=fedbe84"></script>
+<template id="cover-art">
+  <div class="arch-slate">
+    <svg viewBox="0 0 360 164" role="img" aria-label="The runtime reads the shared document and calls a buddy to edit it.">
+      <g class="arch-chalk">
+        <path d="m66 44 51 -1 17 17 1 63 -68 1 Z M117 44l-1 18 18 -2"/>
+        <path opacity=".65" d="m79 70 24 -1 m-24 12 41 1 m-41 10 29 1"/>
+        <path class="arch-chalk-edit" d="m79 106 35 -1"/>
+        <path d="M220 83q22 -38 52 -1 -26 34 -52 1Z"/>
+        <circle cx="246" cy="82" r="8"/>
+        <path d="m232 58 -3 -6 m16 2 0 -8 m14 12 4 -6"/>
+        <path class="arch-chalk-route" d="M145 64Q178 23 219 63 m-1 -10 1 10 -10 -1"/>
+        <path class="arch-chalk-return" d="M224 104Q188 145 145 110 m2 10 -2 -10 11 1"/>
+      </g>
+    </svg>
+  </div>
+</template>
+<script type="module" src="preview/arch-story.js?v=d89b913"></script>
+<script type="module" src="site.js?v=d89b913"></script>
 </body>
 </html>
