@@ -138,10 +138,10 @@ An orchestrator fits those better.
   by depth, with a breaker that pauses watches.
 - **Built** for poker, in its own page: per-member views, refusals, chains
   limited by depth.
-- **Proposed** for Ponjo's runtime: refusals; a host that keeps running
-  with no window open. What differs today:
+- **Proposed** for Ponjo's runtime: refusals; outside actions as
+  proposals, carried out once and approved by the owner ([agent
+  runtime](agent-runtime.md#outside-actions)). What differs today:
   [agent runtime](agent-runtime.md#today).
-- **Not yet:** agent programs can still act outside the board on their own;
-  actions on the outside world should become proposals too.
+- **Not yet:** a host that keeps running with no window open.
 - **Then, in worlds:** per-member views in the doc world; the poker table
   as a world on Ponjo's runtime.
