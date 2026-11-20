@@ -7,7 +7,6 @@
 /* global document, window */
 
 import { agentFace, buddyColor, personFace, setBuddies, setOwner, setPeople } from '../web/faces.js';
-import { icon } from '../web/icons.js';
 
 const still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 const STOPPED = Symbol('stopped');
@@ -35,35 +34,90 @@ function face(name, { person = false, presence = 'idle', tag = 'span' } = {}) {
   return wrap;
 }
 
-// Stick arms and legs, drawn behind a face in a 56×80 box: [part, path].
-const LIMBS = [
-  ['arm-l', 'M10 34 L-2 45'],
-  ['arm-r', 'M46 34 L60 47'],
-  ['leg-l', 'M23 48 L20 73 L15 73'],
-  ['leg-r', 'M33 48 L36 73 L41 73'],
-];
+// A member's arms, legs and what it holds, drawn as by hand around its face
+// in a 56×80 box (the face is the top 56×56), facing left; each part a pose
+// of paths. Props are filled: a sheet of paper, a pen, a puff of smoke.
+const LIMBS = {
+  legs: {
+    stand: ['M21 50 L20 71 L14 72', 'M35 50 L36 71 L42 72'],
+    a: ['M21 50 L14 61 L19 69', 'M35 49 L44 57 L52 51'],
+    b: ['M21 50 L19 62 L12 66', 'M35 50 L38 62 L45 66'],
+  },
+  arms: {
+    stand: ['M7 31 L0 45', 'M49 31 L56 45'],
+    a: ['M7 31 L-1 40 L1 47', 'M49 30 L57 25 L61 32'],
+    b: ['M7 31 L0 25 L-4 31', 'M49 31 L56 40 L54 47'],
+    carry: ['M7 33 L-4 37 L-7 30', 'M49 30 L57 25 L61 32'],
+    write: ['M7 31 L0 45', 'M48 27 L58 6'],
+    dazed: ['M7 33 L-1 46 L5 50', 'M49 28 L60 17 L55 6'],
+  },
+};
+const PROPS = {
+  carry: [['arch-prop', 'M-26 6 L-8 3 L-5 29 L-23 32 Z'], ['arch-prop-ink', 'M-21 11 L-12 10 M-20 16 L-11 15 M-20 21 L-13 20']],
+  write: [['arch-prop arch-prop-pen', 'M55 -13 L62 -12 L62 2 L59 6 L55 2 Z']],
+  dazed: [['arch-prop', 'M58 -6 Q52 -8 56 -14 Q56 -22 64 -19 Q70 -25 74 -17 Q81 -15 77 -9 Q76 -2 69 -5 Q63 0 58 -6 Z']],
+};
+// What a face shows over its own eyes and mouth, in its 100×100 box: brows
+// set hard and a drop of sweat, running; worried brows and spiral eyes, dazed.
+const spiral = (x, y) => `M${x} ${y} a1 1 0 0 1 2 0 a2 2 0 0 1 -4 0 a3.5 3.5 0 0 1 7 0 a5 5 0 0 1 -10 0`;
+const LOOKS = {
+  run: ['M29 30 L41 35 M71 30 L59 35', 'M82 8 L82 9'],
+  dazed: ['M29 33 L41 29 M71 33 L59 29', spiral(36, 46), spiral(62, 46)],
+};
 
-// A member: its face on stick arms and legs, its name under it, and a tag
-// over its face for what it did. Its figure takes data-move="run" or "walk"
-// to swing its limbs, and data-writing to lift its pen.
+const svg = (viewBox, className) => {
+  const node = document.createElementNS(NS, 'svg');
+  node.setAttribute('viewBox', viewBox);
+  node.setAttribute('class', className);
+  return node;
+};
+const path = (d, className) => {
+  const node = document.createElementNS(NS, 'path');
+  node.setAttribute('d', d);
+  if (className) node.setAttribute('class', className);
+  return node;
+};
+
+// A member: its face with arms and legs, its name under it, and a tag over its
+// face for what it did. pose() sets its arms, legs, look and the way it faces.
 function actor(name, presence) {
   const node = el('div', 'arch-actor');
   const figure = el('div', 'arch-figure');
-  const limbs = document.createElementNS(NS, 'svg');
-  limbs.setAttribute('viewBox', '0 0 56 80');
-  limbs.setAttribute('class', 'arch-limbs');
-  for (const [part, d] of LIMBS) {
-    const path = document.createElementNS(NS, 'path');
-    path.setAttribute('d', d);
-    path.setAttribute('class', `arch-${part}`);
-    limbs.append(path);
+  figure.style.setProperty('--buddy', buddyColor(name));
+  const limbs = svg('0 0 56 80', 'arch-limbs');
+  const parts = {};
+  for (const [kind, poses] of Object.entries(LIMBS)) {
+    for (const [pose, ds] of Object.entries(poses)) {
+      const g = document.createElementNS(NS, 'g');
+      g.append(...ds.map((d) => path(d)));
+      if (kind === 'arms') for (const [className, d] of PROPS[pose] ?? []) g.append(path(d, className));
+      parts[`${kind}-${pose}`] = g;
+      limbs.append(g);
+    }
+  }
+  const looks = svg('0 0 100 100', 'arch-looks');
+  for (const [look, ds] of Object.entries(LOOKS)) {
+    const g = document.createElementNS(NS, 'g');
+    g.append(...ds.map((d) => path(d)));
+    parts[`look-${look}`] = g;
+    looks.append(g);
   }
   const who = face(name, { person: name === 'You', presence });
   const tag = el('span', 'arch-tag');
-  who.append(tag);
+  who.append(tag, looks);
   figure.append(limbs, who);
   node.append(figure, el('span', '', name));
-  return { node, figure, face: who, tag };
+  const member = { node, figure, face: who, tag, parts };
+  pose(member, {});
+  return member;
+}
+
+function pose(member, { arms = 'stand', legs = 'stand', look = null, right = false }) {
+  for (const [key, g] of Object.entries(member.parts)) {
+    g.style.display = [`arms-${arms}`, `legs-${legs}`, `look-${look}`].includes(key) ? '' : 'none';
+  }
+  member.figure.dataset.look = look ?? '';
+  member.figure.classList.toggle('arch-right', right);
 }
 
 // A doc drawn as lines, not words: a title and grey bars.
@@ -216,24 +270,35 @@ function spark([x, y], points = 8) {
   return `${d.join(' ')}Z`;
 }
 
-// `member` runs (or walks, slower and with smaller steps) along `points`,
-// bobbing as it goes and leaning the way it goes; `with` runs alongside it,
-// each with its own offset from it.
-function run(scene, s, member, points, ms, { walk = false, carry = [] } = {}) {
-  const step = walk ? 320 : 200;
-  const lean = Math.sign(points.at(-1)[0] - points[0][0]) * (walk ? 3 : 10);
-  member.figure.dataset.move = walk ? 'walk' : 'run';
+// `member` runs (or walks, slower) along `points`: its legs and arms step,
+// it bobs and leans the way it goes, and faces that way. `arms` and `look`
+// hold while it goes ('carry' keeps its arms on what it holds); `carry` moves
+// other nodes alongside it, each at an offset from it.
+function run(scene, s, member, points, ms, { walk = false, arms = null, look = null, carry = [] } = {}) {
+  const step = walk ? 340 : 220;
+  const right = points.at(-1)[0] > points[0][0];
+  const lean = (right ? 1 : -1) * (walk ? 3 : 10);
+  let k = 0;
+  const stride = () => pose(member, { legs: k ? 'a' : 'b', arms: arms ?? (k ? 'a' : 'b'), look, right });
+  stride();
+  const timer = still ? null : setInterval(() => {
+    k ^= 1;
+    stride();
+  }, step / 2);
   if (!still) {
     member.figure.animate([
       { transform: 'translateY(0) rotate(0deg)' },
-      { transform: `translateY(${walk ? -3 : -8}px) rotate(${lean}deg)` },
+      { transform: `translateY(${walk ? -3 : -7}px) rotate(${lean}deg)` },
       { transform: 'translateY(0) rotate(0deg)' },
     ], { duration: step, iterations: Math.max(1, Math.round(ms / step)) });
   }
   return Promise.all([
     scene.move(member.node, points.map((point) => s.at(point)), ms, 'linear'),
     ...carry.map(([node, [dx, dy]]) => scene.move(node, points.map(([x, y]) => s.at([x + dx, y + dy])), ms, 'linear')),
-  ]).finally(() => delete member.figure.dataset.move);
+  ]).finally(() => {
+    clearInterval(timer);
+    pose(member, { arms: arms ?? 'stand', look, right });
+  });
 }
 
 // Delegate, with two agents, each in a room of its own: a copy of the doc
@@ -295,41 +360,39 @@ async function delegate(scene) {
   for (const name of ['Clippy', 'Otto']) buddies[name].face.dataset.presence = 'idle';
   await scene.wait(500);
 
-  // both run theirs back to you at once, out of their doors, held over their
-  // heads, and meet head on
-  const hold = [0, -80];
-  const face = up ? { Clippy: [meet[0] - 30, meet[1]], Otto: [meet[0] + 30, meet[1]] } : { Clippy: [meet[0], meet[1] - 34], Otto: [meet[0], meet[1] + 34] };
-  for (const copy of Object.values(copies)) copy.style.scale = '0.7';
-  await Promise.all(['Clippy', 'Otto'].map((name) => run(scene, s, buddies[name], [seat[name], table[name], door[name], face[name]], 1500, { carry: [[copies[name], hold]] })));
-  const bang = document.createElementNS(NS, 'svg');
-  bang.setAttribute('viewBox', '-24 -24 48 48');
-  bang.append(document.createElementNS(NS, 'path'));
-  bang.firstChild.setAttribute('d', spark([0, 0]));
-  s.place(bang, meet, [72, 72]).classList.add('arch-spark');
+  // both pick theirs up and run it back to you at once, out of their doors,
+  // and meet head on
+  const near = up ? { Clippy: [meet[0] - 30, meet[1]], Otto: [meet[0] + 30, meet[1]] } : { Clippy: [meet[0], meet[1] - 34], Otto: [meet[0], meet[1] + 34] };
+  for (const copy of Object.values(copies)) copy.style.opacity = '0'; // now in their hands
+  await Promise.all(['Clippy', 'Otto'].map((name) => run(scene, s, buddies[name], [seat[name], table[name], door[name], near[name]], 1500, { arms: 'carry', look: 'run' })));
+  const bang = svg('-24 -24 48 48', 'arch-spark');
+  bang.append(path(spark([0, 0])));
+  s.place(bang, meet, [72, 72]);
   scene.move(bang, [{ scale: 0, opacity: 1 }, { scale: 1.3, opacity: 1, offset: 0.4 }, { scale: 1, opacity: 0 }], 800).catch(() => {});
-  const avatars = [me, buddies.Clippy, buddies.Otto].map((member) => member.face.querySelector('.pj-avatar'));
-  for (const avatar of avatars.slice(1)) avatar.classList.add('pj-failed');
   const knocked = up ? { Clippy: [meet[0] - 70, meet[1] - 20], Otto: [meet[0] + 70, meet[1] - 20] } : { Clippy: [meet[0] + 24, meet[1] - 80], Otto: [meet[0] + 24, meet[1] + 80] };
   const strewn = up ? { Clippy: [home[0] - 34, home[1] - 34], Otto: [home[0] + 34, home[1] - 28] } : { Clippy: [home[0] + 8, home[1] - 30], Otto: [home[0] + 14, home[1] + 26] };
+  for (const name of ['Clippy', 'Otto']) pose(buddies[name], { arms: 'dazed', look: 'dazed', right: up && name === 'Otto' });
   await Promise.all(['Clippy', 'Otto'].flatMap((name, i) => [
-    scene.move(buddies[name].node, [s.at(face[name]), s.at(knocked[name])], 450, 'cubic-bezier(0.2, 1.4, 0.4, 1)'),
-    scene.move(buddies[name].figure, [{ rotate: '0deg' }, { rotate: `${i ? 25 : -25}deg` }, { rotate: '0deg' }], 900),
-    scene.move(copies[name], [{ ...s.at([face[name][0] + hold[0], face[name][1] + hold[1]]), rotate: '0deg', scale: 0.7 }, { ...s.at(strewn[name]), rotate: `${i ? 14 : -16}deg`, scale: 1 }], 700, 'cubic-bezier(0.2, 0.9, 0.3, 1.1)'),
+    scene.move(buddies[name].node, [s.at(near[name]), s.at(knocked[name])], 450, 'cubic-bezier(0.2, 1.4, 0.4, 1)'),
+    scene.move(buddies[name].figure, [{ rotate: '0deg' }, { rotate: `${i ? 20 : -20}deg` }, { rotate: '0deg' }], 900),
+    scene.move(copies[name], [{ ...s.at(near[name]), rotate: '0deg', opacity: 1, scale: 0.4 }, { ...s.at(strewn[name]), rotate: `${i ? 14 : -16}deg`, opacity: 1, scale: 1 }], 700, 'cubic-bezier(0.2, 0.9, 0.3, 1.1)'),
   ]));
-  avatars[0].classList.add('pj-failed');
-  await scene.wait(700);
-  for (const avatar of avatars) avatar.classList.remove('pj-failed');
+  const yours = me.face.querySelector('.pj-avatar');
+  yours.classList.add('pj-failed');
+  await scene.wait(1400);
+  yours.classList.remove('pj-failed');
 
   // they walk back to their rooms, and you are left to merge the two
   me.face.dataset.presence = 'working';
   me.tag.textContent = 'Merging by hand';
   await Promise.all(['Clippy', 'Otto'].map((name) => run(scene, s, buddies[name], [knocked[name], door[name], seat[name]], 1600, { walk: true })));
+  for (const name of ['Clippy', 'Otto']) pose(buddies[name], {});
   await scene.wait(1800);
 }
 
-// The blackboard: one board, and everyone in front of it with a pen. The
-// buddies watch it; all three walk up and write on it at once, each line in
-// its writer's colour, then step back.
+// The blackboard: one board, and everyone in front of it. The buddies watch
+// it; all three walk up and write on it at once, each with a pen raised and
+// each line in its writer's colour, then step back.
 async function blackboard(scene) {
   watching(true);
   const s = sketch(scene.stage);
@@ -337,17 +400,12 @@ async function blackboard(scene) {
   const board = s.place(paper('Doc', [85, 60]), [s.W / 2, up ? 150 : 120], up ? [360, 220] : [520, 180]);
   board.classList.add('arch-board');
   const back = up ? s.H - 70 : s.H - 60; // where they stand, then where they write
-  const close = up ? 330 : 280;
+  const close = up ? 330 : 285;
   const gap = up ? 120 : 170;
   const who = {};
   for (const [name, x] of [['Clippy', s.W / 2 - gap], ['You', s.W / 2], ['Otto', s.W / 2 + gap]]) {
     who[name] = actor(name, 'idle');
     who[name].x = x;
-    const pen = el('span', 'arch-pen');
-    pen.append(icon('pencil'));
-    pen.style.setProperty('--buddy', buddyColor(name));
-    who[name].figure.append(pen);
-    who[name].pen = pen;
     s.place(who[name].node, [x, back]);
   }
 
@@ -357,17 +415,18 @@ async function blackboard(scene) {
     const line = bar(width);
     paint(line, name);
     board.append(line);
-    who[name].face.dataset.presence = 'working';
-    who[name].figure.toggleAttribute('data-writing', true);
     await scene.wait(i * 300);
-    if (!still) who[name].pen.animate([{ rotate: '-12deg' }, { rotate: '14deg' }, { rotate: '-12deg' }], { duration: 260, iterations: 7 });
+    who[name].face.dataset.presence = 'working';
+    pose(who[name], { arms: 'write' });
+    if (!still) who[name].parts['arms-write'].animate([{ rotate: '-6deg' }, { rotate: '8deg' }, { rotate: '-6deg' }], { duration: 300, iterations: 6 });
     await scene.move(line, [{ width: '0%' }, { width: `${width}%` }], 1800);
     who[name].face.dataset.presence = 'idle';
-    who[name].figure.toggleAttribute('data-writing', false);
+    pose(who[name], {});
   });
   await Promise.all(lines);
   await scene.wait(600);
   await Promise.all(Object.values(who).map((member) => run(scene, s, member, [[member.x, close], [member.x, back]], 900, { walk: true })));
+  pose(who.You, {});
   await scene.wait(2200);
 }
 

@@ -150,29 +150,23 @@ a { color: var(--accent); }
 .arch-board b { color: var(--on-text); font-size: 13px; }
 .arch-board .arch-bar { height: 8px; }
 .arch-board .arch-bar:not(.arch-mine) { background: var(--on-text); opacity: 0.35; }
-/* a pen in a member's hand, in its colour */
-.arch-pen { position: absolute; top: 46%; left: 96%; z-index: 2; display: flex; color: var(--buddy); transform-origin: 20% 80%; transition: top 0.3s, left 0.3s; }
-.arch-figure[data-writing] .arch-pen { top: -6%; left: 96%; }
-.arch-pen .pj-icon { width: 20px; height: 20px; stroke-width: 2.25; }
 
 /* a scene as a diagram: boxes and arrows in an SVG, members over it at the same points (sketch in arch-story.js) */
 .arch-sketch { position: relative; max-height: 100%; container-type: inline-size; }
-.arch-sketch svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
-/* a member in a scene: its face on stick arms and legs, which swing as it runs or walks */
-.arch-figure { --face: clamp(32px, 7.4cqw, 56px); --step: 0.2s; --swing: 30deg; position: relative; width: var(--face); height: calc(var(--face) * 80 / 56); }
+.arch-sketch > svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+/* a member in a scene: its face with arms and legs drawn as by hand, what it holds, and
+   what its face shows over its own eyes (LIMBS, PROPS and LOOKS in arch-story.js) */
+.arch-figure { --face: clamp(32px, 7.4cqw, 56px); position: relative; width: var(--face); height: calc(var(--face) * 80 / 56); }
 .arch-figure .pj-avatar { --size: var(--face); }
-.arch-limbs { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; fill: none; stroke: var(--text); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
-.arch-limbs path { transform-box: view-box; transition: rotate 0.3s; }
-.arch-arm-l { transform-origin: 10px 34px; }
-.arch-arm-r { transform-origin: 46px 34px; }
-.arch-leg-l { transform-origin: 23px 48px; }
-.arch-leg-r { transform-origin: 33px 48px; }
-.arch-figure[data-move="walk"] { --step: 0.32s; --swing: 16deg; }
-.arch-figure[data-move] :is(.arch-leg-l, .arch-arm-r) { animation: arch-swing var(--step) ease-in-out infinite alternate; }
-.arch-figure[data-move] :is(.arch-leg-r, .arch-arm-l) { animation: arch-swing var(--step) ease-in-out infinite alternate-reverse; }
-.arch-figure[data-writing] .arch-arm-r { rotate: -100deg; }
-@keyframes arch-swing { from { rotate: calc(var(--swing) * -1); } to { rotate: var(--swing); } }
-@media (prefers-reduced-motion: reduce) { .arch-limbs path { animation: none !important; } }
+.arch-limbs, .arch-looks { position: absolute; overflow: visible; fill: none; stroke: var(--text); stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
+.arch-limbs { inset: 0; width: 100%; height: 100%; stroke-width: 2.6; }
+.arch-limbs g { transform-box: view-box; transform-origin: 48px 27px; }
+.arch-right .arch-limbs { scale: -1 1; }
+.arch-looks { inset: 0; z-index: 1; width: var(--face); height: var(--face); stroke-width: 4; }
+.arch-figure[data-look="dazed"] .pj-face-eyes { opacity: 0; }
+.arch-prop { fill: var(--canvas); stroke-width: 2; }
+.arch-prop-pen { fill: var(--buddy); }
+.arch-prop-ink { stroke: var(--buddy); stroke-width: 2.2; }
 .arch-at { position: absolute; translate: -50% -50%; }
 .arch-ink { fill: none; stroke: var(--text-soft); stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
 .arch-lost { stroke: var(--red); stroke-width: 2; }
