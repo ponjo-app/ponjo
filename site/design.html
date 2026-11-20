@@ -49,7 +49,7 @@
   <ol>
     <li><strong>Reuse before adding.</strong> Use an existing class (<code>.pj-primary</code>, <code>.pj-secondary</code>, <code>.pj-icon-btn</code>, <code>.pj-input</code>, <code>.pj-segmented</code>, <code>.pj-switch</code>, <code>.pj-radio</code>, <code>.pj-panel</code>…) before writing a new rule.</li>
     <li><strong>Colours are tokens.</strong> No hex, <code>rgb()</code>, <code>oklch()</code>, <code>black</code> or <code>white</code> outside the token blocks at the top of <code>app.css</code>. A colour with a new meaning gets a token there, and a line on this page, first.</li>
-    <li><strong>Colour means something.</strong> Grey for the UI; ink for the one primary action and for what is on or selected; a buddy's own colour only for that buddy; red for danger and deletions (a buddy's deletions are grey); green for insertions and online; yellow for commented text; blue only for focus, text selection, found text and links; the game table's own colours (felt, cards, chips) only on its table; the running track's (track, lane lines, field) only on its track.</li>
+    <li><strong>Colour means something.</strong> Grey for the UI; ink for the one primary action and for what is on or selected; a buddy's own colour only for that buddy; red for danger and deletions (a buddy's deletions are grey); green for insertions and online; yellow for commented text; blue only for focus, text selection, found text and links; the game table's own colours (felt, cards, chips) only on its table; the running track's (track, lane lines, field) only on its track; the campfire's (ground, fire) only round its fire.</li>
     <li><strong>Sizes come from the scales.</strong> Font sizes 11, 12, 13, 14, 16, 20, 24px, and 36px only for a site page's headline; weights 400, 500, 600; radii 0, 4, 6, 10, 14px or full; spacing 2, 4, 6, 8, 12, 16, 24, 32, 48px; control heights 24, 28, 32px (36 and 40 for bars and big buttons).</li>
     <li><strong>One of each control.</strong> Icon buttons are <code>.pj-icon-btn</code>: 28px, 32 in the header, 24 inside a row. Menu and list rows share one size, set once in <code>app.css</code>: 28px tall, 8px side padding, radius 6, 13px; grey on hover, <code>--active</code> when selected or current.</li>
     <li><strong>One primary button per view.</strong> Everything else is secondary, ghost or a link button.</li>
@@ -90,6 +90,16 @@
     <div class="ds-swatch"><i style="background: var(--suit-red)"></i><b>--suit-red</b><span>Hearts and diamonds</span></div>
     <div class="ds-swatch"><i style="background: var(--card-back)"></i><b>--card-back</b><span>A card face down</span></div>
     <div class="ds-swatch"><i style="background: linear-gradient(90deg, var(--chip-white) 20%, var(--chip-red) 20% 40%, var(--chip-blue) 40% 60%, var(--chip-black) 60% 80%, var(--chip-gold) 80%)"></i><b>--chip-*</b><span>White, red, blue, black; gold for the pot</span></div>
+  </div>
+
+  <h3>The campfire</h3>
+  <p>Only the <a href="werewolf.html">werewolf page</a> uses these: the players sit round a fire in a clearing, so colour there means the game. The game's clock is the page's theme: while a game is on, the page is light by day and dark by night, turning as the narrator calls night or day, and the theme switch is gone. The ground is warm sand by day and deep blue by night. The fire burns at night, its light wide, the only light there is; by day it is out, its logs and a wisp of smoke. A player known to be a werewolf, to you, is marked in <code>--wolf</code>; everything else a player shows (their role, a vote, a guess you noted) is ink on a chip, a guess dashed. Everything around the clearing (buttons, the log, dialogs) stays paper and ink, in the theme of the hour.</p>
+  <div class="ds-grid">
+    <div class="ds-swatch"><i style="background: var(--camp-day)"></i><b>--camp-day / -deep</b><span>The ground by day</span></div>
+    <div class="ds-swatch"><i style="background: var(--camp-night)"></i><b>--camp-night / -deep</b><span>The ground by night</span></div>
+    <div class="ds-swatch"><i style="background: linear-gradient(90deg, var(--fire-core) 50%, var(--fire) 50%)"></i><b>--fire / --fire-core</b><span>The flames; --fire-glow the light round them</span></div>
+    <div class="ds-swatch"><i style="background: var(--log)"></i><b>--log</b><span>The wood it burns</span></div>
+    <div class="ds-swatch"><i style="background: var(--wolf)"></i><b>--wolf</b><span>A werewolf, as far as you know</span></div>
   </div>
 
   <h3>The running track</h3>

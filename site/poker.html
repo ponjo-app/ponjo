@@ -46,20 +46,13 @@
       <button class="pj-link-button" type="button" data-action="invite">Invite friends</button>
       <button class="pj-link-button" type="button" data-action="topup">Top up</button>
       <button class="pj-link-button" type="button" data-action="leave">Leave table</button>
+      <button class="pj-link-button pk-chat-open" type="button" data-action="chat" hidden>Show chat</button>
     </div>
     <div class="pk-table">
       <div class="pk-felt">
         <div class="pk-center">
           <div class="pk-pot" hidden><span class="pk-chip"></span><span class="pk-pot-amount"></span></div>
           <div class="pk-board" aria-label="Board"></div>
-          <div class="pk-result" hidden>
-            <p class="pk-result-text" aria-live="polite"></p>
-            <p class="pk-wait-host" hidden>Waiting for the host to deal the next hand.</p>
-            <div class="pk-between">
-              <button class="pj-primary" type="button" data-action="next">Next hand</button>
-              <button class="pj-secondary" type="button" data-action="thinking">Show their thinking</button>
-            </div>
-          </div>
         </div>
       </div>
       <div class="pk-seats"></div>
@@ -68,17 +61,34 @@
     </div>
     <div class="pk-me">
       <div class="pk-mine">
-        <div class="pk-hole pk-hole-mine" aria-label="Your cards"></div>
-        <p class="pk-strength"></p>
+        <div class="pk-pocket">
+          <div class="pk-hole pk-hole-mine" aria-label="Your cards"></div>
+          <p class="pk-strength"></p>
+        </div>
       </div>
       <div class="pk-act">
+        <p class="pk-phase"></p>
+        <p class="pk-turn" role="status"></p>
+        <div class="pk-recovery" hidden>
+          <button class="pj-secondary" type="button" data-action="retry">Retry</button>
+          <details><summary>Details</summary><p></p></details>
+        </div>
+        <div class="pk-result" hidden>
+          <p class="pk-result-text" aria-live="polite"></p>
+          <p class="pk-wait-host" hidden>Waiting for the host to deal the next hand.</p>
+          <div class="pk-between">
+            <button class="pj-primary" type="button" data-action="next">Next hand</button>
+            <button class="pj-secondary" type="button" data-action="thinking">Show their thinking</button>
+          </div>
+        </div>
         <div class="pk-controls" hidden>
           <div class="pk-sizes" hidden>
+            <label class="pk-sizing" for="pk-wager"></label>
             <button class="pj-secondary" type="button" data-size="min">Min</button>
             <button class="pj-secondary" type="button" data-size="half">½ pot</button>
             <button class="pj-secondary" type="button" data-size="pot">Pot</button>
             <button class="pj-secondary" type="button" data-size="max">All in</button>
-            <input class="pk-slider" type="range" aria-label="Raise to">
+            <input id="pk-wager" class="pk-slider" type="range">
           </div>
           <div class="pk-buttons">
             <button class="pj-secondary" type="button" data-action="fold">Fold</button>
@@ -88,7 +98,6 @@
         </div>
       </div>
     </div>
-    <button class="pj-secondary pk-chat-open" type="button" data-action="chat" hidden>Chat</button>
   </section>
   <aside class="pk-chat" aria-label="Chat">
     <div class="pk-chat-head">

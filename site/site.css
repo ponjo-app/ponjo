@@ -114,10 +114,13 @@ a { color: var(--accent); }
 
 /* a slide: 1280×720, scaled to the window by --fit (arch-story.js), its title, the scene and
    what it shows as one, no frame; on a screen taller than wide, the page instead, as tall as the window */
-.arch-slides { display: grid; place-items: center; height: calc(100dvh - 53px); overflow: hidden; }
+.arch-slides { display: grid; grid-template: minmax(0, 1fr) / minmax(0, 1fr); place-items: center; height: calc(100dvh - 53px); overflow: hidden; }
 .arch-story { box-sizing: border-box; display: flex; flex-direction: column; gap: 16px; width: 1280px; height: 720px; padding: 40px 64px 28px; scale: var(--fit, 1); }
 .arch-head { display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center; }
 .arch-head:has(:empty + :empty) { display: none; }
+.arch-mark { display: inline-block; margin-inline-end: .4em; font-size: .85em; font-weight: 600; }
+.arch-mark-problem { color: var(--red); }
+.arch-mark-solution { color: var(--green); }
 .arch-kicker { margin: 0; color: var(--text-faint); font-size: 16px; font-weight: 600; }
 .arch-heading { margin: 0; color: var(--text); font-size: 36px; font-weight: 600; line-height: 1.25; letter-spacing: -0.02em; text-wrap: balance; }
 .arch-heading:empty { display: none; }
@@ -130,7 +133,7 @@ a { color: var(--accent); }
 .arch-dot[aria-current] { background-color: var(--text); }
 @media (max-aspect-ratio: 6/5), (max-width: 720px) {
   .arch-slides { display: block; height: auto; overflow: visible; }
-  .arch-story { width: auto; height: calc(100dvh - 53px); min-height: 560px; padding: 16px; gap: 12px; scale: none; }
+  .arch-story { width: auto; height: calc(100dvh - var(--header-height, 53px)); min-height: 560px; padding: 16px; gap: 12px; scale: none; }
   .arch-kicker { font-size: 13px; }
   .arch-heading { font-size: 24px; }
   .arch-say { min-height: 4.5em; font-size: 16px; line-height: 1.5; }
@@ -139,11 +142,43 @@ a { color: var(--accent); }
 /* the cover: Clippy, the title and what the story is about */
 .arch-cover h1 { max-width: 640px; margin: 0; font-size: 36px; font-weight: 600; line-height: 1.25; letter-spacing: -0.02em; text-align: center; text-wrap: balance; }
 .arch-cover p { max-width: 560px; margin: 0; color: var(--text-soft); font-size: 16px; line-height: 1.6; text-align: center; }
+.arch-say:empty { display: none; }
+.arch-story {
+  --slate: #22453f;
+  --chalk: #f2f3df;
+  --mint: #9fe4c4;
+  --frame: #b58c64;
+}
+.arch-slate, .arch-paper.arch-board {
+  background-color: var(--slate);
+  background-image: radial-gradient(ellipse at 25% 10%, #ffffff12, transparent 70%),
+    radial-gradient(#ffffff12 .7px, transparent .9px);
+  background-size: auto, 5px 5px;
+}
+.arch-slate {
+  width: min(84%, 390px); position: relative; transform: rotate(-2deg);
+  border: 6px solid var(--frame); border-radius: 8px;
+  box-shadow: inset 0 2px 5px #132b2955, 0 4px 0 #805f46, 0 14px 22px -14px #182b2666;
+}
+.arch-slate::after {
+  content: ""; position: absolute; bottom: 1px; left: 16%; width: 23px; height: 4px;
+  background: var(--chalk); border-radius: 2px; transform: rotate(2deg);
+}
+.arch-slate > svg { display: block; width: 100%; }
+.arch-chalk { fill: none; stroke: var(--chalk); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+.arch-chalk-route, .arch-chalk-return { stroke: var(--mint); stroke-width: 2.5; }
+.arch-chalk-edit { stroke: #ffca85; stroke-width: 4; }
+.arch-slate .dl-pet { position: absolute; right: -5%; bottom: -12%; transform: rotate(7deg); }
+.arch-slate .pj-avatar { --size: clamp(56px, 9vw, 82px); }
+.arch-cover h1 { max-width: 920px; margin-top: 12px; font-size: 48px; }
+.arch-actor .arch-figure::before {
+  content: ""; position: absolute; bottom: -2px; left: 12%; width: 76%; height: 7%;
+  border-radius: 50%; background: color-mix(in srgb, var(--text) 12%, transparent);
+}
 
 /* a point: what the scenes after it show, and, quieter, what it replaces */
 .arch-point h2 { display: flex; flex-direction: column; gap: 8px; max-width: 680px; margin: 0; font-size: 36px; font-weight: 600; line-height: 1.25; letter-spacing: -0.02em; text-align: center; text-wrap: balance; }
 .arch-instead { color: var(--text-faint); }
-/* struck out in red, a deletion: the line is drawn across it as one run of text, line by line */
 .arch-instead del { text-decoration: none; background: linear-gradient(var(--red), var(--red)) no-repeat 0 58% / 0% 3px; }
 
 /* a member: its face over its name */
@@ -155,9 +190,9 @@ a { color: var(--accent); }
 .arch-bar { display: block; flex: none; height: 6px; border-radius: 9999px; background: var(--border-strong); transition: background-color 0.4s; }
 .arch-bar.arch-mine { background: var(--buddy); }
 /* a relay: the track, a baton, the z's of a sleeper; a headset and its call; the board of legs run */
-.arch-track { fill: var(--track); fill-rule: evenodd; stroke: none; }
-.arch-field { fill: var(--field); stroke: none; }
-.arch-track-lane { fill: none; stroke: var(--track-line); stroke-width: 2.5; }
+.arch-track { fill: color-mix(in srgb, var(--track) 58%, var(--canvas)); fill-rule: evenodd; }
+.arch-field { fill: var(--bg-soft); }
+.arch-track-lane { fill: none; stroke: var(--canvas); stroke-width: 1.8; }
 .arch-baton { overflow: visible; fill: var(--canvas); stroke: var(--text); stroke-width: 2; }
 .arch-zzz { display: flex; gap: 2px; color: var(--text-soft); font-size: 14px; font-weight: 600; font-style: italic; }
 .arch-zzz i { animation: arch-zzz 2.4s ease-in-out infinite; }
@@ -169,15 +204,12 @@ a { color: var(--accent); }
 .arch-waves { transform-box: fill-box; transform-origin: left center; }
 .arch-headset-cups { fill: var(--bg); stroke: var(--text); stroke-width: 4; }
 .arch-headset-dots { fill: none; stroke: var(--text); stroke-width: 5; stroke-linecap: round; }
-/* the runtime as an eye on a round body, with lashes; the wires from it to the headsets, and a call's pulse */
+/* the runtime eye; the wires from it to the headsets, and a call's pulse */
 .arch-eye { overflow: visible; fill: none; stroke: var(--text); stroke-linecap: round; stroke-linejoin: round; }
-.arch-eye-lash { stroke-width: 4; }
-.arch-eye-body { fill: var(--canvas); stroke-width: 4; }
-.arch-eye-white { fill: var(--bg); stroke: none; }
+.arch-eye-white, .arch-eye-glint { fill: var(--canvas); stroke: none; }
 .arch-eye-pupil { fill: var(--text); stroke: none; }
-.arch-eye-glint { fill: var(--bg); stroke: none; }
-.arch-eye-lid { fill: var(--bg-soft); stroke: none; transform-box: fill-box; transform-origin: top; }
-.arch-eye-rim { stroke-width: 3; }
+.arch-eye-lid { fill: var(--bg-soft); stroke: var(--text-soft); stroke-width: 1.6; transform-box: fill-box; transform-origin: top; }
+.arch-eye-rim { stroke: var(--text-soft); stroke-width: 2.5; }
 .arch-wire { stroke: var(--border-strong); stroke-width: 2; }
 .arch-pulse { stroke: var(--text); stroke-width: 3; }
 /* a line on the board with the face of the buddy it is for: asked for, it is highlighted;
@@ -192,21 +224,21 @@ a { color: var(--accent); }
 .arch-ask.arch-found { box-shadow: inset 0 0 0 2px var(--accent); }
 /* delegate: a room only its agent works in, a doorway in the wall that faces you, a desk;
    and the spark where two agents running back crash */
-.arch-room { box-sizing: border-box; border: 2px solid var(--border-strong); border-radius: 14px; background: var(--bg-soft); }
+.arch-room { box-sizing: border-box; border: 1.5px solid var(--border-strong); border-radius: 6px; background: var(--bg-soft); }
 .arch-room::after { content: ""; position: absolute; background: var(--bg-soft); }
-.arch-room[data-door="left"]::after { top: calc(50% - 26px); left: -2px; width: 2px; height: 52px; }
-.arch-room[data-door="bottom"]::after { bottom: -2px; left: calc(50% - 26px); width: 52px; height: 2px; }
-.arch-room span { position: absolute; bottom: 8px; left: 12px; color: var(--text-faint); font-size: 12px; white-space: nowrap; }
-.arch-desk { border-radius: 3px; background: var(--border-strong); }
-.arch-desk::before, .arch-desk::after { content: ""; position: absolute; top: 100%; width: 4px; height: 18px; background: var(--border-strong); }
+.arch-room[data-door="left"]::after { top: calc(50% - 26px); left: -2px; width: 3px; height: 52px; }
+.arch-room[data-door="bottom"]::after { bottom: -2px; left: calc(50% - 26px); width: 52px; height: 3px; }
+.arch-room span { position: absolute; bottom: 8px; left: 12px; color: var(--text-soft); font-size: 12px; white-space: nowrap; }
+.arch-desk { border-radius: 2px; background: var(--border-strong); }
+.arch-desk::before, .arch-desk::after { content: ""; position: absolute; top: 100%; width: 3px; height: 16px; background: var(--border-strong); }
 .arch-desk::before { left: 10px; }
 .arch-desk::after { right: 10px; }
 .arch-spark { overflow: visible; fill: var(--red); }
 /* the blackboard: a board in ink in a frame, with a ledge; everyone's lines on it in their colours */
-.arch-paper.arch-board { gap: 12px; padding: 16px 20px; border-radius: 6px; background: var(--text); box-shadow: 0 0 0 6px var(--border-strong), var(--shadow-raised); }
-.arch-board b { color: var(--on-text); font-size: 13px; }
+.arch-paper.arch-board { gap: 12px; padding: 16px 20px; border-radius: 4px; box-shadow: 0 0 0 5px var(--frame), 0 4px 0 5px #805f46, var(--shadow-raised); }
+.arch-board b { color: var(--chalk); font-size: 13px; }
 .arch-board .arch-bar { height: 8px; }
-.arch-board .arch-bar:not(.arch-mine) { background: var(--on-text); opacity: 0.35; }
+.arch-board .arch-bar:not(.arch-mine) { background: var(--chalk); opacity: 0.5; }
 
 /* a scene as a diagram: boxes and arrows in an SVG, members over it at the same points (sketch in arch-story.js) */
 .arch-sketch { position: absolute; top: 50%; left: 50%; translate: -50% -50%; container-type: inline-size; }
@@ -239,8 +271,8 @@ a { color: var(--accent); }
 .arch-node { display: flex; flex-direction: column; justify-content: center; gap: 2px; box-sizing: border-box; padding: 8px 12px; border-radius: 10px; background: var(--canvas); box-shadow: inset 0 0 0 1.25px var(--border-strong); text-align: center; }
 .arch-node b { font-size: 13px; font-weight: 600; }
 .arch-node span { color: var(--text-soft); font-size: 12px; line-height: 1.35; }
-.arch-node-ink { background: var(--text); box-shadow: none; }
-.arch-node-ink b, .arch-node-ink span { color: var(--on-text); }
+.arch-node-ink { background: var(--slate); box-shadow: inset 0 0 0 3px var(--frame); }
+.arch-node-ink b, .arch-node-ink span { color: var(--chalk); }
 .arch-label { padding: 0 4px; background: var(--canvas); color: var(--text-soft); font-size: 12px; white-space: nowrap; }
 .arch-label-over { background: none; }
 /* the summary: the design system's table, its cells words that wrap, the blackboard column in ink */
@@ -260,16 +292,18 @@ a { color: var(--accent); }
 .arch-stat span { color: var(--text-soft); font-size: 12px; }
 .arch-note { margin: 0; color: var(--text-faint); font-size: 12px; line-height: 1.5; }
 /* the loop going round: a dot in ink, and the box it reaches, ringed for a moment */
-.arch-token { width: 12px; height: 12px; border-radius: 50%; background: var(--text); box-shadow: 0 0 0 3px var(--canvas); opacity: 0; }
+.arch-story { --signal: color-mix(in srgb, var(--mint) 52%, var(--text)); }
+.arch-ink.arch-flow, .arch-ink.arch-pulse { stroke: var(--signal); stroke-width: 2.5; }
 .arch-node { transition: box-shadow 0.25s; }
-.arch-node.arch-node-on { box-shadow: inset 0 0 0 2.5px var(--text); }
-.arch-node-ink.arch-node-on { box-shadow: 0 0 0 3px var(--canvas), 0 0 0 5px var(--text); }
-.arch-infield { display: flex; align-items: center; justify-content: center; color: var(--text-faint); font-size: 13px; line-height: 1.4; text-align: center; text-decoration: underline; text-underline-offset: 2px; }
+.arch-node.arch-node-on { box-shadow: inset 0 0 0 2.5px var(--signal); }
+.arch-node-ink.arch-node-on { box-shadow: 0 0 0 3px var(--canvas), 0 0 0 5px var(--signal); }
+.arch-infield { display: flex; align-items: center; justify-content: center; color: var(--text-soft); font-size: 13px; line-height: 1.4; text-align: center; text-decoration: underline; text-underline-offset: 2px; }
 
 @media (max-width: 560px) {
   .arch-cover h1, .arch-point h2 { font-size: 24px; }
   .arch-nav { gap: 8px; }
-  .arch-nav > button { min-width: 72px; }
+  .arch-nav > button { min-width: 0; padding-inline: 10px; }
+  .arch-dots { flex-wrap: wrap; justify-content: center; }
   .arch-dot { width: 16px; height: 16px; padding: 5px; }
   .arch-compare :is(th, td) { padding: 6px; font-size: 12px; }
   .arch-stat { padding: 12px; }
