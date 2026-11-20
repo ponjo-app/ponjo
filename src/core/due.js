@@ -48,9 +48,7 @@ export const OUTSIDE = Symbol('outside');
  */
 export function plan({ buddies, threads, askers, taken, relayed = new Map(), notes, changedAt, running, steps, text, now }) {
   const noteOf = (id) => notes.get(id) ?? { seen: new Map(), lookedAt: null, base: null, heard: null, wake: null, watch: null };
-  const lines = new Set(text.split(/
-?
-/));
+  const lines = new Set(text.split(/\r?\n/));
   const heard = new Set(threads.flatMap((t) => t.comments.map((c) => c.id)));
   const tasks = new Map(); // buddy id → { threads, askers, asked, watch }
   const taskOf = (id) => tasks.get(id) ?? tasks.set(id, { threads: [], askers: new Set(), asked: false, relayed: false, watch: null }).get(id);
