@@ -782,6 +782,100 @@ function architecture(scene) {
 }
 architecture.once = true;
 
+// Every difference, side by side: [what, event-triggered, blackboard].
+const DIFFERENCES = [
+  ['Where agents work', 'Apart, each in a session of its own', 'Beside you, on one board'],
+  ['The truth', 'Messages in flight and each agent’s memory: a split brain', 'One board; agents remember nothing between runs'],
+  ['Who changes it', 'Each agent, on its own copy', 'Only the writer, in order; agents propose'],
+  ['Conflicts', 'Merged by hand, afterwards', 'A stale proposal is refused, re-read and proposed again'],
+  ['What wakes an agent', 'A message for it', 'The runtime, reading the board: whoever is due'],
+  ['A lost message, a restart', 'The work is lost', 'Nothing lost: the board still says what is due'],
+  ['Who goes next', 'An orchestrator wires it', 'Nobody: the board shows it'],
+  ['When it stops', 'When the events run out, or never', 'When what people asked for is met; chains are capped, fights go to a person'],
+  ['Fits', 'Fixed flows that split into independent tasks', 'Shared work that people and agents improve together'],
+];
+
+// The differences as a table, in the design system's (.pj-usage-table), a row at a time.
+async function summary(scene) {
+  scene.stage.classList.add('arch-summary');
+  const table = el('table', 'pj-usage-table arch-compare');
+  const head = el('tr');
+  head.append(...['', 'Event-triggered', 'Blackboard'].map((words) => el('th', '', words)));
+  const rows = DIFFERENCES.map((cells) => {
+    const row = el('tr');
+    row.append(...cells.map((words) => el('td', '', words)));
+    row.style.opacity = '0';
+    return row;
+  });
+  table.append(el('thead'), el('tbody'));
+  table.tHead.append(head);
+  table.tBodies[0].append(...rows);
+  scene.stage.append(table);
+  for (const row of rows) {
+    scene.fade(row, 1, 300).catch(() => {});
+    await scene.wait(110);
+  }
+}
+summary.once = true;
+
+// What comes of it: three things that emerge, then the numbers from Ponjo's
+// own runtime, rolling from where they were to where they are.
+async function outcome(scene) {
+  scene.stage.classList.add('arch-outcome');
+  const GETS = [
+    ['Always on, with no jobs.', 'Agents act whenever the board changes, whoever changed it. When nothing changes, nothing runs.'],
+    ['Parallel work on one board, with no branches.', 'Many agents and people edit at once; nothing to merge back.'],
+    ['Coordination with no orchestrator.', 'One agent’s change is the next one’s cue.'],
+  ];
+  const list = el('ul', 'arch-gets');
+  const items = GETS.map(([what, why]) => {
+    const item = el('li');
+    item.append(el('b', '', what), ' ', el('span', '', why));
+    item.style.opacity = '0';
+    return item;
+  });
+  list.append(...items);
+  // [number from, number to, digits, unit, what it counts]
+  const STATS = [
+    [0, 0, 0, '', 'actions lost'],
+    [3.4, 1, 1, '', 'runs per action, from 3.4'],
+    [5.2, 0.25, 2, ' s', 'per action, from 5.2 s'],
+  ];
+  const stats = el('div', 'arch-stats');
+  const figures = STATS.map(([from, , digits, unit, what]) => {
+    const tile = el('div', 'arch-stat');
+    const figure = el('b', '', `${from.toFixed(digits)}${unit}`);
+    tile.append(figure, el('span', '', what));
+    stats.append(tile);
+    return figure;
+  });
+  const foot = el('p', 'arch-note', 'Open-card Hold’em on Ponjo’s runtime, with scripted agents. The ');
+  const link = el('a', '', 'poker page');
+  link.href = 'poker.html';
+  foot.append(link, ', built apart with a small runtime of its own, came to the same shape: a pure plan, a view per player, a writer that refuses stale moves.');
+  const body = el('div', 'arch-outcome-body');
+  body.append(el('h2', '', 'What you get'), list, stats, foot);
+  scene.stage.append(body);
+
+  for (const item of items) {
+    scene.fade(item, 1, 300).catch(() => {});
+    await scene.wait(250);
+  }
+  await scene.wait(300);
+  const STEPS = 24;
+  for (let k = 1; k <= STEPS; k++) {
+    const t = 1 - (1 - k / STEPS) ** 3; // fast, then easing in
+    STATS.forEach(([from, to, digits, unit], i) => {
+      figures[i].textContent = `${(from + (to - from) * t).toFixed(digits)}${unit}`;
+    });
+    await scene.wait(50);
+  }
+  STATS.forEach(([, to, digits, unit], i) => {
+    figures[i].textContent = `${to.toFixed(digits === 1 && Number.isInteger(to) ? 0 : digits)}${unit}`;
+  });
+}
+outcome.once = true;
+
 // [eyebrow, the idea in a line, the scene]
 const CHAPTERS = [
   ['', 'Press Start.', cover],
@@ -793,6 +887,8 @@ const CHAPTERS = [
   ['When agents run · State', 'Reconciled from state: the runtime reads the board and calls whoever’s leg isn’t run, again until it is. Nobody wires who goes next, and a missed call costs nothing.', state],
   ['Architecture · Event-triggered', 'The common way: state lives in messages in flight and in each agent’s memory. Lose a message and the work is lost, and someone has to wire who triggers whom.', eventsArchitecture],
   ['Architecture · Blackboard', 'One board, one writer: people and agents propose changes, the writer lands them in order, and the runtime reads the board to start whoever is due.', architecture],
+  ['Summary', 'Two ways to run many agents, side by side.', summary],
+  ['Outcome', 'What emerges when the board is the only state, and the runtime decides from it.', outcome],
 ];
 
 // ---- the story: a chapter at a time, with Back, Next and a dot for each ----

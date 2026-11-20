@@ -203,6 +203,23 @@ a { color: var(--accent); }
 .arch-node-ink b, .arch-node-ink span { color: var(--on-text); }
 .arch-label { padding: 0 4px; background: var(--canvas); color: var(--text-soft); font-size: 12px; white-space: nowrap; }
 .arch-label-over { background: none; }
+/* the summary: the design system's table, its cells words that wrap, the blackboard column in ink */
+.arch-stage.arch-summary { justify-content: safe center; overflow-y: auto; }
+.arch-compare { max-width: 760px; }
+.arch-compare :is(th, td) { padding: 8px 12px; text-align: left; vertical-align: top; white-space: normal; line-height: 1.45; }
+.arch-compare td:first-child { max-width: none; width: 22%; overflow: visible; }
+.arch-compare td:last-child { color: var(--text); }
+/* the outcome: what you get, then the numbers as tiles */
+.arch-stage.arch-outcome { justify-content: safe center; overflow-y: auto; }
+.arch-outcome-body { display: flex; flex-direction: column; gap: 24px; width: 100%; max-width: 640px; }
+.arch-outcome h2 { margin: 0; font-size: 24px; font-weight: 600; letter-spacing: -0.02em; }
+.arch-gets { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0; list-style: none; color: var(--text-soft); font-size: 14px; line-height: 1.5; }
+.arch-gets b { color: var(--text); font-weight: 600; }
+.arch-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.arch-stat { display: flex; flex-direction: column; gap: 4px; padding: 16px; border-radius: 10px; background: var(--bg-soft); }
+.arch-stat b { font-size: 24px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.arch-stat span { color: var(--text-soft); font-size: 12px; }
+.arch-note { margin: 0; color: var(--text-faint); font-size: 12px; line-height: 1.5; }
 /* the loop going round: a dot in ink, and the box it reaches, ringed for a moment */
 .arch-token { width: 12px; height: 12px; border-radius: 50%; background: var(--text); box-shadow: 0 0 0 3px var(--canvas); opacity: 0; }
 .arch-node { transition: box-shadow 0.25s; }
@@ -216,4 +233,7 @@ a { color: var(--accent); }
   .arch-nav { gap: 8px; }
   .arch-nav > button { min-width: 72px; }
   .arch-dot { width: 16px; height: 16px; padding: 5px; }
+  .arch-compare :is(th, td) { padding: 6px; font-size: 12px; }
+  .arch-stat { padding: 12px; }
+  .arch-stat b { font-size: 20px; }
 }
