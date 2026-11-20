@@ -19,15 +19,15 @@ const DEPTH = 2; // a line this deep in replies wakes no one: nobody replies to 
 export const PERSONAS = [
   {
     id: 'Gary',
-    style: 'You are a tourist on holiday who wandered into the casino for fun. You barely know the strategy: you play almost every hand, call far too much, raise on a whim (a lucky feeling, pretty cards, your birthday), and hate to fold. Cheerful and chatty: you celebrate tiny wins, ask the table naive questions, and say what you hold out loud by mistake now and then.',
+    style: 'You are a tourist on holiday who wandered into the casino for fun. You barely know the strategy: you play almost every hand, call far too much, raise on a whim (a lucky feeling, pretty cards, your birthday), and hate to fold. Cheerful and chatty: you celebrate tiny wins, ask the table naive questions, and say what you hold out loud by mistake now and then. You react to nearly everything, mostly 😮 👏 🔥.',
   },
   {
     id: 'Duke',
-    style: 'You are rude, cocky and aggressive. You raise and re-raise a lot, bully short stacks and go all in to make people sweat. You talk trash with nearly every action, unprompted: mock a fold, needle whoever is winning, brag about pots you took, taunt the person to call you. Keep it playful-mean table banter: no slurs, no swearing, nothing about anyone\'s real life.',
+    style: 'You are rude, cocky and aggressive. You raise and re-raise a lot, bully short stacks and go all in to make people sweat. You talk trash with nearly every action, unprompted: mock a fold, needle whoever is winning, brag about pots you took, taunt the person to call you. Keep it playful-mean table banter: no slurs, no swearing, nothing about anyone\'s real life. You react often, to mock: 😂 at a fold or a small bet, 😤 when someone beats you.',
   },
   {
     id: 'Penny',
-    style: 'You are careful and calculating: every chip counts. You fold weak hands, call only with the right pot odds, bet your strong hands for value and rarely bluff. You talk little, and when you do it is dry and precise: the price of a call, the pot odds, a quick count of outs.',
+    style: 'You are careful and calculating: every chip counts. You fold weak hands, call only with the right pot odds, bet your strong hands for value and rarely bluff. You talk little, and when you do it is dry and precise: the price of a call, the pot odds, a quick count of outs. You rarely react: a 👍 for a well-played hand.',
   },
 ];
 
@@ -148,6 +148,14 @@ export const INTROS = [
 ];
 export const introduce = (table, [id, text]) => say(table, id, text, { depth: DEPTH });
 
+// The reactions anyone may send: an emoji shown by their face a moment.
+export const REACTIONS = ['😂', '😮', '😤', '👍', '👏', '🔥'];
+export function react(table, by, emoji) {
+  if (!REACTIONS.includes(emoji)) return false;
+  commit(table, { type: 'react', by, emoji, hand: table.hand?.id ?? 0 });
+  return true;
+}
+
 // A line of chat, by the person, a player or the dealer.
 export function say(table, by, text, { depth = 0, about = null } = {}) {
   const body = String(text).trim().slice(0, MAX_SAY);
@@ -207,6 +215,7 @@ export function land(table, id, basis, proposal) {
   } else if (landed && n) {
     n.rejected = '';
   }
+  if (proposal.react) react(table, id, proposal.react);
   const text = proposal.say;
   if (typeof text === 'string' && text.trim()) {
     const about = basis.about ? table.chat[basis.about - 1] : null;
@@ -228,13 +237,14 @@ You are woken when it is your turn, when someone talks to you (or the person tal
 - thinking: your private reasoning in one to three short sentences. No one sees it during the hand; afterwards the person may read it.
 - action: only when it is your turn, and then always. { "type": "fold" | "check" | "call" | "bet" | "raise" | "allin", "amount": the total for the street, only for bet and raise }.
 - say: optional, one short line to the table in your own voice, under 20 words. How often you talk is your character's; leave it out when you would have nothing to say. At most one of you usually answers the person, and a reply needs no reply. You may bluff in what you say, but never claim to see others' cards.
+- react: optional, one emoji shown by your face for a moment, as players react at a real table: ${REACTIONS.join(' ')}. Use it freely, with or without a line, when a moment calls for one: a big raise, a bluff, a bad beat, someone winning a pot, a good line in the chat. How often is your character's.
 
 Play to win chips, as yourself. Be quick.`;
 
 // The tool the model answers with, as INFER (agents/ponjo-core.mjs) takes tools.
 export const DECIDE = {
   name: 'decide',
-  description: 'Your private thinking, your action when it is your turn, and optionally a line to the table.',
+  description: 'Your private thinking, your action when it is your turn, and optionally a line to the table and a reaction.',
   parameters: {
     type: 'object',
     properties: {
@@ -248,6 +258,7 @@ export const DECIDE = {
         required: ['type'],
       },
       say: { type: 'string', description: 'One short line to the table, or left out.' },
+      react: { type: 'string', enum: REACTIONS, description: 'One emoji shown by your face a moment, or left out.' },
     },
     required: ['thinking'],
   },
@@ -300,6 +311,8 @@ export function prompt(table, id, due) {
       parts.push(`It is your turn. To call: ${hand.currentBet - hand.seats[me].bet}. You may: ${l}.${table.notes[id].rejected ? `\n${table.notes[id].rejected}` : ''}`);
     }
   }
+  const reactions = table.log.filter((c) => c.type === 'react' && c.hand === (hand?.id ?? 0)).slice(-8);
+  if (reactions.length) parts.push(`Reactions this hand, latest last: ${reactions.map((c) => `${c.by === id ? `${id} (you)` : c.by === HUMAN ? 'the person' : c.by} ${c.emoji}`).join(', ')}.`);
   const chat = table.chat.slice(-CHAT_SHOWN);
   if (chat.length) parts.push(['The chat, latest last:', ...chat.map((l) => `- ${l.by === id ? `${id} (you)` : l.by === 'dealer' ? 'Dealer' : nameOf(l.by)}: ${l.text}`)].join('\n'));
   const why = [
