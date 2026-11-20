@@ -543,14 +543,30 @@ const LEGS = { Clippy: [180, 240] }; // the leg Clippy runs, stopping short of P
 function race(scene) {
   const s = sketch(scene.stage);
   const up = s.upright;
-  const [cx, cy] = up ? [200, 290] : [380, 220];
-  const [rx, ry] = up ? [150, 185] : [290, 145]; // the lane they run in
+  // A track as anyone knows one: two straights joined by half circles, four
+  // lanes, lying across the scene, smaller on a phone. `r` is the radius
+  // of the line between lanes 2 and 3, `half` half a straight; `k` moves out
+  // (or in) from that line. A place on it is an angle in degrees, clockwise
+  // from the right: 90 the middle of the near straight, 270 of the far one.
+  const [cx, cy] = up ? [200, 300] : [380, 222];
+  const [half, r, lane] = up ? [52, 82, 15] : [166, 112, 18];
   const on = (deg, k = 0) => {
-    const a = (deg * Math.PI) / 180;
-    return [cx + (rx + k) * Math.cos(a), cy + (ry + k) * Math.sin(a)];
+    const R = r + k;
+    const P = 2 * Math.PI * r + 4 * half; // round the line, the lengths that set where 90, 180 and 270 fall
+    let d = ((((deg / 360) % 1) + 1) % 1) * P;
+    const bend = (from, to) => [cx + to * half + R * Math.cos(from + d / r), cy + R * Math.sin(from + d / r)];
+    if (d < (Math.PI * r) / 2) return bend(0, 1);
+    d -= (Math.PI * r) / 2;
+    if (d < 2 * half) return [cx + half - d, cy + R];
+    d -= 2 * half;
+    if (d < Math.PI * r) return bend(Math.PI / 2, -1);
+    d -= Math.PI * r;
+    if (d < 2 * half) return [cx - half + d, cy - R];
+    d -= 2 * half;
+    return bend((3 * Math.PI) / 2, 1);
   };
-  const at = (deg) => { // a runner on the track: its feet on the lane
-    const [x, y] = on(deg);
+  const at = (deg) => { // a runner on the track: its feet in the inside lanes
+    const [x, y] = on(deg, -lane / 2);
     return [x, y - 30];
   };
   const arc = (from, to) => {
@@ -559,14 +575,22 @@ function race(scene) {
     points.push(at(to));
     return points;
   };
-  // the track: a wide band, its lanes in white lines, edged, a start line across it
-  const ring = (k) => `M${f(cx - rx - k)} ${f(cy)} a${f(rx + k)} ${f(ry + k)} 0 1 0 ${f(2 * (rx + k))} 0 a${f(rx + k)} ${f(ry + k)} 0 1 0 ${f(-2 * (rx + k))} 0`;
-  s.ink(ring(0), 'arch-track-band');
-  for (const k of [-11, 11]) s.ink(ring(k), 'arch-track-lane');
-  for (const k of [-33, 33]) s.ink(ring(k), 'arch-track-edge');
-  const [sx0, sy0] = on(90, -33);
-  const [sx1, sy1] = on(90, 33);
-  s.ink(`M${f(sx0)} ${f(sy0)} L${f(sx1)} ${f(sy1)}`, 'arch-track-start');
+  // an outline of the track at `k`, as a path
+  const outline = (k) => {
+    const points = [];
+    for (let deg = 0; deg < 360; deg += 2) points.push(on(deg, k));
+    return `M${points.map(([x, y]) => `${f(x)} ${f(y)}`).join(' L')} Z`;
+  };
+  s.ink(`${outline(2 * lane)} ${outline(-2 * lane)}`, 'arch-track');
+  s.ink(outline(-2 * lane), 'arch-field');
+  for (const k of [-2, -1, 0, 1, 2]) s.ink(outline(k * lane), 'arch-track-lane');
+  // the start, staggered lane by lane, on the near straight's left
+  for (let i = 0; i < 4; i++) {
+    const deg = 120 - i * 3;
+    const [x0, y0] = on(deg, (i - 2) * lane);
+    const [x1, y1] = on(deg, (i - 1) * lane);
+    s.ink(`M${f(x0)} ${f(y0)} L${f(x1)} ${f(y1)}`, 'arch-track-lane');
+  }
   const who = {};
   for (const [name, deg] of Object.entries(RUNNERS)) {
     who[name] = actor(name, name === 'Pip' ? 'away' : 'idle');

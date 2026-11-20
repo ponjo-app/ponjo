@@ -148,10 +148,9 @@ a { color: var(--accent); }
 .arch-bar { display: block; flex: none; height: 6px; border-radius: 9999px; background: var(--border-strong); transition: background-color 0.4s; }
 .arch-bar.arch-mine { background: var(--buddy); }
 /* a relay: the track, a baton, the z's of a sleeper; a headset and its call; the board of legs run */
-.arch-track-band { fill: none; stroke: var(--border); stroke-width: 66; }
-.arch-track-lane { fill: none; stroke: var(--canvas); stroke-width: 2; stroke-dasharray: 10 8; }
-.arch-track-edge { fill: none; stroke: var(--border-strong); stroke-width: 2; }
-.arch-track-start { stroke: var(--canvas); stroke-width: 5; }
+.arch-track { fill: var(--track); fill-rule: evenodd; stroke: none; }
+.arch-field { fill: var(--field); stroke: none; }
+.arch-track-lane { fill: none; stroke: var(--track-line); stroke-width: 2.5; }
 .arch-baton { overflow: visible; fill: var(--canvas); stroke: var(--text); stroke-width: 2; }
 .arch-zzz { display: flex; gap: 2px; color: var(--text-soft); font-size: 14px; font-weight: 600; font-style: italic; }
 .arch-zzz i { animation: arch-zzz 2.4s ease-in-out infinite; }
