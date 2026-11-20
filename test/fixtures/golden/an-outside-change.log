@@ -1,0 +1,30 @@
++   0.000  plan.md  look · the buddies or who may ask changed
+  Ada     not due: no ask, not watching
+  Ben     not due: no ask, not watching
+  Clippy  not due: no ask, not watching
++   0.000  plan.md  look · Clippy's watch turned on
+  Clippy  due: its first look · started r1
+  Ada     not due: no ask, not watching
+  Ben     not due: no ask, not watching
++   0.000  plan.md  look · a comment by Clippy, rev 1
+  Clippy  not due: already running (no change since its look at rev 0)
+  Ada     not due: no ask, not watching
+  Ben     not due: no ask, not watching
++   0.000  plan.md  run r1 of Clippy ended: ok in 0.0 s · Posted, 1 comments
++   0.000  plan.md  look · run r1 of Clippy ended
+  Clippy  not due: no change since its look at rev 0
+  Ada     not due: no ask, not watching
+  Ben     not due: no ask, not watching
++   1.600  plan.md  look · an edit by outside the app, rev 2
+  Clippy  due: changed by outside the app at rev 2, after its look at rev 0 · started r2
+  Ada     not due: no ask, not watching
+  Ben     not due: no ask, not watching
++   1.600  plan.md  look · a comment by Clippy, rev 3
+  Clippy  not due: already running (no change since its look at rev 2)
+  Ada     not due: no ask, not watching
+  Ben     not due: no ask, not watching
++   1.600  plan.md  run r2 of Clippy ended: ok in 0.0 s · Posted, 1 comments
++   1.600  plan.md  look · run r2 of Clippy ended
+  Clippy  not due: no change since its look at rev 2
+  Ada     not due: no ask, not watching
+  Ben     not due: no ask, not watching

@@ -1,0 +1,17 @@
++   0.000  plan.md  look · the buddies or who may ask changed
+  Ada     not due: no ask, not watching
+  Ben     not due: no ask, not watching
+  Clippy  not due: no ask, not watching
++   0.000  plan.md  look · a comment by a person, rev 1
+  Clippy  due: asked in c1 · started r1
+  Ada     not due: no ask, not watching
+  Ben     not due: no ask, not watching
++   0.050  plan.md  look · a comment by Clippy, rev 3
+  Clippy  stopped: nothing asks it now
+  Ada     not due: no ask, not watching
+  Ben     not due: no ask, not watching
++   0.050  plan.md  run r1 of Clippy ended: ok in 0.0 s · Posted, 1 comments
++   0.050  plan.md  look · run r1 of Clippy ended
+  Ada     not due: no ask, not watching
+  Ben     not due: no ask, not watching
+  Clippy  not due: no ask, not watching
