@@ -34,6 +34,8 @@ before(async () => {
     bindings: {
       ENDPOINT: { type: 'plain_text', value: `http://127.0.0.1:${server.address().port}/v1` },
       TOKEN_FACTORY_KEY: { type: 'plain_text', value: 'tf-secret-test' },
+      ANTHROPIC_ENDPOINT: { type: 'plain_text', value: `http://127.0.0.1:${server.address().port}/v1` },
+      ANTHROPIC_API_KEY: { type: 'plain_text', value: 'sk-ant-secret-test' },
     },
     dev: { server: { hostname: '127.0.0.1', port: 0 }, inspector: false, watch: false, persist: false },
   });
@@ -44,7 +46,7 @@ after(async () => {
   await api?.close();
 });
 
-const ask = (body, { origin = ORIGIN, ip = '203.0.113.1', method = 'POST' } = {}) => fetch(url, {
+const ask = (body, { origin = ORIGIN, ip = '203.0.113.1', method = 'POST', to = url } = {}) => fetch(to, {
   method,
   headers: { 'content-type': 'application/json', authorization: 'Bearer x', ...(origin && { origin }), 'cf-connecting-ip': ip },
   ...(method === 'POST' && { body: typeof body === 'string' ? body : JSON.stringify(body) }),
@@ -61,6 +63,23 @@ test('a step from the preview goes on with the key, the model and a cap of its o
   assert.equal(sent.url, '/v1/chat/completions');
   assert.equal(sent.headers.authorization, 'Bearer tf-secret-test', 'the key is the Worker\'s, not the page\'s');
   assert.deepEqual(sent.body, { model: 'nvidia/nemotron-3-super-120b-a12b', max_tokens: 4000, messages, tools, tool_choice: 'auto' }, 'only the messages and tools are the page\'s');
+});
+
+test('a poker player\'s step goes on to Anthropic with the Worker\'s key, Haiku and caps, whatever the page asked', async () => {
+  const before = api.requests.length;
+  const tools = [{ name: 'decide', description: 'd', input_schema: { type: 'object' } }];
+  const messages = [{ role: 'user', content: [{ type: 'text', text: 'the rules', cache_control: { type: 'ephemeral' } }] }];
+  const to = url.replace('/infer/chat/completions', '/infer/anthropic/messages');
+  const response = await ask({ model: 'claude-opus-5-5', max_tokens: 100_000, output_config: { effort: 'max' }, tool_choice: { type: 'auto' }, tools, messages }, { to, ip: '203.0.113.6' });
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get('access-control-allow-origin'), ORIGIN);
+  const sent = api.requests[before];
+  assert.equal(sent.url, '/v1/messages');
+  assert.equal(sent.headers['x-api-key'], 'sk-ant-secret-test', 'the key is the Worker\'s, not the page\'s');
+  assert.deepEqual(sent.body, { model: 'claude-haiku-5-5', max_tokens: 4000, output_config: { effort: 'low' }, messages, tools, tool_choice: { type: 'auto' } });
+  const preflight = await ask(null, { to, method: 'OPTIONS' });
+  assert.match(preflight.headers.get('access-control-allow-headers'), /x-api-key, anthropic-version, anthropic-dangerous-direct-browser-access/, 'INFER.anthropic\'s headers may be sent');
+  assert.equal((await ask({ messages }, { to, origin: 'https://evil.example', ip: '203.0.113.6' })).status, 403);
 });
 
 test('the preflight is answered for the preview\'s page only', async () => {

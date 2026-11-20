@@ -5,8 +5,10 @@
 // controller, which on every change looks at the table and starts the runs
 // `plan` says are due, never acting on an event itself; a run, one call of
 // the visitor's model through INFER (agents/ponjo-core.mjs); and the table
-// drawn with the app's classes and faces. The key is the visitor's own,
-// kept in this browser and sent only to their model's provider.
+// drawn with the app's classes and faces. The players run on Claude Haiku
+// through infer.ponjo.app (relay/worker.js), which holds Ponjo's key; or,
+// with a visitor's own key, kept in this browser and sent only to their
+// model's provider, on the model they pick.
 // preview/build.js bundles it into dist/preview, as the site serves it.
 
 /* global document, HTMLDialogElement */
@@ -20,6 +22,7 @@ import { DECIDE, HUMAN, PERSONAS, STACK, begin, deal, fail, land, newTable, plan
 const $ = (selector, root = document) => root.querySelector(selector);
 const el = (tag, className = '', text = '') => Object.assign(document.createElement(tag), { className, textContent: text });
 const SAVED = 'ponjo-poker';
+const HOSTED = 'https://infer.ponjo.app/infer/anthropic'; // Ponjo's key and model, for ponjo.app's pages only
 const POS = ['bottom', 'left', 'top', 'right'];
 const SUIT = { s: '♠', h: '♥', d: '♦', c: '♣' };
 const STREET = { flop: 'Flop', turn: 'Turn', river: 'River' };
@@ -30,7 +33,7 @@ setOwner(HUMAN);
 
 let table = newTable();
 const running = new Set();
-let settings = load();
+let settings = load(); // the visitor's own provider, key and model, or null for Ponjo's
 
 // ---- the visitor's model ----
 
@@ -47,16 +50,16 @@ function store(value) {
     else localStorage.removeItem(SAVED);
   } catch {}
 }
-const infer = () => (settings.provider === 'openai'
-  ? INFER.openai({ endpoint: settings.endpoint, model: settings.model, key: settings.key })
-  : INFER.anthropic({ model: settings.model, key: settings.key, effort: 'low' }));
+const infer = () => (!settings ? INFER.anthropic({ model: 'claude-haiku-5-5', key: 'ponjo' }, HOSTED) // the Worker sets the key, model and effort
+  : settings.provider === 'openai' ? INFER.openai({ endpoint: settings.endpoint, model: settings.model, key: settings.key })
+    : INFER.anthropic({ model: settings.model, key: settings.key, effort: 'low' }));
 
 // ---- the controller ----
 
 // Every change: draw it, then look again. A look starts what `plan` says is due; that is all it does.
 function changed() {
   draw();
-  if (settings) for (const due of plan(table, running)) run(due.id, due);
+  for (const due of plan(table, running)) run(due.id, due);
 }
 
 // One run of a player: what it is due for counts as seen, one model call, and its proposal to the writer.
@@ -151,7 +154,7 @@ function draw() {
   $('.pk-pot').textContent = hand ? `Pot ${pot}` : '';
   $('.pk-news').textContent = news();
   const over = !hand || hand.street === 'done';
-  $('.pk-between').hidden = !over || !settings;
+  $('.pk-between').hidden = !over;
   const ended = hand && (hand.seats[0].stack === 0 || hand.seats.filter((s) => s.stack > 0).length < 2);
   $('[data-action="next"]').textContent = !hand ? 'Deal' : ended ? 'New game' : 'Next hand';
   $('[data-action="thinking"]').hidden = !hand || hand.street !== 'done';
@@ -316,6 +319,7 @@ function drawSetup() {
   key.placeholder = settings?.provider === provider ? `••••••••${settings.key.slice(-4)}` : provider === 'anthropic' ? 'sk-ant-…' : '';
 }
 function openSetup() {
+  if (settings?.provider) provider = settings.provider;
   if (settings?.provider === 'openai') {
     setup.elements.endpoint.value = settings.endpoint;
     setup.elements.model.value = settings.model;
@@ -349,21 +353,25 @@ setup.addEventListener('submit', (event) => {
     error.hidden = false;
     return;
   }
+  use(next);
+});
+// From now on the players run on `next`, the visitor's own, or null for Ponjo's: what failed is tried again.
+function use(next) {
   settings = next;
   store(settings);
-  for (const { id } of PERSONAS) if (table.notes[id].failed) retry(table, id);
   setup.hidden = true;
   document.body.classList.remove('pk-setting-up');
-  if (!table.hand) nextHand();
-  else changed();
-});
-const forget = el('button', 'pj-link-button pk-forget', 'Forget my key');
+  drawModel();
+  for (const { id } of PERSONAS) if (table.notes[id].failed) retry(table, id);
+  changed();
+}
+const forget = el('button', 'pj-link-button pk-forget', 'Forget my key and play on Ponjo\'s');
 forget.type = 'button';
-forget.addEventListener('click', () => {
-  settings = null;
-  store(null);
-  openSetup();
-});
+forget.addEventListener('click', () => use(null));
+function drawModel() {
+  $('.pk-model').textContent = !settings ? 'The players run on Claude Haiku 5.5.' : `The players run on ${settings.provider === 'anthropic' ? `Claude ${$(`[data-model="${settings.model}"]`, setup).textContent}` : settings.model}, with your key.`;
+  $('[data-action="key"]').textContent = settings ? 'Change' : 'Use your own key';
+}
 
 // ---- wiring ----
 
@@ -373,6 +381,10 @@ document.addEventListener('click', (event) => {
   else if (action === 'thinking') showThinking();
   else if (action === 'close') $('.pk-thinking').close();
   else if (action === 'key') openSetup();
+  else if (action === 'cancel') {
+    setup.hidden = true;
+    document.body.classList.remove('pk-setting-up');
+  }
   else if (action === 'fold') play({ type: 'fold' });
   else if (action === 'call') play({ type: legal(table.hand, 0).check ? 'check' : 'call' });
   else if (action === 'raise') {
@@ -394,6 +406,5 @@ $('.pk-say').addEventListener('submit', (event) => {
 
 $('.pk-news').textContent = `Play chips only. Everyone starts with ${STACK.toLocaleString('en')}.`;
 setup.querySelector('.pk-error').after(forget);
-if (settings) nextHand();
-else openSetup();
-draw();
+drawModel();
+nextHand();

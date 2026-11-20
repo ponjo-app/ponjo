@@ -31,22 +31,25 @@
 // on to ENDPOINT with the key, the model and a cap on tokens of its own, and
 // its answer comes back as is. Only the messages and tools are taken from
 // the page, with `tool_choice: auto` as every provider of the Ponjo agent
-// sends it (docs/ponjo-agent.md). An address asks at most 60 times a
-// minute (INFER).
+// sends it (docs/ponjo-agent.md). POST /infer/anthropic/messages is the
+// poker page's players' (site/poker.html): an Anthropic Messages request as
+// INFER.anthropic sends it goes on to ANTHROPIC_ENDPOINT with the
+// ANTHROPIC_API_KEY and ANTHROPIC_MODEL, the same way. An address asks
+// at most 60 times a minute (INFER), on both.
 
 /* global WebSocketPair, WebSocketRequestResponsePair */
 
 const ROOM = /^\/rooms\/([0-9a-f]{64})$/;
 const MAX_PAGES = 20;
 const MAX_MESSAGE = 8 * 2 ** 20; // characters: room for the plain view's longest doc (5,000,000)
-const INFER = '/infer/chat/completions';
 const MAX_INFER = 200_000; // characters of a request: a turn on a sample doc, read whole
 const MAX_TOKENS = 4000; // of an answer: one step's tool call
 
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
-    if (env.ENDPOINT && url.pathname === INFER) return infer(request, env);
+    if (env.ENDPOINT && url.pathname === '/infer/chat/completions') return infer(request, env, chat);
+    if (env.ANTHROPIC_API_KEY && url.pathname === '/infer/anthropic/messages') return infer(request, env, anthropic);
     const room = url.pathname.match(ROOM)?.[1];
     if (!room || request.headers.get('Upgrade') !== 'websocket') return new Response('Not found', { status: 404 });
     const limit = url.searchParams.has('host') ? env.HOSTS : env.PAGES;
@@ -154,10 +157,11 @@ export class Room {
   }
 }
 
-// One step of a preview buddy's model, from the preview's own page only.
-async function infer(request, env) {
+// One step of a model, from ORIGIN's pages only: `forward` sends the
+// page's messages and tools on, with the key, the model and the caps.
+async function infer(request, env, forward) {
   if (request.headers.get('Origin') !== env.ORIGIN) return new Response('Forbidden', { status: 403 });
-  const cors = { 'access-control-allow-origin': env.ORIGIN, 'access-control-allow-headers': 'content-type, authorization', vary: 'Origin' };
+  const cors = { 'access-control-allow-origin': env.ORIGIN, 'access-control-allow-headers': 'content-type, authorization, x-api-key, anthropic-version, anthropic-dangerous-direct-browser-access', vary: 'Origin' };
   if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
   const refuse = (status, why) => new Response(why, { status, headers: cors });
   if (request.method !== 'POST') return refuse(405, 'POST only');
@@ -168,15 +172,23 @@ async function infer(request, env) {
   try {
     asked = JSON.parse(body);
   } catch {} // checked below
-  if (!Array.isArray(asked?.messages)) return refuse(400, 'Chat Completions takes messages');
-  const { messages, tools } = asked;
-  const answer = await fetch(`${env.ENDPOINT}/chat/completions`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', authorization: `Bearer ${env.TOKEN_FACTORY_KEY}` },
-    body: JSON.stringify({ model: env.MODEL, max_tokens: MAX_TOKENS, messages, tools, tool_choice: 'auto' }),
-  });
+  if (!Array.isArray(asked?.messages)) return refuse(400, 'A request takes messages');
+  const answer = await forward(asked, env);
   return new Response(answer.body, { status: answer.status, headers: { ...cors, 'content-type': answer.headers.get('content-type') ?? 'application/json' } });
 }
+
+const chat = ({ messages, tools }, env) => fetch(`${env.ENDPOINT}/chat/completions`, {
+  method: 'POST',
+  headers: { 'content-type': 'application/json', authorization: `Bearer ${env.TOKEN_FACTORY_KEY}` },
+  body: JSON.stringify({ model: env.MODEL, max_tokens: MAX_TOKENS, messages, tools, tool_choice: 'auto' }),
+});
+
+// A poker player's step thinks little: it must answer in a few seconds.
+const anthropic = ({ messages, tools }, env) => fetch(`${env.ANTHROPIC_ENDPOINT}/messages`, {
+  method: 'POST',
+  headers: { 'content-type': 'application/json', 'x-api-key': env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+  body: JSON.stringify({ model: env.ANTHROPIC_MODEL, max_tokens: MAX_TOKENS, output_config: { effort: 'low' }, messages, tools, tool_choice: { type: 'auto' } }),
+});
 
 function close(socket, code, reason) {
   try {
