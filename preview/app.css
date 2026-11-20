@@ -590,8 +590,8 @@ del.pj-buddy-del { margin-right: 0.15em; }
 .pj-working, .pj-watching { display: flex; align-items: center; gap: 7px; margin-right: 6px; }
 .pj-watching[hidden] { display: none; }
 .pj-watching .pj-avatar { --size: 16px; }
-.pj-steps { display: flex; align-items: center; gap: 4px; margin-right: 6px; }
-.pj-steps[hidden] { display: none; }
+.pj-paused { display: flex; align-items: center; gap: 4px; margin-right: 6px; }
+.pj-paused[hidden] { display: none; }
 .pj-working[hidden] { display: none; }
 .pj-working-ring { flex: none; width: 14px; height: 14px; animation: pj-spin 1s linear infinite; }
 .pj-working-ring circle { fill: none; stroke-width: 2; }
