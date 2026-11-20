@@ -128,7 +128,7 @@ let rev = 0;
 const running = new Map(); // buddy id → thread ids
 const failures = new Map(); // buddy id → Map(thread id → { at, why }): a failed run posts nothing, as in the app
 const watching = new Set(); // the buddies a person turned watch on for: shown, never run here (the preview runs only on comments)
-let steps = { left: 0, cap: 20, next: null }; // none left, to show Refill
+let watches = { paused: true }; // paused, to show Resume
 const agents = () => buddies().map((b) => ({ ...b, state: running.has(b.id) ? 'running' : 'ready', threadIds: running.get(b.id) ?? [], failed: [...(failures.get(b.id) ?? [])].map(([thread, f]) => ({ thread, ...f })), watching: watching.has(b.id) }));
 
 function view() {
@@ -263,7 +263,7 @@ function changedBuddies() {
 }
 
 const calls = {
-  state: () => ({ doc: name(current), text: s.files[current], epoch, rev, ...view(), settings: s.settings, defaultName: 'you', me: me(), level: 'owner', owner: me().id, agents: agents(), steps, project: inFolder }),
+  state: () => ({ doc: name(current), text: s.files[current], epoch, rev, ...view(), settings: s.settings, defaultName: 'you', me: me(), level: 'owner', owner: me().id, agents: agents(), watches, project: inFolder }),
   submit({ ops, rev: at, epoch: from, id }) {
     if (from !== epoch || at !== rev) throw Object.assign(new Error('the doc has moved on'), { code: 'stale' });
     s.files[current] = apply(s.files[current], ops);
@@ -278,9 +278,9 @@ const calls = {
     emit('agents', agents());
     return {};
   },
-  refillSteps() {
-    steps = { ...steps, left: steps.cap, next: null };
-    emit('steps', steps);
+  resume() {
+    watches = { paused: false };
+    emit('watches', watches);
     return {};
   },
   retry({ buddy }) {

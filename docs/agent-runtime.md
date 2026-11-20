@@ -126,22 +126,15 @@ only, never the world's content. In Ponjo: Settings > Agents > Agent log.
 
 ## Today
 
-The code is the runtime above, before the world interface was drawn out:
+What the code does differently from the runtime above:
 
 - One runtime per open doc (`src/host/open-doc.js`); it stops when the doc
   closes.
-- `src/host/buddy-runtime.js` calls the doc's door directly, and lands a
-  run itself with Translate (`src/core/translate.js`) and `merge3`.
-- It hears changes through a callback, and also looks every minute to catch
-  an event that was lost.
-- It notes the doc's text at each look, not a fingerprint of a view.
-- Chains are limited by steps (`src/core/bucket.js`): up to 20, one more a
-  minute; a run woken or asked by an agent takes one. There is no depth and
-  no breaker.
 - Every member sees the whole doc and every thread; in project mode the
   agent program may read the project folder.
 - Nothing is refused: the doc world merges.
 - An agent program may act outside the doc as its own config allows.
 
 Code: the loop is `src/host/buddy-runtime.js`, the plan `src/core/due.js`,
-the run `src/host/runner.js`, the prompt `src/core/prompt.js`.
+the run `src/host/runner.js`; the doc world `src/host/doc-world.js`, its
+asks `asksIn` (`src/core/comments.js`) and its prompt `src/core/prompt.js`.

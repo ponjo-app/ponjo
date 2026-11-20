@@ -45,6 +45,12 @@ const ask = todo.map((t) => t.ask).join('\n\n');
 const settings = Object.fromEntries(Object.entries(process.env).filter(([key]) => key.startsWith('PONJO_SETTING_')));
 const onPath = (process.env.PATH ?? '').split(delimiter).some((d) => d && ['ponjo', 'ponjo.cmd'].some((f) => existsSync(join(d, f))));
 appendFileSync(join(dir, 'runs.log'), JSON.stringify({ buddy, ask, threadIds: threads.map((t) => t.id), cwd: process.cwd(), files: readdirSync(process.cwd()), doc, comments, project, projectFiles: project ? readdirSync(project).sort() : null, prompt, settings, ponjo: onPath }) + '\n');
+// With FAKE_STEP set, each run waits as it starts for $FAKE_DIR/go-<pid>,
+// saying so in waiting-<buddy>.<pid>: a test lets each go on in turn.
+if (process.env.FAKE_STEP) {
+  writeFileSync(join(dir, `waiting-${buddy}.${process.pid}`), '');
+  while (!existsSync(join(dir, `go-${process.pid}`))) await new Promise((r) => setTimeout(r, 5));
+}
 if (process.env.PONJO_TRACE) appendFileSync(process.env.PONJO_TRACE, `${JSON.stringify({ started: ask })}\nnot JSON\n`);
 // `usage`: a step as the Ponjo agent writes it, with the Claude API's count.
 if (/\busage\b/.test(ask)) appendFileSync(process.env.PONJO_TRACE, `${JSON.stringify({ role: 'assistant', model: 'claude-opus-5-5', usage: { input_tokens: 100, output_tokens: 10, cache_read_input_tokens: 900 } })}\n`);

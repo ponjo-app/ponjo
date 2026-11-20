@@ -77,11 +77,11 @@ AI buddies.
    typing again while it works, it stops and looks again at your next
    pause. If a run fails, its card says "Watch failed", with why and
    **Retry**. Each buddy watching also runs when another buddy changes
-   the doc, so two can play a game there; each such run takes one of the
-   doc's steps, shown in the status bar ("14 steps"). Out of steps, they
-   wait for the next (one a minute) or for **Refill**; Settings > Agents
-   sets how many and how often. Why a buddy ran or did not is in Settings >
-   Agents > **Agent log**.
+   the doc, so two can play a game there, a long one. Should a doc's
+   buddies run very often (300 runs in 10 minutes; Settings > Agents sets
+   both), its watches pause and the status bar says "Watches paused", with
+   **Resume**. Why a buddy ran or did not is in Settings > Agents >
+   **Agent log**.
 5. **Anyone allowed decides.** Keep an edit, undo it from the comment it
    came with, reply again, or resolve the thread, whoever asked and
    whoever answered.
@@ -161,8 +161,8 @@ and 30 days, and by model.
 - Work starts with people's comments: yours, and a teammate's who can
   edit. A turn acts as whoever asked it may when it ends: if they were
   removed or set to Read meanwhile, nothing it did lands. An AI buddy's
-  reply asks only an AI buddy it `@`mentions, for that same person and for
-  one of the doc's steps; an `@name` typed in the doc's text asks no one.
+  reply asks only an AI buddy it `@`mentions, for that same person; an
+  `@name` typed in the doc's text asks no one.
 - A comment that reached the file from outside Ponjo (a `git pull`, another
   editor, another computer) asks no one.
 - A comment that mentions several AI buddies asks each; they work at once.

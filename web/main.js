@@ -210,8 +210,8 @@ async function start() {
   made = chooseView(openedText);
   showSize(made, openedText);
   docBar = createDocBar(document.querySelector('.pj-docbar'), {
-    onRefill: () => api.refillSteps().catch(() => {}),
-    canRefill: () => !reading(),
+    onResume: () => api.resume().catch(() => {}),
+    canResume: () => !reading(),
   });
   editor = await makeView(made, initial.text);
   countWords();
@@ -299,7 +299,7 @@ async function start() {
   people.render({ agents: initial.agents });
   if (inProject && level === 'owner') api.room().then((room) => people.render({ room }), () => {});
   docBar.setAgents(initial.agents);
-  docBar.setSteps(initial.steps);
+  docBar.setWatches(initial.watches);
   shownAgents = JSON.stringify(initial.agents);
   agents = initial.agents;
   applyComments(initial);
@@ -416,7 +416,7 @@ async function start() {
     history.changed();
     afterTyping('sidecar', refreshThreads); // a buddy's turn's receipt is read from its version
   });
-  events.on('steps', (data) => docBar.setSteps(data));
+  events.on('watches', (data) => docBar.setWatches(data));
   events.on('agents', (data) => {
     showAgents(data);
     runs.refresh(); // a run that ended has its trace

@@ -1,0 +1,35 @@
++   0.000  plan.md  look · the buddies or who may ask changed
+  Ada     not due: no ask, not watching
+  Ben     not due: no ask, not watching
+  Clippy  not due: no ask, not watching
++   0.000  plan.md  look · a comment by a person, rev 1
+  Ada     due: asked in c1 · started r1
+  Ben     due: asked in c1 · started r2
+  Clippy  not due: no ask, not watching
++   0.000  plan.md  look · a comment by Ada, rev 2
+  Ben     not due: already running (asked in c1)
+  Ada     stopped: nothing asks it now
+  Clippy  not due: no ask, not watching
++   0.000  plan.md  run r1 of Ada ended: ok in 0.0 s · Posted, 1 comments
++   0.000  plan.md  look · run r1 of Ada ended
+  Ben     not due: already running (asked in c1 by a buddy)
+  Ada     not due: no ask, not watching
+  Clippy  not due: no ask, not watching
++   0.000  plan.md  look · a comment by Ben, rev 3
+  Ben     not due: already running (asked in c1 by a buddy)
+  Ada     not due: no ask, not watching
+  Clippy  not due: no ask, not watching
++   0.000  plan.md  run r2 of Ben ended: ok in 0.0 s · Posted, 1 comments
++   0.000  plan.md  look · run r2 of Ben ended
+  Ben     due: asked in c1 by a buddy · depth 1 · started r3
+  Ada     not due: no ask, not watching
+  Clippy  not due: no ask, not watching
++   0.000  plan.md  look · a comment by Ben, rev 4
+  Ben     stopped: nothing asks it now
+  Ada     not due: no ask, not watching
+  Clippy  not due: no ask, not watching
++   0.000  plan.md  run r3 of Ben ended: ok in 0.0 s · Posted, 1 comments
++   0.000  plan.md  look · run r3 of Ben ended
+  Ada     not due: no ask, not watching
+  Ben     not due: no ask, not watching
+  Clippy  not due: no ask, not watching
