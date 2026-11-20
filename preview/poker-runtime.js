@@ -15,27 +15,102 @@ const MAX_SAY = 240; // characters of a line at the table
 const MAX_TRIES = 3; // proposals turned away on one turn before the dealer folds or checks for the player
 const CHAT_SHOWN = 24; // latest lines a prompt has
 const DEPTH = 2; // a line this deep in replies wakes no one: nobody replies to a reply forever
+export const MAX_SEATS = 6;
 
 export const PERSONAS = [
   {
     id: 'Gary',
+    blurb: 'A tourist who plays any two cards',
+    hello: ['Hi folks! Gary, first time at a real table. My wife is at the slots.', 'Quick one: a flush is the all-same-colour thing, right?'],
+    bye: 'That\'s my wife texting. Bye, everyone!',
     style: 'You are a tourist on holiday who wandered into the casino for fun. You barely know the strategy: you play almost every hand, call far too much, raise on a whim (a lucky feeling, pretty cards, your birthday), and hate to fold. Cheerful and chatty: you celebrate tiny wins, ask the table naive questions, and say what you hold out loud by mistake now and then. You react to nearly everything, mostly 😮 👏 🔥.',
   },
   {
     id: 'Duke',
+    blurb: 'Rude, aggressive, talks trash',
+    hello: ['Name\'s Duke. Sit down, empty your wallet, try not to cry.'],
+    bye: 'Fine, I\'m out. None of you were worth my time anyway.',
     style: 'You are rude, cocky and aggressive. You raise and re-raise a lot, bully short stacks and go all in to make people sweat. You talk trash with nearly every action, unprompted: mock a fold, needle whoever is winning, brag about pots you took, taunt the person to call you. Keep it playful-mean table banter: no slurs, no swearing, nothing about anyone\'s real life. You react often, to mock: 😂 at a fold or a small bet, 😤 when someone beats you.',
   },
   {
     id: 'Penny',
+    blurb: 'Careful, counts every chip',
+    hello: ['Penny. I count every chip, so don\'t expect gifts.'],
+    bye: 'I\'ll take my chips and go. Good game.',
     style: 'You are careful and calculating: every chip counts. You fold weak hands, call only with the right pot odds, bet your strong hands for value and rarely bluff. You talk little, and when you do it is dry and precise: the price of a call, the pot odds, a quick count of outs. You rarely react: a 👍 for a well-played hand.',
   },
+  {
+    id: 'Mabel',
+    blurb: 'A sweet grandmother who sets traps',
+    hello: ['Hello, dears. Mabel. Don\'t mind me, I only play for fun.'],
+    bye: 'Time for my programme, dears. Take care now!',
+    style: 'You are a sweet, polite grandmother who plays cards every Thursday. You look harmless and play very tight, but with a big hand you set a trap: check and call, then raise on the river. You chat warmly, call people "dear", offer them biscuits, and apologise when you win. You react with 👏 and 👍.',
+  },
+  {
+    id: 'Lex',
+    blurb: 'An online grinder who talks theory',
+    hello: ['Lex. I usually play twelve tables online, so this is a holiday.'],
+    bye: 'Off to grind some real tables. GG.',
+    style: 'You are a young online grinder who plays twelve tables at once at home. You play solid, aggressive, balanced poker and talk in poker jargon: ranges, equity, "3-bet", "standard fold". A little smug, you explain the theory to people who did not ask. You react with 😮 at an odd play and 🔥 at your own.',
+  },
+  {
+    id: 'Hank',
+    blurb: 'A cowboy who loves a big bluff',
+    hello: ['Howdy, partners. Hank. Been playin\' cards since before y\'all were born.'],
+    bye: 'Saddlin\' up. Y\'all take care, partners.',
+    style: 'You are an old-school cowboy from the back-room card games, loose and aggressive, who plays on feel and reads people, not charts. You tell tall tales about legendary pots you won, call everyone "partner", and love a big bluff. You react with 😂 and 🔥.',
+  },
 ];
+const FIRST = ['Gary', 'Duke', 'Penny']; // the players at a new table, in seats 1, 3 and 5
+// Seat numbers go round the table from the person's, 0: six seats, a player keeps its own.
 
 // A new table: the person, who sits down with `buyIn` from their bankroll,
-// and the three players with STACK each.
-export function newTable(buyIn = STACK) {
-  const players = [{ id: HUMAN, stack: buyIn }, ...PERSONAS.map(({ id }) => ({ id, stack: STACK }))];
-  return { rev: 0, log: [], players, hand: null, handNo: 0, button: -1, topUp: 0, chat: [], notes: Object.fromEntries(PERSONAS.map(({ id }) => [id, note()])) };
+// and `ids`' players with STACK each. Players come and go between hands:
+// `joining` take a seat when the next hand is dealt, `leaving` give theirs up.
+export function newTable(buyIn = STACK, ids = FIRST) {
+  const players = [{ id: HUMAN, stack: buyIn }, ...ids.map((id) => ({ id, stack: STACK }))];
+  const slots = Object.fromEntries([[HUMAN, 0], ...ids.map((id, k) => [id, ids.length === 3 ? 2 * k + 1 : k + 1])]);
+  return { rev: 0, log: [], players, slots, hand: null, handNo: 0, button: -1, topUp: 0, joining: [], leaving: [], chat: [], notes: Object.fromEntries(PERSONAS.map(({ id }) => [id, note()])) };
+}
+
+// The seats no one has, or will have at the next hand.
+export const freeSeats = (table) => [...Array(MAX_SEATS).keys()].filter((k) => !lineup(table).some((p) => table.slots[p.id] === k)); // a leaving player's seat is its own till the hand ends
+
+// Who is at the table, in seat order, as it is drawn: the hand's seats (or
+// the players before the first hand), then those joining: [{ id, joining, leaving }].
+export const lineup = (table) => [
+  ...(table.hand ? table.hand.seats : table.players).map(({ id }) => ({ id, joining: false, leaving: table.leaving.includes(id) })),
+  ...table.joining.map((id) => ({ id, joining: true, leaving: false })),
+];
+const playing = (table) => lineup(table).filter((p) => p.id !== HUMAN && !p.leaving);
+
+// A player takes a seat at the next hand, and says hello. False if there
+// is no free seat, or it is already at the table.
+export function addPlayer(table, id, seat = freeSeats(table)[0]) {
+  const persona = PERSONAS.find((p) => p.id === id);
+  if (!persona || lineup(table).some((p) => p.id === id && !p.leaving)) return false;
+  if (table.leaving.includes(id)) table.leaving = table.leaving.filter((x) => x !== id); // asked to stay, in its own seat
+  else if (freeSeats(table).includes(seat)) {
+    table.joining.push(id);
+    table.slots[id] = seat;
+  } else return false;
+  commit(table, { type: 'join', by: id });
+  say(table, id, persona.hello[0], { depth: DEPTH });
+  return true;
+}
+
+// A player gives up its seat after this hand (at once if it has not sat
+// down yet), and says goodbye. False for the person, or for the last player
+// left to play against.
+export function removePlayer(table, id) {
+  if (id === HUMAN || !playing(table).some((p) => p.id === id) || playing(table).length < 2) return false;
+  if (table.joining.includes(id)) {
+    table.joining = table.joining.filter((x) => x !== id);
+    delete table.slots[id];
+  } else table.leaving.push(id);
+  commit(table, { type: 'part', by: id });
+  say(table, id, PERSONAS.find((p) => p.id === id).bye, { depth: DEPTH });
+  return true;
 }
 const note = () => ({ chatSeen: 0, reactSeen: 0, tries: 0, triesKey: '', rejected: '', failed: null, thoughts: [] });
 
@@ -72,11 +147,21 @@ export function leave(table) {
 // The next hand. A player out of chips buys back in for STACK first; the
 // person must buy in themselves, so with no chips there is no hand.
 export function deal(table, deck) {
-  const players = (table.hand ? table.hand.seats : table.players).map(({ id, stack }) => ({ id, stack }));
+  const before = (table.hand ? table.hand.seats : table.players).map(({ id, stack }) => ({ id, stack }));
+  for (const id of table.leaving) delete table.slots[id];
+  const players = [...before.filter((p) => !table.leaving.includes(p.id)), ...table.joining.map((id) => ({ id, stack: STACK }))]
+    .sort((a, b) => table.slots[a.id] - table.slots[b.id]);
+  // the button stays with its player or, if that player left, with the nearest one before it still here
+  const at = table.button;
+  table.button = -1;
+  for (let k = at; k >= 0 && table.button < 0; k--) table.button = players.findIndex((p) => p.id === before[k]?.id);
+  table.joining = [];
+  table.leaving = [];
   players[0].stack += table.topUp;
   table.topUp = 0;
   if (!players[0].stack) {
     table.players = players;
+    table.hand = null; // the seats are the players' now, for the next hand once the person buys in
     return false;
   }
   for (const p of players.slice(1)) {
@@ -102,8 +187,8 @@ export const isBig = (hand) => hand?.street === 'done' && (hand.actions.some((a)
  */
 export function plan(table, running = new Set()) {
   const hand = table.hand;
-  return PERSONAS.flatMap(({ id }) => {
-    if (running.has(id)) return [];
+  return table.players.flatMap(({ id }) => {
+    if (id === HUMAN || running.has(id)) return [];
     const n = table.notes[id];
     const seat = seatOf(table, id);
     const turn = hand?.street !== 'done' && hand?.toAct === seat && n.failed?.key !== turnKey(hand);
@@ -138,14 +223,12 @@ export function retry(table, id) {
   commit(table, { type: 'retry', by: id });
 }
 
-// The players say hello when the person first sits down, in this order:
-// lines written for them, so they wake no one.
-export const INTROS = [
-  ['Gary', 'Hi folks! Gary, first time at a real table. My wife is at the slots.'],
-  ['Duke', 'Name\'s Duke. Sit down, empty your wallet, try not to cry.'],
-  ['Penny', 'Penny. I count every chip, so don\'t expect gifts.'],
-  ['Gary', 'Quick one: a flush is the all-same-colour thing, right?'],
-];
+// The players at the table say hello when the person first sits down, each
+// its first line in seat order, then any more: lines written for them, so they wake no one.
+export const intros = (table) => {
+  const here = playing(table).map(({ id }) => PERSONAS.find((p) => p.id === id));
+  return [...here.map((p) => [p.id, p.hello[0]]), ...here.flatMap((p) => p.hello.slice(1).map((text) => [p.id, text]))];
+};
 export const introduce = (table, [id, text]) => say(table, id, text, { depth: DEPTH });
 
 // The reactions anyone may send: an emoji shown by their face a moment.
@@ -227,7 +310,7 @@ export function land(table, id, basis, proposal) {
 
 // ---- what a player is shown ----
 
-export const RULES = `You are a player at a No-Limit Texas Hold'em table, playing for play money only (amounts are play dollars, no real money). Four seats: a person, and three AI players: Gary, Duke and Penny. Blinds are $${BLINDS[0]}/$${BLINDS[1]}; you sit with $${STACK}, and buy back in for $${STACK} when you lose it all.
+export const RULES = `You are a player at a No-Limit Texas Hold'em table, playing for play money only (amounts are play dollars, no real money). Two to six seats: a person, and AI players, who may come and go between hands. Blinds are $${BLINDS[0]}/$${BLINDS[1]}; you sit with $${STACK}, and buy back in for $${STACK} when you lose it all.
 
 The rules, in short: each player gets two private cards. Betting goes round on four streets: preflop, then the flop (three shared cards on the board), the turn (one more), the river (one more). On your turn you may fold; check if there is nothing to call; call; or bet / raise, which in this game is always to a total for this street ("raise to 120"), at least the last raise more than the current bet, or all in. When one player is left, they win the pot; otherwise the best five-card hand from each player's two cards and the board wins at the showdown, and side pots go to those who could match the bets. A dealer runs the game and checks every action: one that is not legal, or comes after the table moved on, is turned away and you are asked again.
 
