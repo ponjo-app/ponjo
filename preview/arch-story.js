@@ -264,10 +264,24 @@ function cover(scene) {
   pet.type = 'button';
   pet.dataset.follow = '';
   pet.setAttribute('aria-label', 'Poke Clippy');
-  const title = el('h1', '', 'People and agents on one board');
+  const title = el('h1', '', 'Blackboard Multi-agent System');
   const lead = el('p', '', 'How Ponjo’s agents work, in two contrasts: how you work with them, and when they run.');
   scene.stage.classList.add('arch-cover');
   scene.stage.append(pet, title, lead);
+}
+cover.once = true;
+
+// A page that states what the scenes after it show: the claim, then what it
+// replaces, quieter.
+function point(claim, instead) {
+  const page = (scene) => {
+    const line = el('h2');
+    line.append(el('span', '', claim), el('span', 'arch-instead', instead));
+    scene.stage.classList.add('arch-point');
+    scene.stage.append(line);
+  };
+  page.once = true;
+  return page;
 }
 
 // Who watches the doc wears glasses (faces.js): the buddies on the blackboard.
@@ -630,8 +644,10 @@ async function state(scene) {
 // [eyebrow, the idea in a line, the scene]
 const CHAPTERS = [
   ['', 'Press Start.', cover],
+  ['How you work', '', point('Agents work beside you, in front of a blackboard,', 'instead of apart from you, in an isolated room.')],
   ['How you work · Delegate', 'Delegate: each agent works alone on its own copy. The copies clash, and you merge them by hand.', delegate],
   ['How you work · Blackboard', 'Blackboard: everyone works on one board and sees every change. Nothing to hand off, nothing to merge.', blackboard],
+  ['When agents run', '', point('Agent orchestration is a state reconciliation problem,', 'instead of an event triggering problem.')],
   ['When agents run · Events', 'Triggered by events: each agent runs when the one before hands it on. Miss one handoff, and the race stops.', events],
   ['When agents run · State', 'Reconciled from state: the runtime reads the board and calls whoever’s leg isn’t run, again until it is. Nobody wires who goes next, and a missed call costs nothing.', state],
 ];
@@ -670,7 +686,7 @@ async function open(i) {
       stage.replaceChildren();
       stage.className = 'arch-stage';
       await play(run);
-    } while (!still && play !== cover);
+    } while (!still && !play.once);
   } catch (error) {
     if (error !== STOPPED) throw error;
   }

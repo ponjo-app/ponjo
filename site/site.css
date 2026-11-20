@@ -119,6 +119,10 @@ a { color: var(--accent); }
 .arch-cover h1 { max-width: 640px; margin: 0; font-size: 36px; font-weight: 600; line-height: 1.25; letter-spacing: -0.02em; text-align: center; text-wrap: balance; }
 .arch-cover p { max-width: 560px; margin: 0; color: var(--text-soft); font-size: 16px; line-height: 1.6; text-align: center; }
 
+/* a point: what the scenes after it show, and, quieter, what it replaces */
+.arch-point h2 { display: flex; flex-direction: column; gap: 8px; max-width: 680px; margin: 0; font-size: 36px; font-weight: 600; line-height: 1.25; letter-spacing: -0.02em; text-align: center; text-wrap: balance; }
+.arch-instead { color: var(--text-faint); }
+
 /* a member: its face over its name */
 .arch-actor { display: flex; flex-direction: column; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; }
 
@@ -193,5 +197,5 @@ a { color: var(--accent); }
 
 @media (max-width: 560px) {
   .arch-stage { padding: 16px; }
-  .arch-cover h1 { font-size: 24px; }
+  .arch-cover h1, .arch-point h2 { font-size: 24px; }
 }
