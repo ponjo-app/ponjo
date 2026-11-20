@@ -47,7 +47,7 @@
   <ol>
     <li><strong>Reuse before adding.</strong> Use an existing class (<code>.pj-primary</code>, <code>.pj-secondary</code>, <code>.pj-icon-btn</code>, <code>.pj-input</code>, <code>.pj-segmented</code>, <code>.pj-switch</code>, <code>.pj-radio</code>, <code>.pj-panel</code>…) before writing a new rule.</li>
     <li><strong>Colours are tokens.</strong> No hex, <code>rgb()</code>, <code>oklch()</code>, <code>black</code> or <code>white</code> outside the token blocks at the top of <code>app.css</code>. A colour with a new meaning gets a token there, and a line on this page, first.</li>
-    <li><strong>Colour means something.</strong> Grey for the UI; ink for the one primary action and for what is on or selected; a buddy's own colour only for that buddy; red for danger and deletions (a buddy's deletions are grey); green for insertions and online; yellow for commented text; blue only for focus, text selection, found text and links.</li>
+    <li><strong>Colour means something.</strong> Grey for the UI; ink for the one primary action and for what is on or selected; a buddy's own colour only for that buddy; red for danger and deletions (a buddy's deletions are grey); green for insertions and online; yellow for commented text; blue only for focus, text selection, found text and links; the game table's own colours (felt, cards, chips) only on its table.</li>
     <li><strong>Sizes come from the scales.</strong> Font sizes 11, 12, 13, 14, 16, 20, 24px, and 36px only for a site page's headline; weights 400, 500, 600; radii 0, 4, 6, 10, 14px or full; spacing 2, 4, 6, 8, 12, 16, 24, 32, 48px; control heights 24, 28, 32px (36 and 40 for bars and big buttons).</li>
     <li><strong>One of each control.</strong> Icon buttons are <code>.pj-icon-btn</code>: 28px, 32 in the header, 24 inside a row. Menu and list rows share one size, set once in <code>app.css</code>: 28px tall, 8px side padding, radius 6, 13px; grey on hover, <code>--active</code> when selected or current.</li>
     <li><strong>One primary button per view.</strong> Everything else is secondary, ghost or a link button.</li>
@@ -78,6 +78,17 @@
   </div>
   <h3>Buddies</h3>
   <p>Each buddy has its own colour, the one in its face (see <a href="avatars.html">Avatars</a>). It is set as <code>--buddy</code> on whatever belongs to that buddy: its @chip, edits, cursor and the dot it puts on the comment icon while it works on a thread there. A buddy's edits, shown from the count under the comment they came with, are a revision in the text: new text in its colour, removed text grey and struck through where it was. Anyone else's change glows for a moment as it lands: in whole words, as a revision is, the new text on <code>--active</code>, and what it removed left as it was a moment, then deleted from its end a character at a time, as backspace would.</p>
+
+  <h3>The game table</h3>
+  <p>Only the <a href="poker.html">poker page</a> uses these: a cartoon card table, so colour there means the game, never the UI. Felt green with a wood rail, real cards (hearts and diamonds red, spades and clubs ink, a blue back), and chips by value: white under 50, red under 200, blue under 1,000, black above, gold for the pot. Text on the felt is <code>--felt-ink</code>, quieter text <code>--felt-soft</code>. In dark mode the felt and rail go deeper and the cards stay light. Everything around the table (buttons, chat, dialogs) stays paper and ink.</p>
+  <div class="ds-grid">
+    <div class="ds-swatch"><i style="background: var(--felt)"></i><b>--felt / -deep</b><span>The table</span></div>
+    <div class="ds-swatch"><i style="background: var(--rail)"></i><b>--rail / -deep</b><span>The table's edge</span></div>
+    <div class="ds-swatch"><i style="background: var(--card); box-shadow: inset 0 0 0 1px var(--border-strong)"></i><b>--card / --card-ink</b><span>A card's face, its spades and clubs</span></div>
+    <div class="ds-swatch"><i style="background: var(--suit-red)"></i><b>--suit-red</b><span>Hearts and diamonds</span></div>
+    <div class="ds-swatch"><i style="background: var(--card-back)"></i><b>--card-back</b><span>A card face down</span></div>
+    <div class="ds-swatch"><i style="background: linear-gradient(90deg, var(--chip-white) 20%, var(--chip-red) 20% 40%, var(--chip-blue) 40% 60%, var(--chip-black) 60% 80%, var(--chip-gold) 80%)"></i><b>--chip-*</b><span>White, red, blue, black; gold for the pot</span></div>
+  </div>
 
   <h2>Type</h2>
   <p>Inter for the UI, with each platform's own Chinese font behind it (PingFang SC, Microsoft YaHei UI, Noto Sans CJK SC; Songti SC, Noto Serif CJK SC for serif). The Markdown editor's page font (sans, serif or mono, set in that view) and its sizes in <code>em</code> are the writer's, not the UI's. A text file that is not Markdown shows as it is, in <code>--mono</code> at 14px by default (a size from 12 to 20 in its plugin).</p>

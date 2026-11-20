@@ -11,45 +11,53 @@
 // model's provider, on the model they pick.
 // preview/build.js bundles it into dist/preview, as the site serves it.
 
-/* global document, HTMLDialogElement */
+/* global document, matchMedia, HTMLDialogElement */
 
 import { INFER } from '../agents/ponjo-core.mjs';
 import { agentFace, personFace, setBuddies, setOwner } from '../web/faces.js';
 import { icon } from '../web/icons.js';
-import { legal } from './poker-dealer.js';
-import { DECIDE, HUMAN, PERSONAS, STACK, begin, deal, fail, land, newTable, plan, prompt, retry, say } from './poker-runtime.js';
+import { handName, legal } from './poker-dealer.js';
+import { DECIDE, HUMAN, INTROS, PERSONAS, begin, introduce, deal, fail, land, leave, myChips, newTable, plan, prompt, retry, say, topUp } from './poker-runtime.js';
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const el = (tag, className = '', text = '') => Object.assign(document.createElement(tag), { className, textContent: text });
 const SAVED = 'ponjo-poker';
+const WALLET = 'ponjo-poker-bankroll';
+const BANKROLL = 1000; // play dollars a new player starts with, and starts again with
+const [MIN_BUY, MAX_BUY] = [200, 1000];
+const AUTO_DEAL = 4; // seconds from a hand's result to the next hand
+const money = (n) => `$${n.toLocaleString('en')}`;
 const HOSTED = 'https://infer.ponjo.app/infer/anthropic'; // Ponjo's key and model, for ponjo.app's pages only
 const POS = ['bottom', 'left', 'top', 'right'];
 const SUIT = { s: '♠', h: '♥', d: '♦', c: '♣' };
-const STREET = { flop: 'Flop', turn: 'Turn', river: 'River' };
-const A = { 'High card': 'high card', Pair: 'a pair', 'Two pair': 'two pair', 'Three of a kind': 'three of a kind', Straight: 'a straight', Flush: 'a flush', 'Full house': 'a full house', 'Four of a kind': 'four of a kind', 'Straight flush': 'a straight flush' };
 
 setBuddies(PERSONAS.map(({ id }) => ({ id, name: id })));
 setOwner(HUMAN);
 
-let table = newTable();
+const table = newTable(0); // the person sits down with a buy-in
 const running = new Set();
-let settings = load(); // the visitor's own provider, key and model, or null for Ponjo's
+let settings = load(SAVED); // the visitor's own provider, key and model, or null for Ponjo's
 
-// ---- the visitor's model ----
+// ---- what the visitor keeps in this browser: their model, their bankroll ----
 
-function load() {
+function load(key) {
   try {
-    return JSON.parse(localStorage.getItem(SAVED)) ?? null;
+    return JSON.parse(localStorage.getItem(key)) ?? null;
   } catch {
     return null;
   }
 }
-function store(value) {
+function store(value, key = SAVED) {
   try {
-    if (value) localStorage.setItem(SAVED, JSON.stringify(value));
-    else localStorage.removeItem(SAVED);
+    if (value) localStorage.setItem(key, JSON.stringify(value));
+    else localStorage.removeItem(key);
   } catch {}
 }
+
+// The bankroll, with what was on the table when they last left the page: it comes back to them.
+const wallet = (({ bankroll = BANKROLL, onTable = 0, restarts = 0 } = {}) => ({ bankroll: bankroll + onTable, restarts }))(load(WALLET) ?? undefined);
+const session = { bought: 0, hands: 0, biggest: 0, cashed: 0 };
+const saveWallet = () => store({ ...wallet, onTable: myChips(table) }, WALLET);
 const infer = () => (!settings ? INFER.anthropic({ model: 'claude-haiku-5-5', key: 'ponjo' }, HOSTED) // the Worker sets the key, model and effort
   : settings.provider === 'openai' ? INFER.openai({ endpoint: settings.endpoint, model: settings.model, key: settings.key })
     : INFER.anthropic({ model: settings.model, key: settings.key, effort: 'low' }));
@@ -86,16 +94,113 @@ async function run(id, due) {
 }
 
 function nextHand() {
-  if (!deal(table)) {
-    const fresh = newTable();
-    Object.assign(table, { players: fresh.players, hand: null, button: -1 });
-    deal(table);
+  stopCountdown();
+  if (!deal(table)) return buyIn('rebuy');
+  session.hands++;
+  changed();
+}
+
+// ---- the session: buying in, topping up, leaving ----
+
+let paused = false;
+let countdown = null;
+function stopCountdown() {
+  clearInterval(countdown?.timer);
+  countdown = null;
+}
+// After a hand, the next is dealt by itself unless the person paused, or opened something.
+function startCountdown() {
+  if (countdown || paused || !myChips(table) || !$('.pk-buyin').hidden) return;
+  countdown = { left: AUTO_DEAL, timer: setInterval(() => {
+    countdown.left--;
+    if (countdown.left <= 0) nextHand();
+    else drawResult();
+  }, 1000) };
+}
+function pause() {
+  paused = true;
+  stopCountdown();
+  drawResult();
+}
+
+const buyin = $('.pk-buyin');
+// The card for buying chips (`sit`, `rebuy`, `topup`) or saying how a session went (`left`).
+function buyIn(kind) {
+  pause();
+  const room = kind === 'topup' ? Math.min(wallet.bankroll, MAX_BUY - myChips(table)) : Math.min(wallet.bankroll, MAX_BUY);
+  const broke = kind !== 'topup' && wallet.bankroll < MIN_BUY;
+  const net = myChips(table) + session.cashed - session.bought;
+  const title = { sit: 'Sit down', rebuy: 'You are out of chips', topup: 'Top up', left: 'You left the table' }[kind];
+  const text = broke ? `Your bankroll is ${money(wallet.bankroll)}, under the ${money(MIN_BUY)} buy-in. It is play money: start again with ${money(BANKROLL)}.`
+    : kind === 'left' ? `${net >= 0 ? 'Up' : 'Down'} ${money(Math.abs(net))} over ${session.hands} hand${session.hands === 1 ? '' : 's'}${session.biggest ? `, your biggest pot ${money(session.biggest)}` : ''}. Your bankroll is ${money(wallet.bankroll)}.`
+      : kind === 'topup' ? `Add chips from your bankroll (${money(wallet.bankroll)}), up to ${money(MAX_BUY)} on the table. They land before the next hand.`
+        : `Blinds ${money(10)}/${money(20)}. Buy in for ${money(MIN_BUY)} to ${money(MAX_BUY)} from your bankroll of ${money(wallet.bankroll)}. Play money only.`;
+  $('.pk-setup-title', buyin).textContent = title;
+  $('.pk-buyin-text', buyin).textContent = text;
+  const slider = buyin.elements.amount;
+  const min = kind === 'topup' ? Math.min(20, room) : MIN_BUY;
+  Object.assign(slider, { min, max: room, value: kind === 'topup' ? room : room });
+  $('.pk-buyin-amount', buyin).hidden = broke || kind === 'left' || room < min;
+  buyin.dataset.kind = broke ? 'restart' : kind;
+  $('[type=submit]', buyin).textContent = broke ? `Start again with ${money(BANKROLL)}` : kind === 'left' ? 'Sit down again' : kind === 'topup' ? 'Add' : 'Sit down';
+  $('[data-action="buyin-cancel"]', buyin).hidden = kind !== 'topup';
+  drawBuyValue();
+  buyin.hidden = false;
+  document.body.classList.add('pk-buying-in');
+}
+function drawBuyValue() {
+  $('.pk-buyin-value', buyin).textContent = money(Number(buyin.elements.amount.value));
+  const kind = buyin.dataset.kind;
+  if (kind === 'sit' || kind === 'rebuy') $('[type=submit]', buyin).textContent = `Sit down with ${money(Number(buyin.elements.amount.value))}`;
+}
+function closeBuyIn() {
+  buyin.hidden = true;
+  document.body.classList.remove('pk-buying-in');
+}
+buyin.elements.amount.addEventListener('input', drawBuyValue);
+buyin.addEventListener('submit', (event) => {
+  event.preventDefault();
+  const kind = buyin.dataset.kind;
+  if (kind === 'restart') {
+    wallet.bankroll = BANKROLL;
+    wallet.restarts++;
+    saveWallet();
+    return buyIn('sit');
   }
+  if (kind === 'left') return buyIn('sit');
+  const amount = Number(buyin.elements.amount.value);
+  wallet.bankroll -= amount;
+  if (kind !== 'topup') Object.assign(session, { bought: 0, hands: 0, biggest: 0, cashed: 0 });
+  session.bought += amount;
+  topUp(table, amount);
+  saveWallet();
+  closeBuyIn();
+  paused = false;
+  if (kind === 'topup' && table.hand && table.hand.street !== 'done') changed();
+  else if (!table.hand) greet();
+  else nextHand();
+});
+// Before the first hand, the players say hello, a line every second or so; then the cards.
+function greet() {
+  INTROS.forEach((line, k) => setTimeout(() => {
+    introduce(table, line);
+    changed();
+  }, 400 + k * 1400));
+  setTimeout(nextHand, 400 + INTROS.length * 1400 + 600);
+}
+
+function leaveTable() {
+  stopCountdown();
+  session.cashed = leave(table);
+  wallet.bankroll += session.cashed;
+  saveWallet();
+  buyIn('left');
   changed();
 }
 
 // ---- the table ----
 
+const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const seats = [];
 function seatNode(id, i) {
   const node = el('div', 'pk-seat');
@@ -104,98 +209,226 @@ function seatNode(id, i) {
   face.dataset.presence = 'idle';
   const avatar = el('span', `pj-avatar${id === HUMAN ? '' : ' pj-avatar-agent'}`);
   avatar.append(id === HUMAN ? personFace('You', HUMAN) : agentFace(id));
-  face.append(avatar);
-  const text = el('div', 'pk-seat-text');
+  face.append(avatar, el('span', 'pk-tag'));
+  const plate = el('div', 'pk-plate');
   const name = el('span', 'pk-name', id === HUMAN ? 'You' : id);
-  const button = el('span', 'pk-dealer-button', 'D');
-  button.title = 'Dealer button';
-  name.append(button);
-  text.append(name, el('span', 'pk-stack'), el('span', 'pk-status'));
-  node.append(face, text, el('div', 'pk-hole'), el('span', 'pk-bet'));
+  name.append(el('span', 'pk-position'));
+  plate.append(name, el('span', 'pk-stack'));
+  node.append(face, plate, el('div', 'pk-hole'));
   return node;
 }
 $('.pk-seats').append(...table.players.map(({ id }, i) => (seats[i] = seatNode(id, i))));
+const bets = POS.map((pos) => {
+  const bet = el('span', 'pk-bet');
+  bet.dataset.pos = pos;
+  return bet;
+});
+$('.pk-table').append(...bets);
 
+const cardText = (c) => `${c[0] === 'T' ? '10' : c[0]}${SUIT[c[1]]}`;
 function card(c) {
-  const node = el('span', 'pk-card', c ? (c[0] === 'T' ? '10' : c[0]) : '');
-  if (!c) node.classList.add('pk-card-back');
-  else {
-    node.append(el('span', 'pk-suit', SUIT[c[1]]));
-    node.setAttribute('aria-label', c);
-  }
+  const node = el('span', c ? 'pk-card' : 'pk-card pk-card-back');
+  node.dataset.key = c ?? 'back';
+  node.setAttribute('aria-label', c ? cardText(c) : 'Face down');
+  if (!c) return node;
+  const rank = el('span', 'pk-rank', c[0] === 'T' ? '10' : c[0]);
+  rank.append(el('small', '', SUIT[c[1]]));
+  node.append(rank, el('span', 'pk-pip', SUIT[c[1]]));
+  if ('hd'.includes(c[1])) node.dataset.red = '';
   return node;
 }
+// Cards in `box` as `cards` (null for face down), changing only what changed:
+// a new card is dealt in, a card turned face up flips.
+function setCards(box, cards) {
+  const old = [...box.children].map((n) => n.dataset.key);
+  const keys = cards.map((c) => c ?? 'back');
+  if (old.join() === keys.join()) return;
+  box.replaceChildren(...keys.map((key, j) => {
+    const node = card(key === 'back' ? null : key);
+    if (old[j] === undefined) {
+      node.dataset.in = '';
+      node.style.animationDelay = `${(j - old.length) * 0.09}s`;
+    } else if (old[j] === 'back' && key !== 'back') node.dataset.flip = '';
+    return node;
+  }));
+}
 
-const lastAction = (hand, seat) => hand.actions.findLast((a) => a.seat === seat && a.street === hand.street && !a.type.endsWith('blind'));
-const verb = (a) => ({ fold: 'Folded', check: 'Checked', call: `Called ${a.amount}`, bet: `Bet ${a.amount}`, raise: `Raised to ${a.amount}` })[a.type] ?? '';
+// A little stack of chips for an amount, coloured by value.
+function chips(amount, colour) {
+  const stack = el('span', 'pk-stack-chips');
+  const c = colour ?? (amount < 50 ? 'white' : amount < 200 ? 'red' : amount < 1000 ? 'blue' : 'black');
+  for (let k = 0; k < Math.min(5, Math.max(1, Math.ceil(Math.log2(amount / 10 + 1)))); k++) {
+    const chip = el('span', 'pk-chip');
+    chip.dataset.c = c;
+    stack.append(chip);
+  }
+  return stack;
+}
+// Chips sliding from one place to another: a street's bets into the pot, the pot to its winners.
+function fly(from, to, amount, delay = 0) {
+  if (still || !amount) return;
+  const [a, b] = [from.getBoundingClientRect(), to.getBoundingClientRect()];
+  const flying = el('span', 'pk-flying');
+  flying.append(chips(amount));
+  flying.style.left = `${a.left + a.width / 2 - 9}px`;
+  flying.style.top = `${a.top + a.height / 2 - 6}px`;
+  document.body.append(flying);
+  const dx = b.left + b.width / 2 - (a.left + a.width / 2);
+  const dy = b.top + b.height / 2 - (a.top + a.height / 2);
+  flying.animate([{ transform: 'none', opacity: 1 }, { transform: `translate(${dx}px, ${dy}px)`, opacity: 0.6 }], { duration: 450, delay, easing: 'cubic-bezier(0.4, 0, 0.2, 1)', fill: 'backwards' }).finished.then(() => flying.remove());
+}
 
+const TAG = { fold: 'Fold', check: 'Check', call: 'Call', bet: 'Bet', raise: 'Raise to' };
+// What a seat shows over its face: what it is doing or just did.
+function tag(hand, i) {
+  const { id } = table.players[i];
+  if (table.notes[id]?.failed) return ['Can\'t reach the model', 'failed'];
+  if (running.has(id) && hand?.toAct === i) return ['Thinking…', 'wait'];
+  if (!hand) return ['', ''];
+  if (hand.street === 'done') {
+    const won = hand.result.won[i];
+    if (won) return [`Wins ${money(won)}`, ''];
+    const shown = hand.result.showdown && hand.result.hands[i];
+    return shown ? [handName(hand.seats[i].hole, hand.board), 'wait'] : hand.seats[i].folded ? ['Fold', 'fold'] : ['', ''];
+  }
+  const s = hand.seats[i];
+  if (s.allIn) return ['All in', ''];
+  if (s.folded) return ['Fold', 'fold'];
+  const a = hand.actions.findLast((x) => x.seat === i && x.street === hand.street && TAG[x.type]);
+  return a ? [`${TAG[a.type]}${a.type === 'bet' || a.type === 'raise' ? ` ${money(a.amount)}` : ''}`, ''] : ['', ''];
+}
+
+let shownBets = POS.map(() => 0); // the bets drawn on the felt, to slide into the pot
+let celebrated = 0; // the hand whose winners were last cheered
 function draw() {
   const hand = table.hand;
+  const potNode = $('.pk-pot');
+  const sameHand = hand && hand.id === draw.hand;
+  for (const [i, shown] of shownBets.entries()) if (sameHand && shown && !hand.seats[i].bet) fly(bets[i], potNode, shown);
+  draw.hand = hand?.id;
+  const sb = hand?.actions.find((a) => a.type === 'small blind')?.seat;
+  const bb = hand?.actions.find((a) => a.type === 'big blind')?.seat;
   for (const [i, node] of seats.entries()) {
     const { id } = table.players[i];
     const s = hand?.seats[i];
-    const stack = s ? s.stack : table.players[i].stack;
-    const out = !s?.inHand && hand;
-    const thinking = running.has(id);
-    $('.pj-agent-face', node).dataset.presence = thinking || (id === HUMAN && hand?.toAct === 0) ? 'working' : out || s?.folded ? 'away' : 'idle';
-    $('.pk-stack', node).textContent = out ? 'Out' : `${stack}`;
-    const a = hand && lastAction(hand, i);
-    const failed = table.notes[id]?.failed;
-    $('.pk-status', node).textContent = failed ? 'Could not reach the model' : thinking ? 'Thinking…'
-      : hand?.toAct === i ? (id === HUMAN ? 'Your turn' : 'To act') : s?.allIn ? 'All in' : s?.folded ? 'Folded' : a ? verb(a) : '';
-    $('.pk-status', node).toggleAttribute('data-failed', Boolean(failed));
-    $('.pk-dealer-button', node).hidden = hand?.button !== i;
-    const shown = hand?.result?.showdown && hand.result.hands[i];
-    $('.pk-hole', node).replaceChildren(...(s?.inHand && !s.folded ? s.hole.map((c) => card(id === HUMAN || shown ? c : null)) : []));
-    $('.pk-bet', node).textContent = s?.bet ? `${s.bet}` : '';
+    const out = hand && !s.inHand;
+    node.toggleAttribute('data-folded', Boolean(out || s?.folded));
+    node.toggleAttribute('data-turn', Boolean(hand && hand.street !== 'done' && hand.toAct === i));
+    $('.pj-agent-face', node).dataset.presence = running.has(id) || (i === 0 && hand?.street !== 'done' && hand?.toAct === 0) ? 'working' : out || s?.folded ? 'away' : 'idle';
+    $('.pk-stack', node).textContent = out ? 'Out' : money(i === 0 ? myChips(table) : s ? s.stack : table.players[i].stack);
+    $('.pk-position', node).textContent = hand && hand.street !== 'done' ? (i === bb ? 'BB' : i === sb && sb !== hand.button ? 'SB' : '') : '';
+    const [text, kind] = tag(hand, i);
+    const tagNode = $('.pk-tag', node);
+    if (tagNode.textContent !== text) Object.assign(tagNode, { textContent: text }).dataset.kind = kind;
+    const shown = Boolean(hand?.result?.showdown && hand.result.hands[i]);
+    node.toggleAttribute('data-shown', shown);
+    if (i) setCards($('.pk-hole', node), s?.inHand && !s.folded ? (shown ? s.hole : [null, null]) : []);
+    const bet = s?.bet ?? 0;
+    if (bet !== shownBets[i]) bets[i].replaceChildren(...(bet ? [chips(bet), money(bet)] : []));
+    shownBets[i] = bet;
   }
-  $('.pk-board').replaceChildren(...(hand?.board ?? []).map(card));
+  const puck = $('.pk-puck');
+  puck.hidden = !hand;
+  if (hand) puck.dataset.pos = POS[hand.button];
+  setCards($('.pk-board'), hand?.board ?? []);
   const pot = hand ? hand.seats.reduce((sum, s) => sum + s.total, 0) : 0;
-  $('.pk-pot').textContent = hand ? `Pot ${pot}` : '';
-  $('.pk-news').textContent = news();
-  const over = !hand || hand.street === 'done';
-  $('.pk-between').hidden = !over;
-  const ended = hand && (hand.seats[0].stack === 0 || hand.seats.filter((s) => s.stack > 0).length < 2);
-  $('[data-action="next"]').textContent = !hand ? 'Deal' : ended ? 'New game' : 'Next hand';
-  $('[data-action="thinking"]').hidden = !hand || hand.street !== 'done';
-  drawControls();
+  potNode.hidden = !pot || hand.street === 'done';
+  if (pot) $('.pk-pot-amount', potNode).textContent = `Pot ${money(pot)}`;
+  if (pot && potNode.dataset.amount !== `${pot}`) $('.pk-stack-chips', potNode).replaceWith(chips(pot, 'gold'));
+  potNode.dataset.amount = pot;
+  drawResult();
+  const best = new Set(hand?.result?.showdown ? hand.result.hands[hand.result.pots[0].winners[0]].cards : []);
+  for (const node of document.querySelectorAll('.pk-board .pk-card, .pk-seat .pk-card, .pk-hole-mine .pk-card')) node.toggleAttribute('data-best', best.has(node.dataset.key));
+  if (hand?.street === 'done' && celebrated !== hand.id) {
+    celebrated = hand.id;
+    if (hand.result.won[0] > session.biggest) session.biggest = hand.result.won[0];
+    saveWallet();
+    if (myChips(table)) startCountdown();
+    else setTimeout(() => buyIn('rebuy'), 1500);
+    for (const [i, won] of hand.result.won.entries()) {
+      if (!won) continue;
+      fly(potNode.hidden ? $('.pk-board') : potNode, $('.pj-agent-face', seats[i]), won, 450);
+      seats[i].toggleAttribute('data-won', true);
+      setTimeout(() => seats[i].removeAttribute('data-won'), 1600);
+    }
+  }
+  drawMe();
   drawFeed();
 }
 
-function news() {
+// Between hands: the result, the next hand coming or paused, and what the session stands at.
+function drawResult() {
   const hand = table.hand;
-  if (!hand) return 'Play chips only. Everyone starts with 1,000.';
-  if (hand.street !== 'done') return '';
-  const result = hand.result;
-  const lines = result.pots.map((p, k) => {
-    const names = p.winners.map((i) => (i === 0 ? 'You' : hand.seats[i].id));
-    const hands = result.showdown ? ` with ${A[result.hands[p.winners[0]].name]}` : '';
-    return `${k ? 'Side pot' : names.length > 1 ? 'Split pot' : ''}${k || names.length > 1 ? ': ' : ''}${names.join(' and ')} ${names.length > 1 || names[0] === 'You' ? 'win' : 'wins'} ${p.amount}${hands}`;
-  });
-  if (hand.seats[0].stack === 0) lines.push('You are out of chips.');
-  else if (hand.seats.filter((s) => s.stack > 0).length === 1) lines.push('You took every chip at the table.');
-  return lines.join('. ') + '.';
+  const over = !hand || hand.street === 'done';
+  $('.pk-result').hidden = !over || !hand;
+  $('.pk-result-text').textContent = resultText();
+  $('.pk-countdown').textContent = countdown ? `Next hand in ${countdown.left}…` : '';
+  $('[data-action="next"]').hidden = Boolean(countdown) || !myChips(table);
+  $('[data-action="pause"]').hidden = !countdown;
+  $('[data-action="thinking"]').hidden = !hand || hand.street !== 'done';
+  const net = myChips(table) + session.cashed - session.bought;
+  $('.pk-bank').innerHTML = '';
+  for (const [label, value] of [['Bankroll', money(wallet.bankroll)], ['On the table', money(myChips(table))], ['This session', `${net >= 0 ? '+' : '−'}${money(Math.abs(net))}`]]) {
+    const item = el('span', '', `${label} `);
+    item.append(el('b', '', value));
+    $('.pk-bank').append(item);
+  }
+  $('[data-action="topup"]').disabled = !myChips(table) || Math.min(wallet.bankroll, MAX_BUY - myChips(table)) < 20;
+  $('[data-action="leave"]').disabled = !over || !myChips(table);
 }
 
-function drawControls() {
+// The hand's result, as the table says it: who won what, with which hand.
+function resultText() {
   const hand = table.hand;
+  if (!hand) return 'Play money only.';
+  if (hand.street !== 'done') return '';
+  const { result } = hand;
+  const lines = result.pots.map((p, k) => {
+    const names = p.winners.map((i) => (i === 0 ? 'You' : hand.seats[i].id));
+    const with_ = result.showdown ? ` · ${handName(hand.seats[p.winners[0]].hole, hand.board)}` : '';
+    return `${k ? 'Side pot: ' : ''}${names.join(' and ')} ${names.length > 1 || names[0] === 'You' ? 'win' : 'wins'} ${money(p.amount)}${with_}`;
+  });
+  if (!myChips(table)) lines.push('You are out of chips.');
+  return lines.join('. ');
+}
+
+// ---- you: your cards, what you hold, and what you may do ----
+
+function drawMe() {
+  const hand = table.hand;
+  const s = hand?.seats[0];
+  setCards($('.pk-hole-mine'), s?.inHand ? s.hole : []);
+  $('.pk-hole-mine').style.opacity = s?.folded ? 0.5 : '';
+  $('.pk-strength').textContent = !s?.inHand ? '' : s.folded ? 'Folded' : handName(s.hole, hand.board);
   const mine = hand && hand.street !== 'done' && hand.toAct === 0;
   $('.pk-controls').hidden = !mine;
+  const actor = hand && hand.street !== 'done' && hand.toAct !== null ? table.players[hand.toAct].id : null;
+  $('.pk-wait').textContent = mine || !actor ? '' : `${actor} is thinking…`;
   if (!mine) return;
   const l = legal(hand, 0);
-  const call = $('[data-action="call"]');
-  call.textContent = l.check ? 'Check' : `Call ${l.call}${l.call < l.toCall || l.call === hand.seats[0].stack ? ' (all in)' : ''}`;
-  $('.pk-raise').hidden = !l.raise;
-  if (l.raise) {
-    const amount = $('.pk-amount');
-    Object.assign(amount, { min: l.raise.min, max: l.raise.max, step: 1 });
-    if (amount.dataset.for !== `${hand.id}:${hand.n}`) {
-      amount.value = l.raise.min;
-      amount.dataset.for = `${hand.id}:${hand.n}`;
-    }
-    $('[data-action="raise"]').textContent = l.raise.min === l.raise.max ? 'All in' : hand.currentBet ? 'Raise to' : 'Bet';
-    amount.hidden = l.raise.min === l.raise.max;
-  }
+  $('[data-action="call"]').textContent = l.check ? 'Check' : `Call ${money(l.call)}${l.call === s.stack ? ' · all in' : ''}`;
+  $('[data-action="raise"]').hidden = !l.raise;
+  $('.pk-sizes').hidden = !l.raise || l.raise.min === l.raise.max;
+  if (!l.raise) return;
+  const slider = $('.pk-slider');
+  const key = `${hand.id}:${hand.n}`;
+  if (slider.dataset.for !== key) Object.assign(slider, { min: l.raise.min, max: l.raise.max, step: 1, value: l.raise.min }).dataset.for = key;
+  drawRaise();
+}
+function drawRaise() {
+  const hand = table.hand;
+  const l = legal(hand, 0);
+  const to = Number($('.pk-slider').value);
+  $('[data-action="raise"]').textContent = to >= l.raise.max ? `All in ${money(l.raise.max)}` : `${hand.currentBet ? 'Raise to' : 'Bet'} ${money(to)}`;
+}
+// A raise of a size a player names: the least, half the pot, the pot, all in.
+function size(name) {
+  const hand = table.hand;
+  const l = legal(hand, 0);
+  const pot = hand.seats.reduce((sum, s) => sum + s.total, 0) + l.toCall;
+  const to = { min: l.raise.min, half: hand.currentBet + Math.round(pot / 2), pot: hand.currentBet + pot, max: l.raise.max }[name];
+  $('.pk-slider').value = Math.min(l.raise.max, Math.max(l.raise.min, to));
+  drawRaise();
 }
 
 function play(action) {
@@ -204,26 +437,20 @@ function play(action) {
   changed();
 }
 
-// ---- the chat, with the dealer's lines ----
+// ---- the chat: what people say, as a chat app shows it, and each hand's result ----
 
 let drawn = 0; // log entries drawn
-let board = 0; // board cards announced
+let posted = 0; // the last hand whose result is in the chat
 function drawFeed() {
   const feed = $('.pk-feed');
   const stick = feed.scrollHeight - feed.scrollTop - feed.clientHeight < 40;
   for (; drawn < table.log.length; drawn++) {
     const change = table.log[drawn];
-    if (change.type === 'deal') {
-      board = 0;
-      const hand = table.hand;
-      feed.append(dealer(`Hand ${change.hand}. ${hand.button === 0 ? 'You have' : `${hand.seats[hand.button].id} has`} the button.`));
-    } else if (change.type === 'action') {
-      const a = change.action;
-      const who = change.by === HUMAN ? 'You' : change.by;
-      const what = { fold: 'fold', check: 'check', call: `call ${a.amount}`, bet: `bet ${a.amount}`, raise: `raise to ${a.amount}` }[a.type];
-      feed.append(dealer(`${who} ${change.by === HUMAN ? what : what.replace(/^\w+/, (w) => `${w}s`)}${a.allIn ? ', all in' : ''}${change.forced ? ' (by the dealer, after three moves that were not legal)' : ''}.`));
-    } else if (change.type === 'chat') {
-      feed.append(message(table.chat[change.line - 1]));
+    if (change.type === 'chat') {
+      const line = table.chat[change.line - 1];
+      feed.append(message(line, feed.lastElementChild?.dataset.by === line.by));
+    } else if (change.type === 'rebuy') {
+      feed.append(dealer(`${change.by} buys back in for ${money(change.amount)}.`));
     } else if (change.type === 'failed') {
       const line = dealer(`${change.by} could not reach the model: ${change.why}`);
       line.dataset.failed = '';
@@ -237,35 +464,40 @@ function drawFeed() {
       line.append(' ', again);
       feed.append(line);
     }
-    const hand = table.hand;
-    if (hand && change.type === 'action' && change.hand === hand.id && drawn === table.log.findLastIndex((c) => c.type === 'action')) {
-      if (hand.board.length > board) {
-        const street = hand.street === 'done' ? (hand.board.length === 5 ? 'River' : hand.board.length === 4 ? 'Turn' : 'Flop') : STREET[hand.street];
-        feed.append(dealer(`${board === 0 || hand.board.length - board > 1 ? 'Board' : street}: ${hand.board.slice(board === 0 || hand.board.length - board > 1 ? 0 : board).map(cardText).join(' ')}.`));
-        board = hand.board.length;
-      }
-      if (hand.street === 'done') {
-        for (const [i, h] of Object.entries(hand.result.hands)) feed.append(dealer(`${Number(i) === 0 ? 'You show' : `${hand.seats[i].id} shows`} ${hand.seats[i].hole.map(cardText).join(' ')}: ${A[h.name]}.`));
-        feed.append(dealer(news()));
-      }
-    }
+  }
+  const hand = table.hand;
+  if (hand?.street === 'done' && posted !== hand.id) {
+    posted = hand.id;
+    feed.append(dealer(`Hand ${hand.id}: ${resultText()}`));
   }
   if (stick) feed.scrollTop = feed.scrollHeight;
 }
-const cardText = (c) => `${c[0] === 'T' ? '10' : c[0]}${SUIT[c[1]]}`;
+// A reaction: the emoji pops up by the person's face and floats away.
+function react(emoji) {
+  const node = el('span', 'pk-react', emoji);
+  $('.pj-agent-face', seats[0]).append(node);
+  setTimeout(() => node.remove(), 2400);
+}
 
 function dealer(text) {
   return el('li', 'pk-dealer', text);
 }
-function message(line) {
-  const item = el('li', 'pk-message');
-  const head = el('div', 'pj-msg-head');
-  const avatar = el('span', `pj-avatar${line.by === HUMAN ? '' : ' pj-avatar-agent'}`);
-  avatar.append(line.by === HUMAN ? personFace('You', HUMAN) : agentFace(line.by));
-  const who = el('span', 'pj-who');
-  who.append(el('span', 'pj-name', line.by === HUMAN ? 'You' : line.by));
-  head.append(avatar, who);
-  item.append(head, el('div', 'pj-body', line.text));
+// A message: yours on the right; others' on the left with their face and,
+// first in a run of theirs, their name.
+function message(line, more) {
+  const item = el('li', 'pk-msg');
+  item.dataset.by = line.by;
+  if (more) item.dataset.more = '';
+  const col = el('div', 'pk-msg-col');
+  if (line.by === HUMAN) item.dataset.mine = '';
+  else {
+    const avatar = el('span', 'pj-avatar pj-avatar-agent');
+    avatar.append(agentFace(line.by));
+    item.append(avatar);
+    if (!more) col.append(el('span', 'pk-msg-name', line.by));
+  }
+  col.append(el('div', 'pk-msg-text', line.text));
+  item.append(col);
   return item;
 }
 
@@ -377,24 +609,44 @@ function drawModel() {
 
 document.addEventListener('click', (event) => {
   const action = event.target.closest('[data-action]')?.dataset.action;
-  if (action === 'next') nextHand();
-  else if (action === 'thinking') showThinking();
+  if (action === 'next') {
+    paused = false;
+    nextHand();
+  } else if (action === 'pause') pause();
+  else if (action === 'topup') buyIn('topup');
+  else if (action === 'leave') leaveTable();
+  else if (action === 'buyin-cancel') {
+    closeBuyIn();
+    drawResult();
+  }
+  else if (action === 'thinking') {
+    pause();
+    showThinking();
+  }
   else if (action === 'close') $('.pk-thinking').close();
-  else if (action === 'key') openSetup();
+  else if (action === 'key') {
+    pause();
+    openSetup();
+  }
   else if (action === 'cancel') {
     setup.hidden = true;
     document.body.classList.remove('pk-setting-up');
   }
   else if (action === 'fold') play({ type: 'fold' });
   else if (action === 'call') play({ type: legal(table.hand, 0).check ? 'check' : 'call' });
-  else if (action === 'raise') {
-    const l = legal(table.hand, 0);
-    const typed = Math.round(Number($('.pk-amount').value) || l.raise.min);
-    play({ type: table.hand.currentBet ? 'raise' : 'bet', amount: Math.min(l.raise.max, Math.max(l.raise.min, typed)) });
-  }
+  else if (action === 'raise') play({ type: table.hand.currentBet ? 'raise' : 'bet', amount: Number($('.pk-slider').value) });
+  else if (action === 'chat') {
+    const chat = $('.pk-chat');
+    chat.hidden = !chat.hidden;
+    $('.pk-chat-open').hidden = !chat.hidden;
+  } else if (event.target.closest('[data-size]')) size(event.target.closest('[data-size]').dataset.size);
 });
 $('.pk-thinking').addEventListener('click', (event) => {
   if (event.target === event.currentTarget) event.currentTarget.close(); // a click on the backdrop
+});
+$('.pk-reacts').addEventListener('click', (event) => {
+  const emoji = event.target.closest('[data-react]')?.dataset.react;
+  if (emoji) react(emoji);
 });
 $('.pk-say').addEventListener('submit', (event) => {
   event.preventDefault();
@@ -404,7 +656,8 @@ $('.pk-say').addEventListener('submit', (event) => {
   changed();
 });
 
-$('.pk-news').textContent = `Play chips only. Everyone starts with ${STACK.toLocaleString('en')}.`;
+$('.pk-slider').addEventListener('input', drawRaise);
 setup.querySelector('.pk-error').after(forget);
 drawModel();
-nextHand();
+draw();
+buyIn('sit');
