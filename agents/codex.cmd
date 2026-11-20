@@ -11,8 +11,11 @@ rem The prompt's paths are the project's: in a project, the first instructions
 rem say where each is, and the prompt follows them as Codex's stdin block.
 set "TASK=-"
 if defined PONJO_PROJECT set "TASK=The task is in the stdin block. Its paths are the project's: your copies of the doc and its comments are at those paths in your working folder, and the project's other files at those paths in %PONJO_PROJECT%, read only."
+rem It reads and edits only: your config.toml (its MCP servers, hooks), apps
+rem and plugins are not loaded, and its commands have no network. An action
+rem on the outside world is a proposal (docs/agent-runtime.md).
 set "REPLY=%TEMP%\ponjo-reply-%RANDOM%.txt"
-call codex exec --sandbox workspace-write --skip-git-repo-check %MODEL% --output-last-message "%REPLY%" "%TASK%" 1>&2
+call codex exec --sandbox workspace-write --skip-git-repo-check --ignore-user-config --disable apps --disable plugins %MODEL% --output-last-message "%REPLY%" "%TASK%" 1>&2
 set "STATUS=%errorlevel%"
 type "%REPLY%" 2>nul
 del "%REPLY%" 2>nul

@@ -778,6 +778,7 @@ test('the shipped scripts pass the project folder only when there is one', () =>
   for (const name of ['claude', 'codex', 'ponjo']) assert.match(readFileSync(join(ROOT, 'agents', `${name}.cmd`), 'utf8'), /\r\n/, `${name}.cmd has Windows line ends`);
   assert.match(readFileSync(join(ROOT, 'agents', 'claude.cmd'), 'utf8'), /set ADD=--add-dir "%PONJO_PROJECT%" --disallowedTools "Edit\(\/%P%\/\*\*\)"/, 'claude.cmd keeps the project read only');
   assert.doesNotMatch(readFileSync(join(ROOT, 'agents', 'codex.cmd'), 'utf8'), /codex exec[^\r]*--add-dir/, 'Codex reads the project without it');
+  for (const name of ['codex', 'codex.cmd']) assert.match(readFileSync(join(ROOT, 'agents', name), 'utf8'), /codex exec --sandbox workspace-write --skip-git-repo-check \\?\s*--ignore-user-config --disable apps --disable plugins/, `${name}: none of the user's config, apps or plugins`);
   if (process.platform === 'win32') return;
   // A fake `claude` and `codex` on PATH read the prompt (else writing it can
   // fail with EPIPE) and print the arguments they get, one a line; Codex's
@@ -785,9 +786,10 @@ test('the shipped scripts pass the project folder only when there is one', () =>
   const bin = execFileSync('mktemp', ['-d']).toString().trim();
   execFileSync('sh', ['-c', `printf '#!/bin/sh\\ncat >/dev/null; printf "%%s\\\\n" "$@"\\n' > "${bin}/claude"; printf '#!/bin/sh\\ncat >/dev/null; while [ "$1" != "--output-last-message" ]; do shift; done; echo "reply to: $3" > "$2"\\n' > "${bin}/codex"; chmod +x "${bin}/claude" "${bin}/codex"`]);
   const run = (name, project, model = '') => execFileSync(join(ROOT, 'agents', name), { input: 'prompt', env: { ...process.env, PATH: `${bin}${delimiter}${process.env.PATH}`, PONJO_PROJECT: project, PONJO_DOC: '/run/my doc.md', PONJO_SETTING_MODEL: model }, stdio: ['pipe', 'pipe', 'pipe'] }).toString().trim().split('\n');
-  const claude = ['-p', '@"/run/my doc.md"', '--permission-mode', 'acceptEdits', '--no-session-persistence'];
+  const claude = ['-p', '@"/run/my doc.md"', '--permission-mode', 'acceptEdits', '--no-session-persistence', '--tools', 'Read,Edit,Write,Glob,Grep,WebSearch,WebFetch', '--strict-mcp-config'];
   const where = 'The paths in the prompt are the project\'s. Your copies of the doc and its comments are at those paths in your working folder; the project\'s other files are at those paths in /work/my project, read only.';
-  assert.deepEqual(run('claude', ''), claude, 'Claude gets the doc copy as already read');
+  assert.deepEqual(run('claude', ''), claude, 'Claude gets the doc copy as already read, and no shell or MCP servers');
+  assert.match(readFileSync(join(ROOT, 'agents', 'claude.cmd'), 'utf8'), /call claude -p [^\r]*--tools Read,Edit,Write,Glob,Grep,WebSearch,WebFetch --strict-mcp-config/, 'claude.cmd neither');
   assert.deepEqual(run('claude', '/work/my project'), [...claude, '--add-dir', '/work/my project', '--disallowedTools', 'Edit(//work/my project/**)', '--append-system-prompt', where], 'the project is read only, and where the prompt\'s paths are');
   assert.deepEqual(run('claude', '', 'opus'), [...claude, '--model', 'opus'], 'the model, when set');
   assert.deepEqual(run('codex', ''), ['reply to: -'], 'codex prints only its last message; the prompt is its stdin');

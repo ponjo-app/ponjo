@@ -142,6 +142,7 @@ script needs nothing to read them:
 ```sh
 #!/bin/sh
 exec claude -p "@\"$PONJO_DOC\"" --permission-mode acceptEdits --no-session-persistence \
+  --tools Read,Edit,Write,Glob,Grep,WebSearch,WebFetch --strict-mcp-config \
   ${PONJO_SETTING_MODEL:+--model "$PONJO_SETTING_MODEL"} \
   ${PONJO_PROJECT:+--add-dir "$PONJO_PROJECT" --disallowedTools "Edit(/$PONJO_PROJECT/**)" \
     --append-system-prompt "The paths in the prompt are the project's. …"}
@@ -168,16 +169,24 @@ which Ponjo does not limit: Claude Code reads its working folder and the
 `workspace-write` sandbox reads the whole disk. Running a buddy on them is
 at the user's own risk, under the CLI's own permissions.
 
-Everything else (web, shell, which files it may read or write) is the CLI's
-own config (`~/.claude/settings.json`, `~/.codex/config.toml`), as when you
-run it yourself. Ponjo neither grants nor blocks it.
+The shipped scripts give an agent no way to act on the outside world: an
+action there would skip the writer, and could be done twice or by no one's
+leave ([agent runtime](agent-runtime.md#outside-actions)). Claude Code gets
+only its tools to read, edit, search and fetch (`--tools`), and none of
+the user's MCP servers (`--strict-mcp-config`). Codex reads and edits only:
+it loads no `~/.codex/config.toml` (`--ignore-user-config`), so none of its
+MCP servers, and no apps or plugins; its sandbox gives its commands no
+network. A fetch still reaches the web, and can carry out what it read in
+its URL. What these scripts cannot stop is the CLI's own: Claude Code's
+hooks in `~/.claude/settings.json`, and anything a user adds to a script
+or its CLI's config, at their own risk.
 
 An agent is not told where the real doc is. If its CLI lets it write there
 anyway, the app sees an outside change and merges it; a broken sidecar line
 is skipped, and history keeps every version.
 
-What a prompt hidden in a doc can make an agent do is what your CLI's
-config allows.
+What a prompt hidden in a doc can make an agent do is what its script and
+its CLI's config allow.
 
 ## Traces
 
