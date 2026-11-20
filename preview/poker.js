@@ -346,29 +346,30 @@ function setCards(box, cards) {
   }));
 }
 
-// A little stack of chips for an amount, coloured by value.
+// One chip for an amount, coloured by value.
 function chips(amount, colour) {
-  const stack = el('span', 'pk-stack-chips');
-  const c = colour ?? (amount < 50 ? 'white' : amount < 200 ? 'red' : amount < 1000 ? 'blue' : 'black');
-  for (let k = 0; k < Math.min(5, Math.max(1, Math.ceil(Math.log2(amount / 10 + 1)))); k++) {
-    const chip = el('span', 'pk-chip');
-    chip.dataset.c = c;
-    stack.append(chip);
-  }
-  return stack;
+  const chip = el('span', 'pk-chip');
+  chip.dataset.c = colour ?? (amount < 50 ? 'white' : amount < 200 ? 'red' : amount < 1000 ? 'blue' : 'black');
+  return chip;
 }
-// Chips sliding from one place to another: a street's bets into the pot, the pot to its winners.
-function fly(from, to, amount, delay = 0) {
+// Chips sliding from one place to another, in full sight: a player's stack to its
+// bet, a street's bets into the pot, the pot to its winners' stacks. What they
+// land on stays hidden (`hide`) until they land, then bumps.
+const FLY_MS = 600;
+function fly(from, to, amount, { delay = 0, hide = false } = {}) {
   if (still || !amount) return;
   const [a, b] = [from.getBoundingClientRect(), to.getBoundingClientRect()];
   const flying = el('span', 'pk-flying');
   flying.append(chips(amount));
-  flying.style.left = `${a.left + a.width / 2 - 9}px`;
-  flying.style.top = `${a.top + a.height / 2 - 6}px`;
-  document.body.append(flying);
-  const dx = b.left + b.width / 2 - (a.left + a.width / 2);
-  const dy = b.top + b.height / 2 - (a.top + a.height / 2);
-  flying.animate([{ transform: 'none', opacity: 1 }, { transform: `translate(${dx}px, ${dy}px)`, opacity: 0.6 }], { duration: 450, delay, easing: 'cubic-bezier(0.4, 0, 0.2, 1)', fill: 'backwards' }).finished.then(() => flying.remove());
+  $('.pk-page').append(flying); // where the chip sizes are
+  const f = flying.getBoundingClientRect();
+  Object.assign(flying.style, { left: `${a.left + a.width / 2 - f.width / 2}px`, top: `${a.top + a.height / 2 - f.height / 2}px` });
+  const to_ = `translate(${b.left + b.width / 2 - a.left - a.width / 2}px, ${b.top + b.height / 2 - a.top - a.height / 2}px)`;
+  if (hide) to.animate([{ opacity: 0 }, { opacity: 0 }], { duration: delay + FLY_MS });
+  flying.animate([{ transform: 'scale(0.8)' }, { transform: 'scale(1.15)', offset: 0.4 }, { transform: `${to_} scale(1)` }], { duration: FLY_MS, delay, easing: 'cubic-bezier(0.3, 0, 0.2, 1)', fill: 'backwards' }).finished.then(() => {
+    flying.remove();
+    replay(to, 'pk-bump');
+  });
 }
 
 const TAG = { fold: 'Fold', check: 'Check', call: 'Call', bet: 'Bet', raise: 'Raise to' };
@@ -480,11 +481,8 @@ function draw() {
     if (id !== me) setCards($('.pk-hole', node), s?.inHand && !s.folded ? (shown ? s.hole : [null, null]) : []);
     const bet = s?.bet ?? 0;
     const was_ = shownBets.get(id) ?? 0;
-    if (sameHand && bet > was_) {
-      fly($('.pj-agent-face', node), bets.get(id), bet - was_);
-      replay(bets.get(id), 'pk-bump');
-    }
     if (bet !== was_) bets.get(id).replaceChildren(...(bet ? [chips(bet), money(bet)] : []));
+    if (sameHand && bet > was_) fly($('.pk-stack', node), bets.get(id), bet - was_, { hide: true });
     shownBets.set(id, bet);
   }
   const puck = $('.pk-puck');
@@ -495,7 +493,7 @@ function draw() {
   potNode.hidden = !pot || hand.street === 'done';
   if (pot) $('.pk-pot-amount', potNode).textContent = `Pot ${money(pot)}`;
   if (pot && potNode.dataset.amount !== `${pot}`) {
-    $('.pk-stack-chips', potNode).replaceWith(chips(pot, 'gold'));
+    $('.pk-chip', potNode).replaceWith(chips(pot, 'gold'));
     if (sameHand) replay(potNode, 'pk-bump');
   }
   potNode.dataset.amount = pot;
@@ -512,7 +510,7 @@ function draw() {
     for (const [i, won] of hand.result.won.entries()) {
       if (!won) continue;
       const node = seats.get(hand.seats[i].id);
-      fly(potNode.hidden ? $('.pk-board') : potNode, $('.pj-agent-face', node), won, 450);
+      fly($('.pk-center'), $('.pk-stack', node), won, { delay: FLY_MS });
       node.toggleAttribute('data-won', true);
       setTimeout(() => node.removeAttribute('data-won'), 1600);
     }
