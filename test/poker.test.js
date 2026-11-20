@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { act, bestHand, compare, handName, legal, pots, shuffled, startHand, view } from '../preview/poker-dealer.js';
-import { HUMAN, INTROS, PERSONAS, REACTIONS, STACK, begin, deal, introduce, land, myChips, newTable, plan, prompt, say, topUp } from '../preview/poker-runtime.js';
+import { HUMAN, MAX_SEATS, PERSONAS, REACTIONS, STACK, addPlayer, begin, freeSeats, deal, intros, introduce, land, lineup, myChips, newTable, plan, prompt, removePlayer, say, topUp } from '../preview/poker-runtime.js';
 
 const rank = (cards) => bestHand(cards.split(' '));
 const beats = (a, b) => compare(rank(a).score, rank(b).score);
@@ -174,9 +174,10 @@ test('random play: chips are kept, and a prompt never holds a card it may not se
   const pick = (list) => list[Math.floor(Math.random() * list.length)];
   for (let game = 0; game < 30; game++) {
     const table = newTable();
+    let chips = 4 * STACK;
     for (let k = 0; k < 20 && deal(table); k++) {
       while (table.hand.street !== 'done') { // nobody's cards are shown before the hand is over
-        for (const { id } of PERSONAS) {
+        for (const { id } of table.hand.seats.filter((s) => s.id !== HUMAN)) {
           const seat = table.players.findIndex((p) => p.id === id);
           const { rules, situation } = prompt(table, id, { turn: true, lines: [], react: false });
           for (const [i, s] of table.hand.seats.entries()) {
@@ -189,7 +190,14 @@ test('random play: chips are kept, and a prompt never holds a card it may not se
         land(table, id, { hand: table.hand.id, n: table.hand.n, turn: true }, { action });
       }
       const rebought = table.log.filter((c) => c.type === 'rebuy').reduce((sum, c) => sum + c.amount, 0);
-      assert.equal(table.hand.seats.reduce((sum, s) => sum + s.stack, 0), 4 * STACK + rebought, 'no chip made or lost but by buying in');
+      assert.equal(table.hand.seats.reduce((sum, s) => sum + s.stack, 0), chips + rebought, 'no chip made or lost but by buying in');
+      chips = table.hand.seats.reduce((sum, s) => sum + s.stack, 0) - rebought;
+      // between hands, now and then a player leaves or another sits down
+      const out = PERSONAS.find((p) => !lineup(table).some((q) => q.id === p.id));
+      if (Math.random() < 0.3 && out && addPlayer(table, out.id)) chips += STACK;
+      const here = lineup(table).filter((q) => q.id !== HUMAN);
+      const gone = here[Math.floor(Math.random() * here.length)].id;
+      if (Math.random() < 0.3 && removePlayer(table, gone)) chips -= table.hand.seats.find((q) => q.id === gone)?.stack ?? STACK; // one not seated yet takes nothing
       for (const change of table.log) if (change.type === 'action') assert.ok(['fold', 'check', 'call', 'bet', 'raise'].includes(change.action.type), 'the log has the player\'s action');
     }
   }
@@ -271,8 +279,8 @@ test('an AI player out of chips buys back in; the person must buy in themselves,
 
 test('the players\' hellos are theirs to say, and wake no one', () => {
   const table = newTable(500);
-  for (const line of INTROS) introduce(table, line);
-  assert.deepEqual(table.chat.map((l) => l.by), INTROS.map(([id]) => id));
+  for (const line of intros(table)) introduce(table, line);
+  assert.deepEqual(table.chat.map((l) => l.by), ['Gary', 'Duke', 'Penny', 'Gary'], 'each says hello in seat order, then more');
   assert.deepEqual(plan(table), [], 'no one is due: there is no hand, and no line asks anything');
 });
 
@@ -287,4 +295,58 @@ test('a player reacts with one of the table\'s emoji, which the others see and w
   assert.equal(plan(table).length, before, 'a reaction wakes no one');
   const other = PERSONAS.find((p) => p.id !== id).id;
   assert.match(prompt(table, other, { turn: false, lines: [], react: false }).situation, new RegExp(`Reactions this hand, latest last: ${id} ${REACTIONS[0]}`));
+});
+
+test('players come and go between hands: a seat is taken at the next hand, given up after this one', () => {
+  const table = newTable(500);
+  assert.equal(addPlayer(table, 'Gary'), false, 'already here');
+  assert.equal(addPlayer(table, 'Nobody'), false);
+  assert.equal(addPlayer(table, 'Mabel'), true);
+  assert.equal(table.chat.at(-1).by, 'Mabel', 'she says hello');
+  deal(table);
+  assert.deepEqual(table.hand.seats.map((s) => s.id), [HUMAN, 'Gary', 'Mabel', 'Duke', 'Penny'], 'Mabel took the first free seat, 2, between Gary and Duke');
+  // mid-hand: Lex waits for the next hand, Duke plays this one out
+  assert.equal(addPlayer(table, 'Lex', 3), false, 'Duke is in seat 3 until he leaves');
+  assert.equal(addPlayer(table, 'Lex'), true);
+  assert.deepEqual(freeSeats(table), []);
+  assert.equal(removePlayer(table, 'Duke'), true);
+  assert.equal(addPlayer(table, 'Hank'), false, 'his seat is his till the hand ends');
+  assert.equal(table.hand.seats.length, 5, 'nothing changes in a hand');
+  assert.deepEqual(lineup(table).map((p) => [p.id, p.joining, p.leaving]), [[HUMAN, false, false], ['Gary', false, false], ['Mabel', false, false], ['Duke', false, true], ['Penny', false, false], ['Lex', true, false]]);
+  // Lex was given seat 4, the only one free; check where it went
+  assert.equal(table.slots.Lex, 4);
+  assert.equal(plan(table).some((d) => d.id === 'Lex'), false, 'not seated yet: never due');
+  table.hand.street = 'done';
+  deal(table);
+  assert.deepEqual(table.hand.seats.map((s) => s.id), [HUMAN, 'Gary', 'Mabel', 'Lex', 'Penny'], 'Lex took seat 3 once Duke left it');
+  assert.equal(table.hand.seats.find((s) => s.id === 'Lex').stack + table.hand.seats.find((s) => s.id === 'Lex').total, STACK);
+});
+
+test('a table keeps two players and seats six at most; asked to stay, a leaving player stays', () => {
+  const table = newTable(500, ['Gary']);
+  assert.equal(removePlayer(table, 'Gary'), false, 'the person needs someone to play');
+  assert.equal(removePlayer(table, HUMAN), false, 'the person leaves by Leave table');
+  for (const id of ['Duke', 'Penny', 'Mabel', 'Lex']) assert.equal(addPlayer(table, id), true);
+  assert.equal(lineup(table).length, MAX_SEATS);
+  assert.equal(addPlayer(table, 'Hank'), false, 'no free seat');
+  deal(table);
+  assert.equal(removePlayer(table, 'Lex'), true);
+  assert.equal(addPlayer(table, 'Lex'), true, 'asked back before the hand ends, Lex stays');
+  table.hand.street = 'done';
+  deal(table);
+  assert.equal(table.hand.seats.length, MAX_SEATS);
+});
+
+test('the button stays with its player as seats change, or passes on from the seat before', () => {
+  const table = newTable(500, ['Gary', 'Duke', 'Penny']);
+  deal(table);
+  assert.equal(table.hand.seats[table.hand.button].id, HUMAN);
+  table.hand.street = 'done';
+  addPlayer(table, 'Mabel');
+  deal(table);
+  assert.equal(table.hand.seats[table.hand.button].id, 'Gary', 'the button moves one on');
+  table.hand.street = 'done';
+  removePlayer(table, 'Gary');
+  deal(table);
+  assert.equal(table.hand.seats[table.hand.button].id, 'Mabel', 'Gary left with the button: it moves on from the seat before his, to the seat after it');
 });

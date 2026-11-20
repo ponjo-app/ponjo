@@ -11,13 +11,13 @@
 // model's provider, on the model they pick.
 // preview/build.js bundles it into dist/preview, as the site serves it.
 
-/* global document, matchMedia, HTMLDialogElement */
+/* global document, matchMedia, innerWidth, innerHeight, HTMLDialogElement */
 
 import { INFER } from '../agents/ponjo-core.mjs';
 import { agentFace, personFace, setBuddies, setOwner } from '../web/faces.js';
 import { icon } from '../web/icons.js';
 import { handName, legal } from './poker-dealer.js';
-import { DECIDE, HUMAN, INTROS, PERSONAS, begin, introduce, react, deal, fail, land, leave, myChips, newTable, plan, prompt, retry, say, topUp } from './poker-runtime.js';
+import { DECIDE, HUMAN, PERSONAS, STACK, addPlayer, begin, freeSeats, intros, introduce, lineup, react, removePlayer, deal, fail, land, leave, myChips, newTable, plan, prompt, retry, say, topUp } from './poker-runtime.js';
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const el = (tag, className = '', text = '') => Object.assign(document.createElement(tag), { className, textContent: text });
@@ -28,7 +28,7 @@ const [MIN_BUY, MAX_BUY] = [200, 1000];
 const AUTO_DEAL = 4; // seconds from a hand's result to the next hand
 const money = (n) => `$${n.toLocaleString('en')}`;
 const HOSTED = 'https://infer.ponjo.app/infer/anthropic'; // Ponjo's key and model, for ponjo.app's pages only
-const POS = ['bottom', 'left', 'top', 'right'];
+const SLOTS = ['bottom', 'left', 'top-left', 'top', 'top-right', 'right']; // the six seats round the table, the person's first
 const SUIT = { s: '♠', h: '♥', d: '♦', c: '♣' };
 
 setBuddies(PERSONAS.map(({ id }) => ({ id, name: id })));
@@ -74,10 +74,10 @@ function changed() {
 // A model answers in a second or two, faster than a person can follow: a
 // player takes at least its own time to think (more facing a bet, less
 // to answer in the chat), and its line comes after it is seen typing it.
-const PACE = { Gary: [1200, 2600], Duke: [700, 1600], Penny: [1800, 3600] }; // ms a player thinks on its turn, from and to
+const PACE = { Gary: [1200, 2600], Duke: [700, 1600], Penny: [1800, 3600], Mabel: [1600, 3200], Lex: [800, 1800], Hank: [1000, 2200] }; // ms a player thinks on its turn, from and to
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, Math.max(0, ms)));
 function thinkTime(id, due) {
-  const [from, to] = PACE[id];
+  const [from, to] = PACE[id] ?? [1000, 2000];
   const ms = from + Math.random() * (to - from);
   if (!due.turn) return ms / 2;
   const s = table.hand.seats[table.players.findIndex((p) => p.id === id)];
@@ -204,11 +204,12 @@ buyin.addEventListener('submit', (event) => {
 });
 // Before the first hand, the players say hello, a line every second or so; then the cards.
 function greet() {
-  INTROS.forEach((line, k) => setTimeout(() => {
+  const lines = intros(table);
+  lines.forEach((line, k) => setTimeout(() => {
     introduce(table, line);
     changed();
   }, 400 + k * 1400));
-  setTimeout(nextHand, 400 + INTROS.length * 1400 + 600);
+  setTimeout(nextHand, 400 + lines.length * 1400 + 600);
 }
 
 function leaveTable() {
@@ -223,10 +224,11 @@ function leaveTable() {
 // ---- the table ----
 
 const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
-const seats = [];
-function seatNode(id, i) {
+const seats = new Map(); // a player's id → its seat
+const bets = new Map(); // a player's id → its bet on the felt
+function seatNode(id) {
   const node = el('div', 'pk-seat');
-  node.dataset.pos = POS[i];
+  node.dataset.id = id;
   const face = el('span', 'pj-agent-face');
   face.dataset.presence = 'idle';
   const avatar = el('span', `pj-avatar${id === HUMAN ? '' : ' pj-avatar-agent'}`);
@@ -239,13 +241,36 @@ function seatNode(id, i) {
   node.append(face, plate, el('div', 'pk-hole'));
   return node;
 }
-$('.pk-seats').append(...table.players.map(({ id }, i) => (seats[i] = seatNode(id, i))));
-const bets = POS.map((pos) => {
-  const bet = el('span', 'pk-bet');
-  bet.dataset.pos = pos;
-  return bet;
+// An empty seat: a player can be asked to sit there.
+const empties = SLOTS.map((pos, k) => {
+  const node = el('button', 'pk-empty');
+  Object.assign(node, { type: 'button', hidden: true, title: 'Add a player' });
+  Object.assign(node.dataset, { pos, slot: k });
+  node.append(el('span', 'pk-empty-ring', '+'), el('span', 'pk-empty-label', 'Add player'));
+  return node;
 });
-$('.pk-table').append(...bets);
+$('.pk-seats').append(...empties);
+// The seats as the table has them now: one for each player, coming or going, in its own place; the rest empty.
+function layout() {
+  const here = lineup(table);
+  for (const [id, node] of seats) {
+    if (here.some((p) => p.id === id)) continue;
+    node.remove();
+    bets.get(id).remove();
+    for (const map of [seats, bets, was, shownBets]) map.delete(id);
+  }
+  for (const { id } of here) {
+    if (!seats.has(id)) {
+      seats.set(id, seatNode(id));
+      bets.set(id, el('span', 'pk-bet'));
+      $('.pk-seats').append(seats.get(id));
+      $('.pk-table').append(bets.get(id));
+    }
+    seats.get(id).dataset.pos = bets.get(id).dataset.pos = SLOTS[table.slots[id]];
+  }
+  const free = freeSeats(table);
+  for (const [k, node] of empties.entries()) node.hidden = !free.includes(k);
+}
 
 const cardText = (c) => `${c[0] === 'T' ? '10' : c[0]}${SUIT[c[1]]}`;
 function card(c) {
@@ -302,8 +327,9 @@ function fly(from, to, amount, delay = 0) {
 
 const TAG = { fold: 'Fold', check: 'Check', call: 'Call', bet: 'Bet', raise: 'Raise to' };
 // What a seat shows over its face: what it is doing or just did.
-function tag(hand, i) {
-  const { id } = table.players[i];
+function tag(hand, i, { id, joining, leaving }) {
+  if (joining) return ['Sits in next hand', 'wait'];
+  if (leaving && (!hand || hand.street === 'done')) return ['Leaving', 'fold'];
   if (table.notes[id]?.failed) return ['Can\'t reach the model', 'failed'];
   if (running.has(id) && hand?.toAct === i) return ['Thinking…', 'wait'];
   if (!hand) return ['', ''];
@@ -359,58 +385,64 @@ function muck(box) {
   }
 }
 
-let shownBets = POS.map(() => 0); // the bets drawn on the felt, to slide into the pot
-const was = POS.map(() => ({ acts: 0, stack: null, folded: false })); // each seat as last drawn, to show what changed
+const shownBets = new Map(); // a player's bet as drawn on the felt, to slide into the pot
+const was = new Map(); // each player as last drawn, to show what changed
 let celebrated = 0; // the hand whose winners were last cheered
 function draw() {
   const hand = table.hand;
   const potNode = $('.pk-pot');
   const sameHand = hand && hand.id === draw.hand;
-  for (const [i, shown] of shownBets.entries()) if (sameHand && shown && !hand.seats[i].bet) fly(bets[i], potNode, shown);
+  layout();
+  for (const [id, shown] of shownBets) if (sameHand && shown && !hand.seats.find((s) => s.id === id)?.bet) fly(bets.get(id), potNode, shown);
   if (sameHand && hand.street !== draw.street) banner(hand.street === 'done' ? (hand.result.showdown ? 'Showdown' : '') : hand.street[0].toUpperCase() + hand.street.slice(1));
   if (!hand?.result?.showdown && hand?.street === 'done') $('.pk-street').hidden = true;
   draw.hand = hand?.id;
   draw.street = hand?.street;
   const sb = hand?.actions.find((a) => a.type === 'small blind')?.seat;
   const bb = hand?.actions.find((a) => a.type === 'big blind')?.seat;
-  for (const [i, node] of seats.entries()) {
-    const { id } = table.players[i];
-    const s = hand?.seats[i];
-    const out = hand && !s.inHand;
-    node.toggleAttribute('data-folded', Boolean(out || s?.folded));
+  for (const p of lineup(table)) {
+    const { id } = p;
+    const node = seats.get(id);
+    const i = (hand ? hand.seats : table.players).findIndex((q) => q.id === id); // -1 while joining
+    const s = hand && i >= 0 ? hand.seats[i] : null;
+    const out = s && !s.inHand;
+    if (!was.has(id)) was.set(id, { acts: 0, stack: null, folded: false });
+    const before = was.get(id);
+    node.toggleAttribute('data-folded', Boolean(out || s?.folded || p.joining || (p.leaving && (!hand || hand.street === 'done'))));
     node.toggleAttribute('data-turn', Boolean(hand && hand.street !== 'done' && hand.toAct === i));
     $('.pj-agent-face', node).dataset.presence = running.has(id) || (i === 0 && hand?.street !== 'done' && hand?.toAct === 0) ? 'working' : out || s?.folded ? 'away' : 'idle';
-    const stack = i === 0 ? myChips(table) : s ? s.stack : table.players[i].stack;
+    const stack = id === HUMAN ? myChips(table) : s ? s.stack : i >= 0 ? table.players[i].stack : STACK;
     const stackNode = $('.pk-stack', node);
     stackNode.textContent = out ? 'Out' : money(stack);
-    if (was[i].stack !== null && stack !== was[i].stack) delta(stackNode, stack - was[i].stack);
-    was[i].stack = stack;
-    const acts = hand ? hand.actions.filter((a) => a.seat === i && TAG[a.type]).length : 0;
-    if (sameHand && acts > was[i].acts) replay($('.pk-plate', node), 'pk-pulse');
-    was[i].acts = acts;
-    if (sameHand && s.folded && !was[i].folded) muck($(i ? '.pk-hole' : '.pk-hole-mine', i ? node : document));
-    was[i].folded = Boolean(s?.folded);
-    $('.pk-position', node).textContent = hand && hand.street !== 'done' ? (i === bb ? 'BB' : i === sb && sb !== hand.button ? 'SB' : '') : '';
-    const [text, kind] = tag(hand, i);
+    if (before.stack !== null && stack !== before.stack) delta(stackNode, stack - before.stack);
+    before.stack = stack;
+    const acts = s ? hand.actions.filter((a) => a.seat === i && TAG[a.type]).length : 0;
+    if (sameHand && acts > before.acts) replay($('.pk-plate', node), 'pk-pulse');
+    before.acts = acts;
+    if (sameHand && s?.folded && !before.folded) muck(id === HUMAN ? $('.pk-hole-mine') : $('.pk-hole', node));
+    before.folded = Boolean(s?.folded);
+    $('.pk-position', node).textContent = s && hand.street !== 'done' ? (i === bb ? 'BB' : i === sb && sb !== hand.button ? 'SB' : '') : '';
+    const [text, kind] = tag(hand, i, p);
     const tagNode = $('.pk-tag', node);
     if (tagNode.textContent !== text) {
       Object.assign(tagNode, { textContent: text }).dataset.kind = kind;
       replay(tagNode, 'pk-pulse');
     }
-    const shown = Boolean(hand?.result?.showdown && hand.result.hands[i]);
+    const shown = Boolean(s && hand.result?.showdown && hand.result.hands[i]);
     node.toggleAttribute('data-shown', shown);
-    if (i) setCards($('.pk-hole', node), s?.inHand && !s.folded ? (shown ? s.hole : [null, null]) : []);
+    if (id !== HUMAN) setCards($('.pk-hole', node), s?.inHand && !s.folded ? (shown ? s.hole : [null, null]) : []);
     const bet = s?.bet ?? 0;
-    if (sameHand && bet > shownBets[i]) {
-      fly($('.pj-agent-face', node), bets[i], bet - shownBets[i]);
-      replay(bets[i], 'pk-bump');
+    const was_ = shownBets.get(id) ?? 0;
+    if (sameHand && bet > was_) {
+      fly($('.pj-agent-face', node), bets.get(id), bet - was_);
+      replay(bets.get(id), 'pk-bump');
     }
-    if (bet !== shownBets[i]) bets[i].replaceChildren(...(bet ? [chips(bet), money(bet)] : []));
-    shownBets[i] = bet;
+    if (bet !== was_) bets.get(id).replaceChildren(...(bet ? [chips(bet), money(bet)] : []));
+    shownBets.set(id, bet);
   }
   const puck = $('.pk-puck');
   puck.hidden = !hand;
-  if (hand) puck.dataset.pos = POS[hand.button];
+  if (hand) puck.dataset.pos = SLOTS[table.slots[hand.seats[hand.button].id] ?? 0];
   setCards($('.pk-board'), hand?.board ?? []);
   const pot = hand ? hand.seats.reduce((sum, s) => sum + s.total, 0) : 0;
   potNode.hidden = !pot || hand.street === 'done';
@@ -431,9 +463,10 @@ function draw() {
     else setTimeout(() => buyIn('rebuy'), 1500);
     for (const [i, won] of hand.result.won.entries()) {
       if (!won) continue;
-      fly(potNode.hidden ? $('.pk-board') : potNode, $('.pj-agent-face', seats[i]), won, 450);
-      seats[i].toggleAttribute('data-won', true);
-      setTimeout(() => seats[i].removeAttribute('data-won'), 1600);
+      const node = seats.get(hand.seats[i].id);
+      fly(potNode.hidden ? $('.pk-board') : potNode, $('.pj-agent-face', node), won, 450);
+      node.toggleAttribute('data-won', true);
+      setTimeout(() => node.removeAttribute('data-won'), 1600);
     }
   }
   drawMe();
@@ -535,7 +568,7 @@ function drawFeed() {
       const line = table.chat[change.line - 1];
       feed.append(message(line, feed.lastElementChild?.dataset.by === line.by));
     } else if (change.type === 'react') {
-      pop(table.players.findIndex((p) => p.id === change.by), change.emoji);
+      pop(change.by, change.emoji);
     } else if (change.type === 'rebuy') {
       feed.append(dealer(`${change.by} buys back in for ${money(change.amount)}.`));
     } else if (change.type === 'failed') {
@@ -568,11 +601,12 @@ function drawFeed() {
   if (stick) feed.scrollTop = feed.scrollHeight;
 }
 // A reaction: the emoji pops up in a bubble by its sender's face and floats away.
-function pop(seat, emoji) {
-  if (seat < 0) return;
-  $('.pk-react', seats[seat])?.remove();
+function pop(id, emoji) {
+  const seat = seats.get(id);
+  if (!seat) return;
+  $('.pk-react', seat)?.remove();
   const node = el('span', 'pk-react', emoji);
-  $('.pj-agent-face', seats[seat]).append(node);
+  $('.pj-agent-face', seat).append(node);
   setTimeout(() => node.remove(), 2400);
 }
 
@@ -598,6 +632,68 @@ function message(line, more) {
   return item;
 }
 
+// ---- who is at the table: an empty seat offers a player; a player can be asked to leave ----
+
+const menu = el('ul', 'pj-block-menu pk-menu');
+menu.setAttribute('role', 'menu');
+menu.hidden = true;
+document.body.append(menu);
+function item(content, run, disabled = '') {
+  const li = el('li');
+  li.setAttribute('role', 'menuitem');
+  li.append(...content);
+  if (disabled) Object.assign(li, { title: disabled }).setAttribute('aria-disabled', 'true');
+  else li.addEventListener('click', () => {
+    closeMenu();
+    run();
+    changed();
+  });
+  return li;
+}
+function who(id) {
+  const persona = PERSONAS.find((p) => p.id === id);
+  const avatar = el('span', 'pj-avatar pj-avatar-agent');
+  avatar.append(agentFace(id));
+  const text = el('span', 'pk-menu-text');
+  text.append(el('b', '', id), el('span', '', persona.blurb));
+  return [avatar, text];
+}
+// The menu by `anchor`: for an empty seat, the players who could sit there; for a player, to leave or stay.
+function openMenu(anchor, { slot, id }) {
+  const here = lineup(table);
+  if (id) {
+    const p = here.find((q) => q.id === id);
+    const others = here.filter((q) => q.id !== HUMAN && !q.leaving).length;
+    menu.replaceChildren(el('li', 'pk-menu-head', ''), p.leaving
+      ? item([el('span', '', 'Stay at the table')], () => addPlayer(table, id))
+      : item([el('span', '', p.joining ? 'Don\'t sit down' : table.hand && table.hand.street !== 'done' ? 'Leave after this hand' : 'Leave the table')], () => removePlayer(table, id), others < 2 ? 'A table needs someone to play against' : ''));
+    menu.firstChild.append(...who(id));
+  } else {
+    const out = PERSONAS.filter((q) => !here.some((h) => h.id === q.id));
+    menu.replaceChildren(...out.map((q) => item(who(q.id), () => addPlayer(table, q.id, slot))));
+  }
+  const at = anchor.getBoundingClientRect();
+  menu.hidden = false;
+  const left = Math.min(Math.max(8, at.left + at.width / 2 - menu.offsetWidth / 2), innerWidth - menu.offsetWidth - 8);
+  const top = at.bottom + 4 + menu.offsetHeight < innerHeight ? at.bottom + 4 : Math.max(8, at.top - menu.offsetHeight - 4);
+  Object.assign(menu.style, { left: `${left}px`, top: `${top}px` });
+}
+function closeMenu() {
+  menu.hidden = true;
+}
+$('.pk-seats').addEventListener('click', (event) => {
+  const empty = event.target.closest('.pk-empty');
+  const seat = event.target.closest('.pk-seat');
+  if (empty) return openMenu(empty, { slot: Number(empty.dataset.slot) });
+  if (seat && seat.dataset.id !== HUMAN && event.target.closest('.pj-agent-face, .pk-plate')) openMenu(seat, { id: seat.dataset.id });
+});
+document.addEventListener('pointerdown', (event) => {
+  if (!menu.hidden && !event.target.closest('.pk-menu, .pk-empty, .pk-seat')) closeMenu();
+});
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') closeMenu();
+});
+
 // ---- their thinking, after a hand ----
 
 function showThinking() {
@@ -605,8 +701,8 @@ function showThinking() {
   const dialog = $('.pk-thinking');
   $('h2', dialog).textContent = `Their thinking, hand ${hand.id}`;
   const body = $('.pk-thinking-body', dialog);
-  body.replaceChildren(...PERSONAS.map(({ id }) => {
-    const seat = table.players.findIndex((p) => p.id === id);
+  body.replaceChildren(...hand.seats.filter((s) => s.id !== HUMAN).map(({ id }) => {
+    const seat = hand.seats.findIndex((s) => s.id === id);
     const thoughts = table.notes[id].thoughts.filter((t) => t.hand === hand.id);
     const part = el('details', 'pj-trace-part');
     part.open = true;
