@@ -12,7 +12,7 @@ import { filled, nextStepAt, refilled } from '../core/bucket.js';
 import { movedAnchor, newId, threadsOf } from '../core/comments.js';
 import { diffOps } from '../core/ot.js';
 import { merge3 } from '../core/diff.js';
-import { SETTLE_MS, plan } from '../core/due.js';
+import { OUTSIDE, SETTLE_MS, plan } from '../core/due.js';
 import { DEFAULT_SETTINGS } from '../core/settings.js';
 import { toChanges } from '../core/translate.js';
 import { pickedAgent } from '../store/agents.js';
@@ -385,8 +385,9 @@ export async function createBuddyRuntime({ door, place, pathInProject, buddies, 
      * A change landed in the doc's log (doc-service.js, subscribe): { rev,
      * by: { id, kind }, comments }. Comments changed: look. The text: a
      * person's (or outside) ends the runs only a watch started, for they saw
-     * the doc as it was, and the watchers look again once people pause; a
-     * buddy's has them look at once.
+     * the doc as it was, and the watchers look again once people pause, or
+     * at once for a file written outside, which is whole; a buddy's has them
+     * look at once.
      */
     heard({ rev, by: author, comments }) {
       const who = author.kind === 'buddy' ? nameOf(author.id) : author.kind === 'person' ? 'a person' : 'outside the app';
@@ -394,10 +395,10 @@ export async function createBuddyRuntime({ door, place, pathInProject, buddies, 
         look(`a comment by ${who}, rev ${rev}`);
         return;
       }
-      const by = author.kind === 'buddy' ? author.id : null;
+      const by = author.kind === 'buddy' ? author.id : author.kind === 'outside' ? OUTSIDE : null;
       changedAt.set(by, { rev, at: performance.now() });
       if (![...notes.values()].some((n) => n.watch)) return;
-      if (by !== null) {
+      if (by !== null && by !== OUTSIDE) {
         look(`an edit by ${who}, rev ${rev}`);
         return;
       }
@@ -405,6 +406,10 @@ export async function createBuddyRuntime({ door, place, pathInProject, buddies, 
         if (!run.task.watchOnly || run.landing || run.cancelled) continue;
         noteOf(run.task.buddy.id).lookedAt = run.from;
         end(run);
+      }
+      if (by === OUTSIDE) {
+        look(`an edit by ${who}, rev ${rev}`);
+        return;
       }
       wake(performance.now() + SETTLE_MS, `an edit by ${who}, rev ${rev}, once people pause`);
     },

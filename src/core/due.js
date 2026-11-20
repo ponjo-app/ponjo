@@ -9,6 +9,9 @@ import { nextStepAt, take } from './bucket.js';
 /** How long people's edits pause before a buddy watching runs on them (ms). */
 export const SETTLE_MS = 5000;
 
+/** Who made a change found on disk (another program), in `changedAt`. */
+export const OUTSIDE = Symbol('outside');
+
 /**
  * What to start and stop now. `buddies` those the doc reaches; `threads`
  * its threads (threadsOf); `askers` the ids whose comments ask and `taken`
@@ -18,8 +21,8 @@ export const SETTLE_MS = 5000;
  * or null), heard (the ids of the comments then, a Set, or null), watch ({
  * by }, who turned it on, or null) }; `changedAt` who last
  * changed the doc's text → { rev, at (when, on the clock of `now`) }, people
- * as one (null); `running` the ids of the buddies running; `steps` the
- * bucket buddies wake each other from (bucket.js); `text` the doc now.
+ * as one (null), another program writing the file as OUTSIDE; `running`
+ * the ids of the buddies running; `steps` the bucket buddies wake each other from (bucket.js); `text` the doc now.
  *
  * Returns { start ([{ buddy, buddies, threads, askers, watch (null, or {
  * changes, threads (the open ones with another member's comment since it
@@ -32,8 +35,9 @@ export const SETTLE_MS = 5000;
  * A comment asks a buddy until it comments after it, or a run was given it.
  * A watcher, while whoever turned it on may ask, is due once turned on, and
  * on another member's change since its last run started: people's once
- * they pause SETTLE_MS, a buddy's once its run ended (so the watcher sees
- * the comment that came with it), for a step. Its own never counts.
+ * they pause SETTLE_MS, a file written outside at once (it is whole: the
+ * door took it once it held still), a buddy's once its run ended (so the
+ * watcher sees the comment that came with it), for a step. Its own never counts.
  */
 export function plan({ buddies, threads, askers, taken, notes, changedAt, running, steps, text, now }) {
   const noteOf = (id) => notes.get(id) ?? { seen: new Map(), lookedAt: null, base: null, heard: null, watch: null };
@@ -42,7 +46,7 @@ export function plan({ buddies, threads, askers, taken, notes, changedAt, runnin
   const taskOf = (id) => tasks.get(id) ?? tasks.set(id, { threads: [], askers: new Set(), asked: false, watch: null }).get(id);
   const asking = new Set();
   const why = new Map();
-  const nameOf = (by) => (by === null ? 'people' : buddies.find((b) => b.id === by)?.name ?? by);
+  const nameOf = (by) => (by === null ? 'people' : by === OUTSIDE ? 'outside the app' : buddies.find((b) => b.id === by)?.name ?? by);
   let wakeAt = null;
   const soonest = (at) => { wakeAt = wakeAt === null ? at : Math.min(wakeAt, at); };
   for (const thread of threads) {
@@ -72,11 +76,13 @@ export function plan({ buddies, threads, askers, taken, notes, changedAt, runnin
         changed.push(`itself at rev ${rev}, which does not count`);
         continue;
       }
+      const buddy = by !== null && by !== OUTSIDE;
       // A buddy's counts once its run has landed, the comment with the edit.
-      if (by !== null && !running.has(by)) byBuddy = true;
+      if (by === OUTSIDE) byPeople = true;
+      else if (buddy && !running.has(by)) byBuddy = true;
       else if (by === null && now - at >= SETTLE_MS) byPeople = true;
       else if (by === null) soonest(at + SETTLE_MS); // people still typing: look once they pause
-      changed.push(`${nameOf(by)} at rev ${rev}${by === null && now - at < SETTLE_MS ? ', still typing' : ''}${by !== null && running.has(by) ? ', still landing' : ''}`);
+      changed.push(`${nameOf(by)} at rev ${rev}${by === null && now - at < SETTLE_MS ? ', still typing' : ''}${buddy && running.has(by) ? ', still landing' : ''}`);
     }
     const since = note.lookedAt === null ? 'its first look' : changed.length ? `changed by ${changed.join(', ')}, after its look at rev ${note.lookedAt}` : `no change since its look at rev ${note.lookedAt}`;
     // What members said since it looked, as what they wrote: its own words it knows.
