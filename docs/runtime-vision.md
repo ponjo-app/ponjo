@@ -134,13 +134,13 @@ An orchestrator fits those better.
   through one blocking wait, the five-question world interface, one
   writer, requests and watches woken by a view's change, stateless
   agents, the agent log, the poker fixes (outside writes wake at once and
-  end no run; wake lines; an agent may ask another), and chains limited
-  by depth, with a breaker that pauses watches.
+  end no run; wake lines; an agent may ask another), chains limited
+  by depth, with a breaker that pauses watches, and outside actions as
+  proposals, carried out once and approved by the owner ([agent
+  runtime](agent-runtime.md#outside-actions)).
 - **Built** for poker, in its own page: per-member views, refusals, chains
   limited by depth.
-- **Proposed** for Ponjo's runtime: refusals; outside actions as
-  proposals, carried out once and approved by the owner ([agent
-  runtime](agent-runtime.md#outside-actions)). What differs today:
+- **Proposed** for Ponjo's runtime: refusals. What differs today:
   [agent runtime](agent-runtime.md#today).
 - **Not yet:** a host that keeps running with no window open.
 - **Then, in worlds:** per-member views in the doc world; the poker table

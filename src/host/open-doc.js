@@ -13,6 +13,7 @@ import { configDir, ownerOf, readSettings, watchSettings } from '../store/settin
 import { watchFolder } from '../store/watch.js';
 import { StoreError } from '../store/files.js';
 import { agentsFor, createBuddyRuntime } from './buddy-runtime.js';
+import { actionsFor } from './doc-actions.js';
 import { openDocService } from './doc-service.js';
 import { createDocWorld } from './doc-world.js';
 import { DocError, LEVELS, can } from './door.js';
@@ -36,7 +37,7 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
     door: doc.door, subscribe: doc.subscribe,
     place: () => ({ docPath: doc.docPath(), folder, room }),
     pathInProject: () => pathInProject(folder, doc.docPath()),
-    buddies, me, settingsDir,
+    buddies, me, settingsDir, emit,
   });
   const runtime = await createBuddyRuntime({ world, docPath: doc.docPath, settingsDir, secrets, emit });
 
@@ -85,7 +86,7 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
 
   const calls = {
     // The actions runs here proposed (doc-actions.js): anyone in the doc sees them; only the owner decides.
-    read: { actions: () => world.actions.list() },
+    read: { actions: async (arg, who) => actionsFor(who.level, await world.actions.list()) },
     write: runtime.calls,
     owner: {
       approveAction: ({ id } = {}, who) => world.actions.approve(id, who),
@@ -123,7 +124,7 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
       const level = LEVELS.find((l) => Object.hasOwn(calls[l], type));
       if (!level) {
         const answer = await doc.call(type, arg, who);
-        return type === 'state' ? { ...answer, agents: agentsFor(who.level, runtime.statuses()), watches: runtime.watches() } : answer;
+        return type === 'state' ? { ...answer, agents: agentsFor(who.level, runtime.statuses()), watches: runtime.watches(), actions: actionsFor(who.level, await world.actions.list()) } : answer;
       }
       if (!can(who, level)) throw new DocError('forbidden', `${who?.name ?? 'no one'} may not ${type} here`);
       try {

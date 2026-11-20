@@ -179,8 +179,6 @@ What the code does differently from the runtime above:
 - Every member sees the whole doc and every thread; in project mode the
   agent program may read the project folder.
 - Nothing is refused: the doc world merges.
-- There are no outside actions yet: an agent program may act outside the
-  doc as its script and its CLI's config allow.
 
 Code: the loop is `src/host/buddy-runtime.js`, the plan `src/core/due.js`,
 the run `src/host/runner.js`; the doc world `src/host/doc-world.js`, its
