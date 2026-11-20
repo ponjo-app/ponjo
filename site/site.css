@@ -140,6 +140,24 @@ a { color: var(--accent); }
 .arch-scan { position: absolute; right: 0; left: 0; height: 22px; translate: 0 -50%; background: var(--accent-soft); opacity: 0.7; pointer-events: none; }
 /* the runtime: a plain round head in ink, no buddy's face */
 .arch-machine-head { width: var(--face); height: var(--face); overflow: visible; fill: var(--canvas); stroke: var(--text); stroke-width: 5; stroke-linecap: round; }
+/* a relay: the track, a baton, the z's of a sleeper; a headset and its call; the board of legs run */
+.arch-track { stroke: var(--border-strong); stroke-width: 3; }
+.arch-baton { overflow: visible; fill: var(--canvas); stroke: var(--text); stroke-width: 2; }
+.arch-zzz { display: flex; gap: 2px; color: var(--text-soft); font-size: 14px; font-weight: 600; font-style: italic; }
+.arch-zzz i { animation: arch-zzz 2.4s ease-in-out infinite; }
+.arch-zzz i:nth-child(2) { font-size: 0.85em; animation-delay: 0.4s; }
+.arch-zzz i:nth-child(3) { font-size: 0.7em; animation-delay: 0.8s; }
+@keyframes arch-zzz { 0%, 100% { opacity: 0.2; translate: 0 4px; } 50% { opacity: 1; translate: 0 -4px; } }
+@media (prefers-reduced-motion: reduce) { .arch-zzz i { animation: none; } }
+.arch-headset, .arch-waves { fill: none; stroke: var(--text); stroke-width: 6; }
+.arch-waves { transform-box: fill-box; transform-origin: left center; }
+.arch-call { stroke-dasharray: 4 5; }
+.arch-headset-cups { fill: var(--text); stroke: none; }
+.arch-score { gap: 6px; }
+.arch-leg { display: flex; align-items: center; gap: 8px; color: var(--text-soft); font-size: 12px; }
+.arch-leg .pj-avatar { --size: 18px; }
+.arch-mark { margin-left: auto; color: var(--text-faint); font-weight: 600; }
+.arch-mark.arch-done { color: var(--text); }
 /* delegate: a room only its agent works in, a doorway in the wall that faces you, a desk;
    and the spark where two agents running back crash */
 .arch-room { box-sizing: border-box; border: 2px solid var(--border-strong); border-radius: 14px; background: var(--bg-soft); }
@@ -180,7 +198,6 @@ a { color: var(--accent); }
 .arch-prop-ink { stroke: var(--buddy); stroke-width: 2.2; }
 .arch-at { position: absolute; translate: -50% -50%; }
 .arch-ink { fill: none; stroke: var(--text-soft); stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
-.arch-lost { stroke: var(--red); stroke-width: 2; }
 /* what a member just did, over its face */
 .arch-tag { position: absolute; bottom: 100%; left: 50%; translate: -50% -4px; padding: 2px 8px; border-radius: 9999px; background: var(--text); color: var(--on-text); font-size: 12px; font-weight: 600; white-space: nowrap; }
 .arch-tag:empty { display: none; }

@@ -53,6 +53,8 @@ const LIMBS = {
     look: ['M7 31 L0 45', 'M49 30 L54 15'],
     tap: ['M7 31 L-10 28', 'M49 31 L56 45'],
     dazed: ['M7 33 L-1 46 L5 50', 'M49 28 L60 17 L55 6'],
+    baton: ['M7 33 L-4 37 L-7 31', 'M49 30 L57 25 L61 32'],
+    reach: ['M7 31 L-12 30', 'M49 31 L56 45'],
   },
 };
 const PROPS = {
@@ -60,7 +62,12 @@ const PROPS = {
   write: [['arch-prop arch-prop-pen', 'M55 -13 L62 -12 L62 2 L59 6 L55 2 Z']],
   look: [['', 'M54 15 L58 8'], ['arch-prop', 'M57 0 a8 8 0 1 0 16 0 a8 8 0 1 0 -16 0']],
   dazed: [['arch-prop', 'M58 -6 Q52 -8 56 -14 Q56 -22 64 -19 Q70 -25 74 -17 Q81 -15 77 -9 Q76 -2 69 -5 Q63 0 58 -6 Z']],
+  baton: [['arch-prop', 'M-19 25 H-5 V31 H-19 Z']],
+  reach: [['arch-prop', 'M-27 27 H-13 V33 H-27 Z']],
 };
+// A headset over a face, in its 100×100 box, and the waves at its ear when it is called.
+const HEADSET = ['M10 52 Q50 -32 90 52', 'M0 42 h14 v22 h-14 Z M86 42 h14 v22 h-14 Z'];
+const WAVES = 'M108 44 q7 9 0 18 M116 37 q13 16 0 32';
 // Looks a face has only in these scenes, drawn in its own ink in place of
 // its eyes and mouth, in its 100×100 box: [kind, path], a 'fill' solid, a
 // 'drop' filled with paper. Running: brows down, eyes set, a frown and a
@@ -105,7 +112,7 @@ const path = (d, className) => {
 
 // A member: its face with arms and legs, its name under it, and a tag over its
 // face for what it did. pose() sets its arms, legs, look and the way it faces.
-function actor(name, presence) {
+function actor(name, presence, { headset = false } = {}) {
   const node = el('div', 'arch-actor');
   const figure = el('div', 'arch-figure');
   figure.style.setProperty('--buddy', buddyColor(name));
@@ -131,6 +138,12 @@ function actor(name, presence) {
     parts[`look-${look}`] = g;
     looks.append(g);
   }
+  if (headset) {
+    looks.append(path(HEADSET[0], 'arch-headset'), path(HEADSET[1], 'arch-headset-cups'));
+    parts.waves = path(WAVES, 'arch-waves');
+    parts.waves.style.display = 'none';
+    looks.append(parts.waves);
+  }
   const who = name === 'Runtime' ? machine() : face(name, { person: name === 'You', presence });
   const tag = el('span', 'arch-tag');
   who.append(tag, looks);
@@ -153,6 +166,7 @@ function machine() {
 
 function pose(member, { arms = 'stand', legs = 'stand', look = null, right = false }) {
   for (const [key, g] of Object.entries(member.parts)) {
+    if (key === 'waves') continue;
     g.style.display = [`arms-${arms}`, `legs-${legs}`, `look-${look}`].includes(key) ? '' : 'none';
   }
   if (look) member.figure.dataset.look = look;
@@ -191,12 +205,6 @@ function between(from, [w, h], to) {
   const k = Math.hypot(dx, dy);
   const edge = Math.min(w / 2 / Math.abs(dx || 1e-9), h / 2 / Math.abs(dy || 1e-9)) + 8 / k;
   return arrow([from[0] + dx * edge, from[1] + dy * edge], [to[0] - (dx / k) * 44, to[1] - (dy / k) * 44]);
-}
-
-// A cross at `at`, two strokes.
-function cross([x, y]) {
-  const s = 8;
-  return [`M${f(x - s)} ${f(y - s)} L${f(x + s)} ${f(y + s)}`, `M${f(x + s)} ${f(y - s)} L${f(x - s)} ${f(y + s)}`];
 }
 
 // The diagram's paper, W×H, upright on a phone: an SVG for the lines,
@@ -533,68 +541,122 @@ function docScene(scene, { runtime = false } = {}) {
   return t;
 }
 
-// A message that does not arrive: drawn part of the way, then crossed out.
-async function lose(scene, t, name) {
-  const [lost, tip] = t.message(name);
-  tip.remove();
-  await scene.draw(lost, 500, 0.45);
-  const at = lost.getPointAtLength(lost.getTotalLength() * 0.45);
-  for (const d of cross([at.x, at.y])) await scene.draw(t.s.ink(d, 'arch-ink arch-lost'), 150);
-  await scene.move(lost, [{ opacity: 1 }, { opacity: 0.25 }], 300);
+// A relay: Otto, Clippy and Pip, each its leg of a track, Clippy asleep with
+// z's over it. With `headsets`, each wears one, and the board by the track
+// says which legs are run.
+function race(scene, { headsets = false } = {}) {
+  const s = sketch(scene.stage);
+  const up = s.upright;
+  const y = headsets ? (up ? 340 : 280) : (up ? 260 : 220); // where they stand
+  const track = y + 62;
+  const start = up ? { Otto: 60, Clippy: 180, Pip: 300 } : { Otto: 90, Clippy: 310, Pip: 530 };
+  const leg = up ? 60 : 140; // how far each runs
+  s.ink(`M${up ? 20 : 40} ${track} H${s.W - (up ? 20 : 40)}`, 'arch-ink arch-track');
+  const who = {};
+  for (const name of ['Otto', 'Clippy', 'Pip']) {
+    who[name] = actor(name, name === 'Clippy' ? 'away' : 'idle', { headset: headsets });
+    s.place(who[name].node, [start[name], y]);
+  }
+  const zzz = s.place(el('span', 'arch-zzz'), [start.Clippy + 30, y - 66]);
+  zzz.append(...'zzz'.split('').map((z) => el('i', '', z)));
+  const t = { s, up, y, track, start, leg, who, zzz };
+  if (headsets) {
+    const board = t.board = s.place(el('div', 'arch-paper arch-score'), up ? [s.W / 2, 110] : [s.W / 2, 80], up ? [240, 150] : [260, 128]);
+    board.append(el('b', '', 'Board'));
+    t.marks = {};
+    ['Otto', 'Clippy', 'Pip'].forEach((name, i) => {
+      const row = el('div', 'arch-leg');
+      t.marks[name] = el('span', 'arch-mark', '—');
+      row.append(el('span', '', `Leg ${i + 1}`), face(name), t.marks[name]);
+      board.append(row);
+    });
+  }
+  // `name` runs its leg, and is pleased with itself
+  t.runs = async (name) => {
+    await run(scene, s, who[name], [[start[name], y], [start[name] + leg, y]], 1100, { look: 'run' });
+    pose(who[name], { right: true });
+  };
+  return t;
 }
 
-// Triggered by events: an ask on the doc sends the buddy asked a message,
-// and it runs when that arrives. Clippy's is lost, so its ask stays.
+// Triggered by events: each runner runs when the one before hands it the
+// baton. Clippy is asleep and misses it; the baton falls, and Pip waits.
 async function events(scene) {
   watching(false);
-  const t = docScene(scene);
+  const t = race(scene);
+  const { who } = t;
+  pose(who.Otto, { arms: 'baton' });
   const foot = el('p', 'arch-foot');
   const link = el('a', '', 'Even OpenHands drops requests when a poll fails.');
   link.href = OPENHANDS;
   foot.append(link);
   scene.stage.append(foot);
 
+  await scene.wait(800);
+  const to = t.start.Clippy - 70;
+  await run(scene, t.s, who.Otto, [[t.start.Otto, t.y], [to, t.y]], 1400, { arms: 'baton', look: 'run' });
+  pose(who.Otto, { arms: 'reach', right: true });
+  who.Otto.tag.textContent = 'Here!';
   await scene.wait(900);
-  const otto = t.ask('Otto');
-  await scene.fade(otto, 1);
-  const [shaft, head] = t.message('Otto');
-  await scene.draw(shaft, 600);
-  await scene.draw(head, 150);
-  t.who.Otto.face.dataset.presence = 'working';
-  await scene.wait(1600);
-  t.done('Otto', otto);
-  await Promise.all([scene.fade(shaft, 0), scene.fade(head, 0)]);
-
-  await scene.wait(700);
-  await scene.fade(t.ask('Clippy'), 1);
-  await lose(scene, t, 'Clippy');
-  await scene.wait(3500);
+  // nobody takes it: it falls to the track
+  pose(who.Otto, { arms: 'tap', right: true });
+  who.Otto.tag.textContent = '';
+  const baton = t.s.place(svg('-14 -5 28 10', 'arch-baton'), [to + 34, t.y - 4], [28, 10]);
+  baton.append(path('M-13 -4 H13 V4 H-13 Z'));
+  await scene.move(baton, [{ ...t.s.at([to + 34, t.y - 4]), rotate: '0deg' }, { ...t.s.at([to + 44, t.track - 4]), rotate: '80deg' }], 600, 'cubic-bezier(0.5, 0, 1, 1)');
+  await scene.move(baton, [{ ...t.s.at([to + 44, t.track - 4]), rotate: '80deg' }, { ...t.s.at([to + 56, t.track - 8]), rotate: '150deg', offset: 0.4 }, { ...t.s.at([to + 62, t.track - 3]), rotate: '180deg' }], 500, 'ease-out');
+  const otto = who.Otto.face.querySelector('.pj-avatar');
+  otto.classList.add('pj-failed');
+  who.Pip.tag.textContent = 'Waiting…';
+  await scene.wait(1200);
+  otto.classList.remove('pj-failed');
+  await scene.wait(2800);
 }
 
-// Reconciled from state: an ask on the doc only nudges the runtime to look
-// again. The nudge is lost and the runtime restarts; starting, it reads the
-// doc, finds Clippy's ask, and wakes Clippy all the same.
+// Reconciled from state: no baton. The runtime reads the board and calls,
+// in its headset, whoever's leg is not run yet, and calls again while it is
+// not: Clippy sleeps through the first call and wakes at the second.
 async function state(scene) {
   watching(false);
-  const t = docScene(scene, { runtime: true });
-  const { Runtime } = t.who;
+  const t = race(scene, { headsets: true });
+  const { who, marks } = t;
+  // a call from the board to `name`'s headset: a dashed line, and the waves
+  // at its ear pulse; louder, they are bigger
+  const call = async (name, loud = false) => {
+    const runner = who[name].node;
+    const [from, to] = [t.board.getBoundingClientRect(), runner.getBoundingClientRect()];
+    const box = t.board.parentNode.getBoundingClientRect();
+    const k = t.s.W / box.width; // page pixels to the diagram's units
+    const line = t.s.ink(`M${f((from.left + from.width / 2 - box.left) * k)} ${f((from.bottom - box.top) * k + 4)} L${f((to.left + to.width / 2 - box.left) * k)} ${f((to.top - box.top) * k)}`, 'arch-ink arch-call');
+    const waves = who[name].parts.waves;
+    waves.style.display = '';
+    waves.style.scale = loud ? '1.4' : '1';
+    await scene.move(waves, [{ opacity: 0 }, { opacity: 1 }, { opacity: 0 }, { opacity: 1 }, { opacity: 0 }], 900, 'linear');
+    waves.style.display = 'none';
+    line.remove();
+  };
+  const ran = (name) => {
+    marks[name].textContent = '✓';
+    marks[name].classList.add('arch-done');
+  };
 
+  await scene.wait(800);
+  await call('Otto');
+  await t.runs('Otto');
+  ran('Otto');
+  await scene.wait(500);
+  await call('Clippy'); // asleep: nothing
   await scene.wait(900);
-  const ask = t.ask('Clippy');
-  await scene.fade(ask, 1);
-  await lose(scene, t, 'Runtime');
-  await scene.move(Runtime.figure, [{ rotate: '0deg' }, { rotate: '-90deg' }], 400, 'cubic-bezier(0.5, 0, 1, 1)');
-  await scene.wait(1000);
-  await scene.move(Runtime.figure, [{ rotate: '-90deg' }, { rotate: '0deg' }], 500, 'cubic-bezier(0.2, 1.4, 0.4, 1)');
-  Runtime.tag.textContent = 'Restarted';
-  await t.scan();
-  Runtime.tag.textContent = '';
-  ask.classList.add('arch-found');
-  await t.wake('Clippy');
-  await scene.wait(1200);
-  t.done('Clippy', ask);
-  await scene.wait(600);
-  await t.scan();
+  await call('Clippy', true); // again, since leg 2 is still not run
+  t.zzz.remove();
+  who.Clippy.face.dataset.presence = 'idle';
+  await scene.wait(400);
+  await t.runs('Clippy');
+  ran('Clippy');
+  await scene.wait(400);
+  await call('Pip');
+  await t.runs('Pip');
+  ran('Pip');
   await scene.wait(2600);
 }
 
@@ -631,8 +693,8 @@ const CHAPTERS = [
   ['', 'Press Start.', cover],
   ['How you work · Delegate', 'Delegate: each agent works alone on its own copy. The copies clash, and you merge them by hand.', delegate],
   ['How you work · Blackboard', 'Blackboard: everyone works on one board and sees every change. Nothing to hand off, nothing to merge.', blackboard],
-  ['When agents run · Events', 'Triggered by events: an agent runs only when a message reaches it. Lose the message, lose the work.', events],
-  ['When agents run · State', 'Reconciled from state: the runtime reads the doc and wakes whoever is due. Lose a message, or restart: nothing is lost.', state],
+  ['When agents run · Events', 'Triggered by events: each agent runs when the one before hands it on. Miss one handoff, and the race stops.', events],
+  ['When agents run · State', 'Reconciled from state: the runtime reads the board and calls whoever’s leg isn’t run, again until it is. A missed call costs nothing.', state],
   ['When agents run · No orchestrator', 'No orchestrator: one agent’s change is the next one’s cue. Nobody wires who goes next.', relay],
 ];
 
