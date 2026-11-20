@@ -39,7 +39,7 @@ MUST keep fields it does not understand.
 | --- | --- | --- |
 | `id` | string | `c_` + at least 6 characters from `[A-Za-z0-9_-]`. The first comment's id is also its thread's id. |
 | `thread` | string, optional | The first comment of the thread this one replies in. Absent on a first comment. |
-| `to` | array of strings, optional | On a first comment: the ids (as in `by.id`) of the members who can read its thread, besides its writer; `[]` for its writer alone. Absent, as on every older thread, for everyone. Ignored on a reply: who can read a thread never changes. |
+| `to` | array of strings, optional | Ids (as in `by.id`) this comment lets read its thread (§4). On a first comment, it makes the thread one only its readers see: its writer and these, `[]` for its writer alone. Absent there, as on every older thread, everyone sees the thread, and a reply's `to` means nothing. |
 | `anchor` | object or null, optional | On a first comment: the text it is about (§3); absent or `null` for a comment on the whole doc. On a buddy's reply whose edit rewrote that text: where the text is now (§3). |
 | `by` | object | `{ "id", "name", "kind": "human" \| "ai" }`. The `id` is random and stays when the name changes: a human's is in their settings, a buddy's in its file ([PROJECT §2](PROJECT.md)); a buddy file without one is a buddy whose `id` is its name. The `name` is only what it was called then. |
 | `at` | string | When it was written, RFC 3339 UTC. A buddy's comments in a thread that asked it: just after that thread's latest comment as its run saw it. |
@@ -87,11 +87,16 @@ up to 32 after it, and `start` is `start`.
    and kept as it is. A `to` that is not an array of non-empty strings makes
    its line not a valid comment, so a thread meant for some is never shown
    to all by a tool that knows the field.
-6. A thread's **readers** are its first comment's writer and the ids in its
-   `to`; without `to`, everyone. A tool SHOULD show a thread, its replies
-   and its anchor only to its readers, and let no one else write in it. A
-   tool that does not know `to` shows the thread to everyone: it keeps the
-   field (§2) but reads the thread as everyone's.
+6. A thread whose first comment has no `to` is everyone's. Otherwise its
+   **readers** are, going through its comments in order (rule 2), its first
+   comment's writer, then the ids in the `to` of each comment whose writer
+   is a reader by then; a `to` by anyone else adds no one, and no one is
+   ever removed. A tool SHOULD show such a thread, its replies and its
+   anchor only to its readers, and let no one else write in it. A tool that
+   does not know `to` shows the thread to everyone: it keeps the field (§2)
+   but reads the thread as everyone's. (Ponjo writes in `to` whom a comment
+   @mentions (§6) that cannot read the thread yet: a person adds people and
+   buddies, a buddy adds buddies.)
 
 ## 5. Writing
 

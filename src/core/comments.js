@@ -204,8 +204,9 @@ export function movedAnchor(anchor, base, edited, text) {
  * first comment is missing is left out. `mentionable` ([{ id, name }]) is who an @name can mean (§6); each comment
  * gets `mentions`, the ids it mentions. A thread's `anchor` is the latest of
  * its comments' anchors found in the doc's `text`, when given (§3); else,
- * or when none is, the latest. `readers` are the ids that can read it: its
- * writer and its first comment's `to`; null for everyone.
+ * or when none is, the latest. `readers` are the ids that can read it (§4):
+ * its writer, then each id a reader's comment adds in `to`; null when its
+ * first comment has no `to`, for everyone.
  */
 export function threadsOf(comments, mentionable = [], text = null) {
   const firsts = comments.filter((c) => c.thread === undefined).sort(byTime);
@@ -215,8 +216,8 @@ export function threadsOf(comments, mentionable = [], text = null) {
     // A buddy's reply that rewrote the thread's text moves it; undoing that edit moves it back (§3).
     const anchors = all.filter((c) => c.anchor).map((c) => c.anchor);
     const anchor = first.anchor ? (text !== null && anchors.findLast((a) => locate(text, a))) || anchors.at(-1) : null;
-    const readers = first.to ? [...new Set([first.by.id, ...first.to])] : null;
-    return { id: first.id, anchor, resolved: all.at(-1).resolved === true, readers, comments: all };
+    const readers = first.to && all.reduce((ids, c) => (ids.has(c.by.id) ? new Set([...ids, ...(c.to ?? [])]) : ids), new Set([first.by.id]));
+    return { id: first.id, anchor, resolved: all.at(-1).resolved === true, readers: readers ? [...readers] : null, comments: all };
   });
 }
 

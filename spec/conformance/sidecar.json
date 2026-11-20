@@ -180,21 +180,24 @@
       ]
     },
     {
-      "name": "who can read a thread: its writer and its first comment's `to`; without `to`, everyone; a reply's `to` changes nothing",
+      "name": "who can read a thread: without `to` on its first comment, everyone; with it, its writer and those its readers' comments add, in order",
       "sidecar": [
         "{\"comments\":3}",
         "{\"id\":\"c_open0001\",\"by\":{\"id\":\"u_alice01\",\"name\":\"alice\",\"kind\":\"human\"},\"at\":\"2026-10-01T10:00:00Z\",\"body\":\"For everyone\"}",
-        "{\"id\":\"c_some0001\",\"by\":{\"id\":\"u_alice01\",\"name\":\"alice\",\"kind\":\"human\"},\"at\":\"2026-10-01T10:01:00Z\",\"body\":\"@Ada only you and bob\",\"to\":[\"b_ada0001\",\"u_bob0001\"]}",
-        "{\"id\":\"c_some0002\",\"thread\":\"c_some0001\",\"by\":{\"id\":\"u_bob0001\",\"name\":\"bob\",\"kind\":\"human\"},\"at\":\"2026-10-01T10:02:00Z\",\"body\":\"Agreed\",\"to\":[]}",
-        "{\"id\":\"c_note0001\",\"by\":{\"id\":\"b_ada0001\",\"name\":\"Ada\",\"kind\":\"ai\"},\"at\":\"2026-10-01T10:03:00Z\",\"body\":\"My own notes\",\"to\":[]}",
-        "{\"id\":\"c_self0001\",\"by\":{\"id\":\"u_alice01\",\"name\":\"alice\",\"kind\":\"human\"},\"at\":\"2026-10-01T10:04:00Z\",\"body\":\"Writer listed too\",\"to\":[\"u_alice01\"]}"
+        "{\"id\":\"c_open0002\",\"thread\":\"c_open0001\",\"by\":{\"id\":\"u_bob0001\",\"name\":\"bob\",\"kind\":\"human\"},\"at\":\"2026-10-01T10:00:30Z\",\"body\":\"A reply's to on an open thread means nothing\",\"to\":[\"u_eve0001\"]}",
+        "{\"id\":\"c_some0001\",\"by\":{\"id\":\"u_alice01\",\"name\":\"alice\",\"kind\":\"human\"},\"at\":\"2026-10-01T10:01:00Z\",\"body\":\"@Ada only you\",\"to\":[\"b_ada0001\"]}",
+        "{\"id\":\"c_some0002\",\"thread\":\"c_some0001\",\"by\":{\"id\":\"u_bob0001\",\"name\":\"bob\",\"kind\":\"human\"},\"at\":\"2026-10-01T10:02:00Z\",\"body\":\"Not a reader yet: adds no one\",\"to\":[\"u_eve0001\"]}",
+        "{\"id\":\"c_some0003\",\"thread\":\"c_some0001\",\"by\":{\"id\":\"b_ada0001\",\"name\":\"Ada\",\"kind\":\"ai\"},\"at\":\"2026-10-01T10:03:00Z\",\"body\":\"@Rex join\",\"to\":[\"b_rex0001\"]}",
+        "{\"id\":\"c_some0004\",\"thread\":\"c_some0001\",\"by\":{\"id\":\"u_alice01\",\"name\":\"alice\",\"kind\":\"human\"},\"at\":\"2026-10-01T10:04:00Z\",\"body\":\"@bob you too\",\"to\":[\"u_bob0001\"]}",
+        "{\"id\":\"c_note0001\",\"by\":{\"id\":\"b_ada0001\",\"name\":\"Ada\",\"kind\":\"ai\"},\"at\":\"2026-10-01T10:05:00Z\",\"body\":\"My own notes\",\"to\":[]}"
       ],
       "threads": [
         {
           "id": "c_open0001",
           "resolved": false,
           "comments": [
-            "c_open0001"
+            "c_open0001",
+            "c_open0002"
           ]
         },
         {
@@ -202,7 +205,9 @@
           "resolved": false,
           "comments": [
             "c_some0001",
-            "c_some0002"
+            "c_some0002",
+            "c_some0003",
+            "c_some0004"
           ]
         },
         {
@@ -211,13 +216,6 @@
           "comments": [
             "c_note0001"
           ]
-        },
-        {
-          "id": "c_self0001",
-          "resolved": false,
-          "comments": [
-            "c_self0001"
-          ]
         }
       ],
       "bad": [],
@@ -225,14 +223,12 @@
         "c_open0001": null,
         "c_some0001": [
           "b_ada0001",
+          "b_rex0001",
           "u_alice01",
           "u_bob0001"
         ],
         "c_note0001": [
           "b_ada0001"
-        ],
-        "c_self0001": [
-          "u_alice01"
         ]
       }
     },
