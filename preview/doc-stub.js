@@ -693,8 +693,10 @@ What the code does differently from the runtime above:
   agent program may read the project folder.
 - Nothing is refused: the doc world merges.
 
-Code: the loop is \`src/host/buddy-runtime.js\`, the plan \`src/core/due.js\`,
-the run \`src/host/runner.js\`; the doc world \`src/host/doc-world.js\`, its
+Code: the loop is \`src/core/runtime.js\`, which reaches nothing but the world
+and what its host gives it, so it can run in a Worker too; the plan
+\`src/core/due.js\`. On the doc host, \`src/host/buddy-runtime.js\` gives it the
+run (\`src/host/runner.js\`), the logs and the settings; the doc world \`src/host/doc-world.js\`, its
 asks \`asksIn\` (\`src/core/comments.js\`) and its prompt \`src/core/prompt.js\`.
 `,"ponjo-docs/architecture.md":`# Architecture
 
@@ -795,7 +797,7 @@ subscribe(fn)              every change as it lands (a client in the doc host)
 ## Code layout
 
 \`\`\`
-src/core/   pure logic, shared by host and page
+src/core/   logic with no I/O of its own, shared by host, page and Worker
 src/store/  files
 src/host/   the doc host's components
 web/        pages and editors
@@ -1397,7 +1399,7 @@ declaration, listed in \`VIEWS\`, passing the contract test.
 | Store | \`src/store/\` | read, write, watch and move files: docs, comments, history, settings, buddies, agents, logs | \`read\`, \`write\`, \`watch\`, \`move\`, each file's parser |
 | Doc | \`src/host/doc-service.js\` | order every change to one doc, and write it | the door above; \`door\`, \`subscribe(fn)\` |
 | Opener | \`src/host/open-doc.js\` | join a doc and its buddies | \`openDoc\` |
-| Controller | \`src/host/buddy-runtime.js\` | run the doc's buddies as the rules say, reaching the doc through its world | \`watch\`, \`retry\`, \`resume\`; event \`buddies\` |
+| Controller | \`src/host/buddy-runtime.js\` | run the doc's buddies as the rules say, reaching the doc through its world: the loop (\`src/core/runtime.js\`) with this machine's runs, logs and settings | \`watch\`, \`retry\`, \`resume\`; event \`buddies\` |
 | Doc world | \`src/host/doc-world.js\` | the doc as the runtime sees it: members, asks, views, waiting, and landing what a run left | the [five calls](agent-runtime.md#the-worlds-five-calls) |
 | Executor | \`src/host/runner.js\` | run the agent once on copies | \`run(task, copies)\` |
 | ProjectService | \`src/host/project-service.js\` | the project's files, the same for everyone | \`list\`, \`read\`, \`open\` |
