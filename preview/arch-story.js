@@ -8,7 +8,8 @@
 
 import { INK, agentFace, buddyColor, personFace, setBuddies, setOwner, setPeople } from '../web/faces.js';
 
-const still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const motionPreference = window.matchMedia('(prefers-reduced-motion: reduce)');
+let still = motionPreference.matches;
 const STOPPED = Symbol('stopped');
 const OPENHANDS = 'https://github.com/OpenHands/extensions/blob/cfd1d0f873c0d97e0a1c30093b34c6364a1141c0/skills/github-repo-monitor/scripts/main.py#L1012-L1042';
 
@@ -277,15 +278,34 @@ class Scene {
 // ---- the chapters: each draws its scene, then plays it once; it loops ----
 
 function cover(scene) {
+  const art = document.querySelector('#cover-art').content.firstElementChild.cloneNode(true);
   const pet = face('Clippy', { tag: 'button' });
   pet.classList.add('dl-pet');
   pet.type = 'button';
   pet.dataset.follow = '';
-  pet.setAttribute('aria-label', 'Poke Clippy');
   const title = el('h1', '', 'Blackboard Multi-agent System');
   const lead = el('p', '', 'How Ponjo’s agents work, in two contrasts: how you work with them, and when they run.');
   scene.stage.classList.add('arch-cover');
-  scene.stage.append(pet, title, lead);
+  art.append(pet);
+  scene.stage.append(art, title, lead);
+  const strokes = ['.arch-chalk-route', '.arch-chalk-return', '.arch-chalk-edit'].map((selector) => art.querySelector(selector));
+  function traceEdit() {
+    if (still) return;
+    let delay = 0;
+    for (const stroke of strokes) {
+      for (const previous of stroke.getAnimations()) previous.cancel();
+      const length = stroke.getTotalLength();
+      stroke.style.strokeDasharray = String(length);
+      const duration = stroke === strokes[2] ? 300 : 650;
+      stroke.animate([{ strokeDashoffset: length }, { strokeDashoffset: 0 }], {
+        delay, duration, fill: 'backwards', easing: 'ease-in-out',
+      });
+      delay += duration + 120;
+    }
+  }
+  pet.setAttribute('aria-label', 'Replay the board loop with Clippy');
+  pet.addEventListener('click', traceEdit);
+  traceEdit();
 }
 cover.once = true;
 
@@ -300,8 +320,9 @@ function point(claim, instead) {
     line.append(el('span', '', claim), quiet);
     scene.stage.classList.add('arch-point');
     scene.stage.append(line);
-    await scene.wait(900);
-    await scene.move(gone, [{ backgroundSize: '0% 3px' }, { backgroundSize: '100% 3px' }], 900, 'ease-in-out');
+    await scene.fade(quiet, 1, 300);
+    await scene.wait(280);
+    await scene.move(gone, [{ backgroundSize: '0% 3px' }, { backgroundSize: '100% 3px' }], 650, 'ease-in-out');
   };
   page.once = true;
   return page;
@@ -352,7 +373,7 @@ function hop(scene, member, height = 10, ms = 480) {
 async function run(scene, s, member, points, ms, { walk = false, arms = null, look = null, carry = [], ready = !walk, stop = true } = {}) {
   const step = walk ? 340 : 220;
   const right = points.at(-1)[0] > points[0][0];
-  const lean = (right ? 1 : -1) * (walk ? 3 : 10);
+  const lean = Math.sign(points.at(-1)[0] - points[0][0]) * (walk ? 2 : 6);
   const { figure } = member;
   if (ready) {
     pose(member, { arms, look, right });
@@ -369,7 +390,7 @@ async function run(scene, s, member, points, ms, { walk = false, arms = null, lo
   if (!still) {
     figure.animate([
       { transform: 'translateY(0) rotate(0deg)' },
-      { transform: `translateY(${walk ? -3 : -7}px) rotate(${lean}deg)` },
+      { transform: `translateY(${walk ? -2 : -4}px) rotate(${lean}deg)` },
       { transform: 'translateY(0) rotate(0deg)' },
     ], { duration: step, iterations: Math.max(1, Math.round(ms / step)) });
   }
@@ -448,18 +469,19 @@ async function delegate(scene) {
   // both pick theirs up and run it back to you at once, out of their doors,
   // and meet head on
   const near = up ? { Clippy: [meet[0] - 30, meet[1]], Otto: [meet[0] + 30, meet[1]] } : { Clippy: [meet[0], meet[1] - 34], Otto: [meet[0], meet[1] + 34] };
-  for (const copy of Object.values(copies)) copy.style.opacity = '0'; // now in their hands
   // Otto sets off a beat later and runs a beat faster: they meet all the same
   await Promise.all(['Clippy', 'Otto'].map(async (name, i) => {
     await scene.wait(i * 160);
-    await run(scene, s, buddies[name], [seat[name], table[name], door[name], near[name]], 1500 - i * 160, { arms: 'carry', look: 'run', stop: false });
+    await run(scene, s, buddies[name], [seat[name], table[name]], 520, { walk: true });
+    await scene.move(copies[name], [{ scale: 1, opacity: 1 }, { scale: 0.4, opacity: 0 }], 180);
+    await run(scene, s, buddies[name], [table[name], door[name], near[name]], 980 - i * 160, { arms: 'carry', look: 'run', stop: false });
   }));
   // the hit: both squashed flat against each other, and a beat of stillness
   const flat = up ? '0.8 1.14' : '1.14 0.8';
   await Promise.all(['Clippy', 'Otto'].map((name) => scene.move(buddies[name].figure, [{ scale: '1 1' }, { scale: flat }], 70, 'ease-out')));
   const bang = svg('-24 -24 48 48', 'arch-spark');
   bang.append(path(spark([0, 0])));
-  s.place(bang, meet, [72, 72]);
+  s.place(bang, meet, [44, 44]);
   scene.move(bang, [{ scale: 0, opacity: 1 }, { scale: 1.4, opacity: 1, offset: 0.3 }, { scale: 1.1, opacity: 0 }], 700, 'ease-out').catch(() => {});
   await scene.wait(160);
   const knocked = up ? { Clippy: [meet[0] - 70, meet[1] - 20], Otto: [meet[0] + 70, meet[1] - 20] } : { Clippy: [meet[0] + 24, meet[1] - 80], Otto: [meet[0] + 24, meet[1] + 80] };
@@ -517,15 +539,14 @@ async function blackboard(scene) {
   const lines = [['You', 55], ['Clippy', 75], ['Otto', 45]].map(async ([name, width], i) => {
     const line = bar(width);
     paint(line, name);
-    board.append(line);
     await scene.wait(i * 300);
+    board.append(line);
     who[name].face.dataset.presence = 'working';
     pose(who[name], { arms: 'write' });
     if (!still) who[name].parts['arms-write'].animate([{ rotate: '-6deg' }, { rotate: '8deg' }, { rotate: '-6deg' }], { duration: 300, iterations: 6 });
     await scene.move(line, [{ width: '0%' }, { width: `${width}%` }], 1800, 'ease-in-out');
     who[name].face.dataset.presence = 'idle';
     pose(who[name], {});
-    await hop(scene, who[name], 8);
   });
   await Promise.all(lines);
   await scene.wait(600);
@@ -543,9 +564,9 @@ const LEGS = { Clippy: [180, 240] }; // the leg Clippy runs, stopping short of P
 function race(scene) {
   const s = sketch(scene.stage);
   const up = s.upright;
-  // A track as anyone knows one: two straights joined by half circles, four
+  // A track as anyone knows one: two straights joined by half circles, two
   // lanes, lying across the scene, smaller on a phone. `r` is the radius
-  // of the line between lanes 2 and 3, `half` half a straight; `k` moves out
+  // of the centre line, `half` half a straight; `k` moves out
   // (or in) from that line. A place on it is an angle in degrees, clockwise
   // from the right: 90 the middle of the near straight, 270 of the far one.
   const [cx, cy] = up ? [200, 300] : [380, 222];
@@ -583,14 +604,9 @@ function race(scene) {
   };
   s.ink(`${outline(2 * lane)} ${outline(-2 * lane)}`, 'arch-track');
   s.ink(outline(-2 * lane), 'arch-field');
-  for (const k of [-2, -1, 0, 1, 2]) s.ink(outline(k * lane), 'arch-track-lane');
-  // the start, staggered lane by lane, on the near straight's left
-  for (let i = 0; i < 4; i++) {
-    const deg = 120 - i * 3;
-    const [x0, y0] = on(deg, (i - 2) * lane);
-    const [x1, y1] = on(deg, (i - 1) * lane);
-    s.ink(`M${f(x0)} ${f(y0)} L${f(x1)} ${f(y1)}`, 'arch-track-lane');
-  }
+  s.ink(outline(0), 'arch-track-lane');
+  const startX = cx - half / 2;
+  s.ink(`M${startX} ${cy + r - 2 * lane}v${4 * lane}`, 'arch-track-lane');
   const who = {};
   for (const [name, deg] of Object.entries(RUNNERS)) {
     who[name] = actor(name, name === 'Pip' ? 'away' : 'idle');
@@ -620,9 +636,8 @@ async function events(scene) {
   const link = el('a', 'arch-infield', 'Even OpenHands drops requests when a poll fails.');
   link.href = OPENHANDS;
   t.s.place(link, t.middle, t.up ? [180, 60] : [260, 40]);
-  // Otto, waiting for the baton, bounces on its toes
+  // Otto waits for the handoff and reacts when the baton lands.
   who.Otto.tag.textContent = 'Waiting…';
-  const toes = still ? null : who.Otto.figure.animate([{ translate: '0 0' }, { translate: '0 -3px' }, { translate: '0 0' }], { duration: 500, iterations: Infinity, easing: 'ease-in-out' });
 
   await scene.wait(800);
   const stop = 245;
@@ -645,7 +660,6 @@ async function events(scene) {
   await scene.move(baton, [spot(52, floor - 18, 130), spot(58, floor, 175)], 200, 'cubic-bezier(0.5, 0, 1, 1)');
   await scene.move(baton, [spot(58, floor, 175), spot(62, floor - 5, 185), spot(64, floor, 180)], 240, 'ease-in-out');
   // Otto sees it fall: a jolt, and its jaw drops
-  toes?.cancel();
   who.Otto.tag.textContent = '';
   pose(who.Otto, { look: 'shocked' });
   await hop(scene, who.Otto, 10, 420);
@@ -656,26 +670,26 @@ async function events(scene) {
   await scene.wait(2400);
 }
 
-// The runtime as an eye on a round body, which watches the board: its lid
+// The runtime as an eye, which watches the board: its lid
 // half shut while nothing changes, open when something does; its pupil
 // reads along the board's lines and turns to whoever is due.
 function eye() {
   const node = svg('-50 -50 100 100', 'arch-eye');
-  node.append(
-    path('M-22 -40 L-28 -54 M-6 -44 L-7 -60 M10 -43 L14 -58 M25 -36 L34 -48', 'arch-eye-lash'),
-    path('M-44 0 a44 44 0 1 0 88 0 a44 44 0 1 0 -88 0', 'arch-eye-body'),
-    path('M-30 0 a30 22 0 1 0 60 0 a30 22 0 1 0 -60 0', 'arch-eye-white'),
-  );
+  const opening = 'M-34 0Q-20 -22 0 -21Q21 -22 34 0Q18 22 0 21Q-21 22 -34 0Z';
+  node.append(path(opening, 'arch-eye-white'));
   const pupil = document.createElementNS(NS, 'g');
-  pupil.append(path('M-10 0 a10 10 0 1 0 20 0 a10 10 0 1 0 -20 0', 'arch-eye-pupil'), path('M2 -5 a3 3 0 1 0 6 0 a3 3 0 1 0 -6 0', 'arch-eye-glint'));
-  const lid = path('M-32 -24 H32 V24 H-32 Z', 'arch-eye-lid');
+  pupil.append(
+    path('M-10 0a10 10 0 1 0 20 0a10 10 0 1 0 -20 0', 'arch-eye-pupil'),
+    path('M-7 -5a3 3 0 1 0 6 0a3 3 0 1 0 -6 0', 'arch-eye-glint'),
+  );
+  const lid = path('M-38 -25H38V19Q0 32 -38 19Z', 'arch-eye-lid');
   const clip = document.createElementNS(NS, 'clipPath');
   clip.id = `arch-eye-${Math.random().toString(36).slice(2)}`;
-  clip.append(path('M-30 0 a30 22 0 1 0 60 0 a30 22 0 1 0 -60 0'));
+  clip.append(path(opening));
   const inside = document.createElementNS(NS, 'g');
   inside.setAttribute('clip-path', `url(#${clip.id})`);
   inside.append(pupil, lid);
-  node.append(clip, inside, path('M-30 0 a30 22 0 1 0 60 0 a30 22 0 1 0 -60 0', 'arch-eye-rim'));
+  node.append(clip, inside, path(opening, 'arch-eye-rim'));
   return { node, pupil, lid };
 }
 
@@ -710,7 +724,7 @@ async function state(scene) {
     const side = x < middle[0] ? 1 : -1;
     const ear = [x + side * 30, y - 22];
     const near = x === middle[0] ? [ear[0] - 36, ear[1] - 6] : [ear[0] + side * 44, ear[1] - 4];
-    const d = `M${f(middle[0])} ${f(middle[1] + 30)} C${f(middle[0])} ${f(middle[1] + 80)} ${f(near[0])} ${f(near[1])} ${f(ear[0])} ${f(ear[1])}`;
+    const d = `M${f(middle[0])} ${f(middle[1] + 20)} C${f(middle[0])} ${f(middle[1] + 80)} ${f(near[0])} ${f(near[1])} ${f(ear[0])} ${f(ear[1])}`;
     s.ink(d, 'arch-ink arch-wire');
     wires[name] = d;
   }
@@ -749,7 +763,7 @@ async function state(scene) {
     const waves = who[name].parts.waves;
     waves.style.display = '';
     waves.style.scale = loud ? '1.5' : '1';
-    await scene.move(waves, [{ opacity: 0 }, { opacity: 1 }, { opacity: 0 }, { opacity: 1 }, { opacity: 0 }], 800, 'linear');
+    await scene.move(waves, [{ opacity: 0 }, { opacity: 1, offset: 0.35 }, { opacity: 0 }], 420, 'ease-in-out');
     waves.style.display = 'none';
     pulse.remove();
   };
@@ -761,9 +775,11 @@ async function state(scene) {
     await hop(scene, who[name], 14, 480);
     pose(who[name], {});
     who[name].face.dataset.presence = 'working';
-    await scene.wait(1100);
     lines[name].classList.remove('arch-found');
     lines[name].classList.add('arch-edited');
+    const edit = lines[name].querySelector('.arch-bar');
+    edit.style.transformOrigin = 'left';
+    await scene.move(edit, [{ scale: '0 1' }, { scale: '1 1' }], 650, 'ease-in-out');
     who[name].face.dataset.presence = 'away';
     zzz[name].style.opacity = '';
   };
@@ -795,7 +811,7 @@ async function state(scene) {
 }
 
 // An architecture as boxes, then arrows drawn in the order a change goes
-// round, then its loop played over and over: a dot goes along `loop`, the
+// round, then its loop played over and over: a trace follows `loop`, the
 // arrows by number ([i, true] backwards), and each box it reaches lights up.
 // `at` places each box (upright on a phone, else wide); a box in `ink` is
 // drawn in ink, as the board is; an arrow's words sit over it if it runs
@@ -825,42 +841,45 @@ async function diagram(scene, { boxes, at, arrows, loop, ink = [] }) {
     return `M${wing(1)} L${f(x1)} ${f(y1)} L${wing(-1)}`;
   };
 
-  for (const box of Object.values(shown)) {
-    scene.fade(box, 1, 300).catch(() => {});
-    await scene.wait(70);
-  }
-  await scene.wait(400);
+  const revealed = new Set();
+  const reveal = async (key) => {
+    if (revealed.has(key)) return;
+    revealed.add(key);
+    await scene.fade(shown[key], 1, 240);
+  };
   const ends = []; // each arrow's two ends
   for (const [a, b, words, both] of arrows) {
+    await reveal(a);
     const [from, to] = [edge(place[a], place[b]), edge(place[b], place[a])];
-    ends.push([from, to]);
     const line = s.ink(`M${f(from[0])} ${f(from[1])} L${f(to[0])} ${f(to[1])}`);
     await scene.draw(line, 380);
-    s.ink(head(from, to));
-    if (both) s.ink(head(to, from));
+    const forward = s.ink(head(from, to));
+    const reverse = both ? s.ink(head(to, from)) : null;
+    ends.push({ from, to, forward, reverse });
     const across = Math.abs(to[1] - from[1]) < 1;
     const mid = [(from[0] + to[0]) / 2, (from[1] + to[1]) / 2 - (across ? 14 : 0)];
     const label = s.place(el('span', across ? 'arch-label arch-label-over' : 'arch-label', words), mid);
-    await scene.fade(label, 1, 200);
+    await Promise.all([scene.fade(label, 1, 200), reveal(b)]);
   }
   if (still) return;
 
-  // the loop: a dot from the box it starts at, along each arrow in turn
-  const dot = s.place(el('i', 'arch-token'), place[arrows[loop[0][0]][0]]);
-  const light = (key) => {
-    shown[key].classList.add('arch-node-on');
-    setTimeout(() => shown[key].classList.remove('arch-node-on'), 500);
-  };
+  // Trace each handoff along its wire, including the return trip.
   for (;;) {
-    await scene.fade(dot, 1, 200);
-    light(arrows[loop[0][0]][0]);
     for (const [i, back] of loop) {
-      const [from, to] = back ? [...ends[i]].reverse() : ends[i];
-      await scene.move(dot, [s.at(from), s.at(to)], 650, 'ease-in-out');
-      light(arrows[i][back ? 0 : 1]);
-      await scene.wait(250);
+      const { from, to, forward, reverse } = ends[i];
+      const [start, end] = back ? [to, from] : [from, to];
+      const trace = s.ink(`M${start.join(' ')}L${end.join(' ')}`, 'arch-ink arch-flow');
+      const tip = back ? reverse : forward;
+      const destination = shown[arrows[i][back ? 0 : 1]];
+      await scene.draw(trace, 650);
+      tip.classList.add('arch-flow');
+      destination.classList.add('arch-node-on');
+      await scene.wait(280);
+      await scene.fade(trace, 0, 150);
+      trace.remove();
+      tip.classList.remove('arch-flow');
+      destination.classList.remove('arch-node-on');
     }
-    await scene.fade(dot, 0, 200);
     await scene.wait(1200);
   }
 }
@@ -943,12 +962,22 @@ const DIFFERENCES = [
   ['Fits', 'Fixed flows that split into independent tasks', 'Shared work that people and agents improve together'],
 ];
 
+function approachMark(role) {
+  const problem = role === 'problem';
+  const mark = el('span', 'arch-mark arch-mark-' + role, problem ? '×' : '✓');
+  mark.setAttribute('role', 'img');
+  mark.setAttribute('aria-label', problem ? 'Pain point' : 'Proposed solution');
+  return mark;
+}
+
 // The differences as a table, in the design system's (.pj-usage-table), a row at a time.
 async function summary(scene) {
   scene.stage.classList.add('arch-summary');
   const table = el('table', 'pj-usage-table arch-compare');
   const head = el('tr');
   head.append(...['', 'Event-triggered', 'Blackboard'].map((words) => el('th', '', words)));
+  head.cells[1].prepend(approachMark('problem'));
+  head.cells[2].prepend(approachMark('solution'));
   const rows = DIFFERENCES.map((cells) => {
     const row = el('tr');
     row.append(...cells.map((words) => el('td', '', words)));
@@ -960,14 +989,13 @@ async function summary(scene) {
   table.tBodies[0].append(...rows);
   scene.stage.append(table);
   for (const row of rows) {
-    scene.fade(row, 1, 300).catch(() => {});
-    await scene.wait(110);
+    await scene.fade(row, 1, 190);
   }
 }
 summary.once = true;
 
 // What comes of it: three things that emerge, then the numbers from Ponjo's
-// own runtime, rolling from where they were to where they are.
+// own runtime, shown together once the outcomes are in place.
 async function outcome(scene) {
   scene.stage.classList.add('arch-outcome');
   const GETS = [
@@ -983,44 +1011,31 @@ async function outcome(scene) {
     return item;
   });
   list.append(...items);
-  // [number from, number to, digits, unit, what it counts]
   const STATS = [
-    [0, 0, 0, '', 'actions lost'],
-    [3.4, 1, 1, '', 'runs per action, from 3.4'],
-    [5.2, 0.25, 2, ' s', 'per action, from 5.2 s'],
+    ['0', 'actions lost'],
+    ['1', 'runs per action, from 3.4'],
+    ['0.25 s', 'per action, from 5.2 s'],
   ];
   const stats = el('div', 'arch-stats');
-  const figures = STATS.map(([from, , digits, unit, what]) => {
+  for (const [value, what] of STATS) {
     const tile = el('div', 'arch-stat');
-    const figure = el('b', '', `${from.toFixed(digits)}${unit}`);
-    tile.append(figure, el('span', '', what));
+    tile.append(el('b', '', value), el('span', '', what));
     stats.append(tile);
-    return figure;
-  });
+  }
   const foot = el('p', 'arch-note', 'Open-card Hold’em on Ponjo’s runtime, with scripted agents. The ');
   const link = el('a', '', 'poker page');
   link.href = 'poker.html';
   foot.append(link, ', built apart with a small runtime of its own, came to the same shape: a pure plan, a view per player, a writer that refuses stale moves.');
   const body = el('div', 'arch-outcome-body');
   body.append(list, stats, foot);
+  stats.style.opacity = foot.style.opacity = '0';
   scene.stage.append(body);
 
   for (const item of items) {
-    scene.fade(item, 1, 300).catch(() => {});
-    await scene.wait(250);
+    await scene.fade(item, 1, 300);
   }
-  await scene.wait(300);
-  const STEPS = 24;
-  for (let k = 1; k <= STEPS; k++) {
-    const t = 1 - (1 - k / STEPS) ** 3; // fast, then easing in
-    STATS.forEach(([from, to, digits, unit], i) => {
-      figures[i].textContent = `${(from + (to - from) * t).toFixed(digits)}${unit}`;
-    });
-    await scene.wait(50);
-  }
-  STATS.forEach(([, to, digits, unit], i) => {
-    figures[i].textContent = `${to.toFixed(digits === 1 && Number.isInteger(to) ? 0 : digits)}${unit}`;
-  });
+  await scene.fade(stats, 1, 380);
+  await scene.fade(foot, 1, 240);
 }
 outcome.once = true;
 
@@ -1029,13 +1044,13 @@ outcome.once = true;
 const CHAPTERS = [
   ['', '', '', cover],
   ['How you work', '', '', point('Agents work beside you, in front of a blackboard,', 'instead of apart from you, in an isolated room.')],
-  ['How you work', 'Delegate', 'Each agent works alone on its own copy. The copies clash, and you merge them by hand.', delegate],
-  ['How you work', 'Blackboard', 'Everyone works on one board and sees every change. Nothing to hand off, nothing to merge.', blackboard],
+  ['How you work', 'Delegate', 'Each agent works alone on its own copy. The copies clash, and you merge them by hand.', delegate, 'problem'],
+  ['How you work', 'Blackboard', 'Everyone works on one board and sees every change. Nothing to hand off, nothing to merge.', blackboard, 'solution'],
   ['When agents run', '', '', point('Agent orchestration is a state reconciliation problem,', 'instead of an event triggering problem.')],
-  ['When agents run', 'Triggered by events', 'Each agent runs when the one before hands it on. Miss one handoff, and the race stops.', events],
-  ['When agents run', 'Reconciled from state', 'The runtime watches the board and calls only whoever is due, again until it is done. The rest sleep on; nobody wires who goes next, and a missed call costs nothing.', state],
-  ['Architecture', 'Event-triggered, the common way', 'State lives in messages in flight and in each agent’s memory. Lose a message and the work is lost, and someone has to wire who triggers whom.', eventsArchitecture],
-  ['Architecture', 'Blackboard', 'One board, one writer. People and agents propose changes, the writer lands them in order, and the runtime reads the board to start whoever is due.', architecture],
+  ['When agents run', 'Triggered by events', 'Each agent runs when the one before hands it on. Miss one handoff, and the race stops.', events, 'problem'],
+  ['When agents run', 'Reconciled from state', 'The runtime watches the board and calls only whoever is due, again until it is done. The rest sleep on; nobody wires who goes next, and a missed call costs nothing.', state, 'solution'],
+  ['Architecture', 'Event-triggered, the common way', 'State lives in messages in flight and in each agent’s memory. Lose a message and the work is lost, and someone has to wire who triggers whom.', eventsArchitecture, 'problem'],
+  ['Architecture', 'Blackboard', 'One board, one writer. People and agents propose changes, the writer lands them in order, and the runtime reads the board to start whoever is due.', architecture, 'solution'],
   ['Summary', 'Two ways to run many agents', '', summary],
   ['Outcome', 'What you get', 'What emerges when the board is the only state, and the runtime decides from it.', outcome],
 ];
@@ -1063,9 +1078,10 @@ let scene = null;
 async function open(i) {
   scene?.stop();
   current = i;
-  const [part, name, idea, play] = CHAPTERS[i];
+  const [part, name, idea, play, role] = CHAPTERS[i];
   kicker.textContent = part;
   heading.textContent = name;
+  if (role) heading.prepend(approachMark(role));
   caption.textContent = idea;
   dots.forEach((dot, j) => dot.toggleAttribute('aria-current', i === j));
   back.disabled = i === 0;
@@ -1089,10 +1105,15 @@ const deck = document.querySelector('.arch-story');
 const portrait = window.matchMedia('(max-aspect-ratio: 6/5), (max-width: 720px)');
 function fitDeck() {
   const header = document.querySelector('.site-header').offsetHeight;
+  deck.style.setProperty('--header-height', `${header}px`);
   deck.style.setProperty('--fit', portrait.matches ? 1 : Math.min((window.innerWidth - 32) / 1280, (window.innerHeight - header - 16) / 720));
   fitting?.();
 }
 window.addEventListener('resize', fitDeck);
+motionPreference.addEventListener('change', () => {
+  still = motionPreference.matches;
+  open(current);
+});
 fitDeck();
 
 back.addEventListener('click', () => open(current - 1));
