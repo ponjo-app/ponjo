@@ -24,7 +24,6 @@ import { host, join } from './poker-share.js';
 const WALLET = 'ponjo-poker-bankroll';
 const BANKROLL = 1000; // play dollars a new player starts with, and starts again with
 const [MIN_BUY, MAX_BUY] = [200, 1000];
-const AUTO_DEAL = 4; // seconds from a hand's result to the next hand
 const money = (n) => `$${n.toLocaleString('en')}`;
 const SLOTS = ['bottom', 'left', 'top-left', 'top', 'top-right', 'right']; // the six seats round the table, from the one this page sits in
 const TURN = 30_000; // ms a person has to act while friends are at the table; then the dealer checks or folds
@@ -135,7 +134,6 @@ async function run(id, due) {
 }
 
 function nextHand() {
-  stopCountdown();
   if (!deal(table)) return buyIn('rebuy');
   session.hands++;
   changed();
@@ -143,32 +141,9 @@ function nextHand() {
 
 // ---- the session: buying in, topping up, leaving ----
 
-let paused = false;
-let countdown = null;
-function stopCountdown() {
-  clearInterval(countdown?.timer);
-  countdown = null;
-}
-// After a hand, the next is dealt by itself unless the person paused, or opened something.
-function startCountdown() {
-  if (countdown || paused || !chipsOfMine() || !$('.pk-buyin').hidden) return;
-  countdown = { left: AUTO_DEAL, timer: setInterval(() => {
-    countdown.left--;
-    if (countdown.left <= 0) nextHand();
-    else drawResult();
-  }, 1000) };
-  drawResult();
-}
-function pause() {
-  paused = true;
-  stopCountdown();
-  drawResult();
-}
-
 const buyin = $('.pk-buyin');
 // The card for buying chips (`sit`, `rebuy`, `topup`) or saying how a session went (`left`).
 function buyIn(kind, slot) {
-  pause();
   if (slot !== undefined) buyin.dataset.slot = slot;
   const room = kind === 'topup' ? Math.min(wallet.bankroll, MAX_BUY - chipsOfMine()) : Math.min(wallet.bankroll, MAX_BUY);
   const broke = kind !== 'topup' && wallet.bankroll < MIN_BUY;
@@ -229,7 +204,6 @@ buyin.addEventListener('submit', (event) => {
   topUp(table, amount);
   saveWallet();
   closeBuyIn();
-  paused = false;
   if (kind === 'topup' && table.hand && table.hand.street !== 'done') changed();
   else if (!table.hand) greet();
   else nextHand();
@@ -245,7 +219,6 @@ function greet() {
 }
 
 function leaveTable() {
-  stopCountdown();
   if (ROOM) {
     session.cashed = chipsOfMine();
     guest.send({ type: 'leave' });
@@ -278,7 +251,9 @@ function seatNode(id) {
   const name = el('span', 'pk-name', label(id));
   name.append(el('span', 'pk-position'));
   plate.append(name, el('span', 'pk-stack'), el('span', 'pk-tag'));
-  node.append(face, plate, el('div', 'pk-hole'));
+  const think = el('span', 'pk-think');
+  think.append(el('i'), el('i'), el('i'));
+  node.append(face, plate, el('div', 'pk-hole'), think);
   return node;
 }
 // An empty seat: a player can be asked to sit there.
@@ -459,6 +434,8 @@ function draw() {
     const before = was.get(id);
     node.toggleAttribute('data-folded', Boolean(out || s?.folded || p.joining || (p.leaving && (!hand || hand.street === 'done'))));
     node.toggleAttribute('data-turn', Boolean(hand && hand.street !== 'done' && hand.toAct === i));
+    node.toggleAttribute('data-thinking', Boolean(running.has(id) && hand && hand.street !== 'done' && hand.toAct === i));
+    node.toggleAttribute('data-won', Boolean(hand?.street === 'done' && hand.result.won[i]));
     $('.pj-agent-face', node).dataset.presence = running.has(id) || (isPerson(id) && hand?.street !== 'done' && hand?.toAct === i) ? 'working' : out || s?.folded ? 'away' : 'idle';
     const stack = isPerson(id) ? myChips(table, id) : s ? s.stack : i >= 0 ? table.players[i].stack : STACK;
     const stackNode = $('.pk-stack', node);
@@ -507,20 +484,17 @@ function draw() {
     if (mine > session.biggest) session.biggest = mine;
     saveWallet();
     if (seatedNow(me) && !chipsOfMine()) setTimeout(() => buyIn('rebuy'), 1500);
-    else if (!ROOM) startCountdown();
     for (const [i, won] of hand.result.won.entries()) {
       if (!won) continue;
       const node = seats.get(hand.seats[i].id);
       fly($('.pk-center'), $('.pk-stack', node), won, { delay: FLY_MS });
-      node.toggleAttribute('data-won', true);
-      setTimeout(() => node.removeAttribute('data-won'), 1600);
     }
   }
   drawMe();
   drawFeed();
 }
 
-// Between hands: the result, the next hand coming or paused, and what the session stands at.
+// Between hands: the result, then the host deals the next hand; and what the session stands at.
 function drawResult() {
   const hand = table.hand;
   const over = !hand || hand.street === 'done';
@@ -528,9 +502,8 @@ function drawResult() {
   const result = $('.pk-result-text');
   const summary = resultText();
   if (result.textContent !== summary) result.textContent = summary;
-  $('.pk-countdown').textContent = countdown ? `Next hand in ${countdown.left}…` : '';
-  $('[data-action="next"]').hidden = Boolean(countdown) || !chipsOfMine() || Boolean(ROOM);
-  $('[data-action="pause"]').hidden = !countdown;
+  $('.pk-wait-host').hidden = !ROOM;
+  $('[data-action="next"]').hidden = !chipsOfMine() || Boolean(ROOM);
   $('[data-action="invite"]').hidden = Boolean(ROOM);
   $('[data-action="thinking"]').hidden = !hand || hand.street !== 'done';
   const net = chipsOfMine() + session.cashed - session.bought;
@@ -791,31 +764,23 @@ function drawModel() {
 
 document.addEventListener('click', (event) => {
   const action = event.target.closest('[data-action]')?.dataset.action;
-  if (action === 'next') {
-    paused = false;
-    nextHand();
-  } else if (action === 'retry' && !ROOM) {
+  if (action === 'next') nextHand();
+  else if (action === 'retry' && !ROOM) {
     const actor = $('.pk-recovery').dataset.actor;
     if (table.notes[actor]?.failed) {
       retry(table, actor);
       changed();
     }
-  } else if (action === 'pause') pause();
+  }
   else if (action === 'topup') buyIn('topup');
   else if (action === 'leave') leaveTable();
   else if (action === 'buyin-cancel') {
     closeBuyIn();
     drawResult();
   }
-  else if (action === 'thinking') {
-    pause();
-    showThinking();
-  }
+  else if (action === 'thinking') showThinking();
   else if (action === 'close') $('.pk-thinking').close();
-  else if (action === 'key') {
-    pause();
-    ai.open();
-  }
+  else if (action === 'key') ai.open();
   else if (action === 'invite') invite();
   else if (action === 'invite-done') closeInvite();
   else if (action === 'copy') copyLink();
@@ -853,7 +818,6 @@ const peerOf = (id) => [...peers].find(([, p]) => p.id === id)?.[0];
 
 const inviting = $('.pk-invite');
 async function invite() {
-  pause();
   inviting.hidden = false;
   document.body.classList.add('pk-buying-in');
   inviting.elements.name.value = table.names[HUMAN] ?? load(NAME) ?? '';
@@ -868,7 +832,6 @@ function closeInvite() {
   }
   inviting.hidden = true;
   document.body.classList.remove('pk-buying-in');
-  paused = false;
   changed();
 }
 function copyLink() {
