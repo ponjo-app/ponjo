@@ -8,8 +8,8 @@
 // A seat is a number from 0. The roles: werewolves, who kill one player a
 // night; the seer, who learns one player's side a night; the witch, with one
 // potion that saves the night's victim and one that kills, each once a game;
-// villagers. A night: the wolves pick a kill together while the seer checks
-// someone, then the witch. Dawn says who died. Then each living player
+// villagers. A night, as a narrator calls it: the wolves pick a kill
+// together, then the seer checks someone, then the witch. Dawn says who died. Then each living player
 // speaks once, in seat order; then everyone alive votes at once; the player
 // with the most votes is out, and says their last words. The village wins
 // when every wolf is dead; the wolves, once they are as many as everyone else.
@@ -74,9 +74,10 @@ export const turn = (game) => [game.day, game.phase, game.phase === 'night' ? `$
  */
 export function due(game) {
   const not = (i) => alive(game, i) && !game.acted.includes(i);
-  if (game.phase === 'night' && game.step === 'wolves') {
+  if (game.phase === 'night' && game.step === 'wolves') return wolves(game).filter(not).map((seat) => ({ seat, kind: 'kill' }));
+  if (game.phase === 'night' && game.step === 'seer') {
     const seer = roleSeat(game, 'seer');
-    return [...wolves(game).filter(not).map((seat) => ({ seat, kind: 'kill' })), ...(game.round === 1 && not(seer) ? [{ seat: seer, kind: 'check' }] : [])].sort((a, b) => a.seat - b.seat);
+    return not(seer) ? [{ seat: seer, kind: 'check' }] : [];
   }
   if (game.phase === 'night') {
     const witch = roleSeat(game, 'witch');
@@ -187,6 +188,7 @@ function settle(g) {
 function end(g) {
   g.acted = [];
   if (g.phase === 'night' && g.step === 'wolves') return endPick(g);
+  if (g.phase === 'night' && g.step === 'seer') return wakeWitch(g);
   if (g.phase === 'night') return dawn(g);
   if (g.phase === 'day') {
     const at = g.order.indexOf(g.speaker);
@@ -219,6 +221,10 @@ function endPick(g) {
   const most = Math.max(0, ...count.values());
   g.victim = picks.find(([, t]) => count.get(t) === most)?.[1] ?? null;
   note(g, { type: 'kill', target: g.victim }, wolves(g));
+  g.step = 'seer';
+}
+
+function wakeWitch(g) {
   g.step = 'witch';
   const witch = roleSeat(g, 'witch');
   if (alive(g, witch) && g.potions.save && g.victim !== null) note(g, { type: 'attacked', target: g.victim }, [witch]); // she is told only while she can save
@@ -268,8 +274,9 @@ function win(g) {
  * Everything seat `seat` may see: its own role; the other wolves, the
  * pack's picks and lines, and its kill, for a wolf; its checks, for the
  * seer; whom the wolves attacked and its potions, for the witch; who is
- * alive, whose turn it is in the day, who has voted (not for whom, till
- * the vote ends), and the public log. Once the game is over, everything.
+ * alive, which role the night is at (a narrator calls each, alive or not),
+ * whose turn it is in the day, who has voted (not for whom, till the vote
+ * ends), and the public log. Once the game is over, everything.
  * The only way a player's prompt, or a page, sees the game.
  */
 export function view(game, seat) {
@@ -278,7 +285,7 @@ export function view(game, seat) {
   const pack = me.role === 'wolf' ? wolves(game) : [];
   const mine = due(game).find((d) => d.seat === seat);
   return {
-    seat, role: me.role, alive: me.alive, day: game.day, phase: game.phase, winner: game.winner,
+    seat, role: me.role, alive: me.alive, day: game.day, phase: game.phase, step: game.phase === 'night' ? game.step : null, winner: game.winner,
     due: mine ? { kind: mine.kind, at: turn(game), ...(mine.kind === 'potion' ? potions(game) : {}), ...(mine.kind === 'kill' ? { round: game.round } : {}) } : null,
     speaker: game.phase === 'day' || game.phase === 'last' ? game.speaker : null,
     voted: game.phase === 'vote' ? [...game.acted] : [],
