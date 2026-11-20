@@ -161,7 +161,7 @@ body:is(.pk-setting-up, .pk-buying-in) .pk-page { filter: blur(1px); opacity: 0.
 .pk-msg { display: flex; align-items: flex-end; gap: 8px; margin-top: 12px; }
 .pk-msg[data-more] { margin-top: 2px; }
 .pk-msg .pj-avatar { --size: 24px; }
-.pk-msg:has(+ .pk-msg[data-more]) .pj-avatar { visibility: hidden; } /* the face goes with the last of a run */
+.pk-msg:has(+ .pk-msg[data-more]) .pj-avatar { opacity: 0; } /* the face goes with the last of a run; not visibility, which faces.js sets on the eyes */
 .pk-msg-col { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; max-width: 80%; }
 .pk-msg-name { margin: 0 0 2px 12px; color: var(--text-soft); font-size: 12px; }
 .pk-msg-name small { margin-left: 4px; color: var(--text-faint); } /* to whom, or what: "last words" (game-page.js) */
