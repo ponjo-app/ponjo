@@ -138,6 +138,16 @@ export function retry(table, id) {
   commit(table, { type: 'retry', by: id });
 }
 
+// The players say hello when the person first sits down, in this order:
+// lines written for them, so they wake no one.
+export const INTROS = [
+  ['Gary', 'Hi folks! Gary, first time at a real table. My wife is at the slots.'],
+  ['Duke', 'Name\'s Duke. Sit down, empty your wallet, try not to cry.'],
+  ['Penny', 'Penny. I count every chip, so don\'t expect gifts.'],
+  ['Gary', 'Quick one: a flush is the all-same-colour thing, right?'],
+];
+export const introduce = (table, [id, text]) => say(table, id, text, { depth: DEPTH });
+
 // A line of chat, by the person, a player or the dealer.
 export function say(table, by, text, { depth = 0, about = null } = {}) {
   const body = String(text).trim().slice(0, MAX_SAY);

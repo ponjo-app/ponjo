@@ -69,6 +69,8 @@ body:is(.pk-setting-up, .pk-buying-in) .pk-page { filter: blur(1px); opacity: 0.
 .pk-bubble { position: absolute; z-index: 5; bottom: calc(100% + 28px); left: 50%; translate: -50% 0; width: max-content; max-width: 220px; padding: 6px 12px; border-radius: 14px; background: var(--bg); box-shadow: var(--shadow-raised); color: var(--text); font-size: 13px; line-height: 1.4; text-align: left; animation: pk-pop 0.2s ease-out; transition: opacity 0.4s; }
 .pk-seat[data-pos="top"] .pk-bubble { top: 0; bottom: auto; left: calc(100% + 8px); translate: 0 0; }
 .pk-seat[data-pos="bottom"] .pk-bubble { bottom: calc(100% + 4px); left: calc(100% + 8px); translate: 0 0; }
+.pk-seat[data-pos="left"] .pk-bubble { left: 0; translate: 0 0; } /* toward the table, not off the page */
+.pk-seat[data-pos="right"] .pk-bubble { left: auto; right: 0; translate: 0 0; }
 .pk-bubble[data-gone] { opacity: 0; }
 
 /* bets on the felt, in front of each seat */
@@ -197,8 +199,6 @@ body:is(.pk-setting-up, .pk-buying-in) .pk-page { filter: blur(1px); opacity: 0.
   .pk-seat[data-shown] .pk-hole .pk-card { --w: 30px; }
   .pk-tag { max-width: 84px; overflow: hidden; text-overflow: ellipsis; }
   .pk-bubble { max-width: 160px; }
-  .pk-seat[data-pos="left"] .pk-bubble { left: 0; translate: 0 0; }
-  .pk-seat[data-pos="right"] .pk-bubble { left: auto; right: 0; translate: 0 0; }
   .pk-seat[data-pos="top"] .pk-bubble, .pk-seat[data-pos="bottom"] .pk-bubble { max-width: 120px; }
   .pk-board { flex-wrap: wrap; justify-content: center; gap: 4px; max-width: 200px; min-height: 0; }
   .pk-board .pk-card { --w: 36px; }

@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { act, bestHand, compare, handName, legal, pots, shuffled, startHand, view } from '../preview/poker-dealer.js';
-import { HUMAN, PERSONAS, STACK, begin, deal, land, myChips, newTable, plan, prompt, say, topUp } from '../preview/poker-runtime.js';
+import { HUMAN, INTROS, PERSONAS, STACK, begin, deal, introduce, land, myChips, newTable, plan, prompt, say, topUp } from '../preview/poker-runtime.js';
 
 const rank = (cards) => bestHand(cards.split(' '));
 const beats = (a, b) => compare(rank(a).score, rank(b).score);
@@ -266,4 +266,11 @@ test('an AI player out of chips buys back in; the person must buy in themselves,
   assert.equal(table.hand.seats[0].stack + table.hand.seats[0].total, 300);
   assert.equal(table.hand.seats[1].stack + table.hand.seats[1].total, STACK);
   assert.deepEqual(table.log.filter((c) => c.type === 'rebuy').map((c) => c.by), [PERSONAS[0].id]);
+});
+
+test('the players\' hellos are theirs to say, and wake no one', () => {
+  const table = newTable(500);
+  for (const line of INTROS) introduce(table, line);
+  assert.deepEqual(table.chat.map((l) => l.by), INTROS.map(([id]) => id));
+  assert.deepEqual(plan(table), [], 'no one is due: there is no hand, and no line asks anything');
 });

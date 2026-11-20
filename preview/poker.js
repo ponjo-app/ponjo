@@ -17,7 +17,7 @@ import { INFER } from '../agents/ponjo-core.mjs';
 import { agentFace, personFace, setBuddies, setOwner } from '../web/faces.js';
 import { icon } from '../web/icons.js';
 import { handName, legal } from './poker-dealer.js';
-import { DECIDE, HUMAN, PERSONAS, begin, deal, fail, land, leave, myChips, newTable, plan, prompt, retry, say, topUp } from './poker-runtime.js';
+import { DECIDE, HUMAN, INTROS, PERSONAS, begin, introduce, deal, fail, land, leave, myChips, newTable, plan, prompt, retry, say, topUp } from './poker-runtime.js';
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const el = (tag, className = '', text = '') => Object.assign(document.createElement(tag), { className, textContent: text });
@@ -177,8 +177,18 @@ buyin.addEventListener('submit', (event) => {
   closeBuyIn();
   paused = false;
   if (kind === 'topup' && table.hand && table.hand.street !== 'done') changed();
+  else if (!table.hand) greet();
   else nextHand();
 });
+// Before the first hand, the players say hello, a line every second or so; then the cards.
+function greet() {
+  INTROS.forEach((line, k) => setTimeout(() => {
+    introduce(table, line);
+    changed();
+  }, 400 + k * 1400));
+  setTimeout(nextHand, 400 + INTROS.length * 1400 + 600);
+}
+
 function leaveTable() {
   stopCountdown();
   session.cashed = leave(table);
