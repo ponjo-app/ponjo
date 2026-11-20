@@ -1,0 +1,103 @@
+/* The poker page (site/poker.html): the table and the chat, in the app's
+   tokens and classes (dist/web/app.css) and the site's header (site.css).
+   Suits are ink like everything else: colour here means only who, as in
+   the app (site/design.html). */
+
+body.pk-setting-up .pk-page { filter: blur(1px); opacity: 0.6; pointer-events: none; }
+
+.pk-page { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 24px; max-width: 1200px; height: calc(100vh - 53px); margin: 0 auto; padding: 24px 16px; }
+
+/* ---- the table: three players round the felt, you at the bottom, your controls under you ---- */
+
+.pk-seats { display: contents; }
+.pk-table { display: grid; grid-template: "left top right" auto "left felt right" 1fr "bottom bottom bottom" auto "controls controls controls" 40px / minmax(0, 1fr) minmax(0, 3fr) minmax(0, 1fr); gap: 16px 12px; align-items: center; justify-items: center; }
+.pk-seat { display: grid; grid-template: "face text" auto "hole hole" auto / auto auto; gap: 6px 8px; align-items: center; justify-items: start; position: relative; padding: 8px 12px; border-radius: 10px; }
+.pk-seat[data-pos="bottom"] { grid-area: bottom; }
+.pk-seat[data-pos="left"] { grid-area: left; }
+.pk-seat[data-pos="top"] { grid-area: top; }
+.pk-seat[data-pos="right"] { grid-area: right; }
+.pk-seat .pj-agent-face { grid-area: face; }
+.pk-seat .pj-avatar { --size: 44px; }
+.pk-seat-text { grid-area: text; display: flex; flex-direction: column; min-width: 0; line-height: 1.4; }
+.pk-name { display: flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 600; }
+.pk-stack { font-size: 13px; font-variant-numeric: tabular-nums; color: var(--text-soft); }
+.pk-status { min-height: 18px; font-size: 12px; color: var(--text-faint); white-space: nowrap; }
+.pk-status[data-failed] { color: var(--red); }
+.pk-hole { grid-area: hole; display: flex; gap: 4px; min-height: 50px; }
+.pk-bet { position: absolute; top: 8px; right: -24px; font-size: 12px; font-weight: 500; font-variant-numeric: tabular-nums; }
+.pk-bet:not(:empty) { padding: 2px 6px; border-radius: 9999px; background: var(--active); }
+.pk-dealer-button { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 50%; background: var(--text); color: var(--on-text); font-size: 11px; font-weight: 600; }
+
+.pk-felt { grid-area: felt; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; align-self: center; justify-self: stretch; min-height: 240px; padding: 24px; border-radius: 9999px; background: var(--bg-soft); box-shadow: var(--shadow); text-align: center; }
+.pk-board { display: flex; gap: 6px; min-height: 62px; }
+.pk-board .pk-card { width: 44px; height: 62px; font-size: 20px; }
+.pk-pot { font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.pk-news { max-width: 360px; min-height: 1.6em; margin: 0; color: var(--text-soft); font-size: 13px; line-height: 1.6; }
+.pk-between { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+
+/* a card: rank over suit, ink on the page; face down, a plain back */
+.pk-card { display: inline-flex; flex-direction: column; align-items: center; justify-content: center; width: 36px; height: 50px; border-radius: 6px; background: var(--bg); box-shadow: var(--shadow); color: var(--text); font-size: 16px; font-weight: 600; line-height: 1; }
+.pk-suit { font-size: 0.85em; font-weight: 400; }
+.pk-card-back { background: var(--active); box-shadow: inset 0 0 0 4px var(--bg), var(--shadow); }
+
+.pk-controls { grid-area: controls; display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+.pk-controls button { height: 32px; padding: 0 16px; }
+.pk-raise { display: flex; gap: 8px; }
+.pk-amount { width: 96px; height: 32px; font-variant-numeric: tabular-nums; }
+
+/* ---- the chat ---- */
+
+.pk-chat { display: flex; flex-direction: column; min-height: 0; border-radius: 10px; background: var(--canvas); box-shadow: var(--shadow); }
+.pk-feed { flex: 1; min-height: 0; overflow-y: auto; margin: 0; padding: 12px 16px; list-style: none; }
+.pk-message { margin: 8px 0; }
+.pk-message .pj-body { margin-top: 0; }
+.pk-dealer { margin: 4px 0; color: var(--text-faint); font-size: 12px; line-height: 1.5; }
+.pk-dealer[data-failed] { color: var(--red); }
+.pk-say { display: flex; gap: 8px; padding: 12px 16px 8px; border-top: 1px solid var(--border); }
+.pk-say .pj-input { flex: 1; width: auto; height: 32px; }
+.pk-say button { height: 32px; }
+.pk-fine { margin: 0; padding: 0 16px 12px; color: var(--text-faint); font-size: 12px; }
+.pk-fine .pj-link-button { font-size: 12px; color: var(--text-soft); }
+
+/* ---- setup: the card in the middle (the app's .pj-join) ---- */
+
+.pk-setup { width: 360px; max-width: calc(100vw - 32px); }
+.pk-setup-title { margin: 0; font-size: 16px; font-weight: 600; }
+.pk-setup .pj-segmented { align-self: flex-start; }
+.pk-field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 500; color: var(--text-soft); }
+.pk-field .pj-input { width: 100%; height: 32px; font-size: 13px; }
+.pk-error { margin: 0; color: var(--red); font-size: 13px; }
+.pk-setup > .pj-primary { height: 32px; }
+.pk-forget { align-self: flex-start; margin-left: -6px; font-size: 12px; color: var(--text-soft); }
+
+/* ---- their thinking ---- */
+
+.pk-thinking { width: min(560px, calc(100vw - 32px)); max-height: calc(100vh - 64px); padding: 16px 24px 24px; border: 0; border-radius: 14px; background: var(--bg); color: var(--text); box-shadow: var(--shadow-raised); }
+.pk-thinking[open] { animation: pj-pop 0.15s ease-out; }
+.pk-thinking::backdrop { background: var(--scrim); }
+.pk-thinking-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.pk-thinking-head h2 { margin: 0; font-size: 16px; font-weight: 600; }
+.pk-thinking .pj-trace-part > summary { list-style: none; }
+.pk-thinking .pj-trace-part > summary::-webkit-details-marker { display: none; }
+.pk-thinking .pj-trace-part .pj-avatar { --size: 24px; }
+.pk-thinking .pj-empty { margin: 0 0 12px; }
+
+/* ---- a phone: the three players in a row over the felt, the chat under the table ---- */
+
+@media (max-width: 860px) {
+  .pk-page { grid-template-columns: minmax(0, 1fr); height: auto; padding: 16px; }
+  .pk-chat { height: 60vh; }
+}
+@media (max-width: 560px) {
+  .pk-table { grid-template: "left top right" auto "felt felt felt" auto "bottom bottom bottom" auto "controls controls controls" auto / repeat(3, minmax(0, 1fr)); gap: 12px 4px; }
+  .pk-seat { grid-template: "face" auto "text" auto "hole" auto / auto; justify-items: center; padding: 4px; text-align: center; }
+  .pk-seat[data-pos="bottom"] { grid-template: "face text" auto "hole hole" auto / auto auto; justify-items: start; text-align: start; }
+  .pk-seat .pj-avatar { --size: 32px; }
+  .pk-seat-text { align-items: center; }
+  .pk-seat[data-pos="bottom"] .pk-seat-text { align-items: flex-start; }
+  .pk-hole { min-height: 42px; }
+  .pk-hole .pk-card { width: 30px; height: 42px; font-size: 13px; }
+  .pk-bet { position: static; grid-column: 1 / -1; justify-self: center; }
+  .pk-felt { min-height: 0; padding: 16px; border-radius: 14px; }
+  .pk-board .pk-card { width: 36px; height: 50px; font-size: 16px; }
+}
