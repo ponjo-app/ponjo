@@ -122,6 +122,8 @@ a { color: var(--accent); }
 /* a point: what the scenes after it show, and, quieter, what it replaces */
 .arch-point h2 { display: flex; flex-direction: column; gap: 8px; max-width: 680px; margin: 0; font-size: 36px; font-weight: 600; line-height: 1.25; letter-spacing: -0.02em; text-align: center; text-wrap: balance; }
 .arch-instead { color: var(--text-faint); }
+/* struck out in red, a deletion: the line is drawn across it as one run of text, line by line */
+.arch-instead del { text-decoration: none; background: linear-gradient(var(--red), var(--red)) no-repeat 0 58% / 0% 3px; }
 
 /* a member: its face over its name */
 .arch-actor { display: flex; flex-direction: column; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; }

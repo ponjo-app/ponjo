@@ -272,13 +272,18 @@ function cover(scene) {
 cover.once = true;
 
 // A page that states what the scenes after it show: the claim, then what it
-// replaces, quieter.
+// replaces, quieter, which a beat later is struck out, a line at a time.
 function point(claim, instead) {
-  const page = (scene) => {
+  const page = async (scene) => {
     const line = el('h2');
-    line.append(el('span', '', claim), el('span', 'arch-instead', instead));
+    const gone = el('del', '', instead);
+    const quiet = el('span', 'arch-instead');
+    quiet.append(gone);
+    line.append(el('span', '', claim), quiet);
     scene.stage.classList.add('arch-point');
     scene.stage.append(line);
+    await scene.wait(900);
+    await scene.move(gone, [{ backgroundSize: '0% 3px' }, { backgroundSize: '100% 3px' }], 900, 'ease-in-out');
   };
   page.once = true;
   return page;
