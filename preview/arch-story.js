@@ -63,9 +63,12 @@ const PROPS = {
   baton: [['arch-prop', 'M-19 25 H-5 V31 H-19 Z']],
   reach: [['arch-prop', 'M-27 27 H-13 V33 H-27 Z']],
 };
-// A headset over a face, in its 100×100 box, and the waves at its ear when it is called.
-const HEADSET = ['M10 52 Q50 -32 90 52', 'M0 42 h14 v22 h-14 Z M86 42 h14 v22 h-14 Z'];
-const WAVES = 'M108 44 q7 9 0 18 M116 37 q13 16 0 32';
+// A headset over a face, in its 100×100 box: a band arched clear over the
+// head, rounded cups at the sides, each with a speaker's dot; and the waves
+// at its ear when it is called.
+const cup = (x) => `M${x} 44 a8 8 0 0 1 8 -8 a8 8 0 0 1 8 8 v12 a8 8 0 0 1 -8 8 a8 8 0 0 1 -8 -8 Z`;
+const HEADSET = ['M2 42 C0 -22 100 -22 98 42', `${cup(-6)} ${cup(90)}`, 'M2 50 a2.5 2.5 0 1 0 0.01 0 M98 50 a2.5 2.5 0 1 0 0.01 0'];
+const WAVES = 'M114 42 q7 9 0 18 M122 35 q13 16 0 32';
 // Looks a face has only in these scenes, drawn in its own ink in place of
 // its eyes and mouth, in its 100×100 box: [kind, path], a 'fill' solid, a
 // 'drop' filled with paper. Running: brows down, eyes set, a frown and a
@@ -144,7 +147,7 @@ function actor(name, presence, { headset = false } = {}) {
     looks.append(g);
   }
   if (headset) {
-    looks.append(path(HEADSET[0], 'arch-headset'), path(HEADSET[1], 'arch-headset-cups'));
+    looks.append(path(HEADSET[0], 'arch-headset'), path(HEADSET[1], 'arch-headset-cups'), path(HEADSET[2], 'arch-headset-dots'));
     parts.waves = path(WAVES, 'arch-waves');
     parts.waves.style.display = 'none';
     looks.append(parts.waves);
@@ -556,14 +559,14 @@ function race(scene) {
     points.push(at(to));
     return points;
   };
-  // the lanes, drawn as by the runners' feet: broken where they stand
-  for (const k of [-28, 28]) {
-    for (const [from, to] of [[200, 250], [290, 340], [380, 520]]) {
-      const points = [];
-      for (let deg = from; deg <= to; deg += 3) points.push(on(deg, k));
-      s.ink(`M${points.map(([x, y]) => `${f(x)} ${f(y)}`).join(' L')}`, 'arch-ink arch-track');
-    }
-  }
+  // the track: a wide band, its lanes in white lines, edged, a start line across it
+  const ring = (k) => `M${f(cx - rx - k)} ${f(cy)} a${f(rx + k)} ${f(ry + k)} 0 1 0 ${f(2 * (rx + k))} 0 a${f(rx + k)} ${f(ry + k)} 0 1 0 ${f(-2 * (rx + k))} 0`;
+  s.ink(ring(0), 'arch-track-band');
+  for (const k of [-11, 11]) s.ink(ring(k), 'arch-track-lane');
+  for (const k of [-33, 33]) s.ink(ring(k), 'arch-track-edge');
+  const [sx0, sy0] = on(90, -33);
+  const [sx1, sy1] = on(90, 33);
+  s.ink(`M${f(sx0)} ${f(sy0)} L${f(sx1)} ${f(sy1)}`, 'arch-track-start');
   const who = {};
   for (const [name, deg] of Object.entries(RUNNERS)) {
     who[name] = actor(name, name === 'Pip' ? 'away' : 'idle');
@@ -679,8 +682,11 @@ async function state(scene) {
   // the wires, from under the eye to each one's ear
   const wires = {};
   for (const [name, [x, y]] of Object.entries(seats)) {
-    const ear = [x + (x < middle[0] ? 26 : x > middle[0] ? -26 : 0), y - 22];
-    const d = `M${f(middle[0])} ${f(middle[1] + 30)} C${f(middle[0])} ${f(middle[1] + 90)} ${f(ear[0])} ${f(ear[1] + 80)} ${f(ear[0])} ${f(ear[1])}`;
+    // into the cup on the side towards the eye; under it, the one to its left, from outside
+    const side = x < middle[0] ? 1 : -1;
+    const ear = [x + side * 30, y - 22];
+    const near = x === middle[0] ? [ear[0] - 36, ear[1] - 6] : [ear[0] + side * 44, ear[1] - 4];
+    const d = `M${f(middle[0])} ${f(middle[1] + 30)} C${f(middle[0])} ${f(middle[1] + 80)} ${f(near[0])} ${f(near[1])} ${f(ear[0])} ${f(ear[1])}`;
     s.ink(d, 'arch-ink arch-wire');
     wires[name] = d;
   }

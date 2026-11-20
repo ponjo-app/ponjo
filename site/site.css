@@ -148,7 +148,10 @@ a { color: var(--accent); }
 .arch-bar { display: block; flex: none; height: 6px; border-radius: 9999px; background: var(--border-strong); transition: background-color 0.4s; }
 .arch-bar.arch-mine { background: var(--buddy); }
 /* a relay: the track, a baton, the z's of a sleeper; a headset and its call; the board of legs run */
-.arch-track { stroke: var(--border-strong); stroke-width: 3; }
+.arch-track-band { fill: none; stroke: var(--border); stroke-width: 66; }
+.arch-track-lane { fill: none; stroke: var(--canvas); stroke-width: 2; stroke-dasharray: 10 8; }
+.arch-track-edge { fill: none; stroke: var(--border-strong); stroke-width: 2; }
+.arch-track-start { stroke: var(--canvas); stroke-width: 5; }
 .arch-baton { overflow: visible; fill: var(--canvas); stroke: var(--text); stroke-width: 2; }
 .arch-zzz { display: flex; gap: 2px; color: var(--text-soft); font-size: 14px; font-weight: 600; font-style: italic; }
 .arch-zzz i { animation: arch-zzz 2.4s ease-in-out infinite; }
@@ -156,9 +159,10 @@ a { color: var(--accent); }
 .arch-zzz i:nth-child(3) { font-size: 0.7em; animation-delay: 0.8s; }
 @keyframes arch-zzz { 0%, 100% { opacity: 0.2; translate: 0 4px; } 50% { opacity: 1; translate: 0 -4px; } }
 @media (prefers-reduced-motion: reduce) { .arch-zzz i { animation: none; } }
-.arch-headset, .arch-waves { fill: none; stroke: var(--text); stroke-width: 6; }
+.arch-headset, .arch-waves { fill: none; stroke: var(--text); stroke-width: 5; stroke-linecap: round; }
 .arch-waves { transform-box: fill-box; transform-origin: left center; }
-.arch-headset-cups { fill: var(--text); stroke: none; }
+.arch-headset-cups { fill: var(--bg); stroke: var(--text); stroke-width: 4; }
+.arch-headset-dots { fill: none; stroke: var(--text); stroke-width: 5; stroke-linecap: round; }
 /* the runtime as an eye on a round body, with lashes; the wires from it to the headsets, and a call's pulse */
 .arch-eye { overflow: visible; fill: none; stroke: var(--text); stroke-linecap: round; stroke-linejoin: round; }
 .arch-eye-lash { stroke-width: 4; }
