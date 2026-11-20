@@ -6,10 +6,10 @@
 <title>Werewolf with AI players · Ponjo</title>
 <meta name="description" content="Play werewolf with AI players who each keep their own secrets, speak in their own voices and vote for themselves. With your own API key, or Ponjo's.">
 <link rel="icon" href="./build/icon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="./dist/web/app.css?v=aa11917">
-<link rel="stylesheet" href="site.css?v=aa11917">
-<link rel="stylesheet" href="poker.css?v=aa11917">
-<link rel="stylesheet" href="werewolf.css?v=aa11917">
+<link rel="stylesheet" href="./dist/web/app.css?v=f0ae74c">
+<link rel="stylesheet" href="site.css?v=f0ae74c">
+<link rel="stylesheet" href="poker.css?v=f0ae74c">
+<link rel="stylesheet" href="werewolf.css?v=f0ae74c">
 </head>
 <body>
 <header class="site-header">
@@ -40,12 +40,57 @@
   <button class="pj-icon-btn site-theme" type="button" aria-label="Switch theme" title="Switch theme"><svg class="pj-icon site-moon" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"/></svg><svg class="pj-icon site-sun" viewBox="0 0 24 24"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg></button>
 </header>
 <main class="pk-page ww-page">
+  <svg class="ww-role-symbols" aria-hidden="true" focusable="false"><defs>
+      <symbol id="ww-villager" viewBox="0 0 24 24">
+        <path d="M9 7V5a3 3 0 0 1 6 0v2" fill="none"/>
+        <path d="m4 9 4-3h8l4 3-2 1-1 10 2 2H5l2-2-1-10Z"/>
+        <path d="M6 10h12M7 19h10" fill="none"/>
+        <path d="M12 11c1 2 3 4 2 6-1 2-4 2-4 0-1-2 1-3 2-6Z" fill="var(--text)" stroke="none"/>
+      </symbol>
+      <symbol id="ww-wolf" viewBox="0 0 24 24">
+        <path d="m2 20 3-8-2 1 3-6V2l5 4 4-4 1 6 3 3 4 1-2 4-6 1-5 6 1-5-6 3 1-4Z" fill="var(--text)" stroke="var(--bg)" stroke-width="1.4"/>
+        <path d="m13 10 3 1-3 1Z" fill="var(--bg)" stroke="none"/>
+      </symbol>
+      <symbol id="ww-seer" viewBox="0 0 24 24">
+        <path d="m12 2 0 3M4 4l2 3m14-3-2 3" fill="none"/>
+        <path d="M1.5 13q10.5-14 21 0-10.5 13-21 0Z"/>
+        <circle cx="12" cy="13" r="3.4" fill="var(--text)" stroke="none"/>
+      </symbol>
+      <symbol id="ww-witch" viewBox="0 0 24 24">
+        <path d="M9 2h6v4h-1v3q7 4 7 8 0 5-9 5t-9-5q0-4 7-8V6H9Z"/>
+        <path d="M5 16q4-3 8-1t6 0q2 5-7 5-7 0-7-4Z" fill="var(--text)" stroke="none"/>
+      </symbol>
+    </defs></svg>
   <section class="ww-room" aria-label="The game">
     <div class="ww-board">
       <div class="ww-ring">
         <svg class="ww-votes" aria-hidden="true"><defs><marker id="ww-head" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0 10 5 0 10z" fill="currentColor"/></marker></defs></svg>
         <div class="ww-fire" aria-hidden="true">
-          <svg viewBox="0 0 80 80"><rect class="ww-log" x="10" y="60" width="60" height="9" rx="4.5" transform="rotate(-13 40 64)"/><rect class="ww-log" x="10" y="60" width="60" height="9" rx="4.5" transform="rotate(13 40 64)"/><path class="ww-flame" d="M40 6C52 24 62 33 58 49 55 59 47 64 40 64S25 59 22 49C18 35 30 28 40 6Z"/><path class="ww-flame-core" d="M40 28C47 39 51 45 49 53 47 59 44 62 40 62S33 59 31 53C29 45 34 39 40 28Z"/><path class="ww-smoke" d="M40 56C34 48 46 42 40 34S44 22 40 14"/></svg>
+          <svg viewBox="0 0 96 80" aria-hidden="true" focusable="false">
+          <g class="ww-day-sky">
+            <circle cx="24" cy="18" r="8" fill="var(--fire-core)"/>
+            <path d="M24 4v3m0 22v3M10 18h3m22 0h3M14 8l2 2m16 16 2 2M14 28l2-2M32 10l2-2" fill="none" stroke="var(--fire)" stroke-width="1.6" stroke-linecap="round"/>
+          </g>
+          <g class="ww-night-sky" fill="var(--fire-core)">
+            <path d="M30 5a11 11 0 1 0 8 15A11 11 0 0 1 30 5Z"/>
+            <path d="m68 6 1 3 3 1-3 1-1 3-1-3-3-1 3-1Z"/>
+            <circle cx="16" cy="32" r="1.2"/><circle cx="79" cy="24" r="1.5"/>
+          </g>
+          <ellipse cx="48" cy="70" rx="32" ry="4" fill="var(--border)"/>
+          <g class="ww-flames">
+            <path class="ww-flame" d="M47 59c-11 0-20-6-20-16 0-7 4-12 8-17-1 7 0 11 4 13-1-13 11-18 9-31 10 8 14 19 9 29 4-1 7-6 7-10 8 13 7 30-11 32Z" fill="var(--fire)"/>
+            <path class="ww-flame-core" d="M47 57c-7-1-11-5-10-11 1-3 2-6 4-8 0 5 2 6 4 7 1-6 6-10 6-17 6 8 6 15 3 19 3-1 4-3 5-5 2 8-3 15-12 15Z" fill="var(--fire-core)"/>
+            <g class="ww-embers" fill="var(--fire-core)">
+              <ellipse cx="35" cy="20" rx="1.4" ry="2.4" transform="rotate(18 35 20)"/>
+              <circle cx="58" cy="15" r="1.4"/>
+            </g>
+          </g>
+          <g stroke="var(--log)" stroke-width="1.8" stroke-linejoin="round" fill="var(--log)">
+            <path d="m24 55 5-3 44 12-5 5-44-11Z"/>
+            <path d="m23 65 44-13 6 3-1 5-43 12-6-3Z"/>
+            <path d="m24 65 5 2v5m5-8 22-6m6-1 4-1m-29 2 8 2" fill="none" stroke-linecap="round"/>
+          </g>
+        <path class="ww-smoke" d="M48 54q-5-8 0-16t0-16"/></svg>
         </div>
       </div>
       <div class="ww-center">
@@ -125,7 +170,7 @@
   <div class="pj-trace pk-thinking-body"></div>
 </dialog>
 
-<script type="module" src="preview/werewolf.js?v=aa11917"></script>
-<script type="module" src="site.js?v=aa11917"></script>
+<script type="module" src="preview/werewolf.js?v=f0ae74c"></script>
+<script type="module" src="site.js?v=f0ae74c"></script>
 </body>
 </html>
