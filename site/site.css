@@ -25,9 +25,15 @@ a { color: var(--accent); }
 .site-menu a[aria-current="page"] { background: var(--active); }
 .site-header .pj-icon-btn { width: 32px; height: 32px; }
 :root[data-theme="dark"] .site-moon, :root:not([data-theme="dark"]) .site-sun { display: none; }
+/* A phone can't fit the nav beside the brand: it gets a row of its own, sliding
+   sideways when even that is too narrow. Its menus hang from the header, not their
+   item, so the sliding row doesn't clip them. */
 @media (max-width: 560px) {
-  .site-header { gap: 8px; }
-  .site-drop { display: none; }
+  .site-header { flex-wrap: wrap; gap: 8px; height: auto; padding: 10px 16px 8px; }
+  .site-nav { order: 1; flex-basis: calc(100% + 32px); margin: 0 -16px; padding: 0 8px; gap: 0; overflow-x: auto; scrollbar-width: none; }
+  .site-nav > a, .site-drop > summary { padding: 0 6px; }
+  .site-drop { position: static; }
+  .site-menu { left: 16px; }
 }
 
 /* ---- design pages ---- */
@@ -49,6 +55,7 @@ a { color: var(--accent); }
 .ds-swatch span { color: var(--text-soft); }
 .ds-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 8px 0; }
 .ds-box { padding: 24px; border-radius: 10px; background: var(--canvas); box-shadow: var(--shadow); }
+.ds-box:has(> .pj-usage-table) { overflow-x: auto; } /* wider than a phone: it slides, not the page */
 .ds-scale { display: flex; flex-direction: column; gap: 12px; }
 .ds-scale div { display: flex; align-items: baseline; gap: 16px; }
 .ds-scale span:first-child { width: 72px; flex: none; color: var(--text-faint); font-size: 12px; }
