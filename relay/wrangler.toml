@@ -35,7 +35,8 @@ simple = { limit = 120, period = 60 }
 
 # The preview's buddies' model (worker.js), at https://infer.ponjo.app,
 # deployed by CI (README.md, The preview's buddies). Its key, the
-# secret TOKEN_FACTORY_KEY, is the repo's secret of that name.
+# secret TOKEN_FACTORY_KEY, is the repo's secret of that name, and so is
+# ANTHROPIC_API_KEY, the poker page's (site/poker.html).
 [env.hackathon]
 name = "ponjo-hackathon"
 routes = [{ pattern = "infer.ponjo.app", custom_domain = true }]
@@ -44,6 +45,8 @@ routes = [{ pattern = "infer.ponjo.app", custom_domain = true }]
 ORIGIN = "https://ponjo.app"
 ENDPOINT = "https://api.tokenfactory.nebius.com/v1"
 MODEL = "nvidia/nemotron-3-super-120b-a12b" # Nemotron 3 Super, which calls tools
+ANTHROPIC_ENDPOINT = "https://api.anthropic.com/v1" # the poker page's players, with the secret ANTHROPIC_API_KEY
+ANTHROPIC_MODEL = "claude-haiku-5-5"
 
 # Requests an address makes a minute: a turn is a few, up to six.
 [[env.hackathon.ratelimits]]

@@ -238,8 +238,9 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
   infer:
-    # The preview's buddies' model (infer.ponjo.app, the hackathon env in
-    # relay/wrangler.toml), with the Token Factory key. Nothing of the
+    # The preview's buddies' model and the poker page's (infer.ponjo.app,
+    # the hackathon env in relay/wrangler.toml), with the Token Factory key
+    # and the Anthropic key. Nothing of the
     # nightly's: it waits only for the unit tests (test/infer.test.js among
     # them), so the preview's page (pages.yml) waits for it little.
     needs: test
@@ -255,10 +256,11 @@ jobs:
         env:
           ELECTRON_SKIP_BINARY_DOWNLOAD: 1
       - run: |
-          printf 'TOKEN_FACTORY_KEY=%s\n' "$TOKEN_FACTORY_KEY" > "$RUNNER_TEMP/secrets.env"
+          printf 'TOKEN_FACTORY_KEY=%s\nANTHROPIC_API_KEY=%s\n' "$TOKEN_FACTORY_KEY" "$ANTHROPIC_API_KEY" > "$RUNNER_TEMP/secrets.env"
           npm run deploy -- --env hackathon --secrets-file "$RUNNER_TEMP/secrets.env"
         working-directory: relay
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           TOKEN_FACTORY_KEY: ${{ secrets.TOKEN_FACTORY_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
