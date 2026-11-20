@@ -10,6 +10,7 @@ import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/
 import { tmpdir } from 'node:os';
 import { basename, delimiter, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { SETTLE_MS } from '../src/core/due.js';
 import { buildPrompt } from '../src/core/prompt.js';
 import { agentsFor, createBuddyRuntime } from '../src/host/buddy-runtime.js';
 import { noteTaken } from '../src/store/history.js';
@@ -429,6 +430,19 @@ test('a watcher runs on people\'s edits once they pause, unless a run since alre
     await edit(`${(await state()).text}Two.\n`);
     await until(async () => (await of('Ada')) === 3, 'a run once new edits pause', 10_000);
   }, { buddies: { Ada: 'Watches.\n', Ben: 'Answers.\n' } });
+});
+
+test('a watcher runs at once on a file written outside the app, with no pause for typing', { timeout: 30_000 }, async () => {
+  await withDoc(async ({ docPath, call, state, runs }) => {
+    await call('watch', { buddy: 'Clippy', on: true });
+    await until(async () => (await runs()).length === 1, 'its first look');
+    await until(async () => (await state()).agents.every((a) => a.state === 'ready'), 'that run to end');
+    const at = Date.now();
+    await writeFile(docPath, `${(await state()).text}Written by another program.\n`);
+    await until(async () => (await runs()).length === 2, 'a run on it', 10_000);
+    assert.ok(Date.now() - at < SETTLE_MS, 'before people\'s pause would end');
+    assert.match((await runs())[1].prompt, /^\+Written by another program\.$/m);
+  });
 });
 
 test('a watch run is ended when a person types again, with no answer, and runs again once they pause', { timeout: 60_000 }, async () => {

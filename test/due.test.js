@@ -4,7 +4,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { SETTLE_MS, plan } from '../src/core/due.js';
+import { OUTSIDE, SETTLE_MS, plan } from '../src/core/due.js';
 import { filled, nextStepAt, refilled, take } from '../src/core/bucket.js';
 
 const ME = 'u_me000001';
@@ -56,6 +56,10 @@ test('a watcher is due once turned on, on people\'s changes once they pause, and
   const paused = look({ notes: watching(5), changedAt: people, now: 98_000 + SETTLE_MS });
   assert.deepEqual([started(paused), paused.steps.left], [['b_ada'], 3], 'their pause: free');
   assert.deepEqual(started(look({ notes: watching(7), changedAt: people, now: 98_000 + SETTLE_MS })), [], 'a run since saw them');
+
+  const outside = look({ notes: watching(5), changedAt: new Map([[OUTSIDE, { rev: 7, at: 99_999 }]]) });
+  assert.deepEqual([started(outside), outside.steps.left, outside.wakeAt], [['b_ada'], 3, null], 'a file written outside: at once, free, for it is whole');
+  assert.equal(outside.why.get('b_ada'), 'due: changed by outside the app at rev 7, after its look at rev 5');
 
   const buddy = look({ notes: watching(5), changedAt: new Map([['b_ben', { rev: 7, at: 99_000 }]]) });
   assert.deepEqual([started(buddy), buddy.steps.left], [['b_ada'], 2], 'another buddy: at once, for a step');
