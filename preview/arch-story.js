@@ -69,7 +69,8 @@ const WAVES = 'M108 44 q7 9 0 18 M116 37 q13 16 0 32';
 // Looks a face has only in these scenes, drawn in its own ink in place of
 // its eyes and mouth, in its 100×100 box: [kind, path], a 'fill' solid, a
 // 'drop' filled with paper. Running: brows down, eyes set, a frown and a
-// drop of sweat. Dazed: worried brows, spiral eyes, a wobbly mouth.
+// drop of sweat. Shocked: brows up, eyes wide, mouth open, and a jolt.
+// Dazed: worried brows, spiral eyes, a wobbly mouth.
 // a spiral round (x, y): half turns that grow by `gap` each full turn
 function spiral(x, y, turns = 2, gap = 3.4) {
   let [at, r] = [x - gap / 4, gap / 2];
@@ -87,6 +88,12 @@ const LOOKS = {
     ['fill', 'M34 44 a3.5 4.5 0 1 0 7 0 a3.5 4.5 0 1 0 -7 0 M59 44 a3.5 4.5 0 1 0 7 0 a3.5 4.5 0 1 0 -7 0'],
     ['line', 'M43 62 Q50 55 57 62'],
     ['drop', 'M84 6 Q92 18 84 22 Q76 18 84 6 Z'],
+  ],
+  shocked: [
+    ['line', 'M28 26 L40 30 M72 26 L60 30'],
+    ['thin', 'M29 45 a7 8 0 1 0 14 0 a7 8 0 1 0 -14 0 M57 45 a7 8 0 1 0 14 0 a7 8 0 1 0 -14 0'],
+    ['fill', 'M34 45 a2.5 2.5 0 1 0 5 0 a2.5 2.5 0 1 0 -5 0 M62 45 a2.5 2.5 0 1 0 5 0 a2.5 2.5 0 1 0 -5 0 M44 58 h12 v9 a4 4 0 0 1 -4 4 h-4 a4 4 0 0 1 -4 -4 Z'],
+    ['thin', 'M100 14 l5 -12 M108 22 l9 -9 M112 34 l12 -4'],
   ],
   dazed: [
     ['line', 'M27 32 L40 28 M73 32 L60 28'],
@@ -524,103 +531,130 @@ async function blackboard(scene) {
   await scene.wait(2200);
 }
 
-// A relay: Otto, Clippy and Pip, each its leg of a track, Clippy asleep with
-// z's over it. With `headsets`, each wears one, and the board by the track
-// says which legs are run.
+// A relay round an oval track: Clippy, Pip and Otto, each a leg of it, Pip
+// asleep with z's over it. With `headsets`, each wears one, and the board in
+// the middle says which legs are run. Places on the track are angles, in
+// degrees clockwise from the right.
+const RUNNERS = { Clippy: 180, Pip: 270, Otto: 360 };
+const LEGS = { Clippy: [180, 240], Pip: [270, 320], Otto: [360, 520] }; // each stops short of the next
+
 function race(scene, { headsets = false } = {}) {
   const s = sketch(scene.stage);
   const up = s.upright;
-  const y = headsets ? (up ? 340 : 280) : (up ? 260 : 220); // where they stand
-  const track = y + 62;
-  const start = up ? { Otto: 60, Clippy: 180, Pip: 300 } : { Otto: 90, Clippy: 310, Pip: 530 };
-  const leg = up ? 60 : 140; // how far each runs
-  s.ink(`M${up ? 20 : 40} ${track} H${s.W - (up ? 20 : 40)}`, 'arch-ink arch-track');
-  const who = {};
-  for (const name of ['Otto', 'Clippy', 'Pip']) {
-    who[name] = actor(name, name === 'Clippy' ? 'away' : 'idle', { headset: headsets });
-    s.place(who[name].node, [start[name], y]);
+  const [cx, cy] = up ? [200, 290] : [380, 220];
+  const [rx, ry] = up ? [150, 185] : [290, 145]; // the lane they run in
+  const on = (deg, k = 0) => {
+    const a = (deg * Math.PI) / 180;
+    return [cx + (rx + k) * Math.cos(a), cy + (ry + k) * Math.sin(a)];
+  };
+  const at = (deg) => { // a runner on the track: its feet on the lane
+    const [x, y] = on(deg);
+    return [x, y - 30];
+  };
+  const arc = (from, to) => {
+    const points = [];
+    for (let deg = from; deg < to; deg += 4) points.push(at(deg));
+    points.push(at(to));
+    return points;
+  };
+  // the lanes, drawn as by the runners' feet: broken where they stand
+  for (const k of [-28, 28]) {
+    for (const [from, to] of [[200, 250], [290, 340], [380, 520]]) {
+      const points = [];
+      for (let deg = from; deg <= to; deg += 3) points.push(on(deg, k));
+      s.ink(`M${points.map(([x, y]) => `${f(x)} ${f(y)}`).join(' L')}`, 'arch-ink arch-track');
+    }
   }
-  const zzz = s.place(el('span', 'arch-zzz'), [start.Clippy + 30, y - 66]);
+  const who = {};
+  for (const [name, deg] of Object.entries(RUNNERS)) {
+    who[name] = actor(name, name === 'Pip' ? 'away' : 'idle', { headset: headsets });
+    s.place(who[name].node, at(deg));
+  }
+  const [zx, zy] = at(RUNNERS.Pip);
+  const zzz = s.place(el('span', 'arch-zzz'), [zx + 34, zy - 66]);
   zzz.append(...'zzz'.split('').map((z) => el('i', '', z)));
-  const t = { s, up, y, track, start, leg, who, zzz };
+  const t = { s, up, at, arc, who, zzz, middle: [cx, cy] };
   if (headsets) {
-    const board = t.board = s.place(el('div', 'arch-paper arch-score'), up ? [s.W / 2, 110] : [s.W / 2, 80], up ? [240, 150] : [260, 128]);
+    const board = t.board = s.place(el('div', 'arch-paper arch-score'), [cx, cy - 6], up ? [160, 120] : [200, 108]);
     board.append(el('b', '', 'Board'));
     t.marks = {};
-    ['Otto', 'Clippy', 'Pip'].forEach((name, i) => {
+    Object.keys(RUNNERS).forEach((name, i) => {
       const row = el('div', 'arch-leg');
       t.marks[name] = el('span', 'arch-mark', '—');
       row.append(el('span', '', `Leg ${i + 1}`), face(name), t.marks[name]);
       board.append(row);
     });
   }
-  // `name` runs its leg, and is pleased with itself
-  t.runs = async (name) => {
-    await run(scene, s, who[name], [[start[name], y], [start[name] + leg, y]], 1200, { look: 'run' });
-    pose(who[name], { right: true });
-    await hop(scene, who[name], 6, 360); // done: a little hop
+  // `name` runs its leg round the track, and is pleased with itself
+  t.runs = async (name, { arms = null, to = LEGS[name][1] } = {}) => {
+    await run(scene, s, who[name], arc(LEGS[name][0], to), 1300 + (to - LEGS[name][0]) * 4, { arms, look: 'run' });
+    pose(who[name], { arms: arms ?? 'stand', right: true });
   };
   return t;
 }
 
 // Triggered by events: each runner runs when the one before hands it the
-// baton. Clippy is asleep and misses it; the baton falls, and Pip waits.
+// baton. Clippy brings it round to Pip, who is asleep and misses it; the
+// baton falls, and Otto, waiting next, sees it go.
 async function events(scene) {
   watching(false);
   const t = race(scene);
   const { who } = t;
-  pose(who.Otto, { arms: 'baton' });
-  const foot = el('p', 'arch-foot');
-  const link = el('a', '', 'Even OpenHands drops requests when a poll fails.');
+  pose(who.Clippy, { arms: 'baton' });
+  // in the middle of the track, where it is empty: that this happens for real
+  const link = el('a', 'arch-infield', 'Even OpenHands drops requests when a poll fails.');
   link.href = OPENHANDS;
-  foot.append(link);
-  scene.stage.append(foot);
+  t.s.place(link, t.middle, t.up ? [180, 60] : [260, 40]);
+  // Otto, waiting for the baton, bounces on its toes
+  who.Otto.tag.textContent = 'Waiting…';
+  const toes = still ? null : who.Otto.figure.animate([{ translate: '0 0' }, { translate: '0 -3px' }, { translate: '0 0' }], { duration: 500, iterations: Infinity, easing: 'ease-in-out' });
 
   await scene.wait(800);
-  const to = t.start.Clippy - 70;
-  await run(scene, t.s, who.Otto, [[t.start.Otto, t.y], [to, t.y]], 1400, { arms: 'baton', look: 'run' });
-  pose(who.Otto, { arms: 'reach', right: true });
-  who.Otto.tag.textContent = 'Here!';
+  const stop = 245;
+  await t.runs('Clippy', { arms: 'baton', to: stop });
+  pose(who.Clippy, { arms: 'reach', right: true });
+  who.Clippy.tag.textContent = 'Here!';
   await scene.wait(500);
-  await hop(scene, who.Otto, 4, 300); // a nudge: take it!
+  await hop(scene, who.Clippy, 4, 300); // a nudge: take it!
   await scene.wait(600);
   // nobody takes it: it slips, falls to the track and bounces, less each time
-  pose(who.Otto, { arms: 'tap', right: true });
-  who.Otto.tag.textContent = '';
-  const baton = t.s.place(svg('-14 -5 28 10', 'arch-baton'), [to + 34, t.y - 4], [28, 10]);
+  pose(who.Clippy, { arms: 'tap', right: true });
+  who.Clippy.tag.textContent = '';
+  const [hx, hy] = t.at(stop);
+  const floor = hy + 34;
+  const baton = t.s.place(svg('-14 -5 28 10', 'arch-baton'), [hx + 34, hy - 4], [28, 10]);
   baton.append(path('M-13 -4 H13 V4 H-13 Z'));
-  const at = (x, y, turn) => ({ ...t.s.at([to + x, y]), rotate: `${turn}deg` });
-  const floor = t.track - 4;
-  await scene.move(baton, [at(34, t.y - 4, 0), at(44, floor, 70)], 420, 'cubic-bezier(0.5, 0, 1, 1)');
-  await scene.move(baton, [at(44, floor, 70), at(52, floor - 18, 130)], 200, 'cubic-bezier(0, 0, 0.5, 1)');
-  await scene.move(baton, [at(52, floor - 18, 130), at(58, floor, 175)], 200, 'cubic-bezier(0.5, 0, 1, 1)');
-  await scene.move(baton, [at(58, floor, 175), at(62, floor - 5, 185), at(64, floor, 180)], 240, 'ease-in-out');
-  const otto = who.Otto.face.querySelector('.pj-avatar');
-  otto.classList.add('pj-failed');
-  await scene.wait(600);
-  // Pip, still waiting, bounces on its toes
-  who.Pip.tag.textContent = 'Waiting…';
-  if (!still) who.Pip.figure.animate([{ translate: '0 0' }, { translate: '0 -3px' }, { translate: '0 0' }], { duration: 500, iterations: Infinity, easing: 'ease-in-out' });
-  await scene.wait(600);
-  otto.classList.remove('pj-failed');
-  await scene.wait(2600);
+  const spot = (x, y, turn) => ({ ...t.s.at([hx + x, y]), rotate: `${turn}deg` });
+  await scene.move(baton, [spot(34, hy - 4, 0), spot(44, floor, 70)], 420, 'cubic-bezier(0.5, 0, 1, 1)');
+  await scene.move(baton, [spot(44, floor, 70), spot(52, floor - 18, 130)], 200, 'cubic-bezier(0, 0, 0.5, 1)');
+  await scene.move(baton, [spot(52, floor - 18, 130), spot(58, floor, 175)], 200, 'cubic-bezier(0.5, 0, 1, 1)');
+  await scene.move(baton, [spot(58, floor, 175), spot(62, floor - 5, 185), spot(64, floor, 180)], 240, 'ease-in-out');
+  // Otto sees it fall: a jolt, and its jaw drops
+  toes?.cancel();
+  who.Otto.tag.textContent = '';
+  pose(who.Otto, { look: 'shocked' });
+  await hop(scene, who.Otto, 10, 420);
+  const clippy = who.Clippy.face.querySelector('.pj-avatar');
+  clippy.classList.add('pj-failed');
+  await scene.wait(1200);
+  clippy.classList.remove('pj-failed');
+  await scene.wait(2400);
 }
 
-// Reconciled from state: no baton. The runtime reads the board and calls,
-// in its headset, whoever's leg is not run yet, and calls again while it is
-// not: Clippy sleeps through the first call and wakes at the second.
+// Reconciled from state: no baton. The runtime reads the board in the
+// middle and calls, in its headset, whoever's leg is not run yet, and calls
+// again while it is not: Pip sleeps through the first call and wakes at the
+// second.
 async function state(scene) {
   watching(false);
   const t = race(scene, { headsets: true });
   const { who, marks } = t;
+  const where = { ...RUNNERS };
   // a call from the board to `name`'s headset: a dashed line, and the waves
   // at its ear pulse; louder, they are bigger
   const call = async (name, loud = false) => {
-    const runner = who[name].node;
-    const [from, to] = [t.board.getBoundingClientRect(), runner.getBoundingClientRect()];
-    const box = t.board.parentNode.getBoundingClientRect();
-    const k = t.s.W / box.width; // page pixels to the diagram's units
-    const line = t.s.ink(`M${f((from.left + from.width / 2 - box.left) * k)} ${f((from.bottom - box.top) * k + 4)} L${f((to.left + to.width / 2 - box.left) * k)} ${f((to.top - box.top) * k)}`, 'arch-ink arch-call');
+    const [x, y] = t.at(where[name]);
+    const line = t.s.ink(`M${f(t.middle[0])} ${f(t.middle[1])} L${f(x)} ${f(y - 30)}`, 'arch-ink arch-call');
     const waves = who[name].parts.waves;
     waves.style.display = '';
     waves.style.scale = loud ? '1.4' : '1';
@@ -628,29 +662,29 @@ async function state(scene) {
     waves.style.display = 'none';
     line.remove();
   };
-  const ran = (name) => {
+  const leg = async (name) => {
+    await t.runs(name);
+    where[name] = LEGS[name][1];
     marks[name].textContent = '✓';
     marks[name].classList.add('arch-done');
+    await hop(scene, who[name], 6, 360); // done: a little hop
   };
 
   await scene.wait(800);
-  await call('Otto');
-  await t.runs('Otto');
-  ran('Otto');
+  await call('Clippy');
+  await leg('Clippy');
   await scene.wait(500);
-  await call('Clippy'); // asleep: nothing
+  await call('Pip'); // asleep: nothing
   await scene.wait(900);
-  await call('Clippy', true); // again, since leg 2 is still not run
+  await call('Pip', true); // again, since leg 2 is still not run
   scene.fade(t.zzz, 0, 200).catch(() => {});
-  who.Clippy.face.dataset.presence = 'idle';
-  await hop(scene, who.Clippy, 16, 520); // it starts awake
+  who.Pip.face.dataset.presence = 'idle';
+  await hop(scene, who.Pip, 16, 520); // it starts awake
   await scene.wait(250);
-  await t.runs('Clippy');
-  ran('Clippy');
+  await leg('Pip');
   await scene.wait(400);
-  await call('Pip');
-  await t.runs('Pip');
-  ran('Pip');
+  await call('Otto');
+  await leg('Otto');
   await scene.wait(2600);
 }
 
