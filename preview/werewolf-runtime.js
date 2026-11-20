@@ -166,7 +166,7 @@ export const RULES = `You are a player in a game of werewolf (狼人杀) with a 
 - Villagers: no power.
 The seer, the witch and the villagers are the village. The village wins once every werewolf is dead.
 
-A night: the werewolves pick their kill (if they disagree, they pick once more, seeing each other's picks; then the most picked), while the seer checks someone; then the witch. Dawn says who died, not how. Then each living player gives one speech, in seat order. Then everyone alive votes at once, for another living player, or abstains. The player with the most votes is out and gives last words; on a tie, or no votes, no one is out. Then night falls again. The dead do not speak, and their roles stay secret until the game ends.
+A night: the werewolves pick their kill (if they disagree, they pick once more, seeing each other's picks; then the most picked); then the seer checks someone; then the witch. Dawn says who died, not how. Then each living player gives one speech, in seat order. Then everyone alive votes at once, for another living player, or abstains. The player with the most votes is out and gives last words; on a tie, or no votes, no one is out. Then night falls again. The dead do not speak, and their roles stay secret until the game ends.
 
 Anyone may lie about their role, and werewolves usually do. A game master runs the game and checks every action: one that is not legal, or comes after the game moved on, is turned away and you are asked again.
 

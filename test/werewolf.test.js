@@ -41,14 +41,17 @@ test('roles are dealt by size: two wolves, a seer and a witch, the rest villager
   assert.throws(() => deal(5));
 });
 
-test('the first night: the wolves and the seer are due at once, then the witch', () => {
+test('the first night, as a narrator calls it: the wolves at once, then the seer, then the witch', () => {
   let game = newGame(ROLES);
-  assert.deepEqual(due(game), [{ seat: 0, kind: 'kill' }, { seat: 1, kind: 'check' }, { seat: 5, kind: 'kill' }]);
+  assert.deepEqual(due(game), [{ seat: 0, kind: 'kill' }, { seat: 5, kind: 'kill' }]);
+  assert.equal(view(game, 3).step, 'wolves', 'which role the night is at is public');
+  game = play(game, 0, { type: 'kill', target: 3 });
+  assert.deepEqual(due(game), [{ seat: 5, kind: 'kill' }], 'a pick in, the other wolf still due');
+  game = play(game, 5, { type: 'kill', target: 3 });
+  assert.deepEqual(due(game), [{ seat: 1, kind: 'check' }]);
+  assert.equal(view(game, 3).step, 'seer');
   game = play(game, 1, { type: 'check', target: 5 });
   assert.equal(view(game, 1).log.at(-1).wolf, true, 'the seer learns at once');
-  game = play(game, 0, { type: 'kill', target: 3 });
-  assert.deepEqual(due(game), [{ seat: 5, kind: 'kill' }], 'a vote in, the others still due');
-  game = play(game, 5, { type: 'kill', target: 3 });
   assert.deepEqual(due(game), [{ seat: 2, kind: 'potion' }]);
   assert.deepEqual(view(game, 2).log.at(-1), { day: 1, type: 'attacked', target: 3 });
   game = play(game, 2, { type: 'pass' });
@@ -66,13 +69,15 @@ test('illegal and stale actions are turned away and change nothing', () => {
   no(0, { type: 'kill', target: 5 }, /a wolf/);
   no(0, { type: 'kill', target: 9 }, /living player/);
   no(0, { type: 'vote', target: 3 }, /only kill/);
-  no(1, { type: 'check', target: 1 }, /another living player/);
+  no(1, { type: 'check', target: 3 }, /not your turn/, 'the seer waits for the wolves');
   no(0, { type: 'kill', target: 3, text: 'x'.repeat(MAX_SPEECH + 1) }, /Too long/);
   assert.match(act(game, 0, { type: 'kill', target: 3, at: '0:night:wolves1' }).error, /Stale/);
   assert.match(act(game, 0, { type: 'kill', target: 3 }).error, /Stale/, 'an action names the moment it was made on');
   assert.deepEqual(game, before);
   const once = play(game, 0, { type: 'kill', target: 3 });
   assert.match(act(once, 0, { type: 'kill', target: 4, at: turn(once) }).error, /acted already/);
+  const seer = play(once, 5, { type: 'kill', target: 3 });
+  assert.match(act(seer, 1, { type: 'check', target: 1, at: turn(seer) }).error, /another living player/);
 });
 
 test('the witch saves anyone but herself, poisons once, and one potion a night', () => {
@@ -102,9 +107,8 @@ test('wolves who disagree pick once more; then the most picked, a tie to the fir
   let game = newGame(ROLES);
   game = play(game, 0, { type: 'kill', target: 3, text: 'Three is the seer, I bet.' });
   game = play(game, 5, { type: 'kill', target: 4 });
-  game = play(game, 1, { type: 'check', target: 3 });
   assert.equal(game.round, 2);
-  assert.deepEqual(due(game), [{ seat: 0, kind: 'kill' }, { seat: 5, kind: 'kill' }], 'the seer is not woken twice');
+  assert.deepEqual(due(game), [{ seat: 0, kind: 'kill' }, { seat: 5, kind: 'kill' }]);
   assert.equal(view(game, 5).log.find((e) => e.type === 'pick').text, 'Three is the seer, I bet.', 'the pack sees its picks and lines');
   game = play(game, 0, { type: 'kill', target: 6 });
   game = play(game, 5, { type: 'kill', target: 4 });
@@ -113,7 +117,7 @@ test('wolves who disagree pick once more; then the most picked, a tie to the fir
   game = play(newGame(ROLES), 5, { type: 'kill', target: 4 });
   game = fallback(game);
   assert.equal(game.log.findLast((e) => e.type === 'kill').target, 4);
-  assert.equal(game.step, 'witch');
+  assert.equal(game.step, 'seer');
 });
 
 test('the vote: the most votes is out and gives last words; a tie, no one', () => {
@@ -191,14 +195,20 @@ test('a seat sees its own role, its pack, its own secrets and the public log', (
 // ---- the runtime ----
 
 test('plan: everyone due at once, but not the person, a player running, or one whose run failed', () => {
-  const game = newTable(7, { roles: ['villager', ...ROLES.slice(1, 6), 'wolf'] }); // wolves in seats 5 and 6
+  const game = newTable(7, { roles: ['villager', 'seer', 'witch', 'wolf', 'villager', 'wolf', 'villager'] }); // wolves in seats 3 and 5
   assert.deepEqual(game.players, [HUMAN, 'Rosa', 'Jax', 'Wen', 'Otis', 'Priya', 'Bo']);
-  assert.deepEqual(plan(game).map((d) => [d.id, d.kind]), [['Rosa', 'check'], ['Priya', 'kill'], ['Bo', 'kill']]);
-  assert.deepEqual(plan(game, new Set(['Bo'])).map((d) => d.id), ['Rosa', 'Priya']);
-  game.notes.Rosa.failed = { at: turn(game.state), why: 'offline' };
-  assert.deepEqual(plan(game).map((d) => d.id), ['Priya', 'Bo']);
-  land(game, HUMAN, { at: turn(game.state) }, { action: { type: 'pass' } });
-  assert.equal(plan(game).length, 2, 'the person is never planned');
+  assert.deepEqual(plan(game).map((d) => [d.id, d.kind]), [['Wen', 'kill'], ['Priya', 'kill']]);
+  assert.deepEqual(plan(game, new Set(['Wen'])).map((d) => d.id), ['Priya']);
+  game.notes.Wen.failed = { at: turn(game.state), why: 'offline' };
+  assert.deepEqual(plan(game).map((d) => d.id), ['Priya']);
+  game.notes.Wen.failed = null;
+  game.state = act(game.state, 3, { type: 'kill', target: 4, at: turn(game.state) });
+  game.state = act(game.state, 5, { type: 'kill', target: 4, at: turn(game.state) });
+  assert.deepEqual(plan(game).map((d) => [d.id, d.kind]), [['Rosa', 'check']]);
+  assert.equal(game.state.round, 1);
+  const person = newTable(7, { roles: ['wolf', ...ROLES.slice(1)] });
+  land(person, HUMAN, { at: turn(person.state) }, { action: { type: 'pass' } });
+  assert.deepEqual(plan(person).map((d) => d.id), ['Priya'], 'the person is never planned');
 });
 
 test('the writer turns away a stale proposal, asks again, then plays the fallback', () => {
@@ -208,14 +218,17 @@ test('the writer turns away a stale proposal, asks again, then plays the fallbac
   assert.deepEqual(game.state.picks, { 5: 3 }, 'seats from 1 in the prompt, from 0 here');
   assert.equal(game.state.log.at(-1).text, 'Seat 4 talks too little.', 'a wolf\'s say is a line to the pack');
   land(game, HUMAN, { at: turn(game.state) }, { action: { type: 'kill', target: 4 } }); // the person, a wolf, disagrees
+  assert.equal(game.state.round, 2);
+  assert.match(land(game, 'Priya', basis, { action: { type: 'kill', target: 3 } }).rejected, /Stale/, 'made on the first pick');
+  land(game, HUMAN, { at: turn(game.state) }, { action: { type: 'kill', target: 3 } });
+  land(game, 'Priya', begin(game, 'Priya'), { action: { type: 'kill', target: 3 } });
   const rosa = begin(game, 'Rosa');
   assert.match(land(game, 'Rosa', rosa, { action: { type: 'check', target: 1 } }).rejected, /another living player/);
   assert.match(prompt(game, 'Rosa').situation, /Your last action was turned away: Pick another living player/);
   land(game, 'Rosa', rosa, { action: { type: 'check', target: 1 } });
-  assert.equal(game.state.round, 1, 'still due');
+  assert.equal(game.state.step, 'seer', 'still due');
   land(game, 'Rosa', rosa, { action: { type: 'check', target: 1 } });
-  assert.equal(game.state.round, 2, 'turned away three times: the seer checks no one, and the night goes on');
-  assert.match(land(game, 'Priya', basis, { action: { type: 'kill', target: 3 } }).rejected, /Stale/, 'made on the first pick');
+  assert.equal(game.state.step, 'witch', 'turned away three times: the seer checks no one, and the night goes on');
 });
 
 test('a speech is the speaker\'s action; a run that says nothing is asked again', () => {
@@ -238,8 +251,8 @@ test('each AI player has its own persona, and a prompt names the player and its 
   assert.match(rules, /You are Rosa, in seat 2\. You are a retired schoolteacher/);
   assert.match(situation, /Your role: werewolf\. The werewolves: seat 2, you \(werewolf\) and seat 6, Priya \(werewolf\)\./);
   assert.match(situation, /Now: Pick the player the werewolves kill tonight/);
-  assert.match(prompt(game, 'Jax').situation, /Now: Pick a player to check/, 'the seer at once');
-  assert.doesNotMatch(prompt(game, 'Wen').situation, /Now:/, 'the witch sleeps till the wolves have picked');
+  assert.doesNotMatch(prompt(game, 'Jax').situation, /Now:/, 'the seer sleeps till the wolves have picked');
+  assert.doesNotMatch(prompt(game, 'Wen').situation, /Now:/, 'and the witch');
 });
 
 // Every secret a game holds, with the seats that may know it: each seat's

@@ -47,6 +47,9 @@
   --felt: #2f7d55; --felt-deep: #246543; --felt-ink: rgba(255, 255, 255, 0.92); --felt-soft: rgba(255, 255, 255, 0.62); --felt-line: rgba(255, 255, 255, 0.16);
   --rail: #8b5a36; --rail-deep: #6a4227; --card: #fffdf7; --card-ink: #1f1d24; --suit-red: #d23a2c; --card-back: #3f62bf;
   --chip-white: #f3efe6; --chip-red: #d23a2c; --chip-blue: #3f62bf; --chip-black: #2b2932; --chip-gold: #f2b52a;
+  /* the campfire (site/werewolf.html) only: the ground by day (on the light theme) and by night (on the dark), the fire, and a werewolf found out */
+  --camp-day: #efe4cb; --camp-day-deep: #e2d0aa; --camp-night: #161d32; --camp-night-deep: #0d1222;
+  --fire: #f0882a; --fire-core: #ffd35c; --fire-glow: rgba(255, 160, 60, 0.42); --log: #7a4a2b; --wolf: #c8402f;
   color-scheme: light;
 }
 :root[data-font="serif"] { --doc-font: var(--serif); --doc-size: 17px; --doc-leading: 1.65; --doc-tracking: 0; }
@@ -65,6 +68,7 @@
     --shadow: 0 0 0 1px rgba(255, 250, 240, 0.07);
     --shadow-raised: 0 8px 24px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 250, 240, 0.09);
     --felt: #215c3e; --felt-deep: #17472f; --rail: #5f3c24; --rail-deep: #462b19; --card: #f4f0e6; --suit-red: #d8473a; --card-back: #3a58a8;
+    --wolf: #e0614f;
     color-scheme: dark;
   }
 }
@@ -79,6 +83,7 @@
     --shadow: 0 0 0 1px rgba(255, 250, 240, 0.07);
     --shadow-raised: 0 8px 24px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 250, 240, 0.09);
     --felt: #215c3e; --felt-deep: #17472f; --rail: #5f3c24; --rail-deep: #462b19; --card: #f4f0e6; --suit-red: #d8473a; --card-back: #3a58a8;
+    --wolf: #e0614f;
     color-scheme: dark;
   }
 }

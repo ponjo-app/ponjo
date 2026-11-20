@@ -42,7 +42,12 @@
 <main class="pk-page ww-page">
   <section class="ww-room" aria-label="The game">
     <div class="ww-board">
-      <div class="ww-ring"></div>
+      <div class="ww-ring">
+        <svg class="ww-votes" aria-hidden="true"><defs><marker id="ww-head" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0 10 5 0 10z" fill="currentColor"/></marker></defs></svg>
+        <div class="ww-fire" aria-hidden="true">
+          <svg viewBox="0 0 80 80"><rect class="ww-log" x="10" y="60" width="60" height="9" rx="4.5" transform="rotate(-13 40 64)"/><rect class="ww-log" x="10" y="60" width="60" height="9" rx="4.5" transform="rotate(13 40 64)"/><path class="ww-flame" d="M40 6C52 24 62 33 58 49 55 59 47 64 40 64S25 59 22 49C18 35 30 28 40 6Z"/><path class="ww-flame-core" d="M40 28C47 39 51 45 49 53 47 59 44 62 40 62S33 59 31 53C29 45 34 39 40 28Z"/><path class="ww-smoke" d="M40 56C34 48 46 42 40 34S44 22 40 14"/></svg>
+        </div>
+      </div>
       <div class="ww-center">
         <p class="ww-phase" aria-live="polite"></p>
         <p class="ww-sub"></p>
@@ -61,7 +66,7 @@
           <button class="pj-secondary" type="button" data-do="abstain">Abstain</button>
           <button class="pj-secondary" type="button" data-do="save">Save</button>
           <button class="pj-secondary" type="button" data-do="pass">Pass</button>
-          <button class="pj-primary" type="submit" data-do="main"></button>
+          <button class="pj-primary" type="submit" data-do="speak">Speak</button>
         </div>
         <p class="pk-error ww-error" hidden></p>
         <p class="ww-clock"></p>
