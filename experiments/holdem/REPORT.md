@@ -112,3 +112,19 @@ node harness.mjs try5 --self 30 --mention  # no dealer, @mention hand-off
 
 Each run writes `runs/<name>/summary.json`, `turns.tsv` and `config/logs/agents.log`.
 `--self` runs stop after 30 turns, or after 4 min with no new turn.
+
+## Play it in the app
+
+macOS or Linux only (the agent script is a shell script).
+
+```sh
+node experiments/holdem/app/setup.mjs ~/holdem-table --you <your seat name>
+```
+
+It creates the table, the buddies Alice, Bob and Cara with a playing style each, and the agent script "holdem" in the app's agents folder. It then prints the steps:
+
+1. Open the folder in `npm run desktop`.
+2. Pick "Hold'em seat" in Settings > Agents: Fake, or Claude Code.
+3. Turn on Watch this doc on each buddy's card.
+4. Run the dealer it prints.
+5. Type your move after `act=` on your seat line when the action is on you.

@@ -1,20 +1,25 @@
 // The dealer: a separate program that owns the table by writing the doc file
 // directly (an outside change to Ponjo). It deals open cards, polls the file
 // for the action of the seat on turn, applies it, and moves the action on.
-// Usage: node dealer.mjs <doc> <out dir> <hands> [--heartbeat ms] [--stall ms]
+// Usage: node dealer.mjs <doc> <out dir> <hands> [--seats Alice,Bob,Cara,You] [--heartbeat ms] [--stall ms (0: never)]
+// A seat's act= takes effect once it reads check, call, fold or raise: a person
+// typing it letter by letter is waited for.
 // Logs each write and each action seen to <out>/dealer.jsonl.
-import { appendFileSync, readFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const [docPath, out, handsArg, ...rest] = process.argv.slice(2);
 const opt = (name, d) => { const i = rest.indexOf(`--${name}`); return i < 0 ? d : Number(rest[i + 1]); };
 const HANDS = Number(handsArg);
 const HEARTBEAT = opt('heartbeat', 0); // write a Clock line this often (ms), 0: never
-const STALL = opt('stall', 120_000);
-const PLAYERS = ['Alice', 'Bob', 'Cara'];
+const STALL = opt('stall', 0);
+const seatsAt = rest.indexOf('--seats');
+const PLAYERS = seatsAt < 0 ? ['Alice', 'Bob', 'Cara'] : rest[seatsAt + 1].split(',');
+const ACTS = ['check', 'call', 'fold', 'raise'];
 const SB = 5;
 const BB = 10;
 const MAX_RAISES = 1;
+mkdirSync(out, { recursive: true });
 const log = (e) => appendFileSync(join(out, 'dealer.jsonl'), `${JSON.stringify({ t: Date.now(), ...e })}\n`);
 
 // ---- cards ----
@@ -55,6 +60,7 @@ let T; // this hand
 let lastResult = '-';
 let clock = 0;
 const order = (from) => PLAYERS.map((_, i) => PLAYERS[(from + i) % PLAYERS.length]);
+const N = PLAYERS.length;
 
 function render() {
   const seats = PLAYERS.map((p) => `Seat ${p}: cards=${T.hole[p].join(' ')} stack=${stacks[p]} bet=${T.bet[p]} status=${T.folded.has(p) ? 'folded' : 'in'} act=`);
@@ -78,7 +84,7 @@ Last result: ${lastResult}
 ## Rules
 
 - Open cards: every seat's cards are public. Blinds ${SB}/${BB}; a raise is ${BB} more than the current bet, at most ${MAX_RAISES} a street.
-- On your turn (Action on: you), write one of check, call, fold, raise after act= on your own seat line, and nothing else. The dealer applies it and moves the action on.
+- On your turn (Action on: you), write one of check, call, fold, raise after act= on your own seat line, and nothing else; then say why in one short comment. The dealer applies it and moves the action on.
 - Do not edit anything else in the Table section.
 `;
 }
@@ -94,10 +100,10 @@ function newHand(n) {
   const d = deck();
   const button = (n - 1) % PLAYERS.length;
   T = { n, button, deck: d, hole: Object.fromEntries(PLAYERS.map((p) => [p, [d.pop(), d.pop()]])), board: [], street: 'preflop', bet: Object.fromEntries(PLAYERS.map((p) => [p, 0])), folded: new Set(), pot: 0, current: BB, raises: 0, on: null, need: [] };
-  const sb = PLAYERS[(button + 1) % 3];
-  const bb = PLAYERS[(button + 2) % 3];
+  const sb = PLAYERS[(button + 1) % N];
+  const bb = PLAYERS[(button + 2) % N];
   for (const [p, amt] of [[sb, SB], [bb, BB]]) { stacks[p] -= amt; T.bet[p] = amt; T.pot += amt; }
-  T.need = order(button + 3).filter((p) => !T.folded.has(p)); // preflop: button first (3-handed)
+  T.need = order(button + 3).filter((p) => !T.folded.has(p)); // preflop: the seat after the big blind first
   T.on = T.need[0];
 }
 const active = () => PLAYERS.filter((p) => !T.folded.has(p));
@@ -163,7 +169,7 @@ for (;;) {
   let text;
   try { text = readFileSync(docPath, 'utf8'); } catch { continue; }
   if (text === written || text === lastSeenText) {
-    if (Date.now() - waitingSince > STALL) { log({ type: 'stall', hand: T.n, street: T.street, on: T.on, waitedMs: Date.now() - waitingSince }); break; }
+    if (STALL && Date.now() - waitingSince > STALL) { log({ type: 'stall', hand: T.n, street: T.street, on: T.on, waitedMs: Date.now() - waitingSince }); break; }
     continue;
   }
   lastSeenText = text;
@@ -173,6 +179,7 @@ for (;;) {
   const handInDoc = text.match(/^Hand: (\d+)$/m)?.[1];
   if (Number(handInDoc) !== T.n) log({ type: 'anomaly', what: `doc says hand ${handInDoc}`, hand: T.n });
   const act = actOf(seatOf(text, T.on));
+  if (act && !ACTS.includes(act)) continue; // still being typed
   if (!act) { log({ type: 'change', what: 'a change with no action of the seat on turn', hand: T.n, on: T.on }); if (others.length) write('clear'); continue; }
   const p = T.on;
   const street = T.street;

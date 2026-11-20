@@ -5,12 +5,13 @@
 // in my own thread (opened on the first action) saying what I did.
 // Each run appends one line to $HOLDEM_OUT/agent.jsonl: start, end, verdict.
 import { appendFileSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 const t0 = Date.now();
 let prompt = '';
 for await (const chunk of process.stdin) prompt += chunk;
-const { PONJO_DOC: docPath, PONJO_COMMENTS: sidecar, PONJO_GROUPS: groups, PONJO_BUDDY: me, HOLDEM_OUT: out, HOLDEM_AGENT_MS: delay = '0' } = process.env;
+const { PONJO_DOC: docPath, PONJO_COMMENTS: sidecar, PONJO_GROUPS: groups, PONJO_BUDDY: me, HOLDEM_OUT: out = tmpdir(), HOLDEM_AGENT_MS: delay = '0' } = process.env;
 const log = (entry) => appendFileSync(join(out, 'agent.jsonl'), `${JSON.stringify({ buddy: me, t0, t1: Date.now(), promptChars: prompt.length, ...entry })}\n`);
 
 // With HOLDEM_WAKE, every run names the line that wakes it next (PONJO_WAKE).

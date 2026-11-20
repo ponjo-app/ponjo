@@ -1,0 +1,8 @@
+{
+  "name": "Hold'em seat",
+  "about": "Plays its buddy's seat at an open-card Hold'em table in the doc, only on its turn.",
+  "settings": [
+    { "key": "player", "type": "choice", "label": "Player", "options": [["fake", "Fake: a fixed rule, instant"], ["claude", "Claude Code: thinks, about 30 s a turn"]], "default": "fake" },
+    { "key": "model", "type": "text", "label": "Model", "hint": "For Claude Code: a model or an alias, such as sonnet. Empty: Claude Code's own.", "default": "" }
+  ]
+}
