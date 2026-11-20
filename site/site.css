@@ -195,9 +195,25 @@ a { color: var(--accent); }
 /* what a member just did, over its face */
 .arch-tag { position: absolute; bottom: 100%; left: 50%; translate: -50% -4px; padding: 2px 8px; border-radius: 9999px; background: var(--text); color: var(--on-text); font-size: 12px; font-weight: 600; white-space: nowrap; }
 .arch-tag:empty { display: none; }
+/* the architecture: its parts as boxes, the board in ink as on the blackboard; a label on an arrow */
+.arch-node { display: flex; flex-direction: column; justify-content: center; gap: 2px; box-sizing: border-box; padding: 8px 12px; border-radius: 10px; background: var(--canvas); box-shadow: inset 0 0 0 1.25px var(--border-strong); text-align: center; }
+.arch-node b { font-size: 13px; font-weight: 600; }
+.arch-node span { color: var(--text-soft); font-size: 12px; line-height: 1.35; }
+.arch-node-ink { background: var(--text); box-shadow: none; }
+.arch-node-ink b, .arch-node-ink span { color: var(--on-text); }
+.arch-label { padding: 0 4px; background: var(--canvas); color: var(--text-soft); font-size: 12px; white-space: nowrap; }
+.arch-label-over { background: none; }
+/* the loop going round: a dot in ink, and the box it reaches, ringed for a moment */
+.arch-token { width: 12px; height: 12px; border-radius: 50%; background: var(--text); box-shadow: 0 0 0 3px var(--canvas); opacity: 0; }
+.arch-node { transition: box-shadow 0.25s; }
+.arch-node.arch-node-on { box-shadow: inset 0 0 0 2.5px var(--text); }
+.arch-node-ink.arch-node-on { box-shadow: 0 0 0 3px var(--canvas), 0 0 0 5px var(--text); }
 .arch-foot { position: absolute; right: 24px; bottom: 16px; left: 24px; margin: 0; color: var(--text-faint); font-size: 12px; text-align: center; }
 
 @media (max-width: 560px) {
   .arch-stage { padding: 16px; }
   .arch-cover h1, .arch-point h2 { font-size: 24px; }
+  .arch-nav { gap: 8px; }
+  .arch-nav > button { min-width: 72px; }
+  .arch-dot { width: 16px; height: 16px; padding: 5px; }
 }
