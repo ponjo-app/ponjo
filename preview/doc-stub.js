@@ -559,9 +559,9 @@ landed. It holds names, revs and thread ids, never the doc's text.
 
 - **Ask:** a person's comment names it and it has not replied after it.
 - **Watch:** a person turned on its watch, and since its last run people
-  changed the doc and paused 5 s, or another buddy changed it and its run
-  has ended, so the watcher sees the comment with the edit. A buddy's own
-  change never counts. A run woken by another buddy costs one step. It is
+  changed the doc and paused 5 s, another program wrote the file (at once:
+  it is whole), or another buddy changed it and its run has ended, so the
+  watcher sees the comment with the edit. A buddy's own change never counts. A run woken by another buddy costs one step. It is
   told what changed since its last: the doc's lines, and each thread another
   member wrote in, whole, as a person watching sees new comments.
 
@@ -1057,9 +1057,10 @@ that answers nothing is not run again and again.
 the buddy or the app does changes it. It is noted on this machine, \`{ by }\`,
 never in the comments, and the buddy runs as whoever set it may, while they
 may ask. A watcher is due once set, then on another member's change since
-its last run started: people's once they pause for 5 s (\`SETTLE_MS\`), a
-buddy's once that buddy's run has ended: its edits land before its
-comments, and the watcher sees both. Its own change never wakes it. A
+its last run started: people's once they pause for 5 s (\`SETTLE_MS\`); a
+file written outside the app at once, for it is whole (the door took it
+once it held still); a buddy's once that buddy's run has ended: its edits
+land before its comments, and the watcher sees both. Its own change never wakes it. A
 person editing again while a run only a watch started is on ends that run
 with no answer, for it saw the doc as it was. Each run is told what
 changed since its last: in the text (\`lineChanges\`), and in the threads,
