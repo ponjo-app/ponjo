@@ -298,14 +298,57 @@ function tag(hand, i) {
   return a ? [`${TAG[a.type]}${a.type === 'bet' || a.type === 'raise' ? ` ${money(a.amount)}` : ''}`, ''] : ['', ''];
 }
 
+// Motion for what just changed, unless reduced: `replay` plays a class's animation again.
+function replay(node, cls) {
+  if (still) return;
+  node.classList.remove(cls);
+  void node.offsetWidth;
+  node.classList.add(cls);
+}
+// A stack's change, "+$120" or "−$40", rising off it.
+function delta(node, change) {
+  if (still || !change) return;
+  const mark = el('span', 'pk-delta', `${change > 0 ? '+' : '−'}${money(Math.abs(change))}`);
+  if (change > 0) mark.dataset.up = '';
+  node.append(mark);
+  setTimeout(() => mark.remove(), 1600);
+}
+// A street named on the felt as it is dealt.
+function banner(text) {
+  if (still) return;
+  const node = $('.pk-street');
+  node.textContent = text;
+  node.hidden = false;
+  replay(node, 'pk-street');
+  clearTimeout(banner.timer);
+  banner.timer = setTimeout(() => { node.hidden = true; }, 1400);
+}
+// Folded cards sliding into the middle, face down.
+function muck(box) {
+  if (still) return;
+  for (const card of box.querySelectorAll('.pk-card')) {
+    const a = card.getBoundingClientRect();
+    const b = $('.pk-board').getBoundingClientRect();
+    const ghost = el('span', 'pk-card pk-card-back pk-flying');
+    Object.assign(ghost.style, { left: `${a.left}px`, top: `${a.top}px` });
+    ghost.style.setProperty('--w', `${a.width}px`);
+    document.body.append(ghost);
+    ghost.animate([{ transform: 'none', opacity: 1 }, { transform: `translate(${b.left + b.width / 2 - a.left - a.width / 2}px, ${b.top + b.height / 2 - a.top}px) rotate(160deg) scale(0.6)`, opacity: 0 }], { duration: 500, easing: 'ease-in' }).finished.then(() => ghost.remove());
+  }
+}
+
 let shownBets = POS.map(() => 0); // the bets drawn on the felt, to slide into the pot
+const was = POS.map(() => ({ acts: 0, stack: null, folded: false })); // each seat as last drawn, to show what changed
 let celebrated = 0; // the hand whose winners were last cheered
 function draw() {
   const hand = table.hand;
   const potNode = $('.pk-pot');
   const sameHand = hand && hand.id === draw.hand;
   for (const [i, shown] of shownBets.entries()) if (sameHand && shown && !hand.seats[i].bet) fly(bets[i], potNode, shown);
+  if (sameHand && hand.street !== draw.street) banner(hand.street === 'done' ? (hand.result.showdown ? 'Showdown' : '') : hand.street[0].toUpperCase() + hand.street.slice(1));
+  if (!hand?.result?.showdown && hand?.street === 'done') $('.pk-street').hidden = true;
   draw.hand = hand?.id;
+  draw.street = hand?.street;
   const sb = hand?.actions.find((a) => a.type === 'small blind')?.seat;
   const bb = hand?.actions.find((a) => a.type === 'big blind')?.seat;
   for (const [i, node] of seats.entries()) {
@@ -315,15 +358,31 @@ function draw() {
     node.toggleAttribute('data-folded', Boolean(out || s?.folded));
     node.toggleAttribute('data-turn', Boolean(hand && hand.street !== 'done' && hand.toAct === i));
     $('.pj-agent-face', node).dataset.presence = running.has(id) || (i === 0 && hand?.street !== 'done' && hand?.toAct === 0) ? 'working' : out || s?.folded ? 'away' : 'idle';
-    $('.pk-stack', node).textContent = out ? 'Out' : money(i === 0 ? myChips(table) : s ? s.stack : table.players[i].stack);
+    const stack = i === 0 ? myChips(table) : s ? s.stack : table.players[i].stack;
+    const stackNode = $('.pk-stack', node);
+    stackNode.textContent = out ? 'Out' : money(stack);
+    if (was[i].stack !== null && stack !== was[i].stack) delta(stackNode, stack - was[i].stack);
+    was[i].stack = stack;
+    const acts = hand ? hand.actions.filter((a) => a.seat === i && TAG[a.type]).length : 0;
+    if (sameHand && acts > was[i].acts) replay($('.pk-plate', node), 'pk-pulse');
+    was[i].acts = acts;
+    if (sameHand && s.folded && !was[i].folded) muck($(i ? '.pk-hole' : '.pk-hole-mine', i ? node : document));
+    was[i].folded = Boolean(s?.folded);
     $('.pk-position', node).textContent = hand && hand.street !== 'done' ? (i === bb ? 'BB' : i === sb && sb !== hand.button ? 'SB' : '') : '';
     const [text, kind] = tag(hand, i);
     const tagNode = $('.pk-tag', node);
-    if (tagNode.textContent !== text) Object.assign(tagNode, { textContent: text }).dataset.kind = kind;
+    if (tagNode.textContent !== text) {
+      Object.assign(tagNode, { textContent: text }).dataset.kind = kind;
+      replay(tagNode, 'pk-pulse');
+    }
     const shown = Boolean(hand?.result?.showdown && hand.result.hands[i]);
     node.toggleAttribute('data-shown', shown);
     if (i) setCards($('.pk-hole', node), s?.inHand && !s.folded ? (shown ? s.hole : [null, null]) : []);
     const bet = s?.bet ?? 0;
+    if (sameHand && bet > shownBets[i]) {
+      fly($('.pj-agent-face', node), bets[i], bet - shownBets[i]);
+      replay(bets[i], 'pk-bump');
+    }
     if (bet !== shownBets[i]) bets[i].replaceChildren(...(bet ? [chips(bet), money(bet)] : []));
     shownBets[i] = bet;
   }
@@ -334,7 +393,10 @@ function draw() {
   const pot = hand ? hand.seats.reduce((sum, s) => sum + s.total, 0) : 0;
   potNode.hidden = !pot || hand.street === 'done';
   if (pot) $('.pk-pot-amount', potNode).textContent = `Pot ${money(pot)}`;
-  if (pot && potNode.dataset.amount !== `${pot}`) $('.pk-stack-chips', potNode).replaceWith(chips(pot, 'gold'));
+  if (pot && potNode.dataset.amount !== `${pot}`) {
+    $('.pk-stack-chips', potNode).replaceWith(chips(pot, 'gold'));
+    if (sameHand) replay(potNode, 'pk-bump');
+  }
   potNode.dataset.amount = pot;
   drawResult();
   const best = new Set(hand?.result?.showdown ? hand.result.hands[hand.result.pots[0].winners[0]].cards : []);
