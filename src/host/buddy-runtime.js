@@ -65,6 +65,7 @@ export async function createBuddyRuntime({ door, place, pathInProject, buddies, 
   for (const [id, { by }] of Object.entries(await readWatching(place().docPath, settingsDir))) noteOf(id).watch = { by };
   for (const note of notes.values()) note.lookedAt = door.rev(); // no run on opening
   const changedAt = new Map(); // who last changed the text → { rev, at }, people as null
+  const relayed = new Map(); // a comment a run here posted → the people it was for: its @mentions ask
   let steps = { left: null, cap: DEFAULT_SETTINGS.steps, every: DEFAULT_SETTINGS.refillEvery * 1000, at: performance.now() };
   // The runs going: buddy → { task, from (the rev it started at), child,
   // cancelled, landing (its agent is done; it lands whatever happens), done }.
@@ -159,7 +160,7 @@ export async function createBuddyRuntime({ door, place, pathInProject, buddies, 
         buddies: here,
         threads: threadsOf(lines.map((l) => l.comment).filter(Boolean), here.map(({ id, name }) => ({ id, name })), text),
         askers: [(await me()).id, ...editors],
-        taken: await readTaken(place().docPath, settingsDir),
+        taken: await readTaken(place().docPath, settingsDir), relayed,
         notes, changedAt, running: new Set(runs.keys()), steps, text, now: performance.now(),
       });
     steps = p.steps;
@@ -300,6 +301,7 @@ export async function createBuddyRuntime({ door, place, pathInProject, buddies, 
       for (const c of posts) {
         const { at } = await door.comment({ id: c.id, thread: c.thread, anchor: c.anchor ?? null, body: c.body, after: c.thread !== undefined ? after.get(c.thread) : undefined }, who);
         if (c.thread !== undefined && after.has(c.thread)) after.set(c.thread, at);
+        relayed.set(c.id, task.askers);
       }
     } catch (error) {
       console.error(`Could not post ${task.buddy.name}'s comments:`, error);

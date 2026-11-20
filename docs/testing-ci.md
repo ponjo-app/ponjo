@@ -105,6 +105,8 @@ for a window), **e2e** (the packaged app, under xvfb on Linux).
   run taking a step, a person's pause none; with none left they wait, and
   Refill fills them; with steps coming on their own, they go on as each
   comes.
+- A buddy's @mention asks the buddy it names, for a step: it runs and
+  answers in the thread. A buddy's comment found in the file asks no one.
 - Exit non-zero, or a run the host cannot start: nothing is written to the
   sidecar; the buddy's status says the thread failed, with why for the
   owner alone; it is not run again on its own, but on Retry, a new comment

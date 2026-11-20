@@ -25,8 +25,10 @@ An agent is a filter ([architecture](host-spec.md#a-run)):
 
 A buddy acts only by commenting: an answer, a question or a change to the
 doc is a comment, and an edit comes with one. It runs when a person's
-comment asks it, and its comment in that thread answers it
-([architecture](host-spec.md#asks-and-watches)); a run that posts nothing
+comment asks it, or another buddy's that @mentions it, and its comment in
+that thread answers it ([architecture](host-spec.md#asks-and-watches));
+its own comment that @mentions another buddy asks that buddy, for a step.
+A run that posts nothing
 there is not run again for it until someone writes there. The program
 needs no Ponjo tool: it reads files and edits them.
 

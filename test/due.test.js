@@ -29,6 +29,25 @@ test('a person\'s comment asks the buddy it names until the buddy comments after
   assert.deepEqual(started(look({ threads: [asked], running: new Set(['b_ada']) })), [], 'one run at a time');
 });
 
+test('a buddy\'s comment posted by a run here asks the buddies it @mentions, for a step, as the people that run was for', () => {
+  const said = (id, by, body, at, mentions = []) => ({ ...say(by, body, at, mentions), id });
+  const handed = thread('c_1', [said('c_1', ME, '@Ada start', '2026-11-18T10:00:00.000Z', ['b_ada']), said('c_2', 'b_ada', '@Ben your turn', '2026-11-18T10:00:05.000Z', ['b_ben'])]);
+  const relayed = new Map([['c_2', [ME]]]);
+  const result = look({ threads: [handed], relayed });
+  assert.deepEqual(result.start.map((t) => [t.buddy.id, t.threads.map((x) => x.id), t.askers, t.watchOnly]), [['b_ben', ['c_1'], [ME], false]]);
+  assert.equal(result.steps.left, 2, 'a step');
+  assert.equal(result.why.get('b_ben'), 'due: asked in c_1 by a buddy · a step taken, 2 left');
+  assert.deepEqual(started(look({ threads: [handed] })), [], 'a buddy\'s comment found in the file asks no one');
+  assert.deepEqual(started(look({ threads: [handed], relayed: new Map([['c_2', ['u_gone00001']]]) })), [], 'not once the people it was for may not ask');
+  const none = look({ threads: [handed], relayed, steps: { ...full, left: 0, at: 90_000 } });
+  assert.deepEqual([started(none), none.wakeAt], [[], 150_000], 'no step left: look when the next comes');
+  assert.deepEqual([...none.asking], ['b_ben c_1'], 'it still asks');
+  const plain = thread('c_1', [said('c_1', ME, '@Ada start', '2026-11-18T10:00:00.000Z', ['b_ada']), said('c_2', 'b_ada', 'Done, and @Ada it is', '2026-11-18T10:00:05.000Z', ['b_ada'])]);
+  assert.deepEqual(started(look({ threads: [plain], relayed })), [], 'never itself, and one that names no other asks no one');
+  const answered = thread('c_1', [...handed.comments, said('c_3', 'b_ben', 'Done.', '2026-11-18T10:00:09.000Z')]);
+  assert.deepEqual(started(look({ threads: [answered], relayed })), [], 'its reply answers it');
+});
+
 test('it says why each buddy starts or not, for the agent log', () => {
   const why = (over) => Object.fromEntries(look(over).why);
   const asked = thread('c_1', [say(ME, '@Ada look', '2026-11-18T10:00:00.000Z', ['b_ada'])]);

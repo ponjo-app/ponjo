@@ -354,6 +354,13 @@ drops what it asked. A comment a run was given asks no more, though the run
 posted nothing there, until someone writes in the thread again: a buddy
 that answers nothing is not run again and again.
 
+**A buddy's ask.** A comment a run on this machine posted asks each other
+buddy it @mentions, and only them, for a step (see Steps). The asked run
+is for the people the asking run was for, while one of them may still
+ask, and lands at their level. Which comments those are is this machine's,
+in memory: a buddy's comment found in the file, or after a restart, asks
+no one.
+
 **A watch.** A person sets a buddy watching the doc, or unsets it; nothing
 the buddy or the app does changes it. It is noted on this machine, `{ by }`,
 never in the comments, and the buddy runs as whoever set it may, while they
@@ -369,9 +376,10 @@ heard then are noted with `base`). It reads the rest in the comments
 itself, and comments where it will, as any member.
 
 **Steps.** So that buddies cannot wake each other for ever, a run woken by
-another buddy's change takes a step from the doc's steps: up to 20, one
+another buddy's change or ask takes a step from the doc's steps: up to 20, one
 more a minute (Settings > Agents sets both; 0: only on Refill); with none
-left, watchers wait. People's changes take none. The steps are this
+left, watchers and buddies asked by buddies wait. People's changes and
+asks take none. The steps are this
 machine's, in memory.
 
 ### The controller
