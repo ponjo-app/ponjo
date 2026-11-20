@@ -39,6 +39,7 @@ MUST keep fields it does not understand.
 | --- | --- | --- |
 | `id` | string | `c_` + at least 6 characters from `[A-Za-z0-9_-]`. The first comment's id is also its thread's id. |
 | `thread` | string, optional | The first comment of the thread this one replies in. Absent on a first comment. |
+| `to` | array of strings, optional | On a first comment: the ids (as in `by.id`) of the members who can read its thread, besides its writer; `[]` for its writer alone. Absent, as on every older thread, for everyone. Ignored on a reply: who can read a thread never changes. |
 | `anchor` | object or null, optional | On a first comment: the text it is about (§3); absent or `null` for a comment on the whole doc. On a buddy's reply whose edit rewrote that text: where the text is now (§3). |
 | `by` | object | `{ "id", "name", "kind": "human" \| "ai" }`. The `id` is random and stays when the name changes: a human's is in their settings, a buddy's in its file ([PROJECT §2](PROJECT.md)); a buddy file without one is a buddy whose `id` is its name. The `name` is only what it was called then. |
 | `at` | string | When it was written, RFC 3339 UTC. A buddy's comments in a thread that asked it: just after that thread's latest comment as its run saw it. |
@@ -83,7 +84,14 @@ up to 32 after it, and `start` is `start`.
    resolved thread now reopens it.)
 4. A human is shown by the name in their latest comment; a buddy, by the name of its file now (the `name` in its comment when it has none here).
 5. A line that is not valid JSON or not a valid comment is reported, skipped
-   and kept as it is.
+   and kept as it is. A `to` that is not an array of non-empty strings makes
+   its line not a valid comment, so a thread meant for some is never shown
+   to all by a tool that knows the field.
+6. A thread's **readers** are its first comment's writer and the ids in its
+   `to`; without `to`, everyone. A tool SHOULD show a thread, its replies
+   and its anchor only to its readers, and let no one else write in it. A
+   tool that does not know `to` shows the thread to everyone: it keeps the
+   field (§2) but reads the thread as everyone's.
 
 ## 5. Writing
 
@@ -102,5 +110,7 @@ is read as that buddy's `id`, so an `@name` of a name it no longer has mentions 
 ## 7. Trust
 
 A sidecar is plain shared text: anyone who can change the file can write
-anything in it, and `by` is only what its writer says. A tool runs a buddy
+anything in it, and `by` is only what its writer says. Likewise `to` says
+who a tool shows a thread to, not who can read the file: anyone who can
+read the sidecar reads every thread in it. A tool runs a buddy
 only for a comment whose `by.id` is its own user's.

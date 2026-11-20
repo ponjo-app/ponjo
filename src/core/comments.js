@@ -73,6 +73,7 @@ function invalid(c) {
   if (!isObject(c)) return 'not an object';
   if (typeof c.id !== 'string' || !COMMENT_ID.test(c.id)) return 'bad id';
   if (c.thread !== undefined && (typeof c.thread !== 'string' || !COMMENT_ID.test(c.thread))) return 'bad thread';
+  if (c.to !== undefined && !(Array.isArray(c.to) && c.to.every((id) => typeof id === 'string' && id))) return 'bad to';
   if (c.anchor !== undefined && c.anchor !== null && !validAnchor(c.anchor)) return 'bad anchor';
   if (!isObject(c.by) || typeof c.by.id !== 'string' || !c.by.id || !NAME_PATTERN.test(c.by.name ?? '') || !['human', 'ai'].includes(c.by.kind)) return 'bad by';
   if (typeof c.at !== 'string' || !AT.test(c.at)) return 'bad at';
@@ -196,14 +197,15 @@ export function movedAnchor(anchor, base, edited, text) {
 }
 
 /**
- * The threads in `comments` (§4): each `{ id, anchor, resolved, comments }`,
+ * The threads in `comments` (§4): each `{ id, anchor, resolved, readers, comments }`,
  * its first comment then its replies, ordered by `at`, then `id`; threads in
  * the order of their first comments. A thread is resolved when its latest
  * comment says so: any comment without `resolved` reopens it. A reply whose
  * first comment is missing is left out. `mentionable` ([{ id, name }]) is who an @name can mean (§6); each comment
  * gets `mentions`, the ids it mentions. A thread's `anchor` is the latest of
  * its comments' anchors found in the doc's `text`, when given (§3); else,
- * or when none is, the latest.
+ * or when none is, the latest. `readers` are the ids that can read it: its
+ * writer and its first comment's `to`; null for everyone.
  */
 export function threadsOf(comments, mentionable = [], text = null) {
   const firsts = comments.filter((c) => c.thread === undefined).sort(byTime);
@@ -213,7 +215,8 @@ export function threadsOf(comments, mentionable = [], text = null) {
     // A buddy's reply that rewrote the thread's text moves it; undoing that edit moves it back (§3).
     const anchors = all.filter((c) => c.anchor).map((c) => c.anchor);
     const anchor = first.anchor ? (text !== null && anchors.findLast((a) => locate(text, a))) || anchors.at(-1) : null;
-    return { id: first.id, anchor, resolved: all.at(-1).resolved === true, comments: all };
+    const readers = first.to ? [...new Set([first.by.id, ...first.to])] : null;
+    return { id: first.id, anchor, resolved: all.at(-1).resolved === true, readers, comments: all };
   });
 }
 

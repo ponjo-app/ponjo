@@ -1,5 +1,5 @@
 {
-  "description": "Reading a version 3 sidecar (spec/SPEC.md §4) and finding @mentions (§6). Each reading case is a sidecar's lines; `threads` lists each thread's id, whether it is resolved, and its comments' ids in order; `anchors`, where given, the quote each thread is on; `bad` the line numbers (from 1) reported as not comments. Any order or duplication of the comment lines reads to the same threads.",
+  "description": "Reading a version 3 sidecar (spec/SPEC.md §4) and finding @mentions (§6). Each reading case is a sidecar's lines; `threads` lists each thread's id, whether it is resolved, and its comments' ids in order; `anchors`, where given, the quote each thread is on; `readers`, where given, each listed thread's readers (§4), sorted, or null for everyone; `bad` the line numbers (from 1) reported as not comments. Any order or duplication of the comment lines reads to the same threads.",
   "reading": [
     {
       "name": "a first comment and its replies, in order of at, then id",
@@ -177,6 +177,79 @@
         2,
         3,
         5
+      ]
+    },
+    {
+      "name": "who can read a thread: its writer and its first comment's `to`; without `to`, everyone; a reply's `to` changes nothing",
+      "sidecar": [
+        "{\"comments\":3}",
+        "{\"id\":\"c_open0001\",\"by\":{\"id\":\"u_alice01\",\"name\":\"alice\",\"kind\":\"human\"},\"at\":\"2026-10-01T10:00:00Z\",\"body\":\"For everyone\"}",
+        "{\"id\":\"c_some0001\",\"by\":{\"id\":\"u_alice01\",\"name\":\"alice\",\"kind\":\"human\"},\"at\":\"2026-10-01T10:01:00Z\",\"body\":\"@Ada only you and bob\",\"to\":[\"b_ada0001\",\"u_bob0001\"]}",
+        "{\"id\":\"c_some0002\",\"thread\":\"c_some0001\",\"by\":{\"id\":\"u_bob0001\",\"name\":\"bob\",\"kind\":\"human\"},\"at\":\"2026-10-01T10:02:00Z\",\"body\":\"Agreed\",\"to\":[]}",
+        "{\"id\":\"c_note0001\",\"by\":{\"id\":\"b_ada0001\",\"name\":\"Ada\",\"kind\":\"ai\"},\"at\":\"2026-10-01T10:03:00Z\",\"body\":\"My own notes\",\"to\":[]}",
+        "{\"id\":\"c_self0001\",\"by\":{\"id\":\"u_alice01\",\"name\":\"alice\",\"kind\":\"human\"},\"at\":\"2026-10-01T10:04:00Z\",\"body\":\"Writer listed too\",\"to\":[\"u_alice01\"]}"
+      ],
+      "threads": [
+        {
+          "id": "c_open0001",
+          "resolved": false,
+          "comments": [
+            "c_open0001"
+          ]
+        },
+        {
+          "id": "c_some0001",
+          "resolved": false,
+          "comments": [
+            "c_some0001",
+            "c_some0002"
+          ]
+        },
+        {
+          "id": "c_note0001",
+          "resolved": false,
+          "comments": [
+            "c_note0001"
+          ]
+        },
+        {
+          "id": "c_self0001",
+          "resolved": false,
+          "comments": [
+            "c_self0001"
+          ]
+        }
+      ],
+      "bad": [],
+      "readers": {
+        "c_open0001": null,
+        "c_some0001": [
+          "b_ada0001",
+          "u_alice01",
+          "u_bob0001"
+        ],
+        "c_note0001": [
+          "b_ada0001"
+        ],
+        "c_self0001": [
+          "u_alice01"
+        ]
+      }
+    },
+    {
+      "name": "a `to` that is not a list of ids is not a comment, so its thread is shown to no one",
+      "sidecar": [
+        "{\"comments\":3}",
+        "{\"id\":\"c_bad00001\",\"by\":{\"id\":\"u_alice01\",\"name\":\"alice\",\"kind\":\"human\"},\"at\":\"2026-10-01T10:00:00Z\",\"body\":\"Not a list\",\"to\":\"u_bob0001\"}",
+        "{\"id\":\"c_bad00002\",\"by\":{\"id\":\"u_alice01\",\"name\":\"alice\",\"kind\":\"human\"},\"at\":\"2026-10-01T10:00:00Z\",\"body\":\"An empty id\",\"to\":[\"\"]}",
+        "{\"id\":\"c_bad00003\",\"by\":{\"id\":\"u_alice01\",\"name\":\"alice\",\"kind\":\"human\"},\"at\":\"2026-10-01T10:00:00Z\",\"body\":\"Not a string\",\"to\":[7]}",
+        "{\"id\":\"c_bad00004\",\"thread\":\"c_bad00001\",\"by\":{\"id\":\"u_bob0001\",\"name\":\"bob\",\"kind\":\"human\"},\"at\":\"2026-10-01T10:01:00Z\",\"body\":\"Reply to a hidden thread\"}"
+      ],
+      "threads": [],
+      "bad": [
+        2,
+        3,
+        4
       ]
     },
     {
