@@ -1043,12 +1043,12 @@ outcome.once = true;
 // [the part it is in, its title, the idea in a line, the scene]
 const CHAPTERS = [
   ['', '', '', cover],
-  ['How you work', '', '', point('Agents work beside you, in front of a blackboard,', 'instead of apart from you, in an isolated room.')],
-  ['How you work', 'Delegate', 'Each agent works alone on its own copy. The copies clash, and you merge them by hand.', delegate, 'problem'],
-  ['How you work', 'Blackboard', 'Everyone works on one board and sees every change. Nothing to hand off, nothing to merge.', blackboard, 'solution'],
-  ['When agents run', '', '', point('Agent orchestration is a state reconciliation problem,', 'instead of an event triggering problem.')],
-  ['When agents run', 'Triggered by events', 'Each agent runs when the one before hands it on. Miss one handoff, and the race stops.', events, 'problem'],
-  ['When agents run', 'Reconciled from state', 'The runtime watches the board and calls only whoever is due, again until it is done. The rest sleep on; nobody wires who goes next, and a missed call costs nothing.', state, 'solution'],
+  ['Where agents work', '', '', point('Agents work beside you, in front of a blackboard,', 'instead of apart from you, in an isolated room.')],
+  ['Where agents work', 'Delegate', 'Each agent works alone on its own copy. The copies clash, and you merge them by hand.', delegate, 'problem'],
+  ['Where agents work', 'Blackboard', 'Everyone works on one board and sees every change. Nothing to hand off, nothing to merge.', blackboard, 'solution'],
+  ['What makes an agent run', '', '', point('Agent orchestration is a state reconciliation problem,', 'instead of an event triggering problem.')],
+  ['What makes an agent run', 'Triggered by events', 'Each agent runs when the one before hands it on. Miss one handoff, and the race stops.', events, 'problem'],
+  ['What makes an agent run', 'Reconciled from state', 'The runtime watches the board and calls only whoever is due, again until it is done. The rest sleep on; nobody wires who goes next, and a missed call costs nothing.', state, 'solution'],
   ['Architecture', 'Event-triggered, the common way', 'State lives in messages in flight and in each agent’s memory. Lose a message and the work is lost, and someone has to wire who triggers whom.', eventsArchitecture, 'problem'],
   ['Architecture', 'Blackboard', 'One board, one writer. People and agents propose changes, the writer lands them in order, and the runtime reads the board to start whoever is due.', architecture, 'solution'],
   ['Summary', 'Two ways to run many agents', '', summary],
