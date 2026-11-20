@@ -316,3 +316,31 @@ export function view(hand, seat) {
     result: hand.result && structuredClone(hand.result),
   };
 }
+
+// ---- a hand in words ----
+
+const WORDS = { 2: 'two', 3: 'three', 4: 'four', 5: 'five', 6: 'six', 7: 'seven', 8: 'eight', 9: 'nine', 10: 'ten', 11: 'jack', 12: 'queen', 13: 'king', 14: 'ace' };
+const many = (r) => (r === 6 ? 'sixes' : `${WORDS[r]}s`);
+const cap = (text) => text[0].toUpperCase() + text.slice(1);
+
+// What a player holds, as a player says it: "Pocket kings" or "Ace-king
+// suited" before the flop, then the best hand with the board, "Pair of
+// kings", "Queens full of fours".
+export function handName(hole, board = []) {
+  if (board.length < 3) {
+    const [a, b] = hole.map(rankOf).sort((x, y) => y - x);
+    return a === b ? `Pocket ${many(a)}` : `${cap(WORDS[a])}-${WORDS[b]} ${hole[0][1] === hole[1][1] ? 'suited' : 'offsuit'}`;
+  }
+  const [kind, r1, r2] = bestHand([...hole, ...board]).score;
+  return [
+    () => `${cap(WORDS[r1])} high`,
+    () => `Pair of ${many(r1)}`,
+    () => `Two pair, ${many(r1)} and ${many(r2)}`,
+    () => `Three ${many(r1)}`,
+    () => `Straight, ${WORDS[r1]} high`,
+    () => `Flush, ${WORDS[r1]} high`,
+    () => `${cap(many(r1))} full of ${many(r2)}`,
+    () => `Four ${many(r1)}`,
+    () => (r1 === 14 ? 'Royal flush' : `Straight flush, ${WORDS[r1]} high`),
+  ][kind]();
+}

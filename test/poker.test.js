@@ -1,7 +1,7 @@
 // The poker page's dealer and runtime (preview/poker-dealer.js, preview/poker-runtime.js).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { act, bestHand, compare, legal, pots, shuffled, startHand, view } from '../preview/poker-dealer.js';
+import { act, bestHand, compare, handName, legal, pots, shuffled, startHand, view } from '../preview/poker-dealer.js';
 import { HUMAN, PERSONAS, begin, deal, land, newTable, plan, prompt, say } from '../preview/poker-runtime.js';
 
 const rank = (cards) => bestHand(cards.split(' '));
@@ -36,6 +36,22 @@ test('kickers and ties', () => {
   assert.ok(beats('As Qs 9s 7s 2s 3d 4h', 'Ks Qs Js 7s 2s 3d 4h') > 0, 'flush by high card');
   assert.equal(beats('As Kd Qh Jc 9s 3d 2h', 'Ad Kh Qc Js 9d 3s 2c'), 0, 'same ranks tie');
   assert.equal(beats('2s 3d Ah Ac Ad Ks Qh', '4s 5d Ah Ac Ad Ks Qh'), 0, 'the board plays');
+});
+
+test('a hand in words, as a player says it', () => {
+  const name = (hole, board = '') => handName(hole.split(' '), board ? board.split(' ') : []);
+  assert.equal(name('Kh Kd'), 'Pocket kings');
+  assert.equal(name('6h 6d'), 'Pocket sixes');
+  assert.equal(name('As Ks'), 'Ace-king suited');
+  assert.equal(name('Kd As'), 'Ace-king offsuit');
+  assert.equal(name('Kh Kd', '2c 7s Ks'), 'Three kings');
+  assert.equal(name('Kh Qd', '2c 7s Ks'), 'Pair of kings');
+  assert.equal(name('Kh 7d', '2c 7s Ks'), 'Two pair, kings and sevens');
+  assert.equal(name('Qh Qd', 'Qc 4s 4d'), 'Queens full of fours');
+  assert.equal(name('Ah 2d', '3c 4s 5d'), 'Straight, five high');
+  assert.equal(name('Ah 2h', '9h 4h Kh'), 'Flush, ace high');
+  assert.equal(name('Ah Kh', 'Qh Jh Th'), 'Royal flush');
+  assert.equal(name('Ah 3d', '9c 7s Kd'), 'Ace high');
 });
 
 test('side pots: each all-in caps the pot it can win, folded chips stay in', () => {
