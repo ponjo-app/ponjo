@@ -7,6 +7,7 @@
 /* global document, window */
 
 import { agentFace, buddyColor, personFace, setBuddies, setOwner, setPeople } from '../web/faces.js';
+import { icon } from '../web/icons.js';
 
 const still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 const STOPPED = Symbol('stopped');
@@ -34,14 +35,35 @@ function face(name, { person = false, presence = 'idle', tag = 'span' } = {}) {
   return wrap;
 }
 
-// A member: its face over its name, and a tag over its face for what it did.
+// Stick arms and legs, drawn behind a face in a 56×80 box: [part, path].
+const LIMBS = [
+  ['arm-l', 'M10 34 L-2 45'],
+  ['arm-r', 'M46 34 L60 47'],
+  ['leg-l', 'M23 48 L20 73 L15 73'],
+  ['leg-r', 'M33 48 L36 73 L41 73'],
+];
+
+// A member: its face on stick arms and legs, its name under it, and a tag
+// over its face for what it did. Its figure takes data-move="run" or "walk"
+// to swing its limbs, and data-writing to lift its pen.
 function actor(name, presence) {
   const node = el('div', 'arch-actor');
+  const figure = el('div', 'arch-figure');
+  const limbs = document.createElementNS(NS, 'svg');
+  limbs.setAttribute('viewBox', '0 0 56 80');
+  limbs.setAttribute('class', 'arch-limbs');
+  for (const [part, d] of LIMBS) {
+    const path = document.createElementNS(NS, 'path');
+    path.setAttribute('d', d);
+    path.setAttribute('class', `arch-${part}`);
+    limbs.append(path);
+  }
   const who = face(name, { person: name === 'You', presence });
   const tag = el('span', 'arch-tag');
   who.append(tag);
-  node.append(who, el('span', '', name));
-  return { node, face: who, tag };
+  figure.append(limbs, who);
+  node.append(figure, el('span', '', name));
+  return { node, figure, face: who, tag };
 }
 
 // A doc drawn as lines, not words: a title and grey bars.
@@ -194,32 +216,60 @@ function spark([x, y], points = 8) {
   return `${d.join(' ')}Z`;
 }
 
+// `member` runs (or walks, slower and with smaller steps) along `points`,
+// bobbing as it goes and leaning the way it goes; `with` runs alongside it,
+// each with its own offset from it.
+function run(scene, s, member, points, ms, { walk = false, carry = [] } = {}) {
+  const step = walk ? 320 : 200;
+  const lean = Math.sign(points.at(-1)[0] - points[0][0]) * (walk ? 3 : 10);
+  member.figure.dataset.move = walk ? 'walk' : 'run';
+  if (!still) {
+    member.figure.animate([
+      { transform: 'translateY(0) rotate(0deg)' },
+      { transform: `translateY(${walk ? -3 : -8}px) rotate(${lean}deg)` },
+      { transform: 'translateY(0) rotate(0deg)' },
+    ], { duration: step, iterations: Math.max(1, Math.round(ms / step)) });
+  }
+  return Promise.all([
+    scene.move(member.node, points.map((point) => s.at(point)), ms, 'linear'),
+    ...carry.map(([node, [dx, dy]]) => scene.move(node, points.map(([x, y]) => s.at([x + dx, y + dy])), ms, 'linear')),
+  ]).finally(() => delete member.figure.dataset.move);
+}
+
 // Delegate, with two agents, each in a room of its own: a copy of the doc
-// goes into each room, each agent rewrites lines unseen by the other, and
-// both hand theirs back at once. They crash: both rewrote the same line,
-// and you merge them by hand.
+// goes to each desk, each agent rewrites lines unseen by the other, then both
+// run theirs back to you at once, and crash into each other on the way.
 async function delegate(scene) {
   watching(false);
   const s = sketch(scene.stage);
   const up = s.upright;
-  const you = up ? [s.W / 2, s.H - 50] : [100, s.H / 2];
-  const home = up ? [s.W / 2, s.H - 165] : [255, s.H / 2]; // your desk, with the doc
+  const you = up ? [s.W / 2, s.H - 46] : [90, s.H / 2];
+  const home = up ? [s.W / 2, s.H - 150] : [225, s.H / 2]; // your desk, with the doc
+  const meet = up ? [s.W / 2, 292] : [335, s.H / 2]; // where they crash
   const ROOM = up ? [176, 230] : [290, 170];
   const rooms = up ? { Clippy: [100, 130], Otto: [300, 130] } : { Clippy: [s.W - 175, 108], Otto: [s.W - 175, 312] };
-  const SIZE = [110, 78];
+  const SIZE = [104, 74];
+  const desk = (at) => s.place(el('div', 'arch-desk'), [at[0], at[1] + SIZE[1] / 2 + 6], [SIZE[0] + 24, 6]);
   const me = actor('You', 'idle');
   s.place(me.node, you);
+  desk(home);
   s.place(paper('Doc', [80, 60, 70]), home, SIZE);
   const buddies = {};
-  const desk = {};
+  const door = {};
+  const seat = {};
+  const table = {};
   for (const [name, [x, y]] of Object.entries(rooms)) {
     const room = s.place(el('div', 'arch-room'), [x, y], ROOM);
+    room.dataset.door = up ? 'bottom' : 'left';
     room.append(el('span', '', `${name}’s room`));
-    desk[name] = up ? [x, y + 28] : [x - 62, y + 6];
+    door[name] = up ? [x, y + ROOM[1] / 2] : [x - ROOM[0] / 2, y];
+    table[name] = up ? [x, y + 4] : [x - 60, y];
+    seat[name] = up ? [x, y - 66] : [x + 84, y];
+    desk(table[name]);
     buddies[name] = actor(name, 'idle');
-    s.place(buddies[name].node, up ? [x, y - 62] : [x + 82, y + 6]);
+    s.place(buddies[name].node, seat[name]);
   }
-  const fly = (node, from, to, ms, turn = 0, easing) => scene.move(node, [{ ...s.at(from), rotate: '0deg' }, { rotate: `${turn}deg`, offset: 0.5 }, { ...s.at(to), rotate: '0deg' }], ms, easing);
+  const slide = (node, points, ms, turn = 0, easing) => scene.move(node, points.map((point, i) => ({ ...s.at(point), rotate: `${i === points.length - 1 ? 0 : turn}deg` })), ms, easing);
   // an agent rewrites line `i` of its copy: the line goes, and comes back in its colour
   const rewrite = async (copy, name, i) => {
     const line = copy.children[i];
@@ -229,12 +279,13 @@ async function delegate(scene) {
     await scene.move(line, [{ width: '0%' }, { width }], 600);
   };
 
-  await scene.wait(800);
+  // the copies go out, one to each desk
+  await scene.wait(700);
   const copies = {};
   await Promise.all(['Clippy', 'Otto'].map(async (name, i) => {
-    await scene.wait(i * 250);
+    await scene.wait(i * 200);
     copies[name] = s.place(paper('Copy', [80, 60, 70]), home, SIZE);
-    await fly(copies[name], home, desk[name], 900, i ? 8 : -8);
+    await slide(copies[name], [home, door[name], table[name]], 900, i ? 10 : -10);
   }));
   for (const name of ['Clippy', 'Otto']) buddies[name].face.dataset.presence = 'working';
   await Promise.all([
@@ -242,55 +293,82 @@ async function delegate(scene) {
     scene.wait(300).then(() => rewrite(copies.Otto, 'Otto', 3)).then(() => rewrite(copies.Otto, 'Otto', 1)),
   ]);
   for (const name of ['Clippy', 'Otto']) buddies[name].face.dataset.presence = 'idle';
-  await scene.wait(600);
+  await scene.wait(500);
 
-  // both hand back at once, onto the same desk
-  await Promise.all(['Clippy', 'Otto'].map((name) => fly(copies[name], desk[name], home, 700, 0, 'cubic-bezier(0.5, 0, 1, 1)')));
-  const bang = document.createElementNS(NS, 'svg'); // over the copies, where they meet
+  // both run theirs back to you at once, out of their doors, held over their
+  // heads, and meet head on
+  const hold = [0, -80];
+  const face = up ? { Clippy: [meet[0] - 30, meet[1]], Otto: [meet[0] + 30, meet[1]] } : { Clippy: [meet[0], meet[1] - 34], Otto: [meet[0], meet[1] + 34] };
+  for (const copy of Object.values(copies)) copy.style.scale = '0.7';
+  await Promise.all(['Clippy', 'Otto'].map((name) => run(scene, s, buddies[name], [seat[name], table[name], door[name], face[name]], 1500, { carry: [[copies[name], hold]] })));
+  const bang = document.createElementNS(NS, 'svg');
   bang.setAttribute('viewBox', '-24 -24 48 48');
   bang.append(document.createElementNS(NS, 'path'));
   bang.firstChild.setAttribute('d', spark([0, 0]));
-  s.place(bang, home, [64, 64]).classList.add('arch-spark');
-  scene.move(bang, [{ scale: 0, opacity: 1 }, { scale: 1.3, opacity: 1, offset: 0.4 }, { scale: 1, opacity: 0 }], 700).catch(() => {});
-  const knock = (name, [dx, dy], turn) => scene.move(copies[name], [{ ...s.at(home), rotate: '0deg' }, { ...s.at([home[0] + dx, home[1] + dy]), rotate: `${turn}deg` }], 450, 'cubic-bezier(0.2, 1.6, 0.4, 1)');
-  const avatar = me.face.querySelector('.pj-avatar');
-  avatar.classList.add('pj-failed');
-  await Promise.all(up ? [knock('Clippy', [-48, -18], -12), knock('Otto', [48, -18], 12)] : [knock('Clippy', [26, -40], -12), knock('Otto', [26, 40], 12)]);
-  await scene.wait(900);
-  avatar.classList.remove('pj-failed');
+  s.place(bang, meet, [72, 72]).classList.add('arch-spark');
+  scene.move(bang, [{ scale: 0, opacity: 1 }, { scale: 1.3, opacity: 1, offset: 0.4 }, { scale: 1, opacity: 0 }], 800).catch(() => {});
+  const avatars = [me, buddies.Clippy, buddies.Otto].map((member) => member.face.querySelector('.pj-avatar'));
+  for (const avatar of avatars.slice(1)) avatar.classList.add('pj-failed');
+  const knocked = up ? { Clippy: [meet[0] - 70, meet[1] - 20], Otto: [meet[0] + 70, meet[1] - 20] } : { Clippy: [meet[0] + 24, meet[1] - 80], Otto: [meet[0] + 24, meet[1] + 80] };
+  const strewn = up ? { Clippy: [home[0] - 34, home[1] - 34], Otto: [home[0] + 34, home[1] - 28] } : { Clippy: [home[0] + 8, home[1] - 30], Otto: [home[0] + 14, home[1] + 26] };
+  await Promise.all(['Clippy', 'Otto'].flatMap((name, i) => [
+    scene.move(buddies[name].node, [s.at(face[name]), s.at(knocked[name])], 450, 'cubic-bezier(0.2, 1.4, 0.4, 1)'),
+    scene.move(buddies[name].figure, [{ rotate: '0deg' }, { rotate: `${i ? 25 : -25}deg` }, { rotate: '0deg' }], 900),
+    scene.move(copies[name], [{ ...s.at([face[name][0] + hold[0], face[name][1] + hold[1]]), rotate: '0deg', scale: 0.7 }, { ...s.at(strewn[name]), rotate: `${i ? 14 : -16}deg`, scale: 1 }], 700, 'cubic-bezier(0.2, 0.9, 0.3, 1.1)'),
+  ]));
+  avatars[0].classList.add('pj-failed');
+  await scene.wait(700);
+  for (const avatar of avatars) avatar.classList.remove('pj-failed');
+
+  // they walk back to their rooms, and you are left to merge the two
   me.face.dataset.presence = 'working';
   me.tag.textContent = 'Merging by hand';
-  await scene.wait(3000);
+  await Promise.all(['Clippy', 'Otto'].map((name) => run(scene, s, buddies[name], [knocked[name], door[name], seat[name]], 1600, { walk: true })));
+  await scene.wait(1800);
 }
 
-// The blackboard: one board, and everyone in front of it. The buddies watch
-// it, and all three write on it at once, each line in its writer's colour.
+// The blackboard: one board, and everyone in front of it with a pen. The
+// buddies watch it; all three walk up and write on it at once, each line in
+// its writer's colour, then step back.
 async function blackboard(scene) {
   watching(true);
   const s = sketch(scene.stage);
   const up = s.upright;
-  const board = s.place(paper('Doc', [85, 60]), [s.W / 2, up ? 170 : 140], up ? [340, 240] : [480, 200]);
+  const board = s.place(paper('Doc', [85, 60]), [s.W / 2, up ? 150 : 120], up ? [360, 220] : [520, 180]);
   board.classList.add('arch-board');
-  const row = up ? s.H - 80 : s.H - 70;
+  const back = up ? s.H - 70 : s.H - 60; // where they stand, then where they write
+  const close = up ? 330 : 280;
   const gap = up ? 120 : 170;
   const who = {};
   for (const [name, x] of [['Clippy', s.W / 2 - gap], ['You', s.W / 2], ['Otto', s.W / 2 + gap]]) {
     who[name] = actor(name, 'idle');
-    s.place(who[name].node, [x, row]);
+    who[name].x = x;
+    const pen = el('span', 'arch-pen');
+    pen.append(icon('pencil'));
+    pen.style.setProperty('--buddy', buddyColor(name));
+    who[name].figure.append(pen);
+    who[name].pen = pen;
+    s.place(who[name].node, [x, back]);
   }
 
-  await scene.wait(900);
-  const lines = [['You', 55], ['Clippy', 75], ['Otto', 45]].map(([name, width], i) => {
+  await scene.wait(800);
+  await Promise.all(Object.values(who).map((member) => run(scene, s, member, [[member.x, back], [member.x, close]], 900, { walk: true })));
+  const lines = [['You', 55], ['Clippy', 75], ['Otto', 45]].map(async ([name, width], i) => {
     const line = bar(width);
     paint(line, name);
     board.append(line);
     who[name].face.dataset.presence = 'working';
-    return scene.wait(i * 350).then(() => scene.move(line, [{ width: '0%' }, { width: `${width}%` }], 1600));
+    who[name].figure.toggleAttribute('data-writing', true);
+    await scene.wait(i * 300);
+    if (!still) who[name].pen.animate([{ rotate: '-12deg' }, { rotate: '14deg' }, { rotate: '-12deg' }], { duration: 260, iterations: 7 });
+    await scene.move(line, [{ width: '0%' }, { width: `${width}%` }], 1800);
+    who[name].face.dataset.presence = 'idle';
+    who[name].figure.toggleAttribute('data-writing', false);
   });
   await Promise.all(lines);
-  for (const name of ['Clippy', 'Otto']) who[name].tag.textContent = 'Wrote';
-  for (const member of Object.values(who)) member.face.dataset.presence = 'idle';
-  await scene.wait(3000);
+  await scene.wait(600);
+  await Promise.all(Object.values(who).map((member) => run(scene, s, member, [[member.x, close], [member.x, back]], 900, { walk: true })));
+  await scene.wait(2200);
 }
 
 // Triggered by events: an ask on the doc sends the buddy asked a message,
