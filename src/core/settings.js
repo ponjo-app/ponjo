@@ -18,7 +18,7 @@ export const SETTINGS_VERSION = 3;
  * agentSettings). `trace` keeps each run's trace (src/store/runs.js
  * logRun), to read in a doc's Runs. A doc's watches pause once its buddies
  * run `pauseAfter` times within `pauseWithin` minutes, until someone
- * resumes them (src/host/buddy-runtime.js, the breaker).
+ * resumes them (src/core/runtime.js, the breaker).
  */
 export const DEFAULT_SETTINGS = Object.freeze({
   id: null,
