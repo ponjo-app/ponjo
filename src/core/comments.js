@@ -233,15 +233,21 @@ export function askedOf(thread, askers) {
 /**
  * The same, each with the comment that asks it: Map(buddy id → the latest
  * comment of `askers` that asks it). `taken(comment)` says whether a comment
- * of theirs may ask: one that does not is skipped.
+ * of theirs may ask: one that does not is skipped. A comment whose id is in
+ * `relayed` (a buddy's, posted by a run here) asks the buddies it
+ * @mentions, but never itself, and only them.
  */
-export function askedBy(thread, askers, taken = () => true) {
+export function askedBy(thread, askers, taken = () => true, relayed = new Set()) {
   const asked = new Map();
   if (thread.resolved) return asked;
   const theirs = [thread.comments[0].by.id].filter((id) => !askers.includes(id));
   thread.comments.forEach((c) => {
     if (c.resolved) asked.clear();
     asked.delete(c.by.id); // its comment answers what was asked before it
+    if (relayed.has(c.id)) {
+      for (const id of c.mentions) if (id !== c.by.id && !askers.includes(id)) asked.set(id, c);
+      return;
+    }
     if (!askers.includes(c.by.id) || c.body.trim() === '' || !taken(c)) return;
     for (const id of c.mentions.length > 0 ? c.mentions : theirs) if (!askers.includes(id)) asked.set(id, c);
     for (const id of c.mentions) if (!theirs.includes(id) && !askers.includes(id)) theirs.push(id);

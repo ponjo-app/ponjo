@@ -15,7 +15,7 @@ Code: the controller is `src/host/buddy-runtime.js`, the executor
 | **A client like any other.** The doc knows nothing about buddies. | The runtime reads the doc, listens to its changes and writes through the same door as a window, as the buddy. It has no other way in. |
 | **Decide from state, not from events.** | The controller never acts on an event. Any change, timer or finished run only makes it look again: read the state, ask `plan`, start and stop runs. A missed event costs nothing, and a restart loses nothing that matters. |
 | **The agent is a filter.** | The executor gives the agent copies in a temp folder and a prompt, and reads the copies back. Any command-line agent works, and none can touch the real files. |
-| **Only people start work.** | A run needs a person's ask, or a watch a person turned on. Only comments that came through the door can ask. Buddies waking each other spend steps from a small budget. |
+| **Only people start work.** | A run needs a person's ask, or a watch a person turned on, or a buddy's ask from a run for them. Only comments that came through the door can ask. Buddies waking or asking each other spend steps from a small budget. |
 | **Runtime state stays on this machine.** | Notes, failures, steps and running runs are in memory; the watch list is in the config folder. Nothing is written to a shared file, so a shared file can never make this machine run something. |
 | **An agent is costly: people decide.** | A failed run is shown with Retry, never retried on its own. Every change a buddy makes is a group, undone with its comment. |
 | **Pure where possible.** | Rules and Translate are pure functions, so most behaviour is tested with no agent and no waiting. |
@@ -56,7 +56,8 @@ per buddy:  seen     thread → time of the last comment its runs were given
             failed   thread or watch → why
             watch    { by } or null (also noted in the config folder)
 per doc:    changedAt  author → rev (and time) of their last change to the text
-            steps      budget for buddies waking each other
+            relayed    comment a run here posted → the people it was for
+            steps      budget for buddies waking or asking each other
             running    buddy → run
 ```
 
@@ -89,7 +90,9 @@ landed. It holds names, revs and thread ids, never the doc's text.
 
 `plan` starts a buddy when:
 
-- **Ask:** a person's comment names it and it has not replied after it.
+- **Ask:** a person's comment names it and it has not replied after it;
+  or a comment a run here posted names it, for one step, as the people
+  that run was for.
 - **Watch:** a person turned on its watch, and since its last run people
   changed the doc and paused 5 s, another program wrote the file (at once:
   it is whole), or another buddy changed it and its run has ended, so the
@@ -119,7 +122,8 @@ landed. It holds names, revs and thread ids, never the doc's text.
 
 ## Security
 
-- Only people start work: an ask comes from a person allowed to write, and
-  only through the door. A comment found in the file asks no one.
+- Only people start work: an ask comes from a person allowed to write, or
+  from a buddy's run for one, and only through the door. A comment found in
+  the file asks no one.
 - The agent sees copies only, plus read access to the project folder.
-- Buddies waking each other is bounded by steps.
+- Buddies waking or asking each other is bounded by steps.
