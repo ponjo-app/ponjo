@@ -157,6 +157,7 @@ function startCountdown() {
     if (countdown.left <= 0) nextHand();
     else drawResult();
   }, 1000) };
+  drawResult();
 }
 function pause() {
   paused = true;
@@ -304,7 +305,8 @@ function layout() {
     if (!seats.has(id)) {
       seats.set(id, seatNode(id));
       bets.set(id, el('span', 'pk-bet'));
-      $('.pk-seats').append(seats.get(id));
+      if (id === me) $('.pk-mine').prepend(seats.get(id));
+      else $('.pk-seats').append(seats.get(id));
       $('.pk-table').append(bets.get(id));
     }
     seats.get(id).dataset.pos = bets.get(id).dataset.pos = posOf(table.slots[id]);
@@ -377,7 +379,6 @@ const TAG = { fold: 'Fold', check: 'Check', call: 'Call', bet: 'Bet', raise: 'Ra
 function tag(hand, i, { id, joining, leaving }) {
   if (joining) return ['Sits in next hand', 'wait'];
   if (leaving && (!hand || hand.street === 'done')) return ['Leaving', 'fold'];
-  if (table.notes[id]?.failed) return ['Can\'t reach the model', 'failed'];
   if (clock.ends && hand?.street !== 'done' && hand?.toAct === i) return [`${Math.max(0, Math.ceil((clock.ends - Date.now()) / 1000))}s to act`, 'wait'];
   if (running.has(id) && hand?.toAct === i) return ['Thinking…', 'wait'];
   if (!hand) return ['', ''];
@@ -524,7 +525,9 @@ function drawResult() {
   const hand = table.hand;
   const over = !hand || hand.street === 'done';
   $('.pk-result').hidden = !over || !hand;
-  $('.pk-result-text').textContent = resultText();
+  const result = $('.pk-result-text');
+  const summary = resultText();
+  if (result.textContent !== summary) result.textContent = summary;
   $('.pk-countdown').textContent = countdown ? `Next hand in ${countdown.left}…` : '';
   $('[data-action="next"]').hidden = Boolean(countdown) || !chipsOfMine() || Boolean(ROOM);
   $('[data-action="pause"]').hidden = !countdown;
@@ -566,7 +569,23 @@ function drawMe() {
   setCards($('.pk-hole-mine'), s?.inHand ? s.hole : []);
   $('.pk-hole-mine').style.opacity = s?.folded ? 0.5 : '';
   $('.pk-strength').textContent = !s?.inHand ? '' : s.folded ? 'Folded' : handName(s.hole, hand.board);
-  const mine = hand && hand.street !== 'done' && hand.toAct === seatOf(me);
+  const actor = hand?.street !== 'done' && hand?.seats[hand.toAct]?.id;
+  const mine = actor === me && !away;
+  const failure = !away && table.notes[actor]?.failed;
+  const recovery = $('.pk-recovery');
+  recovery.hidden = !failure;
+  $('[data-action="retry"]', recovery).hidden = Boolean(ROOM);
+  if (!failure || recovery.dataset.actor !== actor) $('details', recovery).open = false;
+  recovery.dataset.actor = failure ? actor : '';
+  $('details p', recovery).textContent = failure?.why ?? '';
+  const stage = hand?.street === 'done' ? (hand.result.showdown ? 'Showdown' : 'Hand complete') : hand?.street;
+  $('.pk-phase').textContent = hand ? `Hand ${hand.id} · ${stage[0].toUpperCase() + stage.slice(1)}` : '';
+  let status = away;
+  if (!status && mine) status = 'Your turn';
+  else if (!status && actor) status = failure ? `${label(actor)} lost connection.${ROOM ? ' Waiting for the host to retry.' : ''}` : `Waiting for ${label(actor)}`;
+  else if (!status && !hand && chipsOfMine()) status = 'Waiting for the first deal';
+  const turn = $('.pk-turn');
+  if (turn.textContent !== status) turn.textContent = status;
   $('.pk-controls').hidden = !mine;
   if (!mine) return;
   const l = legal(hand, seatOf(me));
@@ -583,7 +602,10 @@ function drawRaise() {
   const hand = table.hand;
   const l = legal(hand, seatOf(me));
   const to = Number($('.pk-slider').value);
-  $('[data-action="raise"]').textContent = to >= l.raise.max ? `All in ${money(l.raise.max)}` : `${hand.currentBet ? 'Raise to' : 'Bet'} ${money(to)}`;
+  $('.pk-slider').setAttribute('aria-valuetext', money(to));
+  const seat = hand.seats[seatOf(me)];
+  $('.pk-sizing').textContent = seat.bet ? `Wager · add ${money(to - seat.bet)} to your ${money(seat.bet)}` : 'Wager size';
+  $('[data-action="raise"]').textContent = to >= l.raise.max ? `All in ${money(seat.stack)}` : `${hand.currentBet ? 'Raise to' : 'Bet'} ${money(to)}`;
 }
 // A raise of a size a player names: the least, half the pot, the pot, all in.
 function size(name) {
@@ -635,19 +657,6 @@ function drawFeed() {
       pop(change.by, change.emoji);
     } else if (change.type === 'rebuy') {
       feed.append(notice(`${change.by} buys back in for ${money(change.amount)}.`));
-    } else if (change.type === 'failed') {
-      const line = notice(`${change.by} could not reach the model: ${change.why}`);
-      line.dataset.failed = '';
-      const again = el('button', 'pj-link-button', 'Retry');
-      again.type = 'button';
-      again.hidden = Boolean(ROOM);
-      again.addEventListener('click', () => {
-        again.remove();
-        retry(table, change.by);
-        changed();
-      });
-      line.append(' ', again);
-      feed.append(line);
     }
   }
   const hand = table.hand;
@@ -785,6 +794,12 @@ document.addEventListener('click', (event) => {
   if (action === 'next') {
     paused = false;
     nextHand();
+  } else if (action === 'retry' && !ROOM) {
+    const actor = $('.pk-recovery').dataset.actor;
+    if (table.notes[actor]?.failed) {
+      retry(table, actor);
+      changed();
+    }
   } else if (action === 'pause') pause();
   else if (action === 'topup') buyIn('topup');
   else if (action === 'leave') leaveTable();
