@@ -369,7 +369,9 @@ which would end every run. The run lands, merged by line, and runs again on
 the change. Each run is told what changed since its last: in the text
 (`lineChanges`), and in the threads, each open one another member wrote in, whole (the ids of the comments it
 heard then are noted with `base`). It reads the rest in the comments
-itself, and comments where it will, as any member.
+itself, and comments where it will, as any member. A run may name, in
+`PONJO_WAKE`, lines of the doc that wake it ([wake](agent-config.md#wake)):
+until its next run the watcher is due only while the doc holds one, whole.
 
 **Steps.** So that buddies cannot wake each other for ever, a run woken by
 another buddy's change takes a step from the doc's steps: up to 20, one

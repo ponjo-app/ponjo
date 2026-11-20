@@ -100,7 +100,8 @@ for a window), **e2e** (the packaged app, under xvfb on Linux).
   they pause. A watch run that fails, before its buddy has a thread, shows
   on the buddy, why to the owner alone, and Retry runs it again.
 - A watcher runs on people's edits once they pause, unless a run since
-  already saw them.
+  already saw them. One whose run named a line in `PONJO_WAKE` runs again
+  only once the doc holds it; its next run names its lines anew.
 - A buddy's change wakes each other buddy watching, never itself, each such
   run taking a step, a person's pause none; with none left they wait, and
   Refill fills them; with steps coming on their own, they go on as each

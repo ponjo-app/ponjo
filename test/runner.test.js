@@ -461,6 +461,22 @@ test('a watch run goes on when the file is written outside the app, lands, and r
   }, { content: `${SAMPLE}\nhold-watch\n` });
 });
 
+test('a watcher whose run named a line in PONJO_WAKE runs again only once the doc holds that line; its next run names its lines anew', { timeout: 60_000 }, async () => {
+  await withDoc(async ({ call, edit, state, runs }) => {
+    await call('watch', { buddy: 'Clippy', on: true });
+    await until(async () => (await runs()).length === 1, 'its first look');
+    await until(async () => (await state()).agents.every((a) => a.state === 'ready'), 'that run to end');
+    await edit(`${(await state()).text}Another line.\n`);
+    await sleep(SETTLE_MS + 1500);
+    assert.equal((await runs()).length, 1, 'the doc holds no line that wakes it');
+    await edit(`${(await state()).text.replace('wake-line Your turn, Clippy.\n', '')}Your turn, Clippy.\n`);
+    await until(async () => (await runs()).length === 2, 'a run once the doc holds it', 10_000);
+    await until(async () => (await state()).agents.every((a) => a.state === 'ready'), 'that run to end');
+    await edit(`${(await state()).text}One more.\n`);
+    await until(async () => (await runs()).length === 3, 'that run named no line: any change wakes it', 10_000);
+  }, { content: `${SAMPLE}\nwake-line Your turn, Clippy.\n` });
+});
+
 test('a watch run is ended when a person types again, with no answer, and runs again once they pause', { timeout: 60_000 }, async () => {
   await withDoc(async ({ settingsDir, call, edit, state, runs, release }) => {
     await call('watch', { buddy: 'Clippy', on: true });
