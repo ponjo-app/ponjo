@@ -11,14 +11,25 @@ import { readSettings } from '../store/settings.js';
 import { DocError } from './door.js';
 import { runAction } from './runner.js';
 
+/** Actions as `level` sees them: why one failed is the owner's alone, as a run's is. */
+export function actionsFor(level, actions) {
+  return level === 'owner' ? actions : actions.map(({ why, ...seen }) => seen);
+}
+
 /**
  * The actions of the doc at `docPath()`, in config folder `settingsDir`.
  * `owner()` resolves to the owner ({ id }); `reply(action, body)` posts `body` as the
- * reply of `action`'s buddy in its thread, at its depth + 1.
+ * reply of `action`'s buddy in its thread, at its depth + 1; `changed(actions)`
+ * hears each step, with the doc's actions then.
  */
-export function createDocActions({ settingsDir, docPath, owner, reply }) {
+export function createDocActions({ settingsDir, docPath, owner, reply, changed = () => {} }) {
   const deciding = new Set(); // the ids a person is deciding on now: one decision at a time
   const running = new Set(); // the ids this host is carrying out now
+  // A step of an action, recorded, then told.
+  async function note(step) {
+    await recordAction(settingsDir, step);
+    changed(await list());
+  }
 
   // This doc's actions, oldest first; one started that this host is not carrying out may have run.
   async function list() {
@@ -35,7 +46,7 @@ export function createDocActions({ settingsDir, docPath, owner, reply }) {
       const action = (await list()).find((a) => a.id === id);
       if (!action) throw new DocError('not_found', 'no such action');
       if (!from.includes(action.state)) throw new DocError('stale', `the action is ${action.state}`);
-      await recordAction(settingsDir, { id, state, by: { id: who.id, name: who.name } });
+      await note({ id, state, by: { id: who.id, name: who.name } });
       if (state === 'approved') carryOut(action);
     } finally {
       deciding.delete(id);
@@ -49,9 +60,9 @@ export function createDocActions({ settingsDir, docPath, owner, reply }) {
   }
   async function carry(action) {
     try {
-      await recordAction(settingsDir, { id: action.id, state: 'started' });
+      await note({ id: action.id, state: 'started' });
       const done = await runAction({ script: actionScript(action.action, settingsDir), id: action.id, input: action.input });
-      await recordAction(settingsDir, done.ok ? { id: action.id, state: 'done', result: done.result } : { id: action.id, state: 'failed', why: done.why });
+      await note(done.ok ? { id: action.id, state: 'done', result: done.result } : { id: action.id, state: 'failed', why: done.why });
       await reply(action, done.ok ? `${action.name}: ${done.result || 'done.'}` : `${action.name} failed.`);
     } catch (error) {
       console.error(`Could not carry out action ${action.id}:`, error);
@@ -76,9 +87,9 @@ export function createDocActions({ settingsDir, docPath, owner, reply }) {
         const known = installed.get(p.action);
         if (!known) continue;
         const action = { id: newId('a'), state: 'proposed', doc: docPath(), comment: p.comment, thread: p.thread, action: p.action, name: known.name, input: p.input ?? null, buddy: { id: by.id, name: by.name }, for: by.for, depth: by.depth };
-        await recordAction(settingsDir, action);
+        await note(action);
         if (mine && !asksFirst(settings, p.action)) {
-          await recordAction(settingsDir, { id: action.id, state: 'approved', by: null }); // set to run without asking
+          await note({ id: action.id, state: 'approved', by: null }); // set to run without asking
           carryOut(action);
         }
       }

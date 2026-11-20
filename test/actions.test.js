@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { buildPrompt } from '../src/core/prompt.js';
+import { actionsFor } from '../src/host/doc-actions.js';
 import { listActions, recordAction } from '../src/store/actions.js';
 import { fakeConfig, openTestDoc, tempDoc, until } from './helpers.js';
 
@@ -29,7 +30,7 @@ async function withActions(fn, settings = {}) {
   const actions = () => call('actions');
   const replies = async (thread) => (await call('state')).threads.find((t) => t.id === thread).comments.filter((c) => c.by.kind === 'ai').map((c) => c.body);
   try {
-    await fn({ settingsDir, call, restart, posted, actions, replies });
+    await fn({ settingsDir, call, restart, posted, actions, replies, events: () => opened.events });
   } finally {
     await opened.doc.close();
   }
@@ -115,4 +116,21 @@ test('an action is listed only with a manifest that says what it does and takes;
   assert.match(prompt, /PONJO_ACTIONS/);
   assert.match(prompt, /fzhan approves it/);
   assert.doesNotMatch(buildPrompt({ buddy: { id: 'b_a', name: 'Ada', about: '' }, docName: 'a.md', sidecarName: 'a.md.comments.jsonl', threads: [] }), /PONJO_ACTIONS/, 'with none, nothing about them');
+});
+
+test('the windows hear each step of an action, with the doc\'s actions; its state has them; a teammate never reads why one failed', unix, async () => {
+  await withActions(async ({ settingsDir, call, actions, events }) => {
+    await writeFile(join(settingsDir, 'actions', 'post'), '#!/bin/sh\necho "channel_not_found" >&2\nexit 1\n', { mode: 0o755 });
+    await call('comment', { anchor: null, body: '@Clippy act post {"text":"x"}' });
+    const [action] = await until(async () => (await actions()).length && actions(), 'the action');
+    assert.deepEqual((await call('state')).actions.map((a) => [a.id, a.state]), [[action.id, 'proposed']], 'the page gets them with the doc');
+    await call('approveAction', { id: action.id });
+    await until(async () => (await actions())[0].state === 'failed', 'failed');
+    const told = events().filter(([name]) => name === 'actions').map(([, list]) => list.at(-1).state);
+    assert.deepEqual(told, ['proposed', 'approved', 'started', 'failed'], 'every step, as it is recorded');
+    const [failed] = await actions();
+    assert.match(failed.why, /channel_not_found/, 'the owner reads why');
+    assert.equal(actionsFor('write', [failed])[0].why, undefined, 'a teammate does not');
+    assert.equal(actionsFor('write', [failed])[0].state, 'failed', 'only that it failed');
+  });
 });

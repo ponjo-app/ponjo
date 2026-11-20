@@ -26,7 +26,7 @@ const DEPTH_LIMIT = 1000;
  * `pathInProject()` the doc's path in its project (`/`-separated);
  * `buddies()` the buddies the doc reaches and `me()` the owner.
  */
-export function createDocWorld({ door, subscribe, place, pathInProject, buddies, me, settingsDir }) {
+export function createDocWorld({ door, subscribe, place, pathInProject, buddies, me, settingsDir, emit = () => {} }) {
   // The comments a run here posted → { for (the people it was for), depth
   // (its run's) }: its @mentions ask.
   const posted = new Map();
@@ -38,7 +38,7 @@ export function createDocWorld({ door, subscribe, place, pathInProject, buddies,
   });
   // What runs here proposed to do outside the doc; each result is its buddy's reply, a step deeper.
   const actions = createDocActions({
-    settingsDir, docPath: () => place().docPath, owner: me,
+    settingsDir, docPath: () => place().docPath, owner: me, changed: (list) => emit('actions', list),
     async reply(action, body) {
       const { id } = await door.comment({ id: newId('c'), thread: action.thread, anchor: null, body }, { ...action.buddy, kind: 'ai', level: 'write' });
       posted.set(id, { for: action.for, depth: action.depth + 1 });

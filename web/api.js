@@ -34,6 +34,8 @@ export const api = {
   resume: () => call('resume', {}),
   /** Run buddy `buddy` again where its last run failed. */
   retry: (buddy) => call('retry', { buddy }),
+  /** The owner decides on action `id` a buddy proposed: 'approve', 'decline' or 'retry' (src/host/doc-actions.js). */
+  decideAction: (decision, id) => call(`${decision}Action`, { id }),
   /**
    * The doc's events: `on(name, fn)`, fn getting the event's data. Those
    * that came before are handed over once the handlers set up with it, in

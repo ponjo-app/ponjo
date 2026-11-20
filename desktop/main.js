@@ -11,6 +11,7 @@ import { mkdir, realpath, writeFile } from 'node:fs/promises';
 import { basename, dirname, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { SHIPPED_AGENTS, agentsDir, installAgents, listAgents, pickedAgent, readAgent } from '../src/store/agents.js';
+import { listActions } from '../src/store/actions.js';
 import { testAgent } from '../src/host/runner.js';
 import { readSecrets, secretTails, writeSecrets } from '../src/store/secrets.js';
 import { logLoop, loopLogPath, readUsage } from '../src/store/runs.js';
@@ -519,11 +520,11 @@ function recentMenu() {
 // ---- the start window's settings ----
 
 // The settings the start window shows and changes (its Settings dialog, a
-// doc's but Views and Rules): your name, how things look and the agents, never buddies.
-const PAGE_SETTING_KEYS = ['name', 'theme', 'agent', 'agents'];
+// doc's but Views and Rules): your name, how things look, the agents and actions, never buddies.
+const PAGE_SETTING_KEYS = ['name', 'theme', 'agent', 'agents', 'actions'];
 
 // Settings > Agents: the agents, as a doc's page gets them from its doc host.
-const agentScripts = async () => ({ agents: await listAgents(), shipped: SHIPPED_AGENTS, folder: agentsDir(), secrets: secretTails(secrets) });
+const agentScripts = async () => ({ agents: await listAgents(), shipped: SHIPPED_AGENTS, folder: agentsDir(), secrets: secretTails(secrets), actions: await listActions() });
 
 async function resetAgentScript(name) {
   if (!SHIPPED_AGENTS.includes(name)) throw new Error('not a shipped agent');

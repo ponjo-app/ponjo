@@ -8,7 +8,7 @@
 // they belong to a doc's People.
 
 import { hydrateIcons, icon } from './icons.js';
-import { BREAKER_FIELDS, agentSettings, viewSettings } from '../src/core/settings.js';
+import { BREAKER_FIELDS, agentSettings, asksFirst, viewSettings } from '../src/core/settings.js';
 
 const SHORTCUTS = [
   ['Text', [['Bold', 'Mod+B'], ['Italic', 'Mod+I'], ['Inline code', 'Mod+E'], ['Strikethrough', 'Mod+Shift+X'], ['Link', 'Mod+K'], ['Normal text', 'Mod+Alt+0'], ['Heading 1–3', 'Mod+Alt+1–3'], ['Quote', 'Mod+Alt+Q'], ['Code block', 'Mod+Alt+C'], ['Numbered list', 'Mod+Shift+7'], ['Bulleted list', 'Mod+Shift+8'], ['Task list', 'Mod+Shift+9'], ['Find', 'Mod+F'], ['Find and replace', 'Mod+Alt+F'], ['Next match', 'Mod+G'], ['Previous match', 'Mod+Shift+G']]],
@@ -26,6 +26,7 @@ const DIALOG = `
     <button type="button" role="tab" data-section="views" data-icon="pencil">Views</button>
     <button type="button" role="tab" data-section="shortcuts" data-icon="keyboard">Shortcuts</button>
     <button type="button" role="tab" data-section="agents" data-icon="settings">Agents</button>
+    <button type="button" role="tab" data-section="actions" data-icon="play">Actions</button>
     <button type="button" role="tab" data-section="usage" data-icon="chart">Usage</button>
   </nav>
   <div class="pj-settings-main">
@@ -73,6 +74,12 @@ const DIALOG = `
         </div>
         <div class="pj-agents-trace"></div>
       </fieldset>
+    </section>
+
+    <section class="pj-settings-section" role="tabpanel" data-section="actions" hidden>
+      <h2>Actions</h2>
+      <p class="pj-settings-intro">What AI buddies may propose to do outside the doc. Each waits for you to approve it under its comment, unless Ask first is off; then it runs at once, and only for your own asks. Add one in <code>actions/</code> of the config folder.</p>
+      <div class="pj-actions-list"></div>
     </section>
 
     <section class="pj-settings-section" role="tabpanel" data-section="usage" hidden>
@@ -185,6 +192,29 @@ export function setupSettings({ store, getName, setName, onApply = () => {}, vie
     apply();
   }
 
+  // The actions, read again each time Actions shows (the user may add one), each with Ask first.
+  let paintActions = () => {};
+  async function listActions() {
+    let found;
+    try {
+      found = (await scripts.list()).actions ?? [];
+    } catch {
+      return;
+    }
+    const rows = found.map((action) => {
+      const row = fieldRow({ key: 'ask', type: 'switch', label: action.name, hint: action.about }, action.id, (key, value) => set({ actions: { [action.id]: { [key]: value } } }));
+      const control = row.node.querySelector('.pj-switch');
+      control.setAttribute('aria-label', `Ask first: ${action.name}`);
+      const ask = el('span', 'pj-setting-row', 'Ask first');
+      control.replaceWith(ask);
+      ask.append(control);
+      return { action, row };
+    });
+    dialog.querySelector('.pj-actions-list').replaceChildren(...rows.map(({ row }) => row.node));
+    paintActions = (settings) => rows.forEach(({ action, row }) => row.paint({ ask: asksFirst(settings, action.id) }));
+    apply();
+  }
+
   function apply() {
     const settings = store.get();
     const root = document.documentElement;
@@ -199,6 +229,7 @@ export function setupSettings({ store, getName, setName, onApply = () => {}, vie
       }
     }
     paintAgents(settings);
+    paintActions(settings);
     for (const row of [...breaker, trace]) row.paint(settings);
     if (document.activeElement !== nameInput) nameInput.value = getName();
     onApply(settings);
@@ -211,6 +242,7 @@ export function setupSettings({ store, getName, setName, onApply = () => {}, vie
     for (const tab of tabs) tab.setAttribute('aria-selected', String(tab.dataset.section === section));
     for (const panel of sections) panel.hidden = panel.dataset.section !== section;
     if (section === 'agents') listAgents();
+    if (section === 'actions') listActions();
     if (section === 'usage') usage().then((summary) => paintUsage(dialog.querySelector('.pj-usage'), summary), () => {});
     for (const list of lists) showPage(list, null);
   }
