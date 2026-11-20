@@ -18,23 +18,24 @@ const DEPTH = 2; // a line this deep in replies wakes no one: nobody replies to 
 
 export const PERSONAS = [
   {
-    id: 'Wren',
-    style: 'You play tight and patient: few hands, strong ones, and you bet them hard. You are quiet. You say little, a few dry words at most, and often nothing at all.',
+    id: 'Gary',
+    style: 'You are a tourist on holiday who wandered into the casino for fun. You barely know the strategy: you play almost every hand, call far too much, raise on a whim (a lucky feeling, pretty cards, your birthday), and hate to fold. Cheerful and chatty: you celebrate tiny wins, ask the table naive questions, and say what you hold out loud by mistake now and then.',
   },
   {
-    id: 'Dash',
-    style: 'You play loose and love to bluff: you enter lots of pots and push people around with raises. You are talkative and playful at the table, you tease, you needle, you tell stories about your hand that may not be true.',
+    id: 'Duke',
+    style: 'You are rude, cocky and aggressive. You raise and re-raise a lot, bully short stacks and go all in to make people sweat. You talk trash with nearly every action, unprompted: mock a fold, needle whoever is winning, brag about pots you took, taunt the person to call you. Keep it playful-mean table banter: no slurs, no swearing, nothing about anyone\'s real life.',
   },
   {
-    id: 'Sage',
-    style: 'You play calm and mathematical: pot odds, equity and position guide you, and you mix in a well-timed bluff. When you talk you are friendly and like to mention the odds or a quick estimate, in plain words.',
+    id: 'Penny',
+    style: 'You are careful and calculating: every chip counts. You fold weak hands, call only with the right pot odds, bet your strong hands for value and rarely bluff. You talk little, and when you do it is dry and precise: the price of a call, the pot odds, a quick count of outs.',
   },
 ];
 
-// A new table: the person and the three players, all with STACK chips.
-export function newTable() {
-  const players = [{ id: HUMAN, stack: STACK }, ...PERSONAS.map(({ id }) => ({ id, stack: STACK }))];
-  return { rev: 0, log: [], players, hand: null, handNo: 0, button: -1, chat: [], notes: Object.fromEntries(PERSONAS.map(({ id }) => [id, note()])) };
+// A new table: the person, who sits down with `buyIn` from their bankroll,
+// and the three players with STACK each.
+export function newTable(buyIn = STACK) {
+  const players = [{ id: HUMAN, stack: buyIn }, ...PERSONAS.map(({ id }) => ({ id, stack: STACK }))];
+  return { rev: 0, log: [], players, hand: null, handNo: 0, button: -1, topUp: 0, chat: [], notes: Object.fromEntries(PERSONAS.map(({ id }) => [id, note()])) };
 }
 const note = () => ({ chatSeen: 0, reactSeen: 0, tries: 0, triesKey: '', rejected: '', failed: null, thoughts: [] });
 
@@ -49,10 +50,40 @@ const turnKey = (hand) => `${hand.id}:${hand.n}`;
 const nameOf = (id) => (id === HUMAN ? 'the person' : id);
 const names = (text) => PERSONAS.filter(({ id }) => new RegExp(`\\b${id}\\b`, 'i').test(text)).map(({ id }) => id);
 
-// The next hand, if two players have chips.
+// The person's chips now, with what they added since the hand began.
+export const myChips = (table) => (table.hand ? table.hand.seats[0].stack : table.players[0].stack) + table.topUp;
+
+// More chips for the person, from their bankroll: they land before the next hand, as at a real table.
+export function topUp(table, amount) {
+  table.topUp += amount;
+  commit(table, { type: 'topup', amount });
+}
+
+// The person leaves between hands: their chips go back to their bankroll. Returns how many.
+export function leave(table) {
+  const amount = myChips(table);
+  if (table.hand) table.hand.seats[0].stack = 0;
+  table.players[0].stack = 0;
+  table.topUp = 0;
+  commit(table, { type: 'leave', amount });
+  return amount;
+}
+
+// The next hand. A player out of chips buys back in for STACK first; the
+// person must buy in themselves, so with no chips there is no hand.
 export function deal(table, deck) {
-  const players = table.hand ? table.hand.seats.map(({ id, stack }) => ({ id, stack })) : table.players;
-  if (players.filter((p) => p.stack > 0).length < 2 || !players.find((p) => p.id === HUMAN).stack) return false;
+  const players = (table.hand ? table.hand.seats : table.players).map(({ id, stack }) => ({ id, stack }));
+  players[0].stack += table.topUp;
+  table.topUp = 0;
+  if (!players[0].stack) {
+    table.players = players;
+    return false;
+  }
+  for (const p of players.slice(1)) {
+    if (p.stack) continue;
+    p.stack = STACK;
+    commit(table, { type: 'rebuy', by: p.id, amount: STACK });
+  }
   table.handNo++;
   table.hand = startHand({ id: table.handNo, players, button: table.button, blinds: BLINDS, deck });
   table.button = table.hand.button;
@@ -177,7 +208,7 @@ export function land(table, id, basis, proposal) {
 
 // ---- what a player is shown ----
 
-export const RULES = `You are a player at a No-Limit Texas Hold'em table, playing for play chips only (no real money). Four seats: a person, and three AI players: Wren, Dash and Sage. Blinds are ${BLINDS[0]}/${BLINDS[1]}; everyone starts with ${STACK}.
+export const RULES = `You are a player at a No-Limit Texas Hold'em table, playing for play money only (amounts are play dollars, no real money). Four seats: a person, and three AI players: Gary, Duke and Penny. Blinds are $${BLINDS[0]}/$${BLINDS[1]}; you sit with $${STACK}, and buy back in for $${STACK} when you lose it all.
 
 The rules, in short: each player gets two private cards. Betting goes round on four streets: preflop, then the flop (three shared cards on the board), the turn (one more), the river (one more). On your turn you may fold; check if there is nothing to call; call; or bet / raise, which in this game is always to a total for this street ("raise to 120"), at least the last raise more than the current bet, or all in. When one player is left, they win the pot; otherwise the best five-card hand from each player's two cards and the board wins at the showdown, and side pots go to those who could match the bets. A dealer runs the game and checks every action: one that is not legal, or comes after the table moved on, is turned away and you are asked again.
 
@@ -186,7 +217,7 @@ You see what anyone at the table sees, plus your own two cards. Nobody's cards a
 You are woken when it is your turn, when someone talks to you (or the person talks to the whole table), or once after a big hand. Each time, answer with one call to the decide tool:
 - thinking: your private reasoning in one to three short sentences. No one sees it during the hand; afterwards the person may read it.
 - action: only when it is your turn, and then always. { "type": "fold" | "check" | "call" | "bet" | "raise" | "allin", "amount": the total for the street, only for bet and raise }.
-- say: optional, one short line to the table in your own voice, under 20 words. Leave it out when you have nothing worth saying: at most one of you usually answers the person, and a reply needs no reply. You may bluff in what you say, but never claim to see others' cards.
+- say: optional, one short line to the table in your own voice, under 20 words. How often you talk is your character's; leave it out when you would have nothing to say. At most one of you usually answers the person, and a reply needs no reply. You may bluff in what you say, but never claim to see others' cards.
 
 Play to win chips, as yourself. Be quick.`;
 

@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { act, bestHand, compare, handName, legal, pots, shuffled, startHand, view } from '../preview/poker-dealer.js';
-import { HUMAN, PERSONAS, begin, deal, land, newTable, plan, prompt, say } from '../preview/poker-runtime.js';
+import { HUMAN, PERSONAS, STACK, begin, deal, land, myChips, newTable, plan, prompt, say, topUp } from '../preview/poker-runtime.js';
 
 const rank = (cards) => bestHand(cards.split(' '));
 const beats = (a, b) => compare(rank(a).score, rank(b).score);
@@ -187,7 +187,8 @@ test('random play: chips are kept, and a prompt never holds a card it may not se
         const id = table.players[table.hand.toAct].id;
         land(table, id, { hand: table.hand.id, n: table.hand.n, turn: true }, { action });
       }
-      assert.equal(table.hand.seats.reduce((sum, s) => sum + s.stack, 0), 4000, 'no chip made or lost');
+      const rebought = table.log.filter((c) => c.type === 'rebuy').reduce((sum, c) => sum + c.amount, 0);
+      assert.equal(table.hand.seats.reduce((sum, s) => sum + s.stack, 0), 4 * STACK + rebought, 'no chip made or lost but by buying in');
       for (const change of table.log) if (change.type === 'action') assert.ok(['fold', 'check', 'call', 'bet', 'raise'].includes(change.action.type), 'the log has the player\'s action');
     }
   }
@@ -203,16 +204,16 @@ test('the player to act is due; a line to the table wakes the players, a reply t
   say(table, HUMAN, 'Nice weather for poker.');
   assert.equal(plan(table).length, 3);
   for (const d of plan(table)) begin(table, d.id, d);
-  say(table, HUMAN, 'Sage, what are the odds?');
-  assert.deepEqual(plan(table).map((d) => d.id).filter((id) => !plan(table).find((d) => d.id === id).turn || plan(table).find((d) => d.id === id).lines.length), ['Sage']);
-  const basis = begin(table, 'Sage', plan(table).find((d) => d.id === 'Sage'));
-  land(table, 'Sage', basis, { thinking: 'x', say: 'About one in three, Dash.' });
+  say(table, HUMAN, 'Penny, what are the odds?');
+  assert.deepEqual(plan(table).map((d) => d.id).filter((id) => !plan(table).find((d) => d.id === id).turn || plan(table).find((d) => d.id === id).lines.length), ['Penny']);
+  const basis = begin(table, 'Penny', plan(table).find((d) => d.id === 'Penny'));
+  land(table, 'Penny', basis, { thinking: 'x', say: 'About one in three, Duke.' });
   assert.equal(table.chat.at(-1).depth, 1);
-  const dash = plan(table).find((d) => d.id === 'Dash');
-  assert.equal(dash.lines.length, 1, 'named, Dash is due');
-  land(table, 'Dash', begin(table, 'Dash', dash), { thinking: 'x', say: 'Sage, you always say that.' });
+  const duke = plan(table).find((d) => d.id === 'Duke');
+  assert.equal(duke.lines.length, 1, 'named, Duke is due');
+  land(table, 'Duke', begin(table, 'Duke', duke), { thinking: 'x', say: 'Penny, you always say that.' });
   assert.equal(table.chat.at(-1).depth, 2);
-  assert.ok(!plan(table).find((d) => d.id === 'Sage')?.lines.length, 'a reply to a reply wakes no one');
+  assert.ok(!plan(table).find((d) => d.id === 'Penny')?.lines.length, 'a reply to a reply wakes no one');
 });
 
 test('only one answer lands to a line the person says to the whole table', () => {
@@ -249,4 +250,20 @@ test('three proposals turned away on one turn: the dealer checks or folds for th
   assert.equal(table.hand.n, n + 1);
   const forced = table.log.findLast((c) => c.type === 'action');
   assert.ok(forced.forced && ['fold', 'check'].includes(forced.action.type));
+});
+
+test('an AI player out of chips buys back in; the person must buy in themselves, and a top-up lands before the next hand', () => {
+  const table = newTable(500);
+  deal(table);
+  table.hand.street = 'done';
+  table.hand.seats[1].stack = 0;
+  table.hand.seats[0].stack = 0;
+  assert.equal(deal(table), false, 'no chips, no hand');
+  assert.equal(myChips(table), 0);
+  topUp(table, 300);
+  assert.equal(myChips(table), 300);
+  assert.equal(deal(table), true);
+  assert.equal(table.hand.seats[0].stack + table.hand.seats[0].total, 300);
+  assert.equal(table.hand.seats[1].stack + table.hand.seats[1].total, STACK);
+  assert.deepEqual(table.log.filter((c) => c.type === 'rebuy').map((c) => c.by), [PERSONAS[0].id]);
 });

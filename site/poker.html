@@ -38,6 +38,12 @@
 </header>
 <main class="pk-page">
   <section class="pk-room" aria-label="Table">
+    <div class="pk-session">
+      <span class="pk-bank"></span>
+      <span class="pj-spacer"></span>
+      <button class="pj-secondary" type="button" data-action="topup">Top up</button>
+      <button class="pj-secondary" type="button" data-action="leave">Leave table</button>
+    </div>
     <div class="pk-table">
       <div class="pk-felt">
         <div class="pk-center">
@@ -45,8 +51,10 @@
           <div class="pk-board" aria-label="Board"></div>
           <div class="pk-result" hidden>
             <p class="pk-result-text" aria-live="polite"></p>
+            <p class="pk-countdown"></p>
             <div class="pk-between">
               <button class="pj-primary" type="button" data-action="next">Next hand</button>
+              <button class="pj-secondary" type="button" data-action="pause">Pause</button>
               <button class="pj-secondary" type="button" data-action="thinking">Show their thinking</button>
             </div>
           </div>
@@ -94,9 +102,22 @@
   </aside>
 </main>
 
+<form class="pj-join pk-buyin" hidden>
+  <h1 class="pk-setup-title"></h1>
+  <p class="pj-join-text pk-buyin-text"></p>
+  <div class="pk-buyin-amount">
+    <input class="pk-slider" type="range" name="amount" step="10" aria-label="Amount">
+    <output class="pk-buyin-value"></output>
+  </div>
+  <div class="pk-setup-buttons">
+    <button class="pj-secondary" type="button" data-action="buyin-cancel">Cancel</button>
+    <button class="pj-primary" type="submit"></button>
+  </div>
+</form>
+
 <form class="pj-join pk-setup" hidden>
   <h1 class="pk-setup-title">Use your own key</h1>
-  <p class="pj-join-text">Wren, Dash and Sage run on Claude Haiku 5.5, on Ponjo. With your own key, they run on the model you pick.</p>
+  <p class="pj-join-text">Gary, Duke and Penny run on Claude Haiku 5.5, on Ponjo. With your own key, they run on the model you pick.</p>
   <div class="pj-segmented" role="radiogroup" aria-label="Provider">
     <button type="button" role="radio" aria-checked="true" data-provider="anthropic">Anthropic</button>
     <button type="button" role="radio" aria-checked="false" data-provider="openai">OpenAI-compatible</button>
