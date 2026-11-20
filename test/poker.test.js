@@ -141,7 +141,8 @@ test('a seat sees only its own cards until a showdown', () => {
   const hand = startHand({ id: 1, players: players(1000, 1000, 1000), button: -1, blinds: [10, 20] });
   const v = view(hand, 1);
   assert.deepEqual(v.seats.map((s) => Boolean(s.hole)), [false, true, false]);
-  assert.ok(!JSON.stringify(v).includes(hand.seats[0].hole[0]) || hand.board.includes(hand.seats[0].hole[0]));
+  const seen = JSON.stringify(v); // a card is looked for quoted: "Ac" is also in "toAct"
+  for (const card of [...hand.seats[0].hole, ...hand.seats[2].hole]) assert.ok(!seen.includes(`"${card}"`), `${card} is in seat 1's view`);
 });
 
 // ---- the runtime ----
