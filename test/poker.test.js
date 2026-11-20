@@ -422,6 +422,14 @@ test('friends sit with their own chips, by name; one with none sits a hand out; 
   assert.ok(freeSeats(table).includes(3));
 });
 
+test('a friend who leaves before being dealt in gives the seat back at once', () => {
+  const table = newTable(500, ['Gary']);
+  seatFriend(table, 'ann', 'Ann', 2, 300);
+  assert.equal(leave(table, 'ann'), 300);
+  assert.deepEqual(lineup(table).map((p) => p.id), [HUMAN, 'Gary']);
+  assert.ok(freeSeats(table).includes(2));
+});
+
 test('with no person holding chips there is no hand', () => {
   const table = newTable(0, ['Gary']);
   seatFriend(table, 'ann', 'Ann', 2, 0);

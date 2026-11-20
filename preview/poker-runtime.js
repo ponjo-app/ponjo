@@ -165,6 +165,13 @@ export function topUp(table, amount, id = HUMAN) {
 export function leave(table, id = HUMAN) {
   const amount = myChips(table, id);
   const seat = seatOf(table, id);
+  if (seat < 0) { // a friend not yet dealt in
+    table.joining = table.joining.filter((x) => x !== id);
+    delete table.slots[id];
+    delete table.topUp[id];
+    commit(table, { type: 'leave', by: id, amount });
+    return amount;
+  }
   if (table.hand) table.hand.seats[seat].stack = 0;
   table.players[seat].stack = 0;
   delete table.topUp[id];

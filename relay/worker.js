@@ -2,6 +2,8 @@
 // Sharing): a Cloudflare Worker that serves the page (dist/web/team.html,
 // as static assets; relay/wrangler.toml) and joins the owner's doc host to
 // each teammate's page, with one Durable Object per room. It stores nothing.
+// The poker page's host shares its table with friends' pages through the
+// same rooms (preview/poker-share.js).
 //
 // Both connect with a WebSocket to /rooms/<room>, the room being the hex
 // SHA-256 of a secret only the host knows, the host adding `?host`. No
