@@ -15,7 +15,8 @@ import { colorSlots } from '../src/core/buddies.js';
 import { liven } from './life.js';
 
 const NS = 'http://www.w3.org/2000/svg';
-const INK = '#1f1d24';
+/** The ink of every face's features. */
+export const INK = '#1f1d24';
 const STROKE = 5.5;
 const GOLD = '#f5b301'; // the owner's crown
 
