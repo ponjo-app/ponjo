@@ -276,7 +276,7 @@ export async function createBuddyRuntime({ world, docPath, settingsDir, secrets,
     }
     for (const a of task.asks) note.failed.delete(a.id);
     broadcastAgents();
-    return world.propose({ ...task.agent, for: task.askers, depth: task.depth }, run.from, { files: view.files, asks: task.asks }, { text: result.edited, comments: result.comments, groups: result.groups, output: result.stdout });
+    return world.propose({ ...task.agent, for: task.askers, depth: task.depth }, run.from, { files: view.files, asks: task.asks }, { text: result.edited, comments: result.comments, groups: result.groups, actions: result.actions, output: result.stdout });
   }
 
   // ---- the breaker ----

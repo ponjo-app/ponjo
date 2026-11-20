@@ -60,6 +60,7 @@ const TOOLS = [
         on: { type: 'string', description: 'For a new thread: the text it is about, quoted exactly from the doc as this comment\'s edits leave it, and found there once; "" for the whole doc.' },
         body: { type: 'string', description: 'What you say.' },
         edits: { type: 'array', items: { type: 'object', properties: { old: { type: 'string' }, new: { type: 'string' } }, required: ['old', 'new'] } },
+        actions: { type: 'array', description: 'Actions outside the doc this comment proposes, from those the prompt lists, each carried out once it is posted and approved.', items: { type: 'object', properties: { action: { type: 'string' }, input: {} }, required: ['action'] } },
       },
       required: ['body'],
     },
@@ -76,10 +77,12 @@ const TOOLS = [
  * subfolder's ending in /) or null;
  * `resolve(path)` a path the model wrote as the copies' paths are written
  * (ponjo.mjs's inProject). Resolves, at a step with no call, to { doc,
- * sidecar, groups, text }: the copies' new texts, the doc with every comment's
+ * sidecar, groups, actions, text }: the copies' new texts, the doc with every comment's
  * edits and the sidecar with a line for each comment, and `groups`, for
  * each comment with edits, { comment (its place among the lines), doc (the
- * doc after its edits) } (docs/agent-config.md, PONJO_GROUPS), and what
+ * doc after its edits) } (docs/agent-config.md, PONJO_GROUPS), `actions`,
+ * { comment, action, input } for each action a comment proposes
+ * (docs/agent-runtime.md#outside-actions), and what
  * the model wrote in that last step. Throws when the turn fails.
  *
  * The messages are in one form for every provider: { role: 'user', content },
@@ -99,21 +102,22 @@ export async function turn({ prompt, doc, sidecar }, { infer, readFile, resolve 
   const messages = [{ role: 'user', content: opening.filter(Boolean).join('\n\n'), cache: true }, ...(situation ? [{ role: 'user', content: situation }] : [])];
   const comments = []; // the sidecar's lines, as objects, added when the turn ends
   const groups = [];
+  const actions = [];
   for (let step = 0; step < STEPS; step++) {
     const { calls, text, sent } = await infer(messages, TOOLS);
     messages.push({ role: 'assistant', calls, sent });
     if (!calls.length) {
       const before = await readFile(sidecar);
       const lines = comments.map((c) => `${JSON.stringify(c)}\n`).join('');
-      return { doc: texts.doc, sidecar: `${before}${lines && before && !before.endsWith('\n') ? '\n' : ''}${lines}`, groups, text: text.trim() };
+      return { doc: texts.doc, sidecar: `${before}${lines && before && !before.endsWith('\n') ? '\n' : ''}${lines}`, groups, actions, text: text.trim() };
     }
-    for (const call of calls) messages.push({ role: 'tool', id: call.id, content: await use(call, { doc, sidecar, texts, comments, groups, readFile, reads, resolve }) });
+    for (const call of calls) messages.push({ role: 'tool', id: call.id, content: await use(call, { doc, sidecar, texts, comments, groups, actions, readFile, reads, resolve }) });
   }
   throw new Error(`The turn did not end in ${STEPS} steps.`);
 }
 
 // What a tool call gives back to the model.
-async function use({ name, args: json }, { doc, sidecar, texts, comments, groups, readFile, reads, resolve }) {
+async function use({ name, args: json }, { doc, sidecar, texts, comments, groups, actions, readFile, reads, resolve }) {
   let args;
   try {
     args = JSON.parse(json);
@@ -123,8 +127,9 @@ async function use({ name, args: json }, { doc, sidecar, texts, comments, groups
   if (name === 'read') return read(args, reads, doc);
   if (name === 'find' || name === 'grep') return search(name, args, reads, resolve);
   if (name !== 'comment') return `No tool ${name}: call ${ANY_TOOL}.`;
-  const { on, thread: to, body, edits = [] } = args;
+  const { on, thread: to, body, edits = [], actions: proposed = [] } = args;
   if (typeof body !== 'string' || !body.trim() || (typeof on !== 'string') === (typeof to !== 'string') || !Array.isArray(edits)) return 'Not posted: comment takes { on, body, edits } for a new thread or { thread, body, edits } for a reply, body not empty, edits [{ old, new }] or left out.';
+  if (!Array.isArray(proposed) || !proposed.every((a) => typeof a?.action === 'string')) return 'Not posted: actions is [{ action, input }] or left out.';
   // A thread of the doc, by the id of its first comment, as the comments file has it.
   const isThread = (await readFile(sidecar) ?? '').split('\n').some((line) => {
     try {
@@ -152,6 +157,7 @@ async function use({ name, args: json }, { doc, sidecar, texts, comments, groups
     texts.doc = edited;
     groups.push({ comment: comments.length - 1, doc: edited });
   }
+  for (const { action, input = null } of proposed) actions.push({ comment: comments.length - 1, action, input });
   return `Posted when your turn ends, ${where}${edits.length ? `, with its ${edits.length === 1 ? 'edit' : `${edits.length} edits`}, applied now: read the doc to see them` : ''}.`;
 }
 

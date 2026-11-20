@@ -84,9 +84,13 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
   }
 
   const calls = {
-    read: {},
+    // The actions runs here proposed (doc-actions.js): anyone in the doc sees them; only the owner decides.
+    read: { actions: () => world.actions.list() },
     write: runtime.calls,
     owner: {
+      approveAction: ({ id } = {}, who) => world.actions.approve(id, who),
+      declineAction: ({ id } = {}, who) => world.actions.decline(id, who),
+      retryAction: ({ id } = {}, who) => world.actions.retry(id, who),
       // A new buddy: in a project, the project's (in .ponjo/buddies/, made if
       // missing); in a doc on its own, the user's.
       async createBuddy({ buddy } = {}) {

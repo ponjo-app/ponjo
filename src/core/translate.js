@@ -26,7 +26,8 @@ function lastWords(output) {
  * `asking` the ids of the threads that asked the run and `output` what its
  * agent printed.
  *
- * Returns { posts (the comments to post, in order), carried ([{ comment,
+ * Returns { posts (the comments to post, in order), byLine (each of them by
+ * its line among the appended, from 0, as PONJO_ACTIONS names it), carried ([{ comment,
  * doc (the doc after its edits), lands }], in order: the edits each comment
  * carries, merged one after another, `lands` false for one in a thread
  * resolved meanwhile) }. Each comment's edits are its group; an agent that
@@ -49,5 +50,5 @@ export function toChanges({ by, base, edited, comments, groups = [], threads, as
     if (!posts.length) posts.push(newComment({ thread: asking.find((id) => open.has(id)), body: lastWords(output) ?? EDITED }, { by, at: '' }));
     carried = [{ comment: posts.at(-1), doc: edited }];
   }
-  return { posts: posts.filter(kept), carried: carried.map((c) => ({ ...c, lands: kept(c.comment) })) };
+  return { posts: posts.filter(kept), byLine: new Map([...byLine].filter(([, c]) => kept(c))), carried: carried.map((c) => ({ ...c, lands: kept(c.comment) })) };
 }

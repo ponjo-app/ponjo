@@ -438,6 +438,22 @@ a person typing while only a watch had it run) lands nothing. Runs of
 different buddies go on at once; their changes land one at a time, in the
 door's order.
 
+### Actions
+
+A comment a run posted may carry actions outside the doc
+([actions](agent-config.md#actions)). Once it lands, each is recorded in the
+config folder's `logs/actions.jsonl`, a line per step (`proposed`,
+`approved`, `declined`, `started`, `done`, `failed`), never in the sidecar.
+It waits for the owner's `approveAction` or `declineAction`, unless
+`settings.json`'s `actions: { <name>: { ask: false } }` lets it run without
+asking and every person the run was for is the owner. Approved, it is
+carried out once; its result, or that it failed, is posted as its buddy's
+reply in its thread, asking at the run's depth + 1. One `started` with no
+end, as the host stopped, reads `unknown` and is never started again on its
+own: `retryAction` carries it out again, as it does one that failed. Anyone
+in the doc reads them (`actions`); only the owner decides. Undo takes back
+the comment's edits, never its actions.
+
 ### Failures
 
 A run that fails (an exit other than 0, a timeout, a run the host could not

@@ -19,6 +19,7 @@ An agent is a filter ([architecture](host-spec.md#a-run)):
 | `PONJO_TRACE` | a file, out of the working folder, the agent may write its steps to (see [Traces](#traces)) |
 | `PONJO_GROUPS` | a file, out of the working folder, the agent may write its comments' edits to (see [Groups](#groups)) |
 | `PONJO_WAKE` | a file, out of the working folder, the agent may write the lines of the doc that wake it next to (see [Wake](#wake)) |
+| `PONJO_ACTIONS` | a file, out of the working folder, the agent may write the actions outside the doc its comments propose to (see [Actions](#actions)) |
 | `PONJO_SETTING_<KEY>` | each of the agent's [settings](#settings) |
 | stdout | anything; kept in the trace, never posted |
 | Exit 0 | success; the app adds the appended comments and merges the doc copy's edits into the doc, each with the comment it comes with. |
@@ -95,6 +96,26 @@ such as `Action on: Ada`. An agent that writes none wakes on any change. The
 lines are this machine's, in memory, gone when the watch is turned off or
 the app starts again; they only make a buddy run less, and an ask runs it
 whatever they say.
+
+### Actions
+
+An agent acts outside the doc only by proposing an action with one of its
+comments ([outside actions](agent-runtime.md#outside-actions)). The prompt
+lists the actions installed here, each with what it does and the input it
+takes. In `PONJO_ACTIONS`, a line for each:
+`{"comment":<its comment's place among the lines it appended, from
+0>,"action":"<its file name>","input":<JSON>}`. An action on a comment
+that does not land, or not installed here, is dropped. The Ponjo agent
+gives them with its comment.
+
+An action is a program in `actions/` of the config folder (`<name>.cmd` on
+Windows) with its manifest `<name>.json`: `{ name, about, input }`, what it
+does and what it takes, in words. None ship, and one without a valid
+manifest is not offered. It runs in a new folder with the input on stdin, as
+JSON, and its id as `PONJO_ACTION_ID`, the same if it is carried out again,
+for a service that drops a second try. Exit 0 is done, and its output's
+last line the result, posted as its buddy's reply in the thread; any other
+exit failed.
 
 ## Agents
 
