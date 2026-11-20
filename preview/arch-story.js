@@ -284,7 +284,7 @@ function cover(scene) {
   pet.type = 'button';
   pet.dataset.follow = '';
   const title = el('h1', '', 'Blackboard Multi-agent System');
-  const lead = el('p', '', 'How Ponjo’s agents work, in two contrasts: how you work with them, and when they run.');
+  const lead = el('p', '', 'Agents that work beside you, not after you.');
   scene.stage.classList.add('arch-cover');
   art.append(pet);
   scene.stage.append(art, title, lead);
