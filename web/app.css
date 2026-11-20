@@ -48,7 +48,7 @@
   --rail: #8b5a36; --rail-deep: #6a4227; --card: #fffdf7; --card-ink: #1f1d24; --suit-red: #d23a2c; --card-back: #3f62bf;
   --chip-white: #f3efe6; --chip-red: #d23a2c; --chip-blue: #3f62bf; --chip-black: #2b2932; --chip-gold: #f2b52a;
   /* the running track (site/architecture.html) only: a track, its lane lines and the field inside it, never the UI */
-  --track: #c4704b; --track-line: #fffdf7; --field: #a9c98f;
+  --track: #b9b5ad; --track-line: #fffdf7; --field: #a9c98f;
   color-scheme: light;
 }
 :root[data-font="serif"] { --doc-font: var(--serif); --doc-size: 17px; --doc-leading: 1.65; --doc-tracking: 0; }
@@ -67,7 +67,7 @@
     --shadow: 0 0 0 1px rgba(255, 250, 240, 0.07);
     --shadow-raised: 0 8px 24px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 250, 240, 0.09);
     --felt: #215c3e; --felt-deep: #17472f; --rail: #5f3c24; --rail-deep: #462b19; --card: #f4f0e6; --suit-red: #d8473a; --card-back: #3a58a8;
-    --track: #9a5236; --track-line: #ece6da; --field: #5f7d50;
+    --track: #5c5a55; --track-line: #ece6da; --field: #5f7d50;
     color-scheme: dark;
   }
 }
@@ -82,7 +82,7 @@
     --shadow: 0 0 0 1px rgba(255, 250, 240, 0.07);
     --shadow-raised: 0 8px 24px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 250, 240, 0.09);
     --felt: #215c3e; --felt-deep: #17472f; --rail: #5f3c24; --rail-deep: #462b19; --card: #f4f0e6; --suit-red: #d8473a; --card-back: #3a58a8;
-    --track: #9a5236; --track-line: #ece6da; --field: #5f7d50;
+    --track: #5c5a55; --track-line: #ece6da; --field: #5f7d50;
     color-scheme: dark;
   }
 }

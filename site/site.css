@@ -208,6 +208,7 @@ a { color: var(--accent); }
    what its face shows over its own eyes (LIMBS, PROPS and LOOKS in arch-story.js) */
 .arch-figure { --face: clamp(32px, 7.4cqw, 56px); position: relative; width: var(--face); height: calc(var(--face) * 80 / 56); }
 .arch-figure .pj-avatar { --size: var(--face); }
+.arch-sketch [data-presence="away"] .pj-avatar { filter: none; opacity: 1; } /* asleep in a scene, eyes shut but in colour */
 .arch-figure { transform-origin: 50% 100%; } /* it leans, squashes and stretches from its feet */
 .arch-limbs, .arch-looks { position: absolute; overflow: visible; fill: none; stroke: var(--text); stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
 .arch-limbs { inset: 0; width: 100%; height: 100%; stroke-width: 2.6; }
