@@ -506,6 +506,14 @@ del.pj-buddy-del { margin-right: 0.15em; }
 .pj-receipt-undone { border-color: var(--border); background: none; }
 .pj-receipt-undone > .pj-icon { color: var(--text-faint); }
 .pj-receipt-undone > span { flex: 1; }
+.pj-action { margin-top: 8px; padding: 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text-soft); font-size: 12px; cursor: default; }
+.pj-action-head { display: flex; align-items: center; gap: 6px; }
+.pj-action-head > .pj-icon { width: 14px; height: 14px; flex: none; color: var(--text-soft); }
+.pj-action-name { flex: 1; min-width: 0; color: var(--text); font-size: 13px; font-weight: 500; }
+.pj-action .pj-trace-text { margin: 6px 0; max-height: 120px; }
+.pj-action-foot { display: flex; align-items: center; gap: 8px; min-height: 28px; }
+.pj-action-foot > span { flex: 1; min-width: 0; }
+.pj-action-failed .pj-action-foot > span { color: var(--red); }
 
 /* ---- selection bubble ---- */
 
