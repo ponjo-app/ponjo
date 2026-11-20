@@ -8,7 +8,7 @@
 body, .pk-chat, .pk-plate, .ww-say { transition: background-color 1.2s, color 1.2s; }
 
 .ww-room { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
-.ww-board { position: relative; width: min(100%, 620px, calc(100vh - 360px)); min-width: 380px; margin: 64px auto 72px; }
+.ww-board { position: relative; display: flex; flex-direction: column; width: min(100%, 620px, calc(100vh - 420px)); min-width: 380px; margin: 8px auto 72px; }
 
 /* the clearing: day ground, night laid over it as the narrator calls night */
 .ww-ring { position: relative; aspect-ratio: 1; border-radius: 50%; background: radial-gradient(closest-side, var(--camp-day) 70%, var(--camp-day-deep)); }
@@ -16,7 +16,7 @@ body, .pk-chat, .pk-plate, .ww-say { transition: background-color 1.2s, color 1.
 .ww-board[data-time="night"] .ww-ring::before { opacity: 1; }
 
 /* the fire: burning at night, its light wide; out by day, a wisp of smoke over its logs */
-.ww-fire { position: absolute; left: 50%; top: 62%; width: 88px; height: 88px; translate: -50% -50%; pointer-events: none; }
+.ww-fire { position: absolute; left: 50%; top: 50%; width: 88px; height: 88px; translate: -50% -50%; pointer-events: none; }
 .ww-fire::before { content: ""; position: absolute; inset: -130%; border-radius: 50%; background: radial-gradient(closest-side, var(--fire-glow), transparent); opacity: 0; transition: opacity 1.2s; }
 .ww-board[data-time="night"] .ww-fire::before { opacity: 1; }
 .ww-fire svg { position: relative; width: 100%; height: 100%; overflow: visible; }
@@ -35,7 +35,8 @@ body, .pk-chat, .pk-plate, .ww-say { transition: background-color 1.2s, color 1.
 .ww-votes line { stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; }
 .ww-votes line[data-mine] { stroke: var(--text); stroke-dasharray: 4 4; }
 
-.ww-center { position: absolute; inset: 22% 22% auto; display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; transition: color 1.2s; }
+/* the phase and the narrator's line, over the clearing, clear of what is said in it */
+.ww-center { order: -1; min-height: 64px; margin-bottom: 64px; display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; transition: color 1.2s; }
 .ww-phase { margin: 0; font-size: 20px; font-weight: 600; }
 .ww-sub { margin: 0; max-width: 260px; color: var(--text-soft); font-size: 13px; line-height: 1.4; transition: color 1.2s; }
 .ww-sub:empty { display: none; }
@@ -60,7 +61,7 @@ body, .pk-chat, .pk-plate, .ww-say { transition: background-color 1.2s, color 1.
 .ww-chip[data-kind="note"] { background: none; box-shadow: inset 0 0 0 1px var(--text-faint); color: var(--text-soft); }
 
 /* what a player just said, by their seat, toward the fire */
-.ww-say { position: absolute; z-index: 2; left: 50%; top: 28px; width: max-content; max-width: 180px; padding: 6px 10px; border-radius: 14px; background: var(--bg); box-shadow: var(--shadow-raised); color: var(--text); font-size: 13px; line-height: 1.35; text-align: left; translate: calc(-50% - cos(var(--a)) * 118px) calc(-50% - sin(var(--a)) * 96px); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; pointer-events: none; animation: pj-pop 0.15s ease-out; }
+.ww-say { position: absolute; z-index: 2; left: 50%; top: 28px; width: max-content; max-width: 180px; padding: 6px 10px; border-radius: 14px; background: var(--bg); box-shadow: var(--shadow-raised); color: var(--text); font-size: 13px; line-height: 1.35; text-align: left; translate: calc(-50% - cos(var(--a)) * 140px) calc(-50% - sin(var(--a)) * 110px); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; pointer-events: none; animation: pj-pop 0.15s ease-out; }
 .ww-say:empty { display: none; }
 .ww-say.pk-typing { display: flex; gap: 4px; padding: 10px 12px; }
 
@@ -88,10 +89,10 @@ body, .pk-chat, .pk-plate, .ww-say { transition: background-color 1.2s, color 1.
   .ww-flame, .ww-flame-core, .ww-smoke { animation: none; }
 }
 @media (max-width: 640px) {
-  .ww-board { width: calc(100% - 72px); min-width: 0; margin: 56px auto 0; }
+  .ww-board { width: calc(100% - 72px); min-width: 0; }
   .ww-ring { aspect-ratio: 3 / 4; } /* an oval, so the seats have room above and below each other */
-  .ww-center { position: static; padding-top: 72px; }
-  .ww-fire { top: 50%; width: 64px; height: 64px; }
+  .ww-center { margin-bottom: 56px; }
+  .ww-fire { width: 64px; height: 64px; }
   .ww-seat { width: 72px; gap: 4px; }
   .ww-seat .pj-avatar { --size: 40px; }
   .ww-seat .pk-plate { width: 72px; }

@@ -243,12 +243,18 @@ test('a speech is the speaker\'s action; a run that says nothing is asked again'
   assert.equal(game.state.log.at(-1).silent, true, 'out of time: the next speaker said nothing');
 });
 
-test('each AI player has its own persona, and a prompt names the player and its role', () => {
+test('each AI player has its own character, and a prompt gives it with the player\'s role', () => {
   assert.equal(new Set(PERSONAS.map((p) => p.id)).size, PERSONAS.length);
   assert.ok(PERSONAS.length >= Math.max(...SIZES) - 1);
+  for (const field of ['blurb', 'voice', 'play', 'wolf', 'claim', 'hello']) {
+    assert.equal(new Set(PERSONAS.map((p) => p[field])).size, PERSONAS.length, `each has its own ${field}`);
+  }
+  assert.ok(PERSONAS.every((p) => p.words > 0 && p.words * 7 < MAX_SPEECH), 'a speech of their length fits in a speech\'s characters');
   const game = newTable(8, { roles: ['villager', 'wolf', 'seer', 'witch', 'villager', 'wolf', 'villager', 'villager'] });
   const { rules, situation } = prompt(game, 'Rosa');
-  assert.match(rules, /You are Rosa, in seat 2\. You are a retired schoolteacher/);
+  assert.match(rules, /You are Rosa, in seat 2: a retired teacher who keeps the record\./);
+  assert.match(rules, /How you talk: .*about 50 words\.\nHow you play: You keep score/);
+  assert.match(rules, /As a werewolf: .*\nAs the seer or the witch: As the seer you reveal yourself early/);
   assert.match(situation, /Your role: werewolf\. The werewolves: seat 2, you \(werewolf\) and seat 6, Priya \(werewolf\)\./);
   assert.match(situation, /Now: Pick the player the werewolves kill tonight/);
   assert.doesNotMatch(prompt(game, 'Jax').situation, /Now:/, 'the seer sleeps till the wolves have picked');
