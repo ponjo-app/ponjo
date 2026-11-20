@@ -66,14 +66,6 @@ function cross([x, y]) {
   return [`M${f(x - s)} ${f(y - s)} L${f(x + s)} ${f(y + s)}`, `M${f(x + s)} ${f(y - s)} L${f(x - s)} ${f(y + s)}`];
 }
 
-// A box `w`×`h` round `at`.
-function rect(svg, [x, y], w, h) {
-  const node = document.createElementNS(NS, 'rect');
-  for (const [k, v] of Object.entries({ x: x - w / 2, y: y - h / 2, width: w, height: h, rx: 10, class: 'arch-box' })) node.setAttribute(k, v);
-  svg.append(node);
-  return node;
-}
-
 function line(svg, d, className = 'arch-ink') {
   const path = document.createElementNS(NS, 'path');
   path.setAttribute('d', d);
@@ -259,84 +251,91 @@ async function delegate(scene) {
   scene.say('One agent, one task: delegating works. But what if the work is shared?');
 }
 
-// The table: the dealer in a box, the four round it, the dealer's messages
-// arrows to them.
-async function table(scene) {
+// The board: a short doc everyone sees, `size` in the diagram's units, round `at`.
+function board(box, at, [w, h]) {
+  const node = box.place(el('div', 'arch-board'), at);
+  node.style.width = `${(w / box.W) * 100}%`;
+  node.style.height = `${(h / box.H) * 100}%`;
+  node.append(el('b', '', 'Launch plan'), el('p', '', 'Ship the beta to 50 teams.'));
+  return node;
+}
+
+// An arrow from the edge of a box `size` round `from` to the face at `to`.
+function between(from, [w, h], to) {
+  const [dx, dy] = [to[0] - from[0], to[1] - from[1]];
+  const k = Math.hypot(dx, dy);
+  const edge = Math.min(w / 2 / Math.abs(dx || 1e-9), h / 2 / Math.abs(dy || 1e-9)) + 8 / k;
+  return arrow([from[0] + dx * edge, from[1] + dy * edge], [to[0] - (dx / k) * 44, to[1] - (dy / k) * 44]);
+}
+
+// Triggered by events: a change to the board sends the buddy asked a
+// message, and the buddy runs when it arrives. Lose it, and nothing runs.
+async function events(scene) {
   const box = sketch(scene.stage);
   const { W, H } = box;
   const ink = (d, className) => line(box.svg, d, className);
-  const MIDDLE = [W / 2, H / 2];
-  const [bw, bh] = [W < 500 ? 120 : 160, 72]; // the dealer's box
-  const SEATS = { Otto: [W / 2, 50], Pip: [W - 80, H / 2], You: [W / 2, H - 50], Clippy: [80, H / 2] };
+  const MIDDLE = [W / 2, H / 2 - 10];
+  const SIZE = W < 500 ? [300, 176] : [260, 128];
+  const SEATS = W < 500
+    ? { Clippy: [W * 0.25, 52], Otto: [W * 0.75, 52], You: [W / 2, H - 50] }
+    : { Clippy: [110, MIDDLE[1]], Otto: [W - 110, MIDDLE[1]], You: [W / 2, H - 50] };
+  const doc = board(box, MIDDLE, SIZE);
   const seats = Object.fromEntries(Object.entries(SEATS).map(([name, at]) => {
     const node = box.place(actor(name, { person: name === 'You', presence: name === 'You' ? 'idle' : 'away' }), at);
     const tag = el('span', 'arch-tag');
     node.querySelector('.pj-agent-face').append(tag);
-    return [name, { node, face: node.querySelector('.pj-agent-face'), tag }];
+    return [name, { face: node.querySelector('.pj-agent-face'), tag }];
   }));
-  const dealer = el('div', 'arch-label', 'Dealer');
-  const action = el('p', 'arch-status');
-  scene.stage.append(action);
+  const under = [W / 2, MIDDLE[1] + SIZE[1] / 2 + 30]; // where a button goes
+  const ask = (text) => doc.appendChild(el('p', 'arch-ask', text));
+  const message = (name) => between(MIDDLE, SIZE, SEATS[name]).map((d) => ink(d));
 
-  scene.say('Now the work is shared: you and three buddies around one table, and a dealer who says whose turn it is.');
-  await scene.move(rect(box.svg, MIDDLE, bw, bh), [{ opacity: 0 }, { opacity: 1 }], 400);
-  box.place(dealer, MIDDLE);
-  scene.say('Here a buddy runs only when a message tells it to. Start the hand.');
-  const deal = box.place(button('Start the hand'), [W / 2, H / 2 + bh / 2 + 32]);
-  await scene.click(deal);
+  scene.say('Now the work is shared: you and two buddies, one board everyone sees. Here a buddy runs only when a message tells it about a change.');
+  await scene.wait(1200);
+  const dates = ask('@Otto add the dates');
+  scene.say('You ask Otto on the board. A message goes to Otto, and Otto runs.');
+  const [shaft, head] = message('Otto');
+  await scene.draw(shaft, 600);
+  await scene.draw(head, 150);
+  seats.Otto.face.dataset.presence = 'working';
+  await scene.wait(1400);
+  dates.className = '';
+  dates.textContent = 'Beta May 15, launch June 2.';
+  seats.Otto.tag.textContent = 'Edited';
+  seats.Otto.face.dataset.presence = 'away';
+  await Promise.all([shaft, head].map((path) => scene.move(path, [{ opacity: 1 }, { opacity: 0 }], 400)));
 
-  // The dealer's message to `name`: an arrow from the box's edge to its face.
-  const toward = (name) => {
-    const [x, y] = SEATS[name];
-    const [dx, dy] = [x - MIDDLE[0], y - MIDDLE[1]];
-    const k = Math.hypot(dx, dy);
-    const edge = Math.min(bw / 2 / Math.abs(dx || 1e-9), bh / 2 / Math.abs(dy || 1e-9)) + 8 / k;
-    const [shaft, head] = arrow([MIDDLE[0] + dx * edge, MIDDLE[1] + dy * edge], [x - (dx / k) * 44, y - (dy / k) * 44]);
-    return [ink(shaft), ink(head)];
-  };
-  const message = async (name, play) => {
-    action.textContent = `Action on: ${name}`;
-    const [shaft, head] = toward(name);
-    await scene.draw(shaft, 600);
-    await scene.draw(head, 150);
-    seats[name].face.dataset.presence = 'working';
-    await scene.wait(1200);
-    seats[name].tag.textContent = play;
-    seats[name].face.dataset.presence = 'away';
-    await Promise.all([shaft, head].map((path) => scene.move(path, [{ opacity: 1 }, { opacity: 0 }], 400)));
-  };
-  await message('Otto', 'Call');
-  await message('Pip', 'Raise 40');
+  scene.say('Now ask Clippy.');
+  await scene.click(box.place(button('Ask Clippy'), under));
+  ask('@Clippy make the goal shorter');
+  const [lost, tip] = message('Clippy');
+  tip.remove();
+  await scene.draw(lost, 500, 0.45);
+  scene.say('Its message is on the way. Lose it.');
+  await scene.click(box.place(button('Lose the message'), under));
 
-  action.textContent = 'Action on: Clippy';
-  const [shaft, head] = toward('Clippy');
-  head.remove();
-  await scene.draw(shaft, 500, 0.45);
-  scene.say('Clippy is next, and its message is on the way. Lose it.');
-  const lose = box.place(button('Lose the message'), [W / 2, H / 2 + bh / 2 + 32]);
-  await scene.click(lose);
-
-  const at = shaft.getPointAtLength(shaft.getTotalLength() * 0.45);
-  await scene.move(shaft, [{ opacity: 1 }, { opacity: 0.25 }], 300);
+  const at = lost.getPointAtLength(lost.getTotalLength() * 0.45);
+  await scene.move(lost, [{ opacity: 1 }, { opacity: 0.25 }], 300);
   for (const d of cross([at.x, at.y])) await scene.draw(ink(d, 'arch-ink arch-lost'), 150);
-  scene.say('The message is lost, so Clippy never runs, and nothing looks at the table again. The hand is stuck.');
+  scene.say('The message is lost, so Clippy never runs. Your ask sits on the board, and nothing looks at it again.');
   const foot = el('p', 'arch-foot', 'A runtime that starts a run per event loses the work with the event: ');
   const link = el('a', '', 'even OpenHands drops requests when a poll fails');
   link.href = OPENHANDS;
   foot.append(link, '.');
-  scene.stage.append(foot);
+  const status = el('p', 'arch-status');
+  scene.stage.append(foot, status);
   let waited = 0;
   const tick = setInterval(() => {
     if (scene.stopped) return clearInterval(tick);
     waited += 1;
-    action.textContent = `Action on: Clippy · waiting ${Math.floor(waited / 60)}:${String(waited % 60).padStart(2, '0')}`;
+    status.textContent = `Clippy’s ask: unanswered for ${Math.floor(waited / 60)}:${String(waited % 60).padStart(2, '0')}`;
   }, 1000);
 }
 
 const CHAPTERS = [
   ['', cover],
   ['1 · Delegate', delegate],
-  ['2 · A shared table', table],
+  ['2 · Triggered by events', events],
 ];
 
 // ---- the story: a chapter at a time, with Back, Next and a dot for each ----
