@@ -150,6 +150,12 @@ body:is(.pk-setting-up, .pk-buying-in) .pk-page { filter: blur(1px); opacity: 0.
 .pk-msg[data-mine] { justify-content: flex-end; }
 .pk-msg[data-mine] .pk-msg-col { align-items: flex-end; }
 .pk-msg[data-mine] .pk-msg-text { border-radius: 14px 14px 4px 14px; background: var(--text); box-shadow: none; color: var(--on-text); }
+/* someone typing: three dots in their bubble */
+.pk-typing .pk-msg-text { display: flex; gap: 4px; padding: 12px; }
+.pk-typing i { width: 6px; height: 6px; border-radius: 50%; background: var(--text-faint); animation: pk-dot 1.2s ease-in-out infinite; }
+.pk-typing i:nth-child(2) { animation-delay: 0.15s; }
+.pk-typing i:nth-child(3) { animation-delay: 0.3s; }
+@keyframes pk-dot { 30% { transform: translateY(-3px); background: var(--text-soft); } }
 .pk-dealer { margin: 16px 0 4px; color: var(--text-faint); font-size: 12px; line-height: 1.5; text-align: center; }
 .pk-dealer[data-failed] { color: var(--red); }
 .pk-seat[data-pos="left"] .pk-react, .pk-seat[data-pos="top"] .pk-react { right: auto; left: calc(100% - 4px); border-radius: 14px 14px 14px 4px; transform-origin: bottom left; } /* toward the table, not off the page */
@@ -201,6 +207,7 @@ body:is(.pk-setting-up, .pk-buying-in) .pk-page { filter: blur(1px); opacity: 0.
 @media (prefers-reduced-motion: reduce) {
   .pk-card[data-in], .pk-card[data-flip], .pk-tag, .pk-seat[data-won] .pj-agent-face, .pk-pulse, .pk-bump { animation: none; }
   .pk-street, .pk-delta { display: none; }
+  .pk-typing i { animation: none; }
   .pk-react { animation: none; }
 }
 

@@ -71,25 +71,47 @@ function changed() {
 }
 
 // One run of a player: what it is due for counts as seen, one model call, and its proposal to the writer.
+// A model answers in a second or two, faster than a person can follow: a
+// player takes at least its own time to think (more facing a bet, less
+// to answer in the chat), and its line comes after it is seen typing it.
+const PACE = { Gary: [1200, 2600], Duke: [700, 1600], Penny: [1800, 3600] }; // ms a player thinks on its turn, from and to
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, Math.max(0, ms)));
+function thinkTime(id, due) {
+  const [from, to] = PACE[id];
+  const ms = from + Math.random() * (to - from);
+  if (!due.turn) return ms / 2;
+  const s = table.hand.seats[table.players.findIndex((p) => p.id === id)];
+  return ms + (table.hand.currentBet > s.bet ? 600 : 0);
+}
+const typeTime = (text) => Math.min(3000, Math.max(700, text.length * 35));
+const typing = new Set(); // players typing a line, shown in the chat
+
 async function run(id, due) {
   const basis = begin(table, id, due);
+  const started = performance.now();
   running.add(id);
   draw();
   const { rules, situation } = prompt(table, id, due);
-  const sent = table;
   try {
     const { calls, text } = await infer()([{ role: 'user', content: rules, cache: true }, { role: 'user', content: situation }], [DECIDE]);
     let args = {};
     try {
       args = JSON.parse(calls.find((c) => c.name === 'decide')?.args ?? '{}');
     } catch {}
-    running.delete(id);
-    if (sent !== table) return changed(); // a new game began meanwhile
-    land(table, id, basis, { thinking: args.thinking ?? text, action: args.action ?? null, say: args.say, react: args.react });
+    await wait(thinkTime(id, due) - (performance.now() - started));
+    land(table, id, basis, { thinking: args.thinking ?? text, action: args.action ?? null, react: args.react });
+    if (typeof args.say === 'string' && args.say.trim()) {
+      typing.add(id);
+      changed();
+      await wait(typeTime(args.say));
+      typing.delete(id);
+      land(table, id, basis, { say: args.say });
+    }
   } catch (error) {
-    running.delete(id);
-    if (sent === table) fail(table, id, basis, String(error.message).split('\n')[0]);
+    typing.delete(id);
+    fail(table, id, basis, String(error.message).split('\n')[0]);
   }
+  running.delete(id);
   changed();
 }
 
@@ -506,6 +528,7 @@ let posted = 0; // the last hand whose result is in the chat
 function drawFeed() {
   const feed = $('.pk-feed');
   const stick = feed.scrollHeight - feed.scrollTop - feed.clientHeight < 40;
+  for (const node of feed.querySelectorAll('.pk-typing')) node.remove();
   for (; drawn < table.log.length; drawn++) {
     const change = table.log[drawn];
     if (change.type === 'chat') {
@@ -533,6 +556,14 @@ function drawFeed() {
   if (hand?.street === 'done' && posted !== hand.id) {
     posted = hand.id;
     feed.append(dealer(`Hand ${hand.id}: ${resultText()}`));
+  }
+  for (const id of typing) {
+    const row = message({ by: id, text: '' }, false);
+    row.classList.add('pk-typing');
+    row.dataset.by = '';
+    $('.pk-msg-text', row).append(el('i'), el('i'), el('i'));
+    $('.pk-msg-text', row).setAttribute('aria-label', `${id} is typing`);
+    feed.append(row);
   }
   if (stick) feed.scrollTop = feed.scrollHeight;
 }
