@@ -50,7 +50,6 @@ const LIMBS = {
     b: ['M7 31 L0 25 L-4 31', 'M49 31 L56 40 L54 47'],
     carry: ['M7 33 L-4 37 L-7 30', 'M49 30 L57 25 L61 32'],
     write: ['M7 31 L0 45', 'M48 27 L58 6'],
-    look: ['M7 31 L0 45', 'M49 30 L54 15'],
     tap: ['M7 31 L-10 28', 'M49 31 L56 45'],
     dazed: ['M7 33 L-1 46 L5 50', 'M49 28 L60 17 L55 6'],
     baton: ['M7 33 L-4 37 L-7 31', 'M49 30 L57 25 L61 32'],
@@ -60,7 +59,6 @@ const LIMBS = {
 const PROPS = {
   carry: [['arch-prop', 'M-26 6 L-8 3 L-5 29 L-23 32 Z'], ['arch-prop-ink', 'M-21 11 L-12 10 M-20 16 L-11 15 M-20 21 L-13 20']],
   write: [['arch-prop arch-prop-pen', 'M55 -13 L62 -12 L62 2 L59 6 L55 2 Z']],
-  look: [['', 'M54 15 L58 8'], ['arch-prop', 'M57 0 a8 8 0 1 0 16 0 a8 8 0 1 0 -16 0']],
   dazed: [['arch-prop', 'M58 -6 Q52 -8 56 -14 Q56 -22 64 -19 Q70 -25 74 -17 Q81 -15 77 -9 Q76 -2 69 -5 Q63 0 58 -6 Z']],
   baton: [['arch-prop', 'M-19 25 H-5 V31 H-19 Z']],
   reach: [['arch-prop', 'M-27 27 H-13 V33 H-27 Z']],
@@ -144,7 +142,7 @@ function actor(name, presence, { headset = false } = {}) {
     parts.waves.style.display = 'none';
     looks.append(parts.waves);
   }
-  const who = name === 'Runtime' ? machine() : face(name, { person: name === 'You', presence });
+  const who = face(name, { person: name === 'You', presence });
   const tag = el('span', 'arch-tag');
   who.append(tag, looks);
   figure.append(limbs, who);
@@ -152,16 +150,6 @@ function actor(name, presence, { headset = false } = {}) {
   const member = { node, figure, face: who, tag, parts };
   pose(member, {});
   return member;
-}
-
-// The runtime's head: not a buddy's face, as it is no member, but a plain
-// round one in ink, with dots for eyes.
-function machine() {
-  const head = el('span', 'pj-agent-face arch-machine');
-  const drawn = svg('0 0 100 100', 'arch-machine-head');
-  drawn.append(path('M6 50 a44 44 0 1 0 88 0 a44 44 0 1 0 -88 0'), path('M38 45 v2 M62 45 v2 M42 62 H58'));
-  head.append(drawn);
-  return head;
 }
 
 function pose(member, { arms = 'stand', legs = 'stand', look = null, right = false }) {
@@ -187,25 +175,9 @@ function bar(width) {
   return node;
 }
 
-// ---- a diagram: straight arrows, and nodes at points on it ----
+// ---- a scene: lines in an SVG, and nodes at points on it ----
 
 const NS = 'http://www.w3.org/2000/svg';
-
-// A straight arrow from `from` to `to`: the shaft and the head.
-function arrow([x0, y0], [x1, y1]) {
-  const k = Math.hypot(x1 - x0, y1 - y0);
-  const [ux, uy] = [(x1 - x0) / k, (y1 - y0) / k];
-  const wing = (side) => `${f(x1 - ux * 10 + side * uy * 6)} ${f(y1 - uy * 10 - side * ux * 6)}`;
-  return [`M${f(x0)} ${f(y0)} L${f(x1)} ${f(y1)}`, `M${wing(1)} L${f(x1)} ${f(y1)} L${wing(-1)}`];
-}
-
-// An arrow from the edge of a box `size` round `from` to the face at `to`.
-function between(from, [w, h], to) {
-  const [dx, dy] = [to[0] - from[0], to[1] - from[1]];
-  const k = Math.hypot(dx, dy);
-  const edge = Math.min(w / 2 / Math.abs(dx || 1e-9), h / 2 / Math.abs(dy || 1e-9)) + 8 / k;
-  return arrow([from[0] + dx * edge, from[1] + dy * edge], [to[0] - (dx / k) * 44, to[1] - (dy / k) * 44]);
-}
 
 // The diagram's paper, W×H, upright on a phone: an SVG for the lines,
 // `ink` to draw one, and `place` to put a node at a point, `size` across.
@@ -525,70 +497,6 @@ async function blackboard(scene) {
   await scene.wait(2200);
 }
 
-// The doc in the middle, you and two buddies round it, asleep till woken;
-// with `runtime`, the runtime too, which reads the doc (scan) and wakes
-// whoever is due (wake).
-function docScene(scene, { runtime = false } = {}) {
-  const s = sketch(scene.stage);
-  const up = s.upright;
-  const middle = [s.W / 2, s.H / 2 + (runtime && !up ? 8 : -10)];
-  const size = up ? [260, 160] : [260, 150];
-  const seats = up
-    ? { Clippy: [s.W * 0.25, 52], Otto: [s.W * 0.75, 52], You: [s.W * (runtime ? 0.28 : 0.5), s.H - 50] }
-    : { Clippy: [110, middle[1]], Otto: [s.W - 110, middle[1]], You: [s.W / 2, s.H - 50] };
-  if (runtime) seats.Runtime = up ? [s.W * 0.72, s.H - 50] : [s.W / 2, 52];
-  const doc = s.place(paper('Doc', [90, 70]), middle, size);
-  const who = Object.fromEntries(Object.entries(seats).map(([name, at]) => {
-    const member = actor(name, name === 'You' ? 'idle' : 'away');
-    s.place(member.node, at);
-    return [name, member];
-  }));
-  const t = { s, doc, who, middle, size, seats };
-
-  // a line of the doc with the small face of the buddy it is for: an ask, highlighted
-  t.ask = (name, asked = true) => {
-    const line = el('div', asked ? 'arch-ask' : 'arch-ask arch-quiet');
-    line.style.setProperty('--buddy', buddyColor(name));
-    line.append(bar(60), face(name));
-    doc.append(line);
-    return line;
-  };
-  t.message = (name) => between(middle, size, seats[name]).map((d) => s.ink(d));
-  // the runtime reads the doc, top to bottom
-  t.scan = async () => {
-    pose(who.Runtime, { arms: 'look' });
-    const band = el('i', 'arch-scan');
-    doc.append(band);
-    await scene.move(band, [{ top: '0%', opacity: 1 }, { top: '100%', opacity: 1, offset: 0.85 }, { top: '100%', opacity: 0 }], 1200, 'ease-in-out');
-    band.remove();
-    pose(who.Runtime, {});
-  };
-  // the runtime walks over to `name`, taps it awake, and walks back
-  t.wake = async (name) => {
-    const [from, to] = [seats.Runtime, seats[name]];
-    const k = 1 - 80 / Math.hypot(to[0] - from[0], to[1] - from[1]);
-    const near = up // upright, beside it, clear of the doc; else on the way to it
-      ? [to[0] + (to[0] < s.W / 2 ? 72 : -72), to[1]]
-      : [from[0] + (to[0] - from[0]) * k, from[1] + (to[1] - from[1]) * k];
-    await run(scene, s, who.Runtime, [from, near], 900, { walk: true });
-    pose(who.Runtime, { arms: 'tap', right: to[0] > near[0] });
-    await scene.wait(300);
-    who[name].face.dataset.presence = 'working';
-    who[name].tag.textContent = '';
-    await hop(scene, who[name], 12);
-    await run(scene, s, who.Runtime, [near, from], 900, { walk: true });
-    pose(who.Runtime, {});
-  };
-  // `name` does what `line` asks: the line turns its colour, and it sleeps again
-  t.done = (name, line) => {
-    line.classList.remove('arch-found', 'arch-quiet');
-    line.classList.add('arch-edited');
-    who[name].tag.textContent = 'Edited';
-    who[name].face.dataset.presence = 'away';
-  };
-  return t;
-}
-
 // A relay: Otto, Clippy and Pip, each its leg of a track, Clippy asleep with
 // z's over it. With `headsets`, each wears one, and the board by the track
 // says which legs are run.
@@ -719,42 +627,13 @@ async function state(scene) {
   await scene.wait(2600);
 }
 
-// No orchestrator: you ask Otto; Otto's edit changes the line Clippy keeps,
-// so the runtime, reading the doc, finds Clippy due next. Nobody sends
-// Clippy anything.
-async function relay(scene) {
-  watching(false);
-  const t = docScene(scene, { runtime: true });
-  const kept = t.ask('Clippy', false); // the line Clippy keeps
-
-  await scene.wait(900);
-  const ask = t.ask('Otto');
-  await scene.fade(ask, 1);
-  await t.scan();
-  ask.classList.add('arch-found');
-  await t.wake('Otto');
-  await scene.wait(1200);
-  t.done('Otto', ask);
-  kept.classList.remove('arch-quiet'); // Otto's edit leaves Clippy's line due
-  await scene.wait(500);
-  await t.scan();
-  kept.classList.add('arch-found');
-  await t.wake('Clippy');
-  await scene.wait(1200);
-  t.done('Clippy', kept);
-  await scene.wait(500);
-  await t.scan();
-  await scene.wait(2600);
-}
-
 // [eyebrow, the idea in a line, the scene]
 const CHAPTERS = [
   ['', 'Press Start.', cover],
   ['How you work · Delegate', 'Delegate: each agent works alone on its own copy. The copies clash, and you merge them by hand.', delegate],
   ['How you work · Blackboard', 'Blackboard: everyone works on one board and sees every change. Nothing to hand off, nothing to merge.', blackboard],
   ['When agents run · Events', 'Triggered by events: each agent runs when the one before hands it on. Miss one handoff, and the race stops.', events],
-  ['When agents run · State', 'Reconciled from state: the runtime reads the board and calls whoever’s leg isn’t run, again until it is. A missed call costs nothing.', state],
-  ['When agents run · No orchestrator', 'No orchestrator: one agent’s change is the next one’s cue. Nobody wires who goes next.', relay],
+  ['When agents run · State', 'Reconciled from state: the runtime reads the board and calls whoever’s leg isn’t run, again until it is. Nobody wires who goes next, and a missed call costs nothing.', state],
 ];
 
 // ---- the story: a chapter at a time, with Back, Next and a dot for each ----
