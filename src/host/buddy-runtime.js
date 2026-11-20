@@ -57,11 +57,12 @@ export function agentsFor(level, agents) {
  */
 export async function createBuddyRuntime({ door, place, pathInProject, buddies, me, levelOf, settingsDir, secrets, emit, timeoutMs, resyncMs = RESYNC_MS }) {
   // What this machine notes of each buddy (plan): { seen, lookedAt, base, heard,
-  // failed (thread, or 'watch' for its watch, → { at, why }), watch }. The
+  // wake (the lines its last watch run named, or null), failed (thread, or
+  // 'watch' for its watch, → { at, why }), watch }. The
   // watch is noted with the doc's history too (noteWatching), as only a
   // person changes it; the rest is gone on a restart.
   const notes = new Map();
-  const noteOf = (id) => notes.get(id) ?? notes.set(id, { seen: new Map(), lookedAt: null, base: null, heard: null, failed: new Map(), watch: null }).get(id);
+  const noteOf = (id) => notes.get(id) ?? notes.set(id, { seen: new Map(), lookedAt: null, base: null, heard: null, wake: null, failed: new Map(), watch: null }).get(id);
   for (const [id, { by }] of Object.entries(await readWatching(place().docPath, settingsDir))) noteOf(id).watch = { by };
   for (const note of notes.values()) note.lookedAt = door.rev(); // no run on opening
   const changedAt = new Map(); // who last changed the text → { rev, at }, people as null
@@ -258,6 +259,7 @@ export async function createBuddyRuntime({ door, place, pathInProject, buddies, 
     if (note.watch) {
       note.lookedAt = run.from;
       if (!failed) Object.assign(note, { base: copies.text, heard: task.watch?.heard ?? null });
+      note.wake = !failed && result.wake?.length ? result.wake : null; // until its next run: what wakes it
     }
     if (task.watch) {
       if (failed) note.failed.set('watch', { at: new Date().toISOString(), why: result.body });
@@ -332,8 +334,8 @@ export async function createBuddyRuntime({ door, place, pathInProject, buddies, 
     if (typeof buddy !== 'string' || typeof on !== 'boolean') throw new DocError('bad_input', 'expected { buddy, on }');
     if (!(await buddies()).some((b) => b.id === buddy)) throw new DocError('not_found', 'no such buddy here');
     const note = noteOf(buddy);
-    if (on && !note.watch) Object.assign(note, { watch: { by: who.id }, lookedAt: null, base: null, heard: null });
-    if (!on) Object.assign(note, { watch: null, base: null, heard: null });
+    if (on && !note.watch) Object.assign(note, { watch: { by: who.id }, lookedAt: null, base: null, heard: null, wake: null });
+    if (!on) Object.assign(note, { watch: null, base: null, heard: null, wake: null });
     if (!on) note.failed.delete('watch');
     keepWatching();
     look(`${nameOf(buddy)}'s watch turned ${on ? 'on' : 'off'}`);
