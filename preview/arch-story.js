@@ -50,12 +50,15 @@ const LIMBS = {
     b: ['M7 31 L0 25 L-4 31', 'M49 31 L56 40 L54 47'],
     carry: ['M7 33 L-4 37 L-7 30', 'M49 30 L57 25 L61 32'],
     write: ['M7 31 L0 45', 'M48 27 L58 6'],
+    look: ['M7 31 L0 45', 'M49 30 L54 15'],
+    tap: ['M7 31 L-10 28', 'M49 31 L56 45'],
     dazed: ['M7 33 L-1 46 L5 50', 'M49 28 L60 17 L55 6'],
   },
 };
 const PROPS = {
   carry: [['arch-prop', 'M-26 6 L-8 3 L-5 29 L-23 32 Z'], ['arch-prop-ink', 'M-21 11 L-12 10 M-20 16 L-11 15 M-20 21 L-13 20']],
   write: [['arch-prop arch-prop-pen', 'M55 -13 L62 -12 L62 2 L59 6 L55 2 Z']],
+  look: [['', 'M54 15 L58 8'], ['arch-prop', 'M57 0 a8 8 0 1 0 16 0 a8 8 0 1 0 -16 0']],
   dazed: [['arch-prop', 'M58 -6 Q52 -8 56 -14 Q56 -22 64 -19 Q70 -25 74 -17 Q81 -15 77 -9 Q76 -2 69 -5 Q63 0 58 -6 Z']],
 };
 // Looks a face has only in these scenes, drawn in its own ink in place of
@@ -128,7 +131,7 @@ function actor(name, presence) {
     parts[`look-${look}`] = g;
     looks.append(g);
   }
-  const who = face(name, { person: name === 'You', presence });
+  const who = name === 'Runtime' ? machine() : face(name, { person: name === 'You', presence });
   const tag = el('span', 'arch-tag');
   who.append(tag, looks);
   figure.append(limbs, who);
@@ -136,6 +139,16 @@ function actor(name, presence) {
   const member = { node, figure, face: who, tag, parts };
   pose(member, {});
   return member;
+}
+
+// The runtime's head: not a buddy's face, as it is no member, but a plain
+// round one in ink, with dots for eyes.
+function machine() {
+  const head = el('span', 'pj-agent-face arch-machine');
+  const drawn = svg('0 0 100 100', 'arch-machine-head');
+  drawn.append(path('M6 50 a44 44 0 1 0 88 0 a44 44 0 1 0 -88 0'), path('M38 45 v2 M62 45 v2 M42 62 H58'));
+  head.append(drawn);
+  return head;
 }
 
 function pose(member, { arms = 'stand', legs = 'stand', look = null, right = false }) {
@@ -456,62 +469,161 @@ async function blackboard(scene) {
   await scene.wait(2200);
 }
 
-// Triggered by events: an ask on the doc sends the buddy asked a message,
-// and it runs when that arrives. Clippy's is lost, so its ask stays.
-async function events(scene) {
-  watching(false);
+// The doc in the middle, you and two buddies round it, asleep till woken;
+// with `runtime`, the runtime too, which reads the doc (scan) and wakes
+// whoever is due (wake).
+function docScene(scene, { runtime = false } = {}) {
   const s = sketch(scene.stage);
-  const middle = [s.W / 2, s.H / 2 - 10];
-  const size = s.upright ? [260, 160] : [260, 150];
-  const seats = s.upright
-    ? { Clippy: [s.W * 0.25, 52], Otto: [s.W * 0.75, 52], You: [s.W / 2, s.H - 50] }
+  const up = s.upright;
+  const middle = [s.W / 2, s.H / 2 + (runtime && !up ? 8 : -10)];
+  const size = up ? [260, 160] : [260, 150];
+  const seats = up
+    ? { Clippy: [s.W * 0.25, 52], Otto: [s.W * 0.75, 52], You: [s.W * (runtime ? 0.28 : 0.5), s.H - 50] }
     : { Clippy: [110, middle[1]], Otto: [s.W - 110, middle[1]], You: [s.W / 2, s.H - 50] };
+  if (runtime) seats.Runtime = up ? [s.W * 0.72, s.H - 50] : [s.W / 2, 52];
   const doc = s.place(paper('Doc', [90, 70]), middle, size);
   const who = Object.fromEntries(Object.entries(seats).map(([name, at]) => {
     const member = actor(name, name === 'You' ? 'idle' : 'away');
     s.place(member.node, at);
     return [name, member];
   }));
+  const t = { s, doc, who, middle, size, seats };
+
+  // a line of the doc with the small face of the buddy it is for: an ask, highlighted
+  t.ask = (name, asked = true) => {
+    const line = el('div', asked ? 'arch-ask' : 'arch-ask arch-quiet');
+    line.style.setProperty('--buddy', buddyColor(name));
+    line.append(bar(60), face(name));
+    doc.append(line);
+    return line;
+  };
+  t.message = (name) => between(middle, size, seats[name]).map((d) => s.ink(d));
+  // the runtime reads the doc, top to bottom
+  t.scan = async () => {
+    pose(who.Runtime, { arms: 'look' });
+    const band = el('i', 'arch-scan');
+    doc.append(band);
+    await scene.move(band, [{ top: '0%', opacity: 1 }, { top: '100%', opacity: 1, offset: 0.85 }, { top: '100%', opacity: 0 }], 1200, 'ease-in-out');
+    band.remove();
+    pose(who.Runtime, {});
+  };
+  // the runtime walks over to `name`, taps it awake, and walks back
+  t.wake = async (name) => {
+    const [from, to] = [seats.Runtime, seats[name]];
+    const k = 1 - 80 / Math.hypot(to[0] - from[0], to[1] - from[1]);
+    const near = up // upright, beside it, clear of the doc; else on the way to it
+      ? [to[0] + (to[0] < s.W / 2 ? 72 : -72), to[1]]
+      : [from[0] + (to[0] - from[0]) * k, from[1] + (to[1] - from[1]) * k];
+    await run(scene, s, who.Runtime, [from, near], 900, { walk: true });
+    pose(who.Runtime, { arms: 'tap', right: to[0] > near[0] });
+    await scene.wait(300);
+    who[name].face.dataset.presence = 'working';
+    who[name].tag.textContent = '';
+    await scene.wait(300);
+    await run(scene, s, who.Runtime, [near, from], 900, { walk: true });
+    pose(who.Runtime, {});
+  };
+  // `name` does what `line` asks: the line turns its colour, and it sleeps again
+  t.done = (name, line) => {
+    line.classList.remove('arch-found', 'arch-quiet');
+    line.classList.add('arch-edited');
+    who[name].tag.textContent = 'Edited';
+    who[name].face.dataset.presence = 'away';
+  };
+  return t;
+}
+
+// A message that does not arrive: drawn part of the way, then crossed out.
+async function lose(scene, t, name) {
+  const [lost, tip] = t.message(name);
+  tip.remove();
+  await scene.draw(lost, 500, 0.45);
+  const at = lost.getPointAtLength(lost.getTotalLength() * 0.45);
+  for (const d of cross([at.x, at.y])) await scene.draw(t.s.ink(d, 'arch-ink arch-lost'), 150);
+  await scene.move(lost, [{ opacity: 1 }, { opacity: 0.25 }], 300);
+}
+
+// Triggered by events: an ask on the doc sends the buddy asked a message,
+// and it runs when that arrives. Clippy's is lost, so its ask stays.
+async function events(scene) {
+  watching(false);
+  const t = docScene(scene);
   const foot = el('p', 'arch-foot');
   const link = el('a', '', 'Even OpenHands drops requests when a poll fails.');
   link.href = OPENHANDS;
   foot.append(link);
   scene.stage.append(foot);
 
-  // an ask on the doc: a highlighted line with the face of the buddy asked
-  const ask = (name) => {
-    const line = el('div', 'arch-ask');
-    line.style.setProperty('--buddy', buddyColor(name));
-    const small = face(name);
-    line.append(bar(60), small);
-    doc.append(line);
-    return line;
-  };
-  const message = (name) => between(middle, size, seats[name]).map((d) => s.ink(d));
-
   await scene.wait(900);
-  const otto = ask('Otto');
+  const otto = t.ask('Otto');
   await scene.fade(otto, 1);
-  const [shaft, head] = message('Otto');
+  const [shaft, head] = t.message('Otto');
   await scene.draw(shaft, 600);
   await scene.draw(head, 150);
-  who.Otto.face.dataset.presence = 'working';
+  t.who.Otto.face.dataset.presence = 'working';
   await scene.wait(1600);
-  otto.classList.add('arch-edited');
-  who.Otto.tag.textContent = 'Edited';
-  who.Otto.face.dataset.presence = 'away';
+  t.done('Otto', otto);
   await Promise.all([scene.fade(shaft, 0), scene.fade(head, 0)]);
 
   await scene.wait(700);
-  const clippy = ask('Clippy');
-  await scene.fade(clippy, 1);
-  const [lost, tip] = message('Clippy');
-  tip.remove();
-  await scene.draw(lost, 500, 0.45);
-  const at = lost.getPointAtLength(lost.getTotalLength() * 0.45);
-  for (const d of cross([at.x, at.y])) await scene.draw(s.ink(d, 'arch-ink arch-lost'), 150);
-  await scene.move(lost, [{ opacity: 1 }, { opacity: 0.25 }], 300);
+  await scene.fade(t.ask('Clippy'), 1);
+  await lose(scene, t, 'Clippy');
   await scene.wait(3500);
+}
+
+// Reconciled from state: an ask on the doc only nudges the runtime to look
+// again. The nudge is lost and the runtime restarts; starting, it reads the
+// doc, finds Clippy's ask, and wakes Clippy all the same.
+async function state(scene) {
+  watching(false);
+  const t = docScene(scene, { runtime: true });
+  const { Runtime } = t.who;
+
+  await scene.wait(900);
+  const ask = t.ask('Clippy');
+  await scene.fade(ask, 1);
+  await lose(scene, t, 'Runtime');
+  await scene.move(Runtime.figure, [{ rotate: '0deg' }, { rotate: '-90deg' }], 400, 'cubic-bezier(0.5, 0, 1, 1)');
+  await scene.wait(1000);
+  await scene.move(Runtime.figure, [{ rotate: '-90deg' }, { rotate: '0deg' }], 500, 'cubic-bezier(0.2, 1.4, 0.4, 1)');
+  Runtime.tag.textContent = 'Restarted';
+  await t.scan();
+  Runtime.tag.textContent = '';
+  ask.classList.add('arch-found');
+  await t.wake('Clippy');
+  await scene.wait(1200);
+  t.done('Clippy', ask);
+  await scene.wait(600);
+  await t.scan();
+  await scene.wait(2600);
+}
+
+// No orchestrator: you ask Otto; Otto's edit changes the line Clippy keeps,
+// so the runtime, reading the doc, finds Clippy due next. Nobody sends
+// Clippy anything.
+async function relay(scene) {
+  watching(false);
+  const t = docScene(scene, { runtime: true });
+  const kept = t.ask('Clippy', false); // the line Clippy keeps
+
+  await scene.wait(900);
+  const ask = t.ask('Otto');
+  await scene.fade(ask, 1);
+  await t.scan();
+  ask.classList.add('arch-found');
+  await t.wake('Otto');
+  await scene.wait(1200);
+  t.done('Otto', ask);
+  kept.classList.remove('arch-quiet'); // Otto's edit leaves Clippy's line due
+  await scene.wait(500);
+  await t.scan();
+  kept.classList.add('arch-found');
+  await t.wake('Clippy');
+  await scene.wait(1200);
+  t.done('Clippy', kept);
+  await scene.wait(500);
+  await t.scan();
+  await scene.wait(2600);
 }
 
 // [eyebrow, the idea in a line, the scene]
@@ -520,6 +632,8 @@ const CHAPTERS = [
   ['How you work · Delegate', 'Delegate: each agent works alone on its own copy. The copies clash, and you merge them by hand.', delegate],
   ['How you work · Blackboard', 'Blackboard: everyone works on one board and sees every change. Nothing to hand off, nothing to merge.', blackboard],
   ['When agents run · Events', 'Triggered by events: an agent runs only when a message reaches it. Lose the message, lose the work.', events],
+  ['When agents run · State', 'Reconciled from state: the runtime reads the doc and wakes whoever is due. Lose a message, or restart: nothing is lost.', state],
+  ['When agents run · No orchestrator', 'No orchestrator: one agent’s change is the next one’s cue. Nobody wires who goes next.', relay],
 ];
 
 // ---- the story: a chapter at a time, with Back, Next and a dot for each ----
