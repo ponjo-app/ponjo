@@ -3,6 +3,22 @@
 // It says what a member can do and the etiquette every member keeps; what
 // this buddy does is its persona's.
 
+import { lineChanges } from './diff.js';
+
+/**
+ * What is new for watcher `agent` since it last looked, as buildPrompt's
+ * `watch` takes it: the doc then (`base`, or null: its first look) and the
+ * ids of the comments then (`heard`, or null: none to tell of), the doc now
+ * (`text`) and its threads (threadsOf). The changes in the text, and each
+ * open thread another member wrote in since.
+ */
+export function newSince({ agent, base, heard, text, threads }) {
+  return {
+    changes: base === null ? null : lineChanges(base, text),
+    threads: heard === null ? [] : threads.filter((t) => !t.resolved && t.comments.some((c) => c.by.id !== agent && !heard.has(c.id))),
+  };
+}
+
 /** The heading of the prompt's last part, what changes from run to run: why it runs now. */
 export const SITUATION = 'The situation now:';
 

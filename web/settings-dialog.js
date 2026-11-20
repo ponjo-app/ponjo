@@ -8,7 +8,7 @@
 // they belong to a doc's People.
 
 import { hydrateIcons, icon } from './icons.js';
-import { STEP_FIELDS, agentSettings, viewSettings } from '../src/core/settings.js';
+import { BREAKER_FIELDS, agentSettings, viewSettings } from '../src/core/settings.js';
 
 const SHORTCUTS = [
   ['Text', [['Bold', 'Mod+B'], ['Italic', 'Mod+I'], ['Inline code', 'Mod+E'], ['Strikethrough', 'Mod+Shift+X'], ['Link', 'Mod+K'], ['Normal text', 'Mod+Alt+0'], ['Heading 1–3', 'Mod+Alt+1–3'], ['Quote', 'Mod+Alt+Q'], ['Code block', 'Mod+Alt+C'], ['Numbered list', 'Mod+Shift+7'], ['Bulleted list', 'Mod+Shift+8'], ['Task list', 'Mod+Shift+9'], ['Find', 'Mod+F'], ['Find and replace', 'Mod+Alt+F'], ['Next match', 'Mod+G'], ['Previous match', 'Mod+Shift+G']]],
@@ -134,8 +134,8 @@ export function setupSettings({ store, getName, setName, onApply = () => {}, vie
 
   // For whoever works on an agent: each run's trace, read in a doc's Runs.
   const trace = fieldRow({ key: 'trace', type: 'switch', label: 'Trace runs', hint: 'Keep what each run was given, did and printed, step by step, to read in a doc\'s Runs. Traces hold the doc\'s text; the newest 200 are kept in the config folder\'s logs.' }, 'app', (key, value) => set({ [key]: value }));
-  // How often a doc's buddies may wake each other (src/host/doc-service.js).
-  const steps = STEP_FIELDS.map((field) => fieldRow(field, 'app', (key, value) => set({ [key]: value })));
+  // When a doc's watches pause (src/host/buddy-runtime.js, the breaker).
+  const breaker = BREAKER_FIELDS.map((field) => fieldRow(field, 'app', (key, value) => set({ [key]: value })));
   // For whoever asks why a buddy ran or did not: the agent log (src/store/runs.js, logLoop).
   const log = el('div', 'pj-setting');
   const logText = el('span', 'pj-setting-text');
@@ -145,7 +145,7 @@ export function setupSettings({ store, getName, setName, onApply = () => {}, vie
   logOpen.dataset.action = 'show-agent-log';
   log.append(logText, logOpen);
   log.hidden = !scripts.showLog;
-  dialog.querySelector('.pj-agents-trace').replaceWith(...steps.map((row) => row.node), log, trace.node);
+  dialog.querySelector('.pj-agents-trace').replaceWith(...breaker.map((row) => row.node), log, trace.node);
   fillShortcuts(dialog.querySelector('.pj-shortcuts-body'));
   dialog.querySelector('[data-action="show-agents"]').hidden = !scripts.showFolder;
 
@@ -199,7 +199,7 @@ export function setupSettings({ store, getName, setName, onApply = () => {}, vie
       }
     }
     paintAgents(settings);
-    for (const row of [...steps, trace]) row.paint(settings);
+    for (const row of [...breaker, trace]) row.paint(settings);
     if (document.activeElement !== nameInput) nameInput.value = getName();
     onApply(settings);
   }

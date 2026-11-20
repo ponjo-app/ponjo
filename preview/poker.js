@@ -234,12 +234,12 @@ function seatNode(id) {
   face.dataset.presence = 'idle';
   const avatar = el('span', `pj-avatar${id === HUMAN ? '' : ' pj-avatar-agent'}`);
   avatar.append(id === HUMAN ? personFace('You', HUMAN) : agentFace(id));
-  face.append(avatar, el('span', 'pk-tag'));
+  face.append(avatar, el('div', 'pk-hole'));
   const plate = el('div', 'pk-plate');
   const name = el('span', 'pk-name', id === HUMAN ? 'You' : id);
   name.append(el('span', 'pk-position'));
-  plate.append(name, el('span', 'pk-stack'));
-  node.append(face, plate, el('div', 'pk-hole'));
+  plate.append(name, el('span', 'pk-stack'), el('span', 'pk-tag'));
+  node.append(face, plate);
   return node;
 }
 // An empty seat: a player can be asked to sit there.
@@ -520,8 +520,6 @@ function drawMe() {
   $('.pk-strength').textContent = !s?.inHand ? '' : s.folded ? 'Folded' : handName(s.hole, hand.board);
   const mine = hand && hand.street !== 'done' && hand.toAct === 0;
   $('.pk-controls').hidden = !mine;
-  const actor = hand && hand.street !== 'done' && hand.toAct !== null ? table.players[hand.toAct].id : null;
-  $('.pk-wait').textContent = mine || !actor ? '' : `${actor} is thinking…`;
   if (!mine) return;
   const l = legal(hand, 0);
   $('[data-action="call"]').textContent = l.check ? 'Check' : `Call ${money(l.call)}${l.call === s.stack ? ' · all in' : ''}`;

@@ -47,7 +47,7 @@ The code says turn nowhere: a buddy answering is a run.
 
 1. **Files are the truth.** Docs, their comments and buddies are plain
    files. Everything else is a cache rebuilt from them, or only costs undo
-   if lost. What runs on this machine (runs, failures, watches, steps) is
+   if lost. What runs on this machine (runs, failures, watches, the breaker) is
    this machine's and never written to a shared file.
 2. **One door, one writer.** Every change, whoever makes it, comes through
    the doc's one door, in one order. An agent gets only copies. A change
@@ -59,7 +59,8 @@ The code says turn nowhere: a buddy answering is a run.
    again or found in history.
 4. **Every change can be undone**, a buddy's with the comment it came with.
 5. **Only a person starts work.** A buddy runs on a person's ask or a
-   person's watch. Buddies wake each other only within the doc's steps.
+   person's watch. Buddies wake each other only to a depth, and a breaker
+   pauses the watches of a doc whose buddies run too often.
    Nothing in a shared file makes a buddy run, or chooses what program
    runs, on this machine.
 6. **Decide from state, not from events.** What should run is worked out
@@ -134,7 +135,7 @@ below: `{ epoch, rev, ops, id, by: { id, kind }, reply?, comments? }`, a
 change to the comments with no `ops` and `comments: true`), `saved`
 (whether the file holds what was told, and why not),
 `cursors`, `missing` (the file gone), `renamed`, and from the controller
-`buddies` (who is here, running, watching, failed; the steps).
+`buddies` (who is here, running, watching, failed; whether the watches are paused).
 
 ### The log
 
@@ -338,7 +339,7 @@ door, writing as the buddy, as a window writes as a person.
 
 A buddy has one run at a time in a doc, given every thread that asks it
 and it has not been given; a comment written while it runs is for the
-next. The runtime's notes, steps and runs are this machine's, in memory.
+next. The runtime's notes, breaker and runs are this machine's, in memory.
 Each look writes to `logs/agents.log` what woke it and each buddy's
 verdict, and each run's end a line, never the doc's text; the log is
 trimmed like the others.
@@ -356,7 +357,8 @@ posted nothing there, until someone writes in the thread again: a buddy
 that answers nothing is not run again and again.
 
 **A buddy's ask.** A comment a run on this machine posted asks each other
-buddy it @mentions, and only them, for a step (see Steps). The asked run
+buddy it @mentions, and only them, a step deeper (see Depth and the
+breaker). The asked run
 is for the people the asking run was for, while one of them may still
 ask, and lands at their level. Which comments those are is this machine's,
 in memory: a buddy's comment found in the file, or after a restart, asks
@@ -370,7 +372,9 @@ its last run started: people's once they pause for 5 s (`SETTLE_MS`); a
 file written outside the app at once, for it is whole (the door took it
 once it held still); a buddy's once that buddy's run has ended: its edits
 land before its comments, and the watcher sees both. Its own change never
-wakes it. A person editing again while a run only a watch started is on
+wakes it, nor a change since undone: a watcher whose doc's text is as it
+was when its last run started is not due (typing then deleted wakes no
+one). A person editing again while a run only a watch started is on
 ends that run with no answer, for it saw the doc as it was. A file written
 outside the app does not: a program may write more often than a run lasts,
 which would end every run. The run lands, merged by line, and runs again on
@@ -381,11 +385,17 @@ itself, and comments where it will, as any member. A run may name, in
 `PONJO_WAKE`, lines of the doc that wake it ([wake](agent-config.md#wake)):
 until its next run the watcher is due only while the doc holds one, whole.
 
-**Steps.** So that buddies cannot wake each other for ever, a run woken by
-another buddy's change or ask takes a step from the doc's steps: up to 20, one
-more a minute (Settings > Agents sets both; 0: only on Refill); with none
-left, watchers and buddies asked by buddies wait. People's changes and
-asks take none. The steps are this
+**Depth and the breaker.** So that buddies cannot wake each other for
+ever, each run has a depth: 0 when a person's ask or change, or a file
+written outside the app, started it; when only a buddy's change or ask
+did, one more than that buddy's run. Past the doc's limit, 1,000, nothing
+wakes: a chain of buddies comes to rest, while two can still play a long
+game. A person's change or ask, or an outside one, starts again at 0. So
+that a loop the depth cannot see (a program that echoes a buddy) stops
+too, the breaker counts the runs a doc starts: past `pauseAfter` within
+`pauseWithin` minutes (300 in 10, Settings > Agents), the doc's watches
+pause, the agent log and every window say so, and they stay paused until
+someone who may ask resumes them (`resume`); asks still run. Both are this
 machine's, in memory.
 
 ### A run
@@ -413,7 +423,7 @@ machine's, in memory.
    edits; a line that would resolve is ignored, as only people resolve. In
    a thread that asked it, its comments come just after the last comment
    it was given, so one written meanwhile is after them, still to answer.
-   The controller applies the changes through the door, as the buddy.
+   The doc world applies the changes through the door, as the buddy.
 4. The private folder is deleted, and the run gets a line in
    `logs/runs.jsonl`: its id, doc, buddy, threads, the comments it posted,
    start, duration, outcome (`ok`, `failed`, `timedOut`, `stopped`) and
@@ -565,7 +575,8 @@ declaration, listed in `VIEWS`, passing the contract test.
 | Store | `src/store/` | read, write, watch and move files: docs, comments, history, settings, buddies, agents, logs | `read`, `write`, `watch`, `move`, each file's parser |
 | Doc | `src/host/doc-service.js` | order every change to one doc, and write it | the door above; `door`, `subscribe(fn)` |
 | Opener | `src/host/open-doc.js` | join a doc and its buddies | `openDoc` |
-| Controller | `src/host/buddy-runtime.js` | run the doc's buddies as the rules say | `watch`, `retry`, `refillSteps`; event `buddies` |
+| Controller | `src/host/buddy-runtime.js` | run the doc's buddies as the rules say, reaching the doc through its world | `watch`, `retry`, `resume`; event `buddies` |
+| Doc world | `src/host/doc-world.js` | the doc as the runtime sees it: members, asks, views, waiting, and landing what a run left | the [five calls](agent-runtime.md#the-worlds-five-calls) |
 | Executor | `src/host/runner.js` | run the agent once on copies | `run(task, copies)` |
 | ProjectService | `src/host/project-service.js` | the project's files, the same for everyone | `list`, `read`, `open` |
 | Room | `src/host/room.js` | who is in the room and at what level | the owner's `openRoom`, `closeRoom`, `lockRoom`, `setLevel`, `kick`, `room` |
