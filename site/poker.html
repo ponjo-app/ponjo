@@ -94,9 +94,17 @@
       <button class="pj-icon-btn" type="button" data-action="chat" aria-label="Hide chat" title="Hide chat"><svg class="pj-icon" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
     </div>
     <ol class="pk-feed"></ol>
+    <div class="pk-reacts" role="group" aria-label="React">
+      <button type="button" data-react="😂" aria-label="Laugh">😂</button>
+      <button type="button" data-react="😮" aria-label="Wow">😮</button>
+      <button type="button" data-react="😤" aria-label="Annoyed">😤</button>
+      <button type="button" data-react="👍" aria-label="Nice">👍</button>
+      <button type="button" data-react="👏" aria-label="Applause">👏</button>
+      <button type="button" data-react="🔥" aria-label="Fire">🔥</button>
+    </div>
     <form class="pk-say">
-      <input class="pj-input" name="text" placeholder="Say something to the table" autocomplete="off" maxlength="240" aria-label="Message">
-      <button class="pj-secondary" type="submit">Send</button>
+      <input class="pj-input" name="text" placeholder="Message the table" autocomplete="off" maxlength="240" aria-label="Message">
+      <button class="pk-send" type="submit" aria-label="Send" title="Send"><svg class="pj-icon" viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button>
     </form>
     <p class="pk-fine">Play chips only, no real money. <span class="pk-model"></span> <button class="pj-link-button" type="button" data-action="key">Use your own key</button></p>
   </aside>

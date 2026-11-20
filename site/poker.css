@@ -65,13 +65,8 @@ body:is(.pk-setting-up, .pk-buying-in) .pk-page { filter: blur(1px); opacity: 0.
 .pk-seat[data-shown] .pk-hole .pk-card { --w: 40px; }
 .pk-seat[data-pos="bottom"] .pk-hole { display: none; } /* yours are big, under the table */
 
-/* a speech bubble from the face, for a few seconds */
-.pk-bubble { position: absolute; z-index: 5; bottom: calc(100% + 28px); left: 50%; translate: -50% 0; width: max-content; max-width: 220px; padding: 6px 12px; border-radius: 14px; background: var(--bg); box-shadow: var(--shadow-raised); color: var(--text); font-size: 13px; line-height: 1.4; text-align: left; animation: pk-pop 0.2s ease-out; transition: opacity 0.4s; }
-.pk-seat[data-pos="top"] .pk-bubble { top: 0; bottom: auto; left: calc(100% + 8px); translate: 0 0; }
-.pk-seat[data-pos="bottom"] .pk-bubble { bottom: calc(100% + 4px); left: calc(100% + 8px); translate: 0 0; }
-.pk-seat[data-pos="left"] .pk-bubble { left: 0; translate: 0 0; } /* toward the table, not off the page */
-.pk-seat[data-pos="right"] .pk-bubble { left: auto; right: 0; translate: 0 0; }
-.pk-bubble[data-gone] { opacity: 0; }
+/* a reaction: an emoji by the face, popping up and floating away */
+.pk-react { position: absolute; z-index: 5; top: -8px; left: -24px; font-size: 28px; line-height: 1; pointer-events: none; animation: pk-float 2.4s ease-out forwards; }
 
 /* bets on the felt, in front of each seat */
 .pk-bet { position: absolute; z-index: 1; display: flex; align-items: center; gap: 4px; color: var(--felt-ink); font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35); }
@@ -134,13 +129,26 @@ body:is(.pk-setting-up, .pk-buying-in) .pk-page { filter: blur(1px); opacity: 0.
 .pk-chat-head h2 { margin: 0; font-size: 13px; font-weight: 600; }
 .pk-chat-open { position: absolute; top: 0; right: 0; }
 .pk-feed { flex: 1; min-height: 0; overflow-y: auto; margin: 0; padding: 8px 16px; list-style: none; }
-.pk-message { margin: 8px 0; }
-.pk-message .pj-body { margin-top: 0; }
-.pk-dealer { margin: 12px 0; padding: 4px 8px; border-radius: 6px; background: var(--bg-soft); color: var(--text-soft); font-size: 12px; line-height: 1.5; }
-.pk-dealer[data-failed] { background: none; color: var(--red); }
-.pk-say { display: flex; gap: 8px; padding: 12px 16px 8px; border-top: 1px solid var(--border); }
-.pk-say .pj-input { flex: 1; width: auto; height: 32px; }
-.pk-say button { height: 32px; }
+/* messages as a chat app shows them: others' on the left with their face, yours on the right in ink */
+.pk-msg { display: flex; align-items: flex-end; gap: 8px; margin-top: 12px; }
+.pk-msg[data-more] { margin-top: 2px; }
+.pk-msg .pj-avatar { --size: 24px; }
+.pk-msg:has(+ .pk-msg[data-more]) .pj-avatar { visibility: hidden; } /* the face goes with the last of a run */
+.pk-msg-col { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; max-width: 80%; }
+.pk-msg-name { margin: 0 0 2px 12px; color: var(--text-soft); font-size: 12px; }
+.pk-msg-text { padding: 6px 12px; border-radius: 14px 14px 14px 4px; background: var(--bg-soft); box-shadow: inset 0 0 0 1px var(--border); font-size: 14px; line-height: 1.4; overflow-wrap: anywhere; }
+.pk-msg[data-mine] { justify-content: flex-end; }
+.pk-msg[data-mine] .pk-msg-col { align-items: flex-end; }
+.pk-msg[data-mine] .pk-msg-text { border-radius: 14px 14px 4px 14px; background: var(--text); box-shadow: none; color: var(--on-text); }
+.pk-dealer { margin: 16px 0 4px; color: var(--text-faint); font-size: 12px; line-height: 1.5; text-align: center; }
+.pk-dealer[data-failed] { color: var(--red); }
+.pk-reacts { display: flex; gap: 2px; padding: 8px 12px 0; border-top: 1px solid var(--border); }
+.pk-reacts button { width: 32px; height: 32px; border: 0; border-radius: 6px; background: none; font-size: 18px; line-height: 1; transition: transform 0.15s; }
+.pk-reacts button:hover { background: var(--hover); transform: scale(1.15); }
+.pk-say { display: flex; align-items: center; gap: 8px; padding: 8px 16px; }
+.pk-say .pj-input { flex: 1; width: auto; height: 36px; padding: 0 16px; border-radius: 9999px; }
+.pk-send { display: flex; flex: none; align-items: center; justify-content: center; width: 36px; height: 36px; border: 0; border-radius: 50%; background: var(--text); color: var(--on-text); }
+.pk-send .pj-icon { width: 18px; height: 18px; stroke-width: 2.25; }
 .pk-fine { margin: 0; padding: 0 16px 12px; color: var(--text-faint); font-size: 12px; }
 .pk-fine .pj-link-button { font-size: 12px; color: var(--text-soft); }
 
@@ -174,8 +182,10 @@ body:is(.pk-setting-up, .pk-buying-in) .pk-page { filter: blur(1px); opacity: 0.
 @keyframes pk-flip { from { transform: perspective(400px) rotateY(90deg); } }
 @keyframes pk-pop { from { opacity: 0; transform: scale(0.8); } }
 @keyframes pk-hop { 40% { transform: translateY(-12px); } }
+@keyframes pk-float { 0% { opacity: 0; transform: scale(0.4); } 15% { opacity: 1; transform: scale(1.25); } 30% { transform: scale(1); } 75% { opacity: 1; } 100% { opacity: 0; transform: translateY(-48px); } }
 @media (prefers-reduced-motion: reduce) {
-  .pk-card[data-in], .pk-card[data-flip], .pk-tag, .pk-bubble, .pk-seat[data-won] .pj-agent-face { animation: none; }
+  .pk-card[data-in], .pk-card[data-flip], .pk-tag, .pk-seat[data-won] .pj-agent-face { animation: none; }
+  .pk-react { animation: none; }
 }
 
 /* ---- narrower: the chat under the table; a phone: a taller table ---- */
@@ -198,8 +208,6 @@ body:is(.pk-setting-up, .pk-buying-in) .pk-page { filter: blur(1px); opacity: 0.
   .pk-seat .pk-hole .pk-card { --w: 22px; margin-left: -8px; }
   .pk-seat[data-shown] .pk-hole .pk-card { --w: 30px; }
   .pk-tag { max-width: 84px; overflow: hidden; text-overflow: ellipsis; }
-  .pk-bubble { max-width: 160px; }
-  .pk-seat[data-pos="top"] .pk-bubble, .pk-seat[data-pos="bottom"] .pk-bubble { max-width: 120px; }
   .pk-board { flex-wrap: wrap; justify-content: center; gap: 4px; max-width: 200px; min-height: 0; }
   .pk-board .pk-card { --w: 36px; }
   .pk-center { gap: 6px; }

@@ -437,7 +437,7 @@ function play(action) {
   changed();
 }
 
-// ---- the chat: what people say, each hand's result; a line said shows over its face a moment ----
+// ---- the chat: what people say, as a chat app shows it, and each hand's result ----
 
 let drawn = 0; // log entries drawn
 let posted = 0; // the last hand whose result is in the chat
@@ -448,8 +448,7 @@ function drawFeed() {
     const change = table.log[drawn];
     if (change.type === 'chat') {
       const line = table.chat[change.line - 1];
-      feed.append(message(line));
-      bubble(table.players.findIndex((p) => p.id === line.by), line.text);
+      feed.append(message(line, feed.lastElementChild?.dataset.by === line.by));
     } else if (change.type === 'rebuy') {
       feed.append(dealer(`${change.by} buys back in for ${money(change.amount)}.`));
     } else if (change.type === 'failed') {
@@ -473,29 +472,32 @@ function drawFeed() {
   }
   if (stick) feed.scrollTop = feed.scrollHeight;
 }
-function bubble(seat, text) {
-  if (seat < 0) return;
-  $('.pk-bubble', seats[seat])?.remove();
-  const node = el('div', 'pk-bubble', text);
-  seats[seat].append(node);
-  setTimeout(() => {
-    node.dataset.gone = '';
-    setTimeout(() => node.remove(), 400);
-  }, 3000 + text.length * 40);
+// A reaction: the emoji pops up by the person's face and floats away.
+function react(emoji) {
+  const node = el('span', 'pk-react', emoji);
+  $('.pj-agent-face', seats[0]).append(node);
+  setTimeout(() => node.remove(), 2400);
 }
 
 function dealer(text) {
   return el('li', 'pk-dealer', text);
 }
-function message(line) {
-  const item = el('li', 'pk-message');
-  const head = el('div', 'pj-msg-head');
-  const avatar = el('span', `pj-avatar${line.by === HUMAN ? '' : ' pj-avatar-agent'}`);
-  avatar.append(line.by === HUMAN ? personFace('You', HUMAN) : agentFace(line.by));
-  const who = el('span', 'pj-who');
-  who.append(el('span', 'pj-name', line.by === HUMAN ? 'You' : line.by));
-  head.append(avatar, who);
-  item.append(head, el('div', 'pj-body', line.text));
+// A message: yours on the right; others' on the left with their face and,
+// first in a run of theirs, their name.
+function message(line, more) {
+  const item = el('li', 'pk-msg');
+  item.dataset.by = line.by;
+  if (more) item.dataset.more = '';
+  const col = el('div', 'pk-msg-col');
+  if (line.by === HUMAN) item.dataset.mine = '';
+  else {
+    const avatar = el('span', 'pj-avatar pj-avatar-agent');
+    avatar.append(agentFace(line.by));
+    item.append(avatar);
+    if (!more) col.append(el('span', 'pk-msg-name', line.by));
+  }
+  col.append(el('div', 'pk-msg-text', line.text));
+  item.append(col);
   return item;
 }
 
@@ -641,6 +643,10 @@ document.addEventListener('click', (event) => {
 });
 $('.pk-thinking').addEventListener('click', (event) => {
   if (event.target === event.currentTarget) event.currentTarget.close(); // a click on the backdrop
+});
+$('.pk-reacts').addEventListener('click', (event) => {
+  const emoji = event.target.closest('[data-react]')?.dataset.react;
+  if (emoji) react(emoji);
 });
 $('.pk-say').addEventListener('submit', (event) => {
   event.preventDefault();
