@@ -310,11 +310,15 @@ async function delegate(scene) {
   const up = s.upright;
   const you = up ? [s.W / 2, s.H - 46] : [90, s.H / 2];
   const home = up ? [s.W / 2, s.H - 150] : [225, s.H / 2]; // your desk, with the doc
-  const meet = up ? [s.W / 2, 292] : [335, s.H / 2]; // where they crash
-  const ROOM = up ? [176, 230] : [290, 170];
-  const rooms = up ? { Clippy: [100, 130], Otto: [300, 130] } : { Clippy: [s.W - 175, 108], Otto: [s.W - 175, 312] };
+  const meet = up ? [s.W / 2, 302] : [335, s.H / 2]; // where they crash
+  const ROOM = up ? [176, 250] : [290, 170];
+  const rooms = up ? { Clippy: [100, 145], Otto: [300, 145] } : { Clippy: [s.W - 175, 108], Otto: [s.W - 175, 312] };
   const SIZE = [104, 74];
-  const desk = (at) => s.place(el('div', 'arch-desk'), [at[0], at[1] + SIZE[1] / 2 + 6], [SIZE[0] + 24, 6]);
+  // a desk under a sheet at `at`: its top and two legs
+  const desk = ([x, y]) => {
+    const [l, r, top] = [x - SIZE[0] / 2 - 12, x + SIZE[0] / 2 + 12, y + SIZE[1] / 2 + 4];
+    s.ink(`M${l} ${top} H${r} M${l + 10} ${top} V${top + 22} M${r - 10} ${top} V${top + 22}`, 'arch-line');
+  };
   const me = actor('You', 'idle');
   s.place(me.node, you);
   desk(home);
@@ -324,12 +328,16 @@ async function delegate(scene) {
   const seat = {};
   const table = {};
   for (const [name, [x, y]] of Object.entries(rooms)) {
-    const room = s.place(el('div', 'arch-room'), [x, y], ROOM);
-    room.dataset.door = up ? 'bottom' : 'left';
-    room.append(el('span', '', `${name}’s room`));
-    door[name] = up ? [x, y + ROOM[1] / 2] : [x - ROOM[0] / 2, y];
-    table[name] = up ? [x, y + 4] : [x - 60, y];
-    seat[name] = up ? [x, y - 66] : [x + 84, y];
+    // three walls and the one that faces you, its doorway with the door swung in
+    const [w, h] = ROOM;
+    const [l, t, r, b] = [x - w / 2, y - h / 2, x + w / 2, y + h / 2];
+    s.ink(up
+      ? `M${x - 26} ${b} H${l} V${t} H${r} V${b} H${x + 26} M${x + 26} ${b} L${x + 8} ${b - 30}`
+      : `M${l} ${y - 28} V${t} H${r} V${b} H${l} V${y + 28} M${l} ${y + 28} L${l + 30} ${y + 10}`, 'arch-line');
+    s.place(el('span', 'arch-room', `${name}’s room`), up ? [x, t - 10] : [x + 40, t + 16]);
+    door[name] = up ? [x, b] : [l, y];
+    table[name] = up ? [x, y + 28] : [x - 60, y];
+    seat[name] = up ? [x, y - 72] : [x + 84, y];
     desk(table[name]);
     buddies[name] = actor(name, 'idle');
     s.place(buddies[name].node, seat[name]);
@@ -397,10 +405,15 @@ async function blackboard(scene) {
   watching(true);
   const s = sketch(scene.stage);
   const up = s.upright;
-  const board = s.place(paper('Doc', [85, 60]), [s.W / 2, up ? 150 : 120], up ? [360, 220] : [520, 180]);
+  const [at, size] = up ? [[s.W / 2, 150], [340, 210]] : [[s.W / 2, 118], [500, 170]];
+  const board = s.place(paper('Doc', [85, 60]), at, size);
   board.classList.add('arch-board');
+  // its ledge, with two sticks of chalk on it
+  const ledge = at[1] + size[1] / 2 + 10;
+  s.ink(`M${at[0] - size[0] / 2 + 6} ${ledge} H${at[0] + size[0] / 2 - 6}`, 'arch-line');
+  for (const x of [at[0] + size[0] / 2 - 70, at[0] + size[0] / 2 - 46]) s.ink(`M${x} ${ledge - 7} h16 v5 h-16 Z`, 'arch-line arch-chalk');
   const back = up ? s.H - 70 : s.H - 60; // where they stand, then where they write
-  const close = up ? 330 : 285;
+  const close = up ? 345 : 300;
   const gap = up ? 120 : 170;
   const who = {};
   for (const [name, x] of [['Clippy', s.W / 2 - gap], ['You', s.W / 2], ['Otto', s.W / 2 + gap]]) {
