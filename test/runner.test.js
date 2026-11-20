@@ -443,6 +443,8 @@ test('a watcher runs at once on a file written outside the app, with no pause fo
     assert.ok(Date.now() - at < SETTLE_MS, 'before people\'s pause would end');
     assert.match((await runs())[1].prompt, /^\+Written by another program\.$/m);
   });
+});
+
 test('a watch run goes on when the file is written outside the app, lands, and runs again on what it did not see', { timeout: 60_000 }, async () => {
   await withDoc(async ({ docPath, settingsDir, call, state, runs, release }) => {
     await call('watch', { buddy: 'Clippy', on: true });
@@ -457,6 +459,8 @@ test('a watch run goes on when the file is written outside the app, lands, and r
     await until(async () => (await runs()).length === 2, 'a run on what it did not see', 10_000);
     assert.match((await runs())[1].prompt, /^\+Written by another program\.$/m);
   }, { content: `${SAMPLE}\nhold-watch\n` });
+});
+
 test('a watcher whose run named a line in PONJO_WAKE runs again only once the doc holds that line; its next run names its lines anew', { timeout: 60_000 }, async () => {
   await withDoc(async ({ call, edit, state, runs }) => {
     await call('watch', { buddy: 'Clippy', on: true });
@@ -471,6 +475,8 @@ test('a watcher whose run named a line in PONJO_WAKE runs again only once the do
     await edit(`${(await state()).text}One more.\n`);
     await until(async () => (await runs()).length === 3, 'that run named no line: any change wakes it', 10_000);
   }, { content: `${SAMPLE}\nwake-line Your turn, Clippy.\n` });
+});
+
 test('a buddy\'s @mention asks the buddy it names, for a step: it runs and answers in the thread', { timeout: 30_000 }, async () => {
   await withDoc(async ({ call, state, runs }) => {
     await comment(call, '@Ada append {"body":"\\u0040Ben over to you"}'); // the person names Ada alone
