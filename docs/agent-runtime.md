@@ -1,129 +1,147 @@
 # Agent runtime
 
-How buddies run against a doc. It uses only the doc's public door
-([architecture](architecture.md#the-door)), as any client does; the doc
-knows nothing about buddies.
+How agents run against a world. Why it is built this way: [runtime
+vision](runtime-vision.md). Ponjo's doc world: [host spec](host-spec.md#buddies).
+What an agent program gets and returns: [agent config](agent-config.md).
 
-Code: the controller is `src/host/buddy-runtime.js`, the executor
-`src/host/runner.js`, the rules `src/core/due.js` (with the steps in
-`src/core/bucket.js`), Translate `src/core/translate.js`.
+| Word | Means | In Ponjo |
+| --- | --- | --- |
+| member | a person or an agent | |
+| agent | an AI member: an id and a prompt | a buddy |
+| agent program | the tool that does an agent's thinking | an agent |
+| world | the state the members share, and its rules | a doc and its comments |
+| writer | the only part of a world that changes its state | the doc's door |
+| ask | a request from a person that names an agent, open until it answers | a comment that @mentions a buddy |
+| watch | a person's standing request: run this agent when its view changes | Watch this doc |
+| run | an agent program working once for one agent | |
 
-## Principles
-
-| Principle | How the runtime follows it |
-| --- | --- |
-| **A client like any other.** The doc knows nothing about buddies. | The runtime reads the doc, listens to its changes and writes through the same door as a window, as the buddy. It has no other way in. |
-| **Decide from state, not from events.** | The controller never acts on an event. Any change, timer or finished run only makes it look again: read the state, ask `plan`, start and stop runs. A missed event costs nothing, and a restart loses nothing that matters. |
-| **The agent is a filter.** | The executor gives the agent copies in a temp folder and a prompt, and reads the copies back. Any command-line agent works, and none can touch the real files. |
-| **Only people start work.** | A run needs a person's ask, or a watch a person turned on, or a buddy's ask from a run for them. Only comments that came through the door can ask. Buddies waking or asking each other spend steps from a small budget. |
-| **Runtime state stays on this machine.** | Notes, failures, steps and running runs are in memory; the watch list is in the config folder. Nothing is written to a shared file, so a shared file can never make this machine run something. |
-| **An agent is costly: people decide.** | A failed run is shown with Retry, never retried on its own. Every change a buddy makes is a group, undone with its comment. |
-| **Pure where possible.** | Rules and Translate are pure functions, so most behaviour is tested with no agent and no waiting. |
-
-## Overview
+## Parts
 
 ```mermaid
 flowchart LR
-  door["Doc door"] -- changes --> ctl
-  subgraph rt["Agent runtime, one per open doc"]
-    ctl["Controller"] -- state --> rules["Rules"]
-    rules -- start / stop --> ctl
-    ctl -- task, copies --> exec["Executor"]
-    exec -- copies back --> tr["Translate"]
+  subgraph runtime["Runtime"]
+    loop["Loop"] -- "state" --> plan["Plan"]
+    plan -- "start, stop" --> loop
+    loop -- "start" --> run["Run"]
+    run -- "ended" --> loop
   end
-  exec -- prompt, copies --> agent["Agent program"]
-  tr -- changes, as the buddy --> door
+  loop -- "wait, members, asks" --> world["World and its writer"]
+  run -- "view, propose" --> world
+  run -- "files, prompt" --> program["Agent program"]
 ```
 
-## Components
-
-| Component | Does | Interface |
+| Part | Does | Never |
 | --- | --- | --- |
-| Controller | holds the runtime's state; hears each change; one timer | `changed(by)`, `look()`, `statuses()`, `watch`, `retry`, `refillSteps`, `close()` |
-| Rules | pure: decides what should run now | `plan(state)` → `{ start, stop, steps, wakeAt }` |
-| Executor | runs the agent once on copies in a temp folder | `execute({ task, copies, agent })` → the copies back |
-| Translate | pure: turns the agent's copies into door changes | `toChanges({ base, edited, comments, groups, threads })` → `{ posts, carried }` |
+| Loop | waits until the world changes, a run ends or a deadline passes; reads the world; applies the plan | decides who runs |
+| Plan | a pure function: state → whom to start and stop, when to look again, and why for each agent | reads a file or a clock |
+| Run | one agent, once: its view in, the agent program, a proposal out | changes the world, or starts a run |
+| World | answers the five calls below | knows about runs |
 
-## State
-
-All in memory, on this machine only. Never written to the shared files.
+## The world's five calls
 
 ```
-per buddy:  seen     thread → time of the last comment its runs were given
-            lookedAt rev its last run started at
-            base     the doc as its last run started
-            wake     the lines its last run said wake it, or null: any
-            failed   thread or watch → why
-            watch    { by } or null (also noted in the config folder)
-per doc:    changedAt  author → rev (and time) of their last change to the text
-            relayed    comment a run here posted → the people it was for
-            steps      budget for buddies waking or asking each other
-            running    buddy → run
+members()                           who is here: id, name, person or agent, may ask
+asks()                              open asks: id, agent, when, from whom
+view(member, { since, asks })       what this member sees: files, a prompt, the version
+wait(version, deadline)             block until something changed after version, or the deadline;
+                                    → the new version and the log since: version, author, time
+propose(member, version, old, new)  → landed, or refused because …
 ```
 
-## How it decides
+- `wait` is the only place the runtime waits. It takes no callbacks, so no
+  event can be lost: it asks what changed after a version, and the log
+  answers.
+- `view` is all a run is given. The prompt is built from the view alone.
+- `propose` is the only way a run changes the world. The writer lands it
+  under the world's rules (a doc merges; a game refuses a stale move), in
+  order with every other change.
 
-The controller is level-triggered: it never acts on an event itself. Any
-change, timer or finished run only means "look again":
+## How the plan decides
 
-```
-look():
-  state = the doc (door) + notes
-  { start, stop, steps, wakeAt, why } = plan(state + notes, now)
-  stop the runs in stop, start the runs in start
-  set the one timer to wakeAt: people's pause ending, the next step
-  write to the agent log what woke the look and why each buddy runs or not
-```
+An agent is due when it is not running and either:
 
-A look at any time gives the same answer, so a missed event costs nothing:
-a look also comes every minute on the clock, and when it starts something
-no event woke, it says in the log that an event was lost, a bug to fix.
+- **Asked:** an ask names it that is newer than the last one it was given,
+  and has not failed. An agent's ask to another agent counts against the
+  chain limit and runs for the person who started the chain.
+- **Watching:** a person's watch is on, its view changed since its last
+  run started, and the change is ready: a person's once they pause 5 s, an
+  outside program's at once, another agent's once that agent's run has
+  ended. Its own change never counts. A run may name what it waits for
+  (in Ponjo, lines of the doc); until its next run, only those wake it.
 
-The agent log (Settings > Agents > Agent log, the config folder's
-`logs/agents.log`) is for people asking why a buddy ran or did not: a line
-per look, saying what woke it (an edit or a comment and its rev, a run
-ending, a watch turned on, Retry, the timer, the clock), then a line per
-buddy with `plan`'s verdict (due or not, and why: asked in which threads,
-whose change after its look at which rev, people still typing, no step
-left, already running), and a line per run ending, with how and what
-landed. It holds names, revs and thread ids, never the doc's text.
+A person changing an agent's view while a run only a watch started is on
+ends that run: it saw an old view. An outside program's change does not.
 
-`plan` starts a buddy when:
-
-- **Ask:** a person's comment names it and it has not replied after it;
-  or a comment a run here posted names it, for one step, as the people
-  that run was for.
-- **Watch:** a person turned on its watch, and since its last run people
-  changed the doc and paused 5 s, another program wrote the file (at once:
-  it is whole), or another buddy changed it and its run has ended, so the
-  watcher sees the comment with the edit. A buddy's own change never counts. A run woken by another buddy costs one step. It is
-  told what changed since its last: the doc's lines, and each thread another
-  member wrote in, whole, as a person watching sees new comments. If its
-  last run named lines in `PONJO_WAKE`, it is due only while the doc holds
-  one of them ([agent config](agent-config.md#wake)).
+**Limits** keep the board coming to rest. A change by a person or the world
+has depth 0; a run woken by an agent's change has that change's depth plus
+1, and past a limit nothing wakes. Past a number of runs in a window, the
+runtime pauses the board's watches and tells a person.
 
 ## A run
 
-1. Executor copies the doc and its comments to a temp folder and starts the
-   agent with a prompt on stdin.
-2. The agent edits the copies and exits.
-3. Translate diffs the copies: new comments, each with its group of edits,
-   merged by line with the doc as it is now.
-4. Controller submits the changes through the door, as the buddy, with the
-   level of the person who asked.
-5. Controller updates the buddy's notes and looks again.
+1. Get the agent's view, and note that it looked at this version.
+2. Give the files and the prompt to the agent program, in a private folder.
+3. Propose what it left behind, based on the version it saw.
+4. Note how it ended. The loop looks again.
 
-## Failure
+A run changes nothing itself, so it can be stopped, refused or lost at no
+cost. An action on the outside world (a message, a deploy) belongs in the
+proposal, for the world to carry out once, if the asker's intent allows it.
 
-- A failed run lands nothing and is shown on the buddy with Retry. It is
-  not retried on its own: agents are slow and cost money.
-- A failed read of the doc is retried with backoff (1 s up to 30 s).
-- A restart clears the notes; unanswered asks run again.
+## Refused and failed
+
+- **Refused:** the world turned the proposal away because the board moved
+  on. The asks stay open, the agent is told why, and it decides again on the
+  new view, up to 3 times. Then the world's fallback applies: a doc waits
+  for a person; a game plays a default move.
+- **Failed:** the program exited with an error, timed out or could not
+  start. Nothing lands. It is shown with Retry and never run again on its
+  own: an agent is slow and costs money.
+- **A failed read of the world** is tried again, later each time (1 s up to
+  30 s).
+
+## State
+
+All in memory on this machine; nothing in a shared file, so no shared file
+can make this machine run anything. Per agent: the asks it was given, the
+version it last looked at, its view's fingerprint then, what wakes it,
+failures, and its watch (also kept in the config folder). Per world: the
+runs going and the limits. A restart clears it: open asks run again.
+
+## Agent log
+
+Each look writes what woke it, then each agent's verdict and why (asked in
+which ask, whose change, still typing, at the limit, already running); each
+run's end writes how it ended and what landed. Names, versions and ids
+only, never the world's content. In Ponjo: Settings > Agents > Agent log.
 
 ## Security
 
-- Only people start work: an ask comes from a person allowed to write, or
-  from a buddy's run for one, and only through the door. A comment found in
-  the file asks no one.
-- The agent sees copies only, plus read access to the project folder.
-- Buddies waking or asking each other is bounded by steps.
+- Only people start work: an ask from a person who may write, or a watch a
+  person turned on. A request found in a file asks no one.
+- A run sees only its member's view and changes only through `propose`.
+- Outside any view: whoever runs the host can read its files, and an agent
+  program must be kept by its own permissions from opening files outside
+  its folder.
+
+## Today
+
+The code is the runtime above, before the world interface was drawn out:
+
+- One runtime per open doc (`src/host/open-doc.js`); it stops when the doc
+  closes.
+- `src/host/buddy-runtime.js` calls the doc's door directly, and lands a
+  run itself with Translate (`src/core/translate.js`) and `merge3`.
+- It hears changes through a callback, and also looks every minute to catch
+  an event that was lost.
+- It notes the doc's text at each look, not a fingerprint of a view.
+- Chains are limited by steps (`src/core/bucket.js`): up to 20, one more a
+  minute; a run woken or asked by an agent takes one. There is no depth and
+  no breaker.
+- Every member sees the whole doc and every thread; in project mode the
+  agent program may read the project folder.
+- Nothing is refused: the doc world merges.
+- An agent program may act outside the doc as its own config allows.
+
+Code: the loop is `src/host/buddy-runtime.js`, the plan `src/core/due.js`,
+the run `src/host/runner.js`, the prompt `src/core/prompt.js`.

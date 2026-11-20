@@ -330,17 +330,18 @@ is answered, so typing reaches others while it goes on.
 ## Buddies
 
 A buddy runs only on docs open on this machine, and only for a person: on
-an ask, or while a person has it watch the doc. The doc knows nothing of
-buddies: a controller, one per open doc, reads the doc and its log through
-the door, decides what should run, runs the agent, and writes the run's
-changes back through the door as the buddy, as a window writes a person's.
+an ask, or while a person has it watch the doc. When it runs is the
+[agent runtime](agent-runtime.md)'s to decide; this section is the doc's
+side: who may ask, what asks and wakes a buddy, what a run is given, and
+how what it returns lands. The runtime reaches the doc only through its
+door, writing as the buddy, as a window writes as a person.
 
-| Part | Does | Knows nothing of |
-| --- | --- | --- |
-| Rules (`src/core/`) | pure: `plan(...)` → what to start and stop, the steps spent, when to look next | files, clocks |
-| Controller (`src/host/`) | keeps the notes, the steps and the runs; listens to the log; one timer | the doc's insides |
-| Executor (`src/host/runner.js`) | `run(task, copies)` → the copies back | the doc |
-| Translate (`src/core/`) | pure: a run's copies → the changes to apply | files |
+A buddy has one run at a time in a doc, given every thread that asks it
+and it has not been given; a comment written while it runs is for the
+next. The runtime's notes, steps and runs are this machine's, in memory.
+Each look writes to `logs/agents.log` what woke it and each buddy's
+verdict, and each run's end a line, never the doc's text; the log is
+trimmed like the others.
 
 ### Asks and watches
 
@@ -386,35 +387,6 @@ more a minute (Settings > Agents sets both; 0: only on Refill); with none
 left, watchers and buddies asked by buddies wait. People's changes and
 asks take none. The steps are this
 machine's, in memory.
-
-### The controller
-
-The controller keeps, for each buddy here, its notes, on this machine
-only:
-
-```
-{ seen: thread → the rev of the last comment its runs were given there,
-  lookedAt: the rev its last run started at,
-  failed: thread or "watch" → why,
-  watch: { by } or null }
-```
-
-and, for the doc, who last changed it at which rev (`changedAt`, people as
-one), the steps, and the runs going. It hears every change in the log: it
-notes `changedAt`, and a person's ends the runs only a watch started. Then,
-and whenever its one timer fires, it reads the doc and asks the rules:
-`plan({ threads, rev, changedAt, notes, running, steps, now })` → `{
-start, stop, steps, wakeAt, why }`, `why` each buddy's verdict in words. It starts and ends runs as told and sets its
-timer to `wakeAt`: the soonest of people's pause ending, the next step
-coming, and a failed read tried again (1 s, twice as long each time up to
-30 s). The same look at any time finds the same, so a look also comes
-every minute on the clock: what it starts while nothing was set to wake a
-look, an event that was lost should have, and it says so in the log, a bug
-to fix. Each look writes to `logs/agents.log` what woke it and each
-buddy's verdict, and each run's end a line: how it ended and what landed;
-never the doc's text. It is trimmed like the other logs. Nothing else runs a buddy. A buddy has one run at a time in a doc, given every thread that asks
-it and it has not been given; a comment written while it runs is for the
-next.
 
 ### A run
 

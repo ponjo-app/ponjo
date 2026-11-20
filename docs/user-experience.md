@@ -158,10 +158,11 @@ and 30 days, and by model.
   its own, on an edit or on a clock. Resolving the thread, which only
   people do, stops a buddy working on it at once, and nothing it did there
   lands. Reopening asks no one.
-- Only people's comments ask: yours, and a teammate's who can edit. A
-  turn acts as whoever asked it may when it ends: if they were removed or
-  set to Read meanwhile, nothing it did lands. An AI buddy's reply asks no one, and neither does an `@name`
-  typed in the doc's text.
+- Work starts with people's comments: yours, and a teammate's who can
+  edit. A turn acts as whoever asked it may when it ends: if they were
+  removed or set to Read meanwhile, nothing it did lands. An AI buddy's
+  reply asks only an AI buddy it `@`mentions, for that same person and for
+  one of the doc's steps; an `@name` typed in the doc's text asks no one.
 - A comment that reached the file from outside Ponjo (a `git pull`, another
   editor, another computer) asks no one.
 - A comment that mentions several AI buddies asks each; they work at once.
