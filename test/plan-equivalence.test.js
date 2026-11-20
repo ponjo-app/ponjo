@@ -4,7 +4,9 @@
 // one read the doc's threads and text; the new one is given the doc
 // world's asks (asksIn), whose views hold what wakes them, and a watcher is
 // told what is new (newSince) by its view. Here each watcher's view changed
-// since it last looked, as the old plan took any change to mean.
+// since it last looked, as the old plan took any change to mean, and the old
+// plan never runs out of steps nor the new one past its depth limit: what
+// they say of those is left out.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -58,7 +60,6 @@ function state(rand) {
   return {
     buddies, threads, askers, taken, relayed, notes, changedAt,
     running: new Set(some([...BUDDIES.map((b) => b.id), 'b_gone'], 0.3)),
-    steps: { left: rand() < 0.3 ? null : Math.floor(rand() * 4), cap: 3, every: rand() < 0.5 ? 0 : 60_000, at: NOW - Math.floor(rand() * 120_000) },
     text: `${some(LINES, 0.6).join('\n')}\n`,
   };
 }
@@ -66,14 +67,15 @@ function state(rand) {
 // What a plan starts, as the two can be compared: each run's agent, asks,
 // askers, whether it watches, and what it is told is new.
 const compared = (r, told) => ({
-  start: r.start.map(({ w, ...t }) => ({ ...t, told: told({ ...t, w }) })), stop: r.stop, steps: r.steps, wakeAt: r.wakeAt, asking: [...r.asking], why: [...r.why],
+  start: r.start.map(({ w, depth, ...t }) => ({ ...t, told: told({ ...t, w }) })), stop: r.stop, wakeAt: r.wakeAt, asking: [...r.asking],
+  why: [...r.why].map(([id, why]) => [id, why.replace(/ · (a step taken, \S+ left|depth \d+)/, '')]),
 });
 const ids = (list) => list.map((x) => x.id);
 
 // The old plan on state `s`.
 function before(s) {
   const changedAt = new Map([...s.changedAt].map(([by, c]) => [by === 'outside' ? old.OUTSIDE : by, c]));
-  const r = old.plan({ ...s, taken: (c) => s.taken.has(c.id), changedAt, now: NOW });
+  const r = old.plan({ ...s, taken: (c) => s.taken.has(c.id), changedAt, steps: { left: null, cap: Infinity, every: 0, at: 0 }, now: NOW });
   return compared({ ...r, start: r.start.map((t) => ({ agent: t.buddy.id, asks: ids(t.threads), askers: t.askers, watch: t.watch !== null, watchOnly: t.watchOnly, w: t.watch })) },
     (t) => t.w && { changes: t.w.changes, threads: ids(t.w.threads) });
 }
@@ -83,8 +85,9 @@ function after(s) {
   const changedAt = new Map([...s.changedAt].map(([by, c]) => [by === 'outside' ? now.OUTSIDE : by, c]));
   const lines = new Set(s.text.split(/\r?\n/));
   const woken = new Set([...s.notes].filter(([, n]) => n.wake?.some((l) => lines.has(l))).map(([id]) => id));
-  const asks = asksIn(s.threads, s.askers, (c) => s.taken.has(c.id), s.relayed);
-  const r = now.plan({ agents: s.buddies, asks, askers: s.askers, notes: s.notes, changedAt, running: s.running, steps: s.steps, prints: new Map(), woken, now: NOW });
+  const posted = new Map([...s.relayed].map(([id, people]) => [id, { for: people, depth: 0 }]));
+  const asks = asksIn(s.threads, s.askers, (c) => s.taken.has(c.id), posted);
+  const r = now.plan({ agents: s.buddies, asks, askers: s.askers, notes: s.notes, changedAt, running: s.running, prints: new Map(), woken, limit: 1000, paused: false, now: NOW });
   return compared({ ...r, start: r.start.map((t) => ({ agent: t.agent.id, asks: ids(t.asks), askers: t.askers, watch: t.watch, watchOnly: t.watchOnly })) }, (t) => {
     if (!t.watch) return null;
     const note = s.notes.get(t.agent);

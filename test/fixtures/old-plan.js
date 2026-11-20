@@ -1,10 +1,10 @@
 // The plan as it was before the runtime drew out the world interface
 // (#431): the oracle the new plan is checked against, on random states
-// (test/plan-equivalence.test.js). Never changed.
+// (test/plan-equivalence.test.js). Never changed; the steps it spent, from
+// src/core/bucket.js before #431 took them away, are kept below.
 
 import { askedBy } from '../../src/core/comments.js';
 import { lineChanges } from '../../src/core/diff.js';
-import { nextStepAt, take } from '../../src/core/bucket.js';
 
 /** How long people's edits pause before a buddy watching runs on them (ms). */
 export const SETTLE_MS = 5000;
@@ -138,4 +138,18 @@ export function plan({ buddies, threads, askers, taken, relayed = new Map(), not
   for (const id of stop) why.set(id, 'stopped: nothing asks it now');
   for (const b of buddies) if (!why.has(b.id)) why.set(b.id, 'not due: no ask, not watching');
   return { start, stop, steps, wakeAt, asking, why };
+}
+
+// ---- the steps (src/core/bucket.js) ----
+
+/** Take a step at `now`: { ok, bucket }, ok false and the bucket as it was when none is left. */
+function take(bucket, now) {
+  const left = bucket.left ?? bucket.cap;
+  if (left < 1) return { ok: false, bucket };
+  return { ok: true, bucket: { ...bucket, left: left - 1, at: left >= bucket.cap ? now : bucket.at } };
+}
+
+/** When the next step comes, or null: full, or none come on their own. */
+function nextStepAt(bucket) {
+  return bucket.left !== null && bucket.left < bucket.cap && bucket.every ? bucket.at + bucket.every : null;
 }

@@ -482,14 +482,14 @@ test('a watcher whose run named a line in PONJO_WAKE runs again only once the do
   }, { content: `${SAMPLE}\nwake-line Your turn, Clippy.\n` });
 });
 
-test('a buddy\'s @mention asks the buddy it names, for a step: it runs and answers in the thread', { timeout: 30_000 }, async () => {
-  await withDoc(async ({ call, state, runs }) => {
+test('a buddy\'s @mention asks the buddy it names, a step deeper: it runs and answers in the thread', { timeout: 30_000 }, async () => {
+  await withDoc(async ({ settingsDir, call, state, runs }) => {
     await comment(call, '@Ada append {"body":"\\u0040Ben over to you"}'); // the person names Ada alone
     const handed = async () => (await state()).threads.find((t) => t.comments[0].by.name === 'Ada');
     await until(async () => (await handed())?.comments.length === 2, 'Ada\'s thread, then Ben\'s answer there');
     assert.deepEqual((await handed()).comments.map((c) => [c.by.name, c.body]), [['Ada', '@Ben over to you'], ['Ben', 'Nothing to change.']]);
     assert.deepEqual((await runs()).map((r) => r.buddy), ['Ada', 'Ben']);
-    assert.equal((await state()).steps.left, (await state()).steps.cap - 1, 'one step');
+    assert.match(await readFile(join(settingsDir, 'logs', 'agents.log'), 'utf8'), /Ben +due: asked in c_\w+ by a buddy · depth 1 · started/, 'one deeper than Ada\'s run, which a person asked');
   }, { buddies: { Ada: 'Hands over.\n', Ben: 'Answers.\n' } });
 });
 
@@ -545,8 +545,8 @@ test('a watch run that fails, before its buddy has a thread, shows on the buddy,
   });
 });
 
-test('a buddy\'s change wakes each other buddy watching, never itself, each such run taking a step; with none left they wait, and Refill fills them', { timeout: 60_000 }, async () => {
-  await withDoc(async ({ call, edit, state, runs }) => {
+test('a buddy\'s change wakes each other buddy watching, never itself, a step deeper each time; past the breaker\'s runs the watches pause until someone resumes them', { timeout: 60_000 }, async () => {
+  await withDoc(async ({ settingsDir, call, state, runs }) => {
     const moves = async () => (await runs()).length;
     const idle = () => until(async () => (await state()).agents.every((a) => a.state === 'ready'), 'the runs to end');
     await call('watch', { buddy: 'Ada', on: true });
@@ -554,38 +554,42 @@ test('a buddy\'s change wakes each other buddy watching, never itself, each such
     await idle();
     await sleep(1000);
     assert.equal(await moves(), 1, 'its own change wakes it not');
-    assert.deepEqual((await state()).steps, { left: 3, cap: 3, next: null });
+    assert.deepEqual((await state()).watches, { paused: false });
 
     await call('watch', { buddy: 'Ben', on: true });
-    await until(async () => (await state()).steps.left === 0, 'the steps to run out');
+    await until(async () => (await state()).watches.paused, 'the breaker', 30_000);
     await idle();
     await sleep(1000);
-    assert.equal(await moves(), 5, 'each first look free, then three steps');
-    assert.deepEqual((await runs()).map((r) => r.buddy), ['Ada', 'Ben', 'Ada', 'Ben', 'Ada'], 'each on the other\'s move');
+    assert.equal(await moves(), 10, 'ten runs, then the watches pause');
+    assert.deepEqual((await runs()).slice(0, 4).map((r) => r.buddy), ['Ada', 'Ben', 'Ada', 'Ben'], 'each on the other\'s move');
     assert.match((await runs())[2].prompt, /on the whole doc, new since you last looked:\n\n<thread>\nBen: Watching\./, 'told what the other said with its move');
-    assert.equal((await state()).steps.next, null, 'none comes on its own');
+    const log = await readFile(join(settingsDir, 'logs', 'agents.log'), 'utf8');
+    assert.match(log, /Ada +due: changed by itself at rev \d+, which does not count, Ben at rev \d+, after its look at rev \d+ · depth 1 · started/, 'woken by Ben\'s first look, a person\'s: one deeper');
+    assert.match(log, /· depth 3 · started/, 'and deeper with each move');
+    assert.match(log, /watches paused: 10 runs in 10 min/);
+    assert.match(log, /but watches are paused/);
 
-    await edit(`${(await state()).text}A person's line.\n`);
-    await until(async () => (await moves()) === 7, 'both on the pause, free', 10_000);
-    await idle();
-    await sleep(1000);
-    assert.equal(await moves(), 7, 'then they wait again');
-
-    await call('refillSteps', {});
-    await until(async () => (await moves()) === 10 && (await state()).steps.left === 0, 'three more moves');
-  }, { content: 'ping-pong\n', settings: { steps: 3, refillEvery: 0 }, buddies: { Ada: 'Plays.\n', Ben: 'Plays.\n' } });
+    await call('resume', {});
+    assert.deepEqual((await state()).watches, { paused: false });
+    await until(async () => (await moves()) > 10, 'the moves go on');
+  }, { content: 'ping-pong\n', settings: { pauseAfter: 10 }, buddies: { Ada: 'Plays.\n', Ben: 'Plays.\n' } });
 });
 
-test('with no step left, buddies watching wait for the next to come on its own', { timeout: 60_000 }, async () => {
-  await withDoc(async ({ call, state, runs }) => {
-    await call('watch', { buddy: 'Ada', on: true });
-    await call('watch', { buddy: 'Ben', on: true });
-    await until(async () => (await state()).steps.left === 0 && (await runs()).length === 3, 'the step taken');
-    const { next } = (await state()).steps;
-    assert.ok(Number.isFinite(next) && next <= Date.now() + 2500, 'when the next comes, within its time');
-    await until(async () => (await runs()).length === 4, 'a move on the step that came', 10_000);
-    await until(async () => (await runs()).length === 5, 'and on the next', 10_000);
-  }, { content: 'ping-pong\n', settings: { steps: 1, refillEvery: 2 }, buddies: { Ada: 'Plays.\n', Ben: 'Plays.\n' } });
+test('an outside program that echoes a buddy watching trips the breaker: its writes start no chain, but the runs count', { timeout: 60_000 }, async () => {
+  await withDoc(async ({ docPath, settingsDir, call, state, runs }) => {
+    await call('watch', { buddy: 'Clippy', on: true });
+    let echoes = 0;
+    while (!(await state()).watches.paused) {
+      const text = await readFile(docPath, 'utf8');
+      if (text.endsWith('Clippy moved.\n')) await writeFile(docPath, `${text}Echo ${++echoes}.\n`);
+      await sleep(20);
+    }
+    await until(async () => (await runs()).length === 10, 'the run that tripped it');
+    await until(async () => (await readFile(join(settingsDir, 'logs', 'agents.log'), 'utf8')).match(/ended: ok/g)?.length === 10, 'its end');
+    await writeFile(docPath, `${await readFile(docPath, 'utf8')}Echo again.\n`);
+    await sleep(1500);
+    assert.equal((await runs()).length, 10, 'paused at the limit: the echo wakes no one');
+  }, { content: 'ping-pong\n', settings: { pauseAfter: 10 } });
 });
 
 test('only a person changes a watch: it outlives its thread resolved, a new one opened, and a restart, with no run on opening', { timeout: 60_000 }, async () => {

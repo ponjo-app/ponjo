@@ -205,7 +205,7 @@ function golden(name, scenario, { content = 'Intro.\n\nWe ship in week one.\n' }
   test(`golden agent log: ${name}`, { timeout: 120_000 }, async () => {
     seed = 1;
     const docPath = await tempDoc(content);
-    const settingsDir = await fakeConfig({ steps: 3, refillEvery: 0 });
+    const settingsDir = await fakeConfig({ pauseAfter: 10 });
     const buddies = { Clippy: 'Helps.\n', Ada: 'Plays.\n', Ben: 'Plays.\n' };
     const open = () => during(settingsDir, openTestDoc(docPath, { settingsDir, buddies }));
     let doc = await open();
@@ -260,14 +260,14 @@ golden('a watcher waiting while people type', async ({ call, state, edit, advanc
   await advance(4000);
 });
 
-golden('buddies waking each other until steps run out', async ({ call, state, edit, advance }) => {
+golden('buddies waking each other until the watches pause', async ({ call, state, edit, advance }) => {
   await call('watch', { buddy: 'Ada', on: true });
   await advance(1000);
   await call('watch', { buddy: 'Ben', on: true });
   await advance(3000);
   await edit(`${(await state()).text}A person's line.\n`);
   await advance(7000);
-  await call('refillSteps', {});
+  await call('resume', {});
   await advance(3000);
 }, { content: 'ping-pong\n' });
 

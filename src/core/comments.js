@@ -258,13 +258,14 @@ export function askedBy(thread, askers, taken = () => true, relayed = new Set())
 /**
  * Every ask in `threads` (threadsOf), as askedBy finds them: [{ id (the
  * thread's), agent (the buddy asked), at (when the comment that asks was
- * written), from (who wrote it), for (when a run here posted it, the people
- * that run was for: `posted` maps such comments to them), until (when the
- * thread's latest comment was written) }], in the threads' order.
+ * written), from (who wrote it), for and depth (when a run here posted it,
+ * the people that run was for and its depth: `posted` maps such comments
+ * to { for, depth }), until (when the thread's latest comment was written)
+ * }], in the threads' order.
  */
 export function asksIn(threads, askers, taken, posted) {
   return threads.flatMap((thread) => [...askedBy(thread, askers, taken, posted)].map(([agent, c]) => ({
-    id: thread.id, agent, at: c.at, from: c.by.id, ...(posted.has(c.id) ? { for: posted.get(c.id) } : {}), until: thread.comments.at(-1).at,
+    id: thread.id, agent, at: c.at, from: c.by.id, ...posted.get(c.id), until: thread.comments.at(-1).at,
   })));
 }
 

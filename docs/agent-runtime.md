@@ -130,9 +130,6 @@ What the code does differently from the runtime above:
 
 - One runtime per open doc (`src/host/open-doc.js`); it stops when the doc
   closes.
-- Chains are limited by steps (`src/core/bucket.js`): up to 20, one more a
-  minute; a run woken or asked by an agent takes one. There is no depth and
-  no breaker.
 - Every member sees the whole doc and every thread; in project mode the
   agent program may read the project folder.
 - Nothing is refused: the doc world merges.

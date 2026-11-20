@@ -13,6 +13,8 @@ import { readTaken } from '../store/history.js';
 import { SIDECAR_SUFFIX, readSidecarText } from '../store/files.js';
 import { settingsWithId } from '../store/settings.js';
 
+const DEPTH_LIMIT = 1000;
+
 /**
  * The world of one open doc. `door` is how it reads the doc and lands a
  * change: { text(), rev(), epoch(), missing(), changes(since) (those after
@@ -23,7 +25,8 @@ import { settingsWithId } from '../store/settings.js';
  * `buddies()` the buddies the doc reaches and `me()` the owner.
  */
 export function createDocWorld({ door, subscribe, place, pathInProject, buddies, me, settingsDir }) {
-  // The comments a run here posted → the people it was for: its @mentions ask.
+  // The comments a run here posted → { for (the people it was for), depth
+  // (its run's) }: its @mentions ask.
   const posted = new Map();
   // Who waits for the next change: each is told as one lands, then reads
   // the door's log, so a change it was not told of is in it all the same.
@@ -52,6 +55,9 @@ export function createDocWorld({ door, subscribe, place, pathInProject, buddies,
   }
 
   return {
+    // How deep agents may wake each other: high, so two buddies can play a long game.
+    limits: { depth: DEPTH_LIMIT },
+
     members,
 
     /**
@@ -115,7 +121,7 @@ export function createDocWorld({ door, subscribe, place, pathInProject, buddies,
 
     /**
      * Land what a run left behind, as `agent` ({ id, name, for: the people
-     * it ran for }), on the doc of version `version`: `old` what it was
+     * it ran for, depth: its run's }), on the doc of version `version`: `old` what it was
      * given ({ files, asks }), `made` what it made ({ text, comments: {
      * before, after }, groups, output }). Each comment's edits (its group)
      * land as a version of their own, merged with what landed since
@@ -152,7 +158,7 @@ export function createDocWorld({ door, subscribe, place, pathInProject, buddies,
         for (const c of posts) {
           const { at } = await door.comment({ id: c.id, thread: c.thread, anchor: c.anchor ?? null, body: c.body, after: c.thread !== undefined ? after.get(c.thread) : undefined }, who);
           if (c.thread !== undefined && after.has(c.thread)) after.set(c.thread, at);
-          posted.set(c.id, agent.for);
+          posted.set(c.id, { for: agent.for, depth: agent.depth });
         }
       } catch (error) {
         console.error(`Could not post ${agent.name}'s comments:`, error);

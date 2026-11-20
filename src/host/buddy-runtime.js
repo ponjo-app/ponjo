@@ -1,6 +1,6 @@
 // The agent runtime of one open doc (docs/agent-runtime.md): the loop. It
-// keeps this machine's notes on the world's agents, the steps and the runs
-// going, and one timer. Whenever anything may have changed it looks: reads
+// keeps this machine's notes on the world's agents, the runs going and
+// the breaker, and one timer. Whenever anything may have changed it looks: reads
 // the world (members, asks), asks the plan (src/core/due.js) what to start
 // and stop, and does that. A run is the agent once on its view (execute,
 // runner.js), and what it left behind is proposed to the world (the doc's:
@@ -9,10 +9,8 @@
 
 import { createHash } from 'node:crypto';
 import { basename } from 'node:path';
-import { filled, nextStepAt, refilled } from '../core/bucket.js';
 import { newId } from '../core/comments.js';
 import { OUTSIDE, SETTLE_MS, plan } from '../core/due.js';
-import { DEFAULT_SETTINGS } from '../core/settings.js';
 import { pickedAgent } from '../store/agents.js';
 import { noteWatching, readWatching } from '../store/history.js';
 import { logLoop, logRun } from '../store/runs.js';
@@ -44,7 +42,7 @@ export function agentsFor(level, agents) {
 /**
  * The buddies of one open doc. `world` is the doc's (doc-world.js), the
  * five calls it reaches the doc by; `docPath()` names the doc in the logs
- * and notes. `emit` tells every window (`agents`, `steps`). `timeoutMs`
+ * and notes. `emit` tells every window (`agents`, `watches`). `timeoutMs`
  * ends a run that hangs.
  */
 export async function createBuddyRuntime({ world, docPath, settingsDir, secrets, emit, timeoutMs }) {
@@ -60,7 +58,11 @@ export async function createBuddyRuntime({ world, docPath, settingsDir, secrets,
   let version = (await world.wait(Infinity, 0)).rev; // the world's version, as last read from its log
   for (const note of notes.values()) note.lookedAt = version; // no run on opening
   const changedAt = new Map(); // who last changed the text → { rev, at }, people as null
-  let steps = { left: null, cap: DEFAULT_SETTINGS.steps, every: DEFAULT_SETTINGS.refillEvery * 1000, at: performance.now() };
+  const depths = new Map(); // agent → the depth of its latest run: its changes' and asks'
+  // The breaker: when each run in the window started (performance.now()),
+  // and whether it tripped, pausing the watches until someone resumes them.
+  let started = [];
+  let paused = false;
   // The runs going: buddy → { task, from (the version it started at), print
   // (its view's fingerprint, once it has it), child,
   // cancelled, landing (its agent is done; it lands whatever happens), done }.
@@ -141,16 +143,12 @@ export async function createBuddyRuntime({ world, docPath, settingsDir, secrets,
       problem = error.message;
     }
     const { settings } = await readSettings(settingsDir);
-    const before = JSON.stringify(stepsView());
-    steps = refilled(steps, { cap: settings.steps, every: settings.refillEvery * 1000 }, performance.now());
     const p = problem || here.length === 0 // a buddy could not post its comments, or there is none
-      ? { start: [], stop: [...runs.keys()], steps, wakeAt: null, asking: new Set() }
+      ? { start: [], stop: [...runs.keys()], wakeAt: null, asking: new Set() }
       : plan({
         agents: here, asks, askers: members.filter((m) => m.mayAsk).map((m) => m.id), ...(await viewed(here)),
-        notes, changedAt, running: new Set(runs.keys()), steps, now: performance.now(),
+        notes, changedAt, running: new Set(runs.keys()), limit: world.limits.depth, paused, now: performance.now(),
       });
-    steps = p.steps;
-    if (JSON.stringify(stepsView()) !== before) emit('steps', stepsView());
     // A failure is shown while its ask still asks the buddy.
     let gone = false;
     for (const [id, note] of notes) for (const key of note.failed.keys()) if (key !== 'watch' && !p.asking.has(`${id} ${key}`)) gone = note.failed.delete(key);
@@ -162,7 +160,8 @@ export async function createBuddyRuntime({ world, docPath, settingsDir, secrets,
     const rows = [...verdicts].map(([id, reason]) => [names.get(id) ?? '', reason]);
     const width = Math.max(...rows.map(([name]) => name.length));
     tell(`look · ${why || 'asked to'}`, ...rows.map(([name, reason]) => `${name.padEnd(width)}  ${reason}`));
-    if (p.wakeAt !== null) wake(p.wakeAt, 'what a look waited for: people to pause, or a step');
+    trip(settings);
+    if (p.wakeAt !== null) wake(p.wakeAt, 'what a look waited for: people to pause');
   }
   // What the watchers among `here` see now: { prints (each one's view's
   // fingerprint), woken (those whose last run named lines that wake them,
@@ -191,6 +190,8 @@ export async function createBuddyRuntime({ world, docPath, settingsDir, secrets,
   // Start `task`'s run; returns its id.
   function startRun(task) {
     const run = { id: newId('r'), task, from: version, child: null, cancelled: false, landing: false, done: null };
+    depths.set(task.agent.id, task.depth);
+    started.push(performance.now());
     runs.set(task.agent.id, run);
     run.done = runOnce(run).finally(() => {
       runs.delete(task.agent.id);
@@ -275,16 +276,19 @@ export async function createBuddyRuntime({ world, docPath, settingsDir, secrets,
     }
     for (const a of task.asks) note.failed.delete(a.id);
     broadcastAgents();
-    return world.propose({ ...task.agent, for: task.askers }, run.from, { files: view.files, asks: task.asks }, { text: result.edited, comments: result.comments, groups: result.groups, output: result.stdout });
+    return world.propose({ ...task.agent, for: task.askers, depth: task.depth }, run.from, { files: view.files, asks: task.asks }, { text: result.edited, comments: result.comments, groups: result.groups, output: result.stdout });
   }
 
-  // ---- the steps ----
+  // ---- the breaker ----
 
-  // The steps as the windows show them: { left, cap, next (when the next
-  // comes, by the wall clock, or null) }.
-  function stepsView() {
-    const next = nextStepAt(steps);
-    return { left: steps.left ?? steps.cap, cap: steps.cap, next: next === null ? null : Math.round((Date.now() + Math.max(0, next - performance.now())) / 1000) * 1000 };
+  // Past `pauseAfter` runs started within `pauseWithin` minutes, the doc's
+  // watches pause, and every window is told, until someone resumes them.
+  function trip({ pauseAfter, pauseWithin }) {
+    started = started.filter((at) => at > performance.now() - pauseWithin * 60_000);
+    if (paused || started.length < pauseAfter) return;
+    paused = true;
+    tell(`watches paused: ${started.length} runs in ${pauseWithin} min`);
+    emit('watches', { paused });
   }
 
   // ---- what people do ----
@@ -363,7 +367,7 @@ export async function createBuddyRuntime({ world, docPath, settingsDir, secrets,
       return;
     }
     const by = author.kind === 'buddy' ? author.id : author.kind === 'outside' ? OUTSIDE : null;
-    changedAt.set(by, { rev, at });
+    changedAt.set(by, { rev, at, depth: depths.get(by) ?? 0 });
     if (![...notes.values()].some((n) => n.watch)) return;
     if (by !== null) {
       look(`an edit by ${who}, rev ${rev}`);
@@ -395,7 +399,8 @@ export async function createBuddyRuntime({ world, docPath, settingsDir, secrets,
     /** The agent, its settings or its secrets changed: the failed asks run again. */
     agentChanged: () => retryFailed(null, 'the agent or its settings changed'),
     statuses: () => agentStatuses(),
-    steps: () => stepsView(),
+    /** The watches: { paused }. */
+    watches: () => ({ paused }),
     /** The names of the buddies at work. */
     running: () => [...runs.values()].filter((r) => !r.cancelled).map((r) => r.task.agent.name),
     testAgent: async () => {
@@ -404,11 +409,12 @@ export async function createBuddyRuntime({ world, docPath, settingsDir, secrets,
     },
     calls: {
       watch: (body, who) => watch(body, who),
-      // Someone refills the steps: all of them, and the buddies waiting go on.
-      refillSteps: () => {
-        steps = filled(steps, performance.now());
-        emit('steps', stepsView());
-        look('the steps were refilled');
+      // Someone resumes the watches the breaker paused: the runs counted so far count no more.
+      resume: () => {
+        paused = false;
+        started = [];
+        emit('watches', { paused });
+        look('the watches were resumed');
         return {};
       },
       retry: (body) => {

@@ -16,9 +16,9 @@ export const SETTINGS_VERSION = 3;
  * settings of each view and agent by its id (`{ <id>: { enabled: false } }`);
  * one not there takes the default its declaration gives (viewSettings,
  * agentSettings). `trace` keeps each run's trace (src/store/runs.js
- * logRun), to read in a doc's Runs. A doc's buddies may wake each other,
- * watching it, `steps` times, one more every `refillEvery` seconds (0:
- * only when someone refills them; src/host/doc-service.js).
+ * logRun), to read in a doc's Runs. A doc's watches pause once its buddies
+ * run `pauseAfter` times within `pauseWithin` minutes, until someone
+ * resumes them (src/host/buddy-runtime.js, the breaker).
  */
 export const DEFAULT_SETTINGS = Object.freeze({
   id: null,
@@ -29,14 +29,14 @@ export const DEFAULT_SETTINGS = Object.freeze({
   agents: Object.freeze({}),
   agent: 'claude',
   trace: false,
-  steps: 20,
-  refillEvery: 60,
+  pauseAfter: 300,
+  pauseWithin: 10,
 });
 
-/** How often a doc's buddies may wake each other, as Settings > Agents offers it. */
-export const STEP_FIELDS = Object.freeze([
-  { key: 'steps', type: 'number', label: 'Steps between buddies', hint: 'How many times, in a doc, buddies watching it may run on another buddy\'s change before they wait.', min: 1, max: 200, step: 1, default: 20 },
-  { key: 'refillEvery', type: 'number', label: 'One more step every', hint: 'Seconds; 0: only when someone refills them.', unit: 's', min: 0, max: 3600, step: 10, default: 60 },
+/** When a doc's watches pause (the breaker), as Settings > Agents offers it. */
+export const BREAKER_FIELDS = Object.freeze([
+  { key: 'pauseAfter', type: 'number', label: 'Pause watches after', hint: 'When a doc\'s buddies run this many times within this long, its watches pause until someone resumes them.', unit: 'runs', min: 10, max: 10000, step: 10, default: 300 },
+  { key: 'pauseWithin', type: 'number', label: 'Within', unit: 'min', min: 1, max: 1440, step: 1, default: 10 },
 ]);
 
 const oneOf = (...values) => (v) => values.includes(v);
@@ -54,8 +54,8 @@ const VALID = {
   agents: perId,
   agent: (v) => typeof v === 'string' && NAME_PATTERN.test(v),
   trace: boolean,
-  steps: (v) => FIELD_RULES.number(STEP_FIELDS[0], v),
-  refillEvery: (v) => FIELD_RULES.number(STEP_FIELDS[1], v),
+  pauseAfter: (v) => FIELD_RULES.number(BREAKER_FIELDS[0], v),
+  pauseWithin: (v) => FIELD_RULES.number(BREAKER_FIELDS[1], v),
 };
 
 export class SettingsError extends Error {
