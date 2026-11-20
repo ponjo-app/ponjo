@@ -88,10 +88,11 @@ const typing = new Set(); // players typing a line, shown in the chat
 
 async function run(id, due) {
   const basis = begin(table, id, due);
+  if (!due.turn && !basis.talk) return; // woken only to talk, and not talking this time
   const started = performance.now();
   running.add(id);
   draw();
-  const { rules, situation } = prompt(table, id, due);
+  const { rules, situation } = prompt(table, id, due, basis.talk);
   try {
     const { calls, text } = await infer()([{ role: 'user', content: rules, cache: true }, { role: 'user', content: situation }], [DECIDE]);
     let args = {};

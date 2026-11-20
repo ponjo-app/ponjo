@@ -220,7 +220,7 @@ test('the player to act is due; a line to the table wakes the players, a reply t
   assert.equal(table.chat.at(-1).depth, 1);
   const duke = plan(table).find((d) => d.id === 'Duke');
   assert.equal(duke.lines.length, 1, 'named, Duke is due');
-  land(table, 'Duke', begin(table, 'Duke', duke), { thinking: 'x', say: 'Penny, you always say that.' });
+  land(table, 'Duke', begin(table, 'Duke', duke, 0), { thinking: 'x', say: 'Penny, you always say that.' });
   assert.equal(table.chat.at(-1).depth, 2);
   assert.ok(!plan(table).find((d) => d.id === 'Penny')?.lines.length, 'a reply to a reply wakes no one');
 });
@@ -349,4 +349,33 @@ test('the button stays with its player as seats change, or passes on from the se
   removePlayer(table, 'Gary');
   deal(table);
   assert.equal(table.hand.seats[table.hand.button].id, 'Mabel', 'Gary left with the button: it moves on from the seat before his, to the seat after it');
+});
+
+test('a player talks as often as its character: quiet runs say nothing; the person is always answered', () => {
+  const table = tableWithHand();
+  const penny = PERSONAS.find((p) => p.id === 'Penny');
+  const quiet = begin(table, 'Penny', { turn: false, lines: [], react: false }, penny.talk);
+  assert.equal(quiet.talk, false);
+  assert.match(prompt(table, 'Penny', { turn: false, lines: [], react: false }, quiet.talk).situation, /Stay quiet this time/);
+  land(table, 'Penny', quiet, { thinking: 'x', say: 'Fold.' });
+  assert.ok(!table.chat.some((l) => l.by === 'Penny'), 'a quiet run says nothing');
+  const line = say(table, HUMAN, 'Penny, how are you?');
+  const asked = begin(table, 'Penny', { turn: false, lines: [line], react: false }, 1);
+  assert.equal(asked.talk, true);
+  land(table, 'Penny', asked, { thinking: 'x', say: 'Fine.' });
+  assert.equal(table.chat.at(-1).by, 'Penny');
+});
+
+test('after a big hand, the winner and one other have a word, not the whole table', () => {
+  const table = newTable(500, ['Gary', 'Duke', 'Penny', 'Mabel']);
+  deal(table);
+  while (table.hand.street !== 'done') {
+    const seat = table.hand.toAct;
+    const id = table.hand.seats[seat].id;
+    land(table, id, { hand: table.hand.id, n: table.hand.n, turn: true }, { action: { type: 'allin' } });
+  }
+  const due = plan(table).filter((d) => d.react).map((d) => d.id);
+  assert.equal(due.length, 2);
+  const won = table.hand.seats[table.hand.result.won.findIndex(Boolean)].id;
+  assert.ok(due.includes(won) || won === HUMAN, 'the winner, if an AI player, has a word');
 });

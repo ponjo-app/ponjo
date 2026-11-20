@@ -17,9 +17,11 @@ const CHAT_SHOWN = 24; // latest lines a prompt has
 const DEPTH = 2; // a line this deep in replies wakes no one: nobody replies to a reply forever
 export const MAX_SEATS = 6;
 
+// `talk`: the share of its turns, or of lines other players say to it, on which a player may say something.
 export const PERSONAS = [
   {
     id: 'Gary',
+    talk: 0.35,
     blurb: 'A tourist who plays any two cards',
     hello: ['Hi folks! Gary, first time at a real table. My wife is at the slots.', 'Quick one: a flush is the all-same-colour thing, right?'],
     bye: 'That\'s my wife texting. Bye, everyone!',
@@ -27,6 +29,7 @@ export const PERSONAS = [
   },
   {
     id: 'Duke',
+    talk: 0.5,
     blurb: 'Rude, aggressive, talks trash',
     hello: ['Name\'s Duke. Sit down, empty your wallet, try not to cry.'],
     bye: 'Fine, I\'m out. None of you were worth my time anyway.',
@@ -34,6 +37,7 @@ export const PERSONAS = [
   },
   {
     id: 'Penny',
+    talk: 0.15,
     blurb: 'Careful, counts every chip',
     hello: ['Penny. I count every chip, so don\'t expect gifts.'],
     bye: 'I\'ll take my chips and go. Good game.',
@@ -41,6 +45,7 @@ export const PERSONAS = [
   },
   {
     id: 'Mabel',
+    talk: 0.3,
     blurb: 'A sweet grandmother who sets traps',
     hello: ['Hello, dears. Mabel. Don\'t mind me, I only play for fun.'],
     bye: 'Time for my programme, dears. Take care now!',
@@ -48,6 +53,7 @@ export const PERSONAS = [
   },
   {
     id: 'Lex',
+    talk: 0.3,
     blurb: 'An online grinder who talks theory',
     hello: ['Lex. I usually play twelve tables online, so this is a holiday.'],
     bye: 'Off to grind some real tables. GG.',
@@ -55,6 +61,7 @@ export const PERSONAS = [
   },
   {
     id: 'Hank',
+    talk: 0.35,
     blurb: 'A cowboy who loves a big bluff',
     hello: ['Howdy, partners. Hank. Been playin\' cards since before y\'all were born.'],
     bye: 'Saddlin\' up. Y\'all take care, partners.',
@@ -193,10 +200,16 @@ export function plan(table, running = new Set()) {
     const seat = seatOf(table, id);
     const turn = hand?.street !== 'done' && hand?.toAct === seat && n.failed?.key !== turnKey(hand);
     const lines = table.chat.slice(n.chatSeen).filter((line) => concerns(line, id));
-    const react = isBig(hand) && n.reactSeen !== hand.id && !n.failed;
+    const react = isBig(hand) && n.reactSeen !== hand.id && !n.failed && after(hand).includes(seat);
     return turn || lines.length || react ? [{ id, turn, lines, react }] : [];
   });
 }
+
+// Who has a word after a big hand: two AI players, the winner first, then those still in at the end.
+const after = (hand) => {
+  const won = hand.result.won.findIndex(Boolean);
+  return [won, ...[...hand.seats.keys()].filter((i) => i !== won && hand.seats[i].inHand && !hand.seats[i].folded)].filter((i) => i > 0).slice(0, 2);
+};
 
 // A line concerns a player when it names the player, or when the person says it to the whole table.
 function concerns(line, id) {
@@ -205,12 +218,15 @@ function concerns(line, id) {
 }
 
 // A run begins: what it was given counts as seen, as a buddy's run marks the comments it was given.
-export function begin(table, id, due) {
+// `talk`: whether it may say something this time. Always when the person
+// spoke to it or after a big hand; else as often as its character talks (`roll` < talk).
+export function begin(table, id, due, roll = Math.random()) {
   const n = table.notes[id];
   n.chatSeen = table.chat.length;
   if (due.react) n.reactSeen = table.hand.id;
   n.failed = null;
-  return { hand: table.hand?.id ?? 0, n: table.hand?.n ?? 0, street: table.hand?.street ?? '', turn: due.turn, about: due.lines.at(-1)?.id ?? null, react: due.react };
+  const talk = due.react || due.lines.some((l) => l.by === HUMAN) || roll < PERSONAS.find((p) => p.id === id).talk;
+  return { hand: table.hand?.id ?? 0, n: table.hand?.n ?? 0, street: table.hand?.street ?? '', turn: due.turn, about: due.lines.at(-1)?.id ?? null, react: due.react, talk };
 }
 
 // A run failed (the model could not be reached): nothing lands; it waits for Retry.
@@ -300,7 +316,7 @@ export function land(table, id, basis, proposal) {
   }
   if (proposal.react) react(table, id, proposal.react);
   const text = proposal.say;
-  if (typeof text === 'string' && text.trim()) {
+  if (typeof text === 'string' && text.trim() && basis.talk !== false) {
     const about = basis.about ? table.chat[basis.about - 1] : null;
     const answered = about && about.by === HUMAN && !about.to.includes(id) && table.chat.some((l) => l.about === about.id && l.by !== HUMAN);
     if (!answered) say(table, id, text, { depth: about ? about.depth + 1 : 1, about: about?.id ?? null });
@@ -319,7 +335,7 @@ You see what anyone at the table sees, plus your own two cards. Nobody's cards a
 You are woken when it is your turn, when someone talks to you (or the person talks to the whole table), or once after a big hand. Each time, answer with one call to the decide tool:
 - thinking: your private reasoning in one to three short sentences. No one sees it during the hand; afterwards the person may read it.
 - action: only when it is your turn, and then always. { "type": "fold" | "check" | "call" | "bet" | "raise" | "allin", "amount": the total for the street, only for bet and raise }.
-- say: optional, one short line to the table in your own voice, under 20 words. How often you talk is your character's; leave it out when you would have nothing to say. At most one of you usually answers the person, and a reply needs no reply. You may bluff in what you say, but never claim to see others' cards.
+- say: optional, one short line to the table in your own voice, under 20 words. Leave it out when told to stay quiet, or when you would have nothing to say. At most one of you usually answers the person, and a reply needs no reply. Talk only in your own voice: never take up another player's pet names or catchphrases. The person has no name: speak to them as "you". You may bluff in what you say, but never claim to see others' cards.
 - react: optional, one emoji shown by your face for a moment, as players react at a real table: ${REACTIONS.join(' ')}. Use it freely, with or without a line, when a moment calls for one: a big raise, a bluff, a bad beat, someone winning a pot, a good line in the chat. How often is your character's.
 
 Play to win chips, as yourself. Be quick.`;
@@ -363,7 +379,7 @@ function actionText(table, a, me) {
  * seat, so another player's cards can reach it only once shown. Returns
  * { rules, situation }; the rules stay the same run to run, so they cache.
  */
-export function prompt(table, id, due) {
+export function prompt(table, id, due, talk = true) {
   const me = seatOf(table, id);
   const persona = PERSONAS.find((p) => p.id === id);
   const rules = `${RULES}\n\nYou are ${id}. ${persona.style}`;
@@ -403,6 +419,6 @@ export function prompt(table, id, due) {
     due.lines.length && `${due.lines.map((l) => `${nameOf(l.by)} said "${l.text}"`).join(', and ')}${due.turn ? '' : ' (it is not your turn: no action, only say, if anything)'}`,
     due.react && !due.turn && 'a big hand just ended: say something only if it is worth it, no action',
   ].filter(Boolean);
-  parts.push(`Why you are woken: ${why.join('; ')}.`);
+  parts.push(`Why you are woken: ${why.join('; ')}.${talk ? '' : ' Stay quiet this time: no say (a reaction is fine).'}`);
   return { rules, situation: parts.join('\n\n') };
 }
