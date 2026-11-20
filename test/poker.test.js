@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { act, bestHand, compare, handName, legal, pots, shuffled, startHand, view } from '../preview/poker-dealer.js';
-import { HUMAN, MAX_SEATS, PERSONAS, REACTIONS, STACK, addPlayer, begin, freeSeats, deal, intros, introduce, land, lineup, myChips, newTable, plan, prompt, removePlayer, say, topUp } from '../preview/poker-runtime.js';
+import { HUMAN, MAX_SEATS, PERSONAS, REACTIONS, STACK, addPlayer, begin, force, freeSeats, deal, intros, introduce, land, leave, lineup, myChips, newTable, plan, prompt, removePlayer, say, seatFriend, topUp } from '../preview/poker-runtime.js';
 
 const rank = (cards) => bestHand(cards.split(' '));
 const beats = (a, b) => compare(rank(a).score, rank(b).score);
@@ -378,4 +378,61 @@ test('after a big hand, the winner and one other have a word, not the whole tabl
   assert.equal(due.length, 2);
   const won = table.hand.seats[table.hand.result.won.findIndex(Boolean)].id;
   assert.ok(due.includes(won) || won === HUMAN, 'the winner, if an AI player, has a word');
+});
+
+test('friends sit with their own chips, by name; one with none sits a hand out; one who leaves cashes out', () => {
+  const table = newTable(500, ['Gary', 'Duke']);
+  assert.equal(seatFriend(table, 'ann', 'Ann', 0, 300), false, 'the person\'s seat');
+  assert.equal(seatFriend(table, 'ann', 'Ann', 3, 300), true);
+  assert.equal(seatFriend(table, 'ann', 'Ann', 4, 300), false, 'already at the table');
+  assert.equal(myChips(table, 'ann'), 300);
+  deal(table);
+  assert.deepEqual(table.hand.seats.map((s) => s.id), [HUMAN, 'Gary', 'Duke', 'ann']);
+  assert.equal(table.hand.seats[3].stack + table.hand.seats[3].total, 300);
+  assert.equal(plan(table).some((d) => d.id === 'ann'), false, 'a person is never a run');
+  // the AI players see her by name, and a line she says to the table wakes them
+  const ai = table.hand.seats.find((s) => s.id === 'Gary').id;
+  assert.match(prompt(table, ai, { turn: false, lines: [], react: false }).situation, /- Ann: stack/);
+  const line = say(table, 'ann', 'Gary, nice hat.');
+  assert.deepEqual(line.to, ['Gary']);
+  assert.deepEqual(plan(table).filter((d) => d.lines.length).map((d) => d.id), ['Gary']);
+  // her time runs out on her turn: the dealer checks or folds for her
+  while (table.hand.street !== 'done' && table.hand.seats[table.hand.toAct].id !== 'ann') force(table, table.hand.seats[table.hand.toAct].id);
+  if (table.hand.street !== 'done') {
+    const n = table.hand.actions.length;
+    force(table, 'ann');
+    assert.ok(['check', 'fold'].includes(table.hand.actions[n].type));
+  }
+  // out of chips, she sits the next hand out, keeping her seat; the AI players play on
+  table.hand.street = 'done';
+  table.hand.seats[3].stack = 0;
+  deal(table);
+  assert.equal(table.hand.seats[3].inHand, false);
+  assert.deepEqual(lineup(table).map((p) => p.id), [HUMAN, 'Gary', 'Duke', 'ann']);
+  // she buys in again, then leaves between hands with what she has
+  topUp(table, 200, 'ann');
+  table.hand.street = 'done';
+  deal(table);
+  assert.equal(myChips(table, 'ann') + table.hand.seats[3].total, 200);
+  table.hand.street = 'done';
+  const back = myChips(table, 'ann');
+  assert.equal(leave(table, 'ann'), back);
+  deal(table);
+  assert.deepEqual(table.hand.seats.map((s) => s.id), [HUMAN, 'Gary', 'Duke']);
+  assert.ok(freeSeats(table).includes(3));
+});
+
+test('a friend who leaves before being dealt in gives the seat back at once', () => {
+  const table = newTable(500, ['Gary']);
+  seatFriend(table, 'ann', 'Ann', 2, 300);
+  assert.equal(leave(table, 'ann'), 300);
+  assert.deepEqual(lineup(table).map((p) => p.id), [HUMAN, 'Gary']);
+  assert.ok(freeSeats(table).includes(2));
+});
+
+test('with no person holding chips there is no hand', () => {
+  const table = newTable(0, ['Gary']);
+  seatFriend(table, 'ann', 'Ann', 2, 0);
+  assert.equal(deal(table), false);
+  assert.equal(table.hand, null);
 });

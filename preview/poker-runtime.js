@@ -74,11 +74,15 @@ const FIRST = ['Gary', 'Duke', 'Penny']; // the players at a new table, in seats
 // A new table: the person, who sits down with `buyIn` from their bankroll,
 // and `ids`' players with STACK each. Players come and go between hands:
 // `joining` take a seat when the next hand is dealt, `leaving` give theirs up.
+// People, the person (HUMAN) and any friends, buy chips: `topUp` holds what
+// each added since the hand began; one with none sits a hand out. `names`:
+// the friends' names; the person has none.
 export function newTable(buyIn = STACK, ids = FIRST) {
   const players = [{ id: HUMAN, stack: buyIn }, ...ids.map((id) => ({ id, stack: STACK }))];
   const slots = Object.fromEntries([[HUMAN, 0], ...ids.map((id, k) => [id, ids.length === 3 ? 2 * k + 1 : k + 1])]);
-  return { rev: 0, log: [], players, slots, hand: null, handNo: 0, button: -1, topUp: 0, joining: [], leaving: [], chat: [], notes: Object.fromEntries(PERSONAS.map(({ id }) => [id, note()])) };
+  return { rev: 0, log: [], players, slots, names: {}, hand: null, handNo: 0, button: -1, topUp: {}, joining: [], leaving: [], chat: [], notes: Object.fromEntries(PERSONAS.map(({ id }) => [id, note()])) };
 }
+export const isPerson = (id) => !PERSONAS.some((p) => p.id === id);
 
 // The seats no one has, or will have at the next hand.
 export const freeSeats = (table) => [...Array(MAX_SEATS).keys()].filter((k) => !lineup(table).some((p) => table.slots[p.id] === k)); // a leaving player's seat is its own till the hand ends
@@ -89,7 +93,7 @@ export const lineup = (table) => [
   ...(table.hand ? table.hand.seats : table.players).map(({ id }) => ({ id, joining: false, leaving: table.leaving.includes(id) })),
   ...table.joining.map((id) => ({ id, joining: true, leaving: false })),
 ];
-const playing = (table) => lineup(table).filter((p) => p.id !== HUMAN && !p.leaving);
+const playing = (table) => lineup(table).filter((p) => p.id !== HUMAN && !p.leaving); // whom the person plays against
 
 // A player takes a seat at the next hand, and says hello. False if there
 // is no free seat, or it is already at the table.
@@ -106,11 +110,23 @@ export function addPlayer(table, id, seat = freeSeats(table)[0]) {
   return true;
 }
 
+// A friend takes `seat` at the next hand, as `name`, with `buyIn` from their
+// bankroll. False if the seat is taken, or they are at the table.
+export function seatFriend(table, id, name, seat, buyIn) {
+  if (!isPerson(id) || lineup(table).some((p) => p.id === id) || !freeSeats(table).includes(seat)) return false;
+  table.joining.push(id);
+  table.slots[id] = seat;
+  table.names[id] = name;
+  table.topUp[id] = buyIn;
+  commit(table, { type: 'join', by: id });
+  return true;
+}
+
 // A player gives up its seat after this hand (at once if it has not sat
 // down yet), and says goodbye. False for the person, or for the last player
 // left to play against.
 export function removePlayer(table, id) {
-  if (id === HUMAN || !playing(table).some((p) => p.id === id) || playing(table).length < 2) return false;
+  if (isPerson(id) || !playing(table).some((p) => p.id === id) || playing(table).length < 2) return false;
   if (table.joining.includes(id)) {
     table.joining = table.joining.filter((x) => x !== id);
     delete table.slots[id];
@@ -129,34 +145,48 @@ function commit(table, change) {
 
 const seatOf = (table, id) => table.players.findIndex((p) => p.id === id);
 const turnKey = (hand) => `${hand.id}:${hand.n}`;
-const nameOf = (id) => (id === HUMAN ? 'the person' : id);
-const names = (text) => PERSONAS.filter(({ id }) => new RegExp(`\\b${id}\\b`, 'i').test(text)).map(({ id }) => id);
+export const nameOf = (table, id) => (isPerson(id) ? table.names[id] ?? 'the person' : id);
+const names = (table, text) => [...PERSONAS.map(({ id }) => id), ...Object.keys(table.names)].filter((id) => new RegExp(`\\b${nameOf(table, id).replace(/\W/g, '\\$&')}\\b`, 'i').test(text));
 
-// The person's chips now, with what they added since the hand began.
-export const myChips = (table) => (table.hand ? table.hand.seats[0].stack : table.players[0].stack) + table.topUp;
-
-// More chips for the person, from their bankroll: they land before the next hand, as at a real table.
-export function topUp(table, amount) {
-  table.topUp += amount;
-  commit(table, { type: 'topup', amount });
+// A person's chips now, with what they added since the hand began.
+export function myChips(table, id = HUMAN) {
+  const seat = seatOf(table, id);
+  return (seat < 0 ? 0 : (table.hand ? table.hand.seats : table.players)[seat].stack) + (table.topUp[id] ?? 0);
 }
 
-// The person leaves between hands: their chips go back to their bankroll. Returns how many.
-export function leave(table) {
-  const amount = myChips(table);
-  if (table.hand) table.hand.seats[0].stack = 0;
-  table.players[0].stack = 0;
-  table.topUp = 0;
-  commit(table, { type: 'leave', amount });
+// More chips for a person, from their bankroll: they land before the next hand, as at a real table.
+export function topUp(table, amount, id = HUMAN) {
+  table.topUp[id] = (table.topUp[id] ?? 0) + amount;
+  commit(table, { type: 'topup', by: id, amount });
+}
+
+// A person leaves between hands: their chips go back to their bankroll.
+// The person keeps the seat, to buy in again; a friend gives it up. Returns how many.
+export function leave(table, id = HUMAN) {
+  const amount = myChips(table, id);
+  const seat = seatOf(table, id);
+  if (seat < 0) { // a friend not yet dealt in
+    table.joining = table.joining.filter((x) => x !== id);
+    delete table.slots[id];
+    delete table.topUp[id];
+    commit(table, { type: 'leave', by: id, amount });
+    return amount;
+  }
+  if (table.hand) table.hand.seats[seat].stack = 0;
+  table.players[seat].stack = 0;
+  delete table.topUp[id];
+  if (id !== HUMAN) table.leaving.push(id);
+  commit(table, { type: 'leave', by: id, amount });
   return amount;
 }
 
-// The next hand. A player out of chips buys back in for STACK first; the
-// person must buy in themselves, so with no chips there is no hand.
+// The next hand. An AI player out of chips buys back in for STACK first;
+// people buy in themselves, and one with no chips sits the hand out. With
+// no person to play, or no one to play against, there is no hand.
 export function deal(table, deck) {
   const before = (table.hand ? table.hand.seats : table.players).map(({ id, stack }) => ({ id, stack }));
   for (const id of table.leaving) delete table.slots[id];
-  const players = [...before.filter((p) => !table.leaving.includes(p.id)), ...table.joining.map((id) => ({ id, stack: STACK }))]
+  const players = [...before.filter((p) => !table.leaving.includes(p.id)), ...table.joining.map((id) => ({ id, stack: isPerson(id) ? 0 : STACK }))]
     .sort((a, b) => table.slots[a.id] - table.slots[b.id]);
   // the button stays with its player or, if that player left, with the nearest one before it still here
   const at = table.button;
@@ -164,15 +194,15 @@ export function deal(table, deck) {
   for (let k = at; k >= 0 && table.button < 0; k--) table.button = players.findIndex((p) => p.id === before[k]?.id);
   table.joining = [];
   table.leaving = [];
-  players[0].stack += table.topUp;
-  table.topUp = 0;
-  if (!players[0].stack) {
+  for (const p of players) p.stack += table.topUp[p.id] ?? 0;
+  table.topUp = {};
+  if (!players.some((p) => isPerson(p.id) && p.stack)) {
     table.players = players;
-    table.hand = null; // the seats are the players' now, for the next hand once the person buys in
+    table.hand = null; // the seats are the players' now, for the next hand once someone buys in
     return false;
   }
-  for (const p of players.slice(1)) {
-    if (p.stack) continue;
+  for (const p of players) {
+    if (p.stack || isPerson(p.id)) continue;
     p.stack = STACK;
     commit(table, { type: 'rebuy', by: p.id, amount: STACK });
   }
@@ -195,7 +225,7 @@ export const isBig = (hand) => hand?.street === 'done' && (hand.actions.some((a)
 export function plan(table, running = new Set()) {
   const hand = table.hand;
   return table.players.flatMap(({ id }) => {
-    if (id === HUMAN || running.has(id)) return [];
+    if (isPerson(id) || running.has(id)) return [];
     const n = table.notes[id];
     const seat = seatOf(table, id);
     const turn = hand?.street !== 'done' && hand?.toAct === seat && n.failed?.key !== turnKey(hand);
@@ -214,7 +244,7 @@ const after = (hand) => {
 // A line concerns a player when it names the player, or when the person says it to the whole table.
 function concerns(line, id) {
   if (line.by === id || line.by === 'dealer' || line.depth >= DEPTH) return false;
-  return line.to.includes(id) || (line.by === HUMAN && !line.to.length);
+  return line.to.includes(id) || (isPerson(line.by) && !line.to.length);
 }
 
 // A run begins: what it was given counts as seen, as a buddy's run marks the comments it was given.
@@ -225,7 +255,7 @@ export function begin(table, id, due, roll = Math.random()) {
   n.chatSeen = table.chat.length;
   if (due.react) n.reactSeen = table.hand.id;
   n.failed = null;
-  const talk = due.react || due.lines.some((l) => l.by === HUMAN) || roll < PERSONAS.find((p) => p.id === id).talk;
+  const talk = due.react || due.lines.some((l) => isPerson(l.by)) || roll < PERSONAS.find((p) => p.id === id).talk;
   return { hand: table.hand?.id ?? 0, n: table.hand?.n ?? 0, street: table.hand?.street ?? '', turn: due.turn, about: due.lines.at(-1)?.id ?? null, react: due.react, talk };
 }
 
@@ -242,7 +272,7 @@ export function retry(table, id) {
 // The players at the table say hello when the person first sits down, each
 // its first line in seat order, then any more: lines written for them, so they wake no one.
 export const intros = (table) => {
-  const here = playing(table).map(({ id }) => PERSONAS.find((p) => p.id === id));
+  const here = playing(table).filter((p) => !isPerson(p.id)).map(({ id }) => PERSONAS.find((p) => p.id === id));
   return [...here.map((p) => [p.id, p.hello[0]]), ...here.flatMap((p) => p.hello.slice(1).map((text) => [p.id, text]))];
 };
 export const introduce = (table, [id, text]) => say(table, id, text, { depth: DEPTH });
@@ -259,7 +289,7 @@ export function react(table, by, emoji) {
 export function say(table, by, text, { depth = 0, about = null } = {}) {
   const body = String(text).trim().slice(0, MAX_SAY);
   if (!body) return null;
-  const line = { id: table.chat.length + 1, by, text: body, to: by === 'dealer' ? [] : names(body).filter((n) => n !== by), depth, about, hand: table.hand?.id ?? 0 };
+  const line = { id: table.chat.length + 1, by, text: body, to: by === 'dealer' ? [] : names(table, body).filter((n) => n !== by), depth, about, hand: table.hand?.id ?? 0 };
   table.chat.push(line);
   commit(table, { type: 'chat', by, line: line.id });
   return line;
@@ -280,7 +310,7 @@ export function land(table, id, basis, proposal) {
   const seat = seatOf(table, id);
   const n = table.notes[id];
   const { action = null, thinking = '' } = proposal;
-  if (thinking && id !== HUMAN) n.thoughts.push({ hand: basis.hand, street: basis.street, text: String(thinking), action: action && { ...action } });
+  if (thinking && !isPerson(id)) n.thoughts.push({ hand: basis.hand, street: basis.street, text: String(thinking), action: action && { ...action } });
   let rejected = null;
   let landed = false;
   const live = hand && hand.id === basis.hand && hand.street !== 'done';
@@ -297,7 +327,7 @@ export function land(table, id, basis, proposal) {
       }
     }
   }
-  if (rejected && id !== HUMAN) {
+  if (rejected && !isPerson(id)) {
     commit(table, { type: 'rejected', by: id, why: rejected });
     const still = table.hand?.street !== 'done' && table.hand?.toAct === seat;
     const key = still ? turnKey(table.hand) : '';
@@ -305,11 +335,8 @@ export function land(table, id, basis, proposal) {
     n.triesKey = key;
     n.rejected = still ? `Your last action was turned away: ${rejected}` : '';
     if (still && n.tries >= MAX_TRIES) {
-      const before = table.hand;
-      const fallback = act(before, seat, { type: 'check' }).hand ?? act(before, seat, { type: 'fold' }).hand;
-      table.hand = fallback;
+      force(table, id);
       n.rejected = '';
-      commit(table, { type: 'action', by: id, hand: fallback.id, action: fallback.actions[before.actions.length], forced: true });
     }
   } else if (landed && n) {
     n.rejected = '';
@@ -318,15 +345,25 @@ export function land(table, id, basis, proposal) {
   const text = proposal.say;
   if (typeof text === 'string' && text.trim() && basis.talk !== false) {
     const about = basis.about ? table.chat[basis.about - 1] : null;
-    const answered = about && about.by === HUMAN && !about.to.includes(id) && table.chat.some((l) => l.about === about.id && l.by !== HUMAN);
+    const answered = about && isPerson(about.by) && !about.to.includes(id) && table.chat.some((l) => l.about === about.id && !isPerson(l.by));
     if (!answered) say(table, id, text, { depth: about ? about.depth + 1 : 1, about: about?.id ?? null });
   }
   return { landed, rejected };
 }
 
+// The dealer checks, or else folds, for `id` on its turn: an AI player turned
+// away too often, or a person whose time ran out.
+export function force(table, id) {
+  const before = table.hand;
+  const seat = seatOf(table, id);
+  if (before?.street === 'done' || before?.toAct !== seat) return;
+  table.hand = act(before, seat, { type: 'check' }).hand ?? act(before, seat, { type: 'fold' }).hand;
+  commit(table, { type: 'action', by: id, hand: before.id, action: table.hand.actions[before.actions.length], forced: true });
+}
+
 // ---- what a player is shown ----
 
-export const RULES = `You are a player at a No-Limit Texas Hold'em table, playing for play money only (amounts are play dollars, no real money). Two to six seats: a person, and AI players, who may come and go between hands. Blinds are $${BLINDS[0]}/$${BLINDS[1]}; you sit with $${STACK}, and buy back in for $${STACK} when you lose it all.
+export const RULES = `You are a player at a No-Limit Texas Hold'em table, playing for play money only (amounts are play dollars, no real money). Two to six seats: people, and AI players, who may come and go between hands. Blinds are $${BLINDS[0]}/$${BLINDS[1]}; you sit with $${STACK}, and buy back in for $${STACK} when you lose it all.
 
 The rules, in short: each player gets two private cards. Betting goes round on four streets: preflop, then the flop (three shared cards on the board), the turn (one more), the river (one more). On your turn you may fold; check if there is nothing to call; call; or bet / raise, which in this game is always to a total for this street ("raise to 120"), at least the last raise more than the current bet, or all in. When one player is left, they win the pot; otherwise the best five-card hand from each player's two cards and the board wins at the showdown, and side pots go to those who could match the bets. A dealer runs the game and checks every action: one that is not legal, or comes after the table moved on, is turned away and you are asked again.
 
@@ -335,7 +372,7 @@ You see what anyone at the table sees, plus your own two cards. Nobody's cards a
 You are woken when it is your turn, when someone talks to you (or the person talks to the whole table), or once after a big hand. Each time, answer with one call to the decide tool:
 - thinking: your private reasoning in one to three short sentences. No one sees it during the hand; afterwards the person may read it.
 - action: only when it is your turn, and then always. { "type": "fold" | "check" | "call" | "bet" | "raise" | "allin", "amount": the total for the street, only for bet and raise }.
-- say: optional, one short line to the table in your own voice, under 20 words. Leave it out when told to stay quiet, or when you would have nothing to say. At most one of you usually answers the person, and a reply needs no reply. Talk only in your own voice: never take up another player's pet names or catchphrases. The person has no name: speak to them as "you". You may bluff in what you say, but never claim to see others' cards.
+- say: optional, one short line to the table in your own voice, under 20 words. Leave it out when told to stay quiet, or when you would have nothing to say. At most one of you usually answers the person, and a reply needs no reply. Talk only in your own voice: never take up another player's pet names or catchphrases. A person with no name is "the person": speak to them as "you". You may bluff in what you say, but never claim to see others' cards.
 - react: optional, one emoji shown by your face for a moment, as players react at a real table: ${REACTIONS.join(' ')}. Use it freely, with or without a line, when a moment calls for one: a big raise, a bluff, a bad beat, someone winning a pot, a good line in the chat. How often is your character's.
 
 Play to win chips, as yourself. Be quick.`;
@@ -364,7 +401,7 @@ export const DECIDE = {
 };
 
 const cardsText = (cards) => (cards?.length ? cards.join(' ') : '—');
-const who = (table, seat, me) => (seat === me ? 'you' : nameOf(table.hand.seats[seat].id));
+const who = (table, seat, me) => (seat === me ? 'you' : nameOf(table, table.hand.seats[seat].id));
 
 function actionText(table, a, me) {
   const by = who(table, a.seat, me);
@@ -392,7 +429,7 @@ export function prompt(table, id, due, talk = true) {
     parts.push(['Seats, from the small blind round to the button:', ...order.map((i) => {
       const s = v.seats[i];
       const tags = [i === v.button && 'button', !s.inHand && 'sitting out, no chips', s.folded && 'folded', s.allIn && 'all in'].filter(Boolean);
-      return `- ${i === me ? `${id} (you)` : nameOf(s.id)}: stack ${s.stack}, bet this street ${s.bet}${tags.length ? `, ${tags.join(', ')}` : ''}${s.hole ? `, cards ${cardsText(s.hole)}` : ''}`;
+      return `- ${i === me ? `${id} (you)` : nameOf(table, s.id)}: stack ${s.stack}, bet this street ${s.bet}${tags.length ? `, ${tags.join(', ')}` : ''}${s.hole ? `, cards ${cardsText(s.hole)}` : ''}`;
     })].join('\n'));
     const streets = ['preflop', 'flop', 'turn', 'river', 'done'];
     parts.push(['Actions this hand:', ...streets.map((st) => {
@@ -411,12 +448,12 @@ export function prompt(table, id, due, talk = true) {
     }
   }
   const reactions = table.log.filter((c) => c.type === 'react' && c.hand === (hand?.id ?? 0)).slice(-8);
-  if (reactions.length) parts.push(`Reactions this hand, latest last: ${reactions.map((c) => `${c.by === id ? `${id} (you)` : c.by === HUMAN ? 'the person' : c.by} ${c.emoji}`).join(', ')}.`);
+  if (reactions.length) parts.push(`Reactions this hand, latest last: ${reactions.map((c) => `${c.by === id ? `${id} (you)` : nameOf(table, c.by)} ${c.emoji}`).join(', ')}.`);
   const chat = table.chat.slice(-CHAT_SHOWN);
-  if (chat.length) parts.push(['The chat, latest last:', ...chat.map((l) => `- ${l.by === id ? `${id} (you)` : l.by === 'dealer' ? 'Dealer' : nameOf(l.by)}: ${l.text}`)].join('\n'));
+  if (chat.length) parts.push(['The chat, latest last:', ...chat.map((l) => `- ${l.by === id ? `${id} (you)` : l.by === 'dealer' ? 'Dealer' : nameOf(table, l.by)}: ${l.text}`)].join('\n'));
   const why = [
     due.turn && 'it is your turn: decide your action',
-    due.lines.length && `${due.lines.map((l) => `${nameOf(l.by)} said "${l.text}"`).join(', and ')}${due.turn ? '' : ' (it is not your turn: no action, only say, if anything)'}`,
+    due.lines.length && `${due.lines.map((l) => `${nameOf(table, l.by)} said "${l.text}"`).join(', and ')}${due.turn ? '' : ' (it is not your turn: no action, only say, if anything)'}`,
     due.react && !due.turn && 'a big hand just ended: say something only if it is worth it, no action',
   ].filter(Boolean);
   parts.push(`Why you are woken: ${why.join('; ')}.${talk ? '' : ' Stay quiet this time: no say (a reaction is fine).'}`);

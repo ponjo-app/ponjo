@@ -42,6 +42,7 @@
     <div class="pk-session">
       <span class="pk-bank"></span>
       <span class="pj-spacer"></span>
+      <button class="pj-link-button" type="button" data-action="invite">Invite friends</button>
       <button class="pj-link-button" type="button" data-action="topup">Top up</button>
       <button class="pj-link-button" type="button" data-action="leave">Leave table</button>
     </div>
@@ -114,6 +115,7 @@
 <form class="pj-join pk-buyin" hidden>
   <h1 class="pk-setup-title"></h1>
   <p class="pj-join-text pk-buyin-text"></p>
+  <label class="pk-field pk-name-field" hidden>Your name<input class="pj-input" name="name" maxlength="20" autocomplete="nickname"></label>
   <div class="pk-buyin-amount">
     <input class="pk-slider" type="range" name="amount" step="10" aria-label="Amount">
     <output class="pk-buyin-value"></output>
@@ -121,6 +123,18 @@
   <div class="pk-setup-buttons">
     <button class="pj-secondary" type="button" data-action="buyin-cancel">Cancel</button>
     <button class="pj-primary" type="submit"></button>
+  </div>
+</form>
+
+<form class="pj-join pk-invite" hidden>
+  <h1 class="pk-setup-title">Invite friends</h1>
+  <p class="pj-join-text">Friends who open this link watch the table, then take an empty seat with their own play money. The table stays open while this page does.</p>
+  <label class="pk-field">Your name, as friends see it<input class="pj-input" name="name" maxlength="20" autocomplete="nickname" placeholder="Host"></label>
+  <div class="pk-field">Link
+    <div class="pk-link"><input class="pj-input" name="link" readonly placeholder="Opening the table…" aria-label="Link"><button class="pj-secondary" type="button" data-action="copy">Copy</button></div>
+  </div>
+  <div class="pk-setup-buttons">
+    <button class="pj-primary" type="button" data-action="invite-done">Done</button>
   </div>
 </form>
 
