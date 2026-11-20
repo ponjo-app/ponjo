@@ -184,90 +184,112 @@ function paint(node, name) {
   node.classList.add('arch-mine');
 }
 
-// Delegate, with two agents: each takes its own copy of the doc into its
-// own session, works there unseen by the other, and hands back a result;
-// you merge the two by hand.
+// A spark where two things crash, round `at`, as a star of `points`.
+function spark([x, y], points = 8) {
+  const d = [...Array(points * 2)].map((_, i) => {
+    const a = (i / (points * 2)) * Math.PI * 2;
+    const r = i % 2 ? 9 : 22;
+    return `${i ? 'L' : 'M'}${f(x + Math.cos(a) * r)} ${f(y + Math.sin(a) * r)}`;
+  });
+  return `${d.join(' ')}Z`;
+}
+
+// Delegate, with two agents, each in a room of its own: a copy of the doc
+// goes into each room, each agent rewrites lines unseen by the other, and
+// both hand theirs back at once. They crash: both rewrote the same line,
+// and you merge them by hand.
 async function delegate(scene) {
   watching(false);
   const s = sketch(scene.stage);
   const up = s.upright;
-  const you = up ? [s.W / 2, s.H - 56] : [110, s.H / 2];
-  const home = up ? [s.W / 2, s.H - 180] : [270, s.H / 2]; // the doc, by you
-  const seats = up ? { Clippy: [100, 100], Otto: [300, 100] } : { Clippy: [s.W - 120, 110], Otto: [s.W - 120, 310] };
-  const desk = (name) => (up ? [seats[name][0], 200] : [s.W - 290, seats[name][1]]); // its copy, in its session
-  const SIZE = [120, 84];
+  const you = up ? [s.W / 2, s.H - 50] : [100, s.H / 2];
+  const home = up ? [s.W / 2, s.H - 165] : [255, s.H / 2]; // your desk, with the doc
+  const ROOM = up ? [176, 230] : [290, 170];
+  const rooms = up ? { Clippy: [100, 130], Otto: [300, 130] } : { Clippy: [s.W - 175, 108], Otto: [s.W - 175, 312] };
+  const SIZE = [110, 78];
   const me = actor('You', 'idle');
   s.place(me.node, you);
   s.place(paper('Doc', [80, 60, 70]), home, SIZE);
   const buddies = {};
-  for (const name of ['Clippy', 'Otto']) {
-    const room = s.place(el('div', 'arch-session'), up ? [seats[name][0], 160] : [s.W - 210, seats[name][1]], up ? [176, 240] : [300, 168]);
-    room.append(el('span', '', `${name}’s session`));
+  const desk = {};
+  for (const [name, [x, y]] of Object.entries(rooms)) {
+    const room = s.place(el('div', 'arch-room'), [x, y], ROOM);
+    room.append(el('span', '', `${name}’s room`));
+    desk[name] = up ? [x, y + 28] : [x - 62, y + 6];
     buddies[name] = actor(name, 'idle');
-    s.place(buddies[name].node, seats[name]);
+    s.place(buddies[name].node, up ? [x, y - 62] : [x + 82, y + 6]);
   }
-  const slide = (node, from, to, ms) => scene.move(node, [s.at(from), s.at(to)], ms);
+  const fly = (node, from, to, ms, turn = 0, easing) => scene.move(node, [{ ...s.at(from), rotate: '0deg' }, { rotate: `${turn}deg`, offset: 0.5 }, { ...s.at(to), rotate: '0deg' }], ms, easing);
+  // an agent rewrites line `i` of its copy: the line goes, and comes back in its colour
+  const rewrite = async (copy, name, i) => {
+    const line = copy.children[i];
+    const width = line.style.width;
+    await scene.move(line, [{ width }, { width: '0%' }], 250);
+    paint(line, name);
+    await scene.move(line, [{ width: '0%' }, { width }], 600);
+  };
 
-  await scene.wait(900);
+  await scene.wait(800);
   const copies = {};
-  await Promise.all(['Clippy', 'Otto'].map((name) => {
+  await Promise.all(['Clippy', 'Otto'].map(async (name, i) => {
+    await scene.wait(i * 250);
     copies[name] = s.place(paper('Copy', [80, 60, 70]), home, SIZE);
-    return slide(copies[name], home, desk(name), 800);
+    await fly(copies[name], home, desk[name], 900, i ? 8 : -8);
   }));
   for (const name of ['Clippy', 'Otto']) buddies[name].face.dataset.presence = 'working';
-  await scene.wait(1200);
-  paint(copies.Clippy.children[1], 'Clippy');
-  await scene.wait(500);
-  paint(copies.Otto.children[1], 'Otto');
-  await scene.wait(900);
+  await Promise.all([
+    rewrite(copies.Clippy, 'Clippy', 1).then(() => rewrite(copies.Clippy, 'Clippy', 2)),
+    scene.wait(300).then(() => rewrite(copies.Otto, 'Otto', 3)).then(() => rewrite(copies.Otto, 'Otto', 1)),
+  ]);
   for (const name of ['Clippy', 'Otto']) buddies[name].face.dataset.presence = 'idle';
-  const back = (name, k) => (up ? [home[0] + k * 70, home[1] - 30] : [home[0] + 60, home[1] + k * 70]);
-  await Promise.all(['Clippy', 'Otto'].map((name, i) => slide(copies[name], desk(name), back(name, i ? 1 : -1), 800)));
+  await scene.wait(600);
+
+  // both hand back at once, onto the same desk
+  await Promise.all(['Clippy', 'Otto'].map((name) => fly(copies[name], desk[name], home, 700, 0, 'cubic-bezier(0.5, 0, 1, 1)')));
+  const bang = document.createElementNS(NS, 'svg'); // over the copies, where they meet
+  bang.setAttribute('viewBox', '-24 -24 48 48');
+  bang.append(document.createElementNS(NS, 'path'));
+  bang.firstChild.setAttribute('d', spark([0, 0]));
+  s.place(bang, home, [64, 64]).classList.add('arch-spark');
+  scene.move(bang, [{ scale: 0, opacity: 1 }, { scale: 1.3, opacity: 1, offset: 0.4 }, { scale: 1, opacity: 0 }], 700).catch(() => {});
+  const knock = (name, [dx, dy], turn) => scene.move(copies[name], [{ ...s.at(home), rotate: '0deg' }, { ...s.at([home[0] + dx, home[1] + dy]), rotate: `${turn}deg` }], 450, 'cubic-bezier(0.2, 1.6, 0.4, 1)');
+  const avatar = me.face.querySelector('.pj-avatar');
+  avatar.classList.add('pj-failed');
+  await Promise.all(up ? [knock('Clippy', [-48, -18], -12), knock('Otto', [48, -18], 12)] : [knock('Clippy', [26, -40], -12), knock('Otto', [26, 40], 12)]);
+  await scene.wait(900);
+  avatar.classList.remove('pj-failed');
   me.face.dataset.presence = 'working';
   me.tag.textContent = 'Merging by hand';
-  await scene.wait(3200);
+  await scene.wait(3000);
 }
 
-// The blackboard: one doc, and everyone on it. The buddies watch it; you
-// write, and both edit at once, each change on the doc as it lands.
+// The blackboard: one board, and everyone in front of it. The buddies watch
+// it, and all three write on it at once, each line in its writer's colour.
 async function blackboard(scene) {
   watching(true);
   const s = sketch(scene.stage);
-  const middle = [s.W / 2, s.H / 2 - 10];
-  const size = [260, 150];
-  const seats = s.upright
-    ? { Clippy: [s.W * 0.25, 52], Otto: [s.W * 0.75, 52], You: [s.W / 2, s.H - 50] }
-    : { Clippy: [110, middle[1]], Otto: [s.W - 110, middle[1]], You: [s.W / 2, s.H - 50] };
-  for (const at of Object.values(seats)) {
-    const [d] = between(middle, size, at);
-    s.ink(d, 'arch-ink arch-see');
+  const up = s.upright;
+  const board = s.place(paper('Doc', [85, 60]), [s.W / 2, up ? 170 : 140], up ? [340, 240] : [480, 200]);
+  board.classList.add('arch-board');
+  const row = up ? s.H - 80 : s.H - 70;
+  const gap = up ? 120 : 170;
+  const who = {};
+  for (const [name, x] of [['Clippy', s.W / 2 - gap], ['You', s.W / 2], ['Otto', s.W / 2 + gap]]) {
+    who[name] = actor(name, 'idle');
+    s.place(who[name].node, [x, row]);
   }
-  const doc = s.place(paper('Doc', [90, 70]), middle, size);
-  const who = Object.fromEntries(Object.entries(seats).map(([name, at]) => {
-    const member = actor(name, 'idle');
-    s.place(member.node, at);
-    return [name, member];
-  }));
-  const [first, second] = [...doc.querySelectorAll('.arch-bar')];
 
   await scene.wait(900);
-  who.You.face.dataset.presence = 'working';
-  const mine = bar(50);
-  paint(mine, 'You');
-  doc.append(mine);
-  await scene.move(mine, [{ width: '0%' }, { width: '50%' }], 900);
-  who.Clippy.face.dataset.presence = 'working';
-  who.Otto.face.dataset.presence = 'working';
-  await scene.wait(1200);
-  paint(first, 'Clippy');
-  who.Clippy.tag.textContent = 'Edited';
-  const more = bar(65);
-  paint(more, 'You');
-  doc.append(more);
-  await scene.move(more, [{ width: '0%' }, { width: '65%' }], 900);
-  paint(second, 'Otto');
-  who.Otto.tag.textContent = 'Edited';
-  for (const name of ['You', 'Clippy', 'Otto']) who[name].face.dataset.presence = 'idle';
+  const lines = [['You', 55], ['Clippy', 75], ['Otto', 45]].map(([name, width], i) => {
+    const line = bar(width);
+    paint(line, name);
+    board.append(line);
+    who[name].face.dataset.presence = 'working';
+    return scene.wait(i * 350).then(() => scene.move(line, [{ width: '0%' }, { width: `${width}%` }], 1600));
+  });
+  await Promise.all(lines);
+  for (const name of ['Clippy', 'Otto']) who[name].tag.textContent = 'Wrote';
+  for (const member of Object.values(who)) member.face.dataset.presence = 'idle';
   await scene.wait(3000);
 }
 
@@ -332,8 +354,8 @@ async function events(scene) {
 // [eyebrow, the idea in a line, the scene]
 const CHAPTERS = [
   ['', 'Two contrasts, a picture each: Next goes on.', cover],
-  ['How you work with agents · Delegate', 'Delegate: each agent takes its own copy of the work into a session of its own. They can’t see each other’s work, and you merge what comes back.', delegate],
-  ['How you work with agents · Blackboard', 'Blackboard: there is one doc, and everyone works on it. Each change lands where everyone sees it at once: nothing is handed out, and nothing is merged back.', blackboard],
+  ['How you work with agents · Delegate', 'Delegate: each agent works on its own copy, in a room of its own. Neither sees the other’s work, so what they hand back can clash, and you merge it by hand.', delegate],
+  ['How you work with agents · Blackboard', 'Blackboard: everyone works in front of one board. Each change lands where everyone sees it at once: nothing is handed out, and nothing is merged back.', blackboard],
   ['How a runtime decides · Triggered by events', 'Triggered by events: each change sends a message, and an agent runs only when its message arrives. Lose a message, and the work is lost with it.', events],
 ];
 
