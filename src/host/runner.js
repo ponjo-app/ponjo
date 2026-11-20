@@ -1,14 +1,13 @@
 // The executor (docs/agent-runtime.md, A run): runs the agent once as a
-// buddy, on copies of a doc in a new private folder, with the prompt on
-// stdin, and hands back the copies and the comments' groups of edits when
-// it exits. The agent knows nothing of Ponjo; nothing here knows the doc.
+// buddy, on the files of its view in a new private folder, with its prompt
+// on stdin, and hands back the copies and the comments' groups of edits
+// when it exits. The agent knows nothing of Ponjo; nothing here knows the doc.
 
 import { spawn } from 'node:child_process';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { FORMAT_VERSION } from '../core/comments.js';
-import { buildPrompt } from '../core/prompt.js';
 import { runUsage } from '../core/usage.js';
 import { SIDECAR_SUFFIX, decodeText } from '../store/files.js';
 
@@ -19,11 +18,10 @@ const TEST_TIMEOUT_MS = 2 * 60 * 1000;
 const TEST_PROMPT = 'Ponjo is testing that you run. Edit no file and reply only: OK';
 
 /**
- * Run `agent` ({ script, settings }) once as `task.buddy` ({ id, name,
- * about }), on `copies` of the doc ({ path: its path in the project,
- * `/`-separated, text, comments: the sidecar's text or null }), given
- * `task.threads` and `task.watch` and told of `task.buddies`, `folder` the
- * project's (or null) and `human` the user ({ name, about }). `onChild(child)`
+ * Run `agent` ({ script, settings }) once as `buddy` ({ name }), on `files`,
+ * the copies of the doc its view holds ({ path: its path in the project,
+ * `/`-separated, text, comments: the sidecar's text or null, project: the
+ * project's folder or null }), with `prompt` on stdin. `onChild(child)`
  * hears the program started, to end it (killTree). Resolves to { script,
  * prompt, at, ms, outcome ('ok', 'failed' or 'timedOut'), code, stdout,
  * stderr, steps (the lines it wrote to PONJO_TRACE), usage, edited and
@@ -31,23 +29,22 @@ const TEST_PROMPT = 'Ponjo is testing that you run. Edit no file and reply only:
  * groups (the lines it wrote to PONJO_GROUPS), wake (the lines of the doc
  * it named in PONJO_WAKE), body (why it failed) }.
  */
-export async function execute({ task, copies, agent, folder = null, human = null, onChild = () => {}, timeoutMs = RUN_TIMEOUT_MS }) {
+export async function execute({ buddy, files, prompt, agent, onChild = () => {}, timeoutMs = RUN_TIMEOUT_MS }) {
   const dir = await mkdtemp(join(tmpdir(), 'ponjo-run-'));
   const aside = await mkdtemp(join(tmpdir(), 'ponjo-trace-')); // its trace, out of its sight
   try {
-    const copy = join(dir, ...copies.path.split('/'));
+    const copy = join(dir, ...files.path.split('/'));
     await mkdir(dirname(copy), { recursive: true });
-    await writeFile(copy, copies.text);
+    await writeFile(copy, files.text);
     const sidecar = copy + SIDECAR_SUFFIX;
-    const before = copies.comments ?? `${JSON.stringify({ comments: FORMAT_VERSION })}\n`;
+    const before = files.comments ?? `${JSON.stringify({ comments: FORMAT_VERSION })}\n`;
     await writeFile(sidecar, before);
     const { script, settings } = agent;
     const trace = join(aside, 'trace.jsonl');
     const groups = join(aside, 'groups.jsonl');
     const wake = join(aside, 'wake.jsonl');
-    const prompt = buildPrompt({ buddy: task.buddy, buddies: task.buddies, docName: copies.path, sidecarName: copies.path + SIDECAR_SUFFIX, threads: task.threads, watch: task.watch, project: Boolean(folder), human });
     const at = Date.now();
-    const result = await runScript(script, { cwd: dir, prompt, timeoutMs, env: runEnv({ doc: copy, sidecar, folder, buddy: task.buddy.name, settings, trace, groups, wake }), onChild });
+    const result = await runScript(script, { cwd: dir, prompt, timeoutMs, env: runEnv({ doc: copy, sidecar, folder: files.project, buddy: buddy.name, settings, trace, groups, wake }), onChild });
     const steps = await traceLines(trace);
     const ran = { script, prompt, at, ms: Date.now() - at, code: result.code, stdout: result.stdout, stderr: result.stderr, steps, usage: runUsage(steps) };
     if (result.code !== 0) return { ...ran, outcome: result.timedOut ? 'timedOut' : 'failed', body: failure(script, result) };
@@ -55,7 +52,7 @@ export async function execute({ task, copies, agent, folder = null, human = null
     return {
       ...ran,
       outcome: 'ok',
-      edited: (bytes && decodeText(bytes)?.text) ?? copies.text, // as text, like the doc
+      edited: (bytes && decodeText(bytes)?.text) ?? files.text, // as text, like the doc
       comments: { before, after: await readFile(sidecar, 'utf8').catch(() => before) },
       groups: (await traceLines(groups)).filter((g) => typeof g === 'object'),
       wake: (await traceLines(wake)).filter((w) => typeof w?.line === 'string').map((w) => w.line),

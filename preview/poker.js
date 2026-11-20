@@ -8,16 +8,20 @@
 // drawn with the app's classes and faces. The players run on Claude Haiku
 // through infer.ponjo.app (relay/worker.js), which holds Ponjo's key; or,
 // with a visitor's own key, kept in this browser and sent only to their
-// model's provider, on the model they pick.
+// model's provider, on the model they pick. The person may invite friends
+// (poker-share.js): their pages join by a link, and this page, the host's,
+// sends each what its player may see and lands what they do through the
+// same writer. A friend's page, opened at `#join=<room>`, only draws.
 // preview/build.js bundles it into dist/preview, as the site serves it.
 
-/* global document, matchMedia, HTMLDialogElement */
+/* global document, location, matchMedia, innerWidth, innerHeight, HTMLDialogElement */
 
 import { INFER } from '../agents/ponjo-core.mjs';
 import { agentFace, personFace, setBuddies, setOwner } from '../web/faces.js';
 import { icon } from '../web/icons.js';
 import { handName, legal } from './poker-dealer.js';
-import { DECIDE, HUMAN, INTROS, PERSONAS, begin, introduce, deal, fail, land, leave, myChips, newTable, plan, prompt, retry, say, topUp } from './poker-runtime.js';
+import { DECIDE, HUMAN, MAX_SEATS, PERSONAS, STACK, addPlayer, begin, force, freeSeats, intros, introduce, isPerson, lineup, react, removePlayer, deal, fail, land, leave, myChips, newTable, plan, prompt, retry, say, seatFriend, topUp } from './poker-runtime.js';
+import { host, join } from './poker-share.js';
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const el = (tag, className = '', text = '') => Object.assign(document.createElement(tag), { className, textContent: text });
@@ -28,14 +32,19 @@ const [MIN_BUY, MAX_BUY] = [200, 1000];
 const AUTO_DEAL = 4; // seconds from a hand's result to the next hand
 const money = (n) => `$${n.toLocaleString('en')}`;
 const HOSTED = 'https://infer.ponjo.app/infer/anthropic'; // Ponjo's key and model, for ponjo.app's pages only
-const POS = ['bottom', 'left', 'top', 'right'];
+const SLOTS = ['bottom', 'left', 'top-left', 'top', 'top-right', 'right']; // the six seats round the table, from the one this page sits in
+const TURN = 30_000; // ms a person has to act while friends are at the table; then the dealer checks or folds
+const NAME = 'ponjo-poker-name';
 const SUIT = { s: '♠', h: '♥', d: '♦', c: '♣' };
 
 setBuddies(PERSONAS.map(({ id }) => ({ id, name: id })));
 setOwner(HUMAN);
 
-const table = newTable(0); // the person sits down with a buy-in
-const running = new Set();
+const ROOM = new URLSearchParams(location.hash.slice(1)).get('join'); // a friend's page: the room of the table it joins
+const me = ROOM ? `f${[...crypto.getRandomValues(new Uint8Array(4))].map((b) => b.toString(16).padStart(2, '0')).join('')}` : HUMAN; // who this page plays as
+let table = newTable(0); // the person sits down with a buy-in; a friend's page, the table as the host sends it
+const running = new Set(); // players with a run going
+const typing = new Set(); // players typing a line, shown in the chat
 let settings = load(SAVED); // the visitor's own provider, key and model, or null for Ponjo's
 
 // ---- what the visitor keeps in this browser: their model, their bankroll ----
@@ -57,39 +66,90 @@ function store(value, key = SAVED) {
 // The bankroll, with what was on the table when they last left the page: it comes back to them.
 const wallet = (({ bankroll = BANKROLL, onTable = 0, restarts = 0 } = {}) => ({ bankroll: bankroll + onTable, restarts }))(load(WALLET) ?? undefined);
 const session = { bought: 0, hands: 0, biggest: 0, cashed: 0 };
-const saveWallet = () => store({ ...wallet, onTable: myChips(table) }, WALLET);
+const chipsOfMine = () => (turnedAway ? 0 : myChips(table, me));
+const saveWallet = () => store({ ...wallet, onTable: chipsOfMine() }, WALLET);
+let turnedAway = false; // a friend's page the host asked to leave: its chips are back in its bankroll
 const infer = () => (!settings ? INFER.anthropic({ model: 'claude-haiku-5-5', key: 'ponjo' }, HOSTED) // the Worker sets the key, model and effort
   : settings.provider === 'openai' ? INFER.openai({ endpoint: settings.endpoint, model: settings.model, key: settings.key })
     : INFER.anthropic({ model: settings.model, key: settings.key, effort: 'low' }));
 
 // ---- the controller ----
 
-// Every change: draw it, then look again. A look starts what `plan` says is due; that is all it does.
+// Every change: draw it, then look again. A look starts what `plan` says is due,
+// times a person's turn, and sends friends the table; that is all it does.
+// A friend's page only draws.
 function changed() {
+  if (!table.hand || table.hand.street === 'done') for (const id of gone) if (gone.delete(id) && seatedNow(id)) leave(table, id);
   draw();
+  if (ROOM) return;
   for (const due of plan(table, running)) run(due.id, due);
+  timeTurn();
+  share();
 }
+const seatedNow = (id) => lineup(table).some((p) => p.id === id && !p.leaving);
+const seatOf = (id) => (table.hand ? table.hand.seats : table.players).findIndex((p) => p.id === id);
+
+// While friends are at the table, a person has TURN to act.
+let clock = { key: '', ends: 0 };
+function timeTurn() {
+  const hand = table.hand;
+  const id = hand && hand.street !== 'done' && hand.toAct !== null ? hand.seats[hand.toAct].id : null;
+  if (gone.has(id)) { // their page went: no one to wait for
+    force(table, id);
+    return changed();
+  }
+  const key = id && isPerson(id) && lineup(table).some((p) => p.id !== HUMAN && isPerson(p.id)) ? `${hand.id}:${hand.n}` : '';
+  if (key === clock.key) return;
+  clearTimeout(clock.timer);
+  clock = { key, ends: key ? Date.now() + TURN : 0, timer: key && setTimeout(() => {
+    force(table, id);
+    changed();
+  }, TURN) };
+}
+setInterval(() => clock.ends && draw(), 1000);
 
 // One run of a player: what it is due for counts as seen, one model call, and its proposal to the writer.
+// A model answers in a second or two, faster than a person can follow: a
+// player takes at least its own time to think (more facing a bet, less
+// to answer in the chat), and its line comes after it is seen typing it.
+const PACE = { Gary: [1200, 2600], Duke: [700, 1600], Penny: [1800, 3600], Mabel: [1600, 3200], Lex: [800, 1800], Hank: [1000, 2200] }; // ms a player thinks on its turn, from and to
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, Math.max(0, ms)));
+function thinkTime(id, due) {
+  const [from, to] = PACE[id] ?? [1000, 2000];
+  const ms = from + Math.random() * (to - from);
+  if (!due.turn) return ms / 2;
+  const s = table.hand.seats[table.players.findIndex((p) => p.id === id)];
+  return ms + (table.hand.currentBet > s.bet ? 600 : 0);
+}
+const typeTime = (text) => Math.min(3000, Math.max(700, text.length * 35));
+
 async function run(id, due) {
   const basis = begin(table, id, due);
+  if (!due.turn && !basis.talk) return; // woken only to talk, and not talking this time
+  const started = performance.now();
   running.add(id);
   draw();
-  const { rules, situation } = prompt(table, id, due);
-  const sent = table;
+  const { rules, situation } = prompt(table, id, due, basis.talk);
   try {
     const { calls, text } = await infer()([{ role: 'user', content: rules, cache: true }, { role: 'user', content: situation }], [DECIDE]);
     let args = {};
     try {
       args = JSON.parse(calls.find((c) => c.name === 'decide')?.args ?? '{}');
     } catch {}
-    running.delete(id);
-    if (sent !== table) return changed(); // a new game began meanwhile
-    land(table, id, basis, { thinking: args.thinking ?? text, action: args.action ?? null, say: args.say });
+    await wait(thinkTime(id, due) - (performance.now() - started));
+    land(table, id, basis, { thinking: args.thinking ?? text, action: args.action ?? null, react: args.react });
+    if (typeof args.say === 'string' && args.say.trim()) {
+      typing.add(id);
+      changed();
+      await wait(typeTime(args.say));
+      typing.delete(id);
+      land(table, id, basis, { say: args.say });
+    }
   } catch (error) {
-    running.delete(id);
-    if (sent === table) fail(table, id, basis, String(error.message).split('\n')[0]);
+    typing.delete(id);
+    fail(table, id, basis, String(error.message).split('\n')[0]);
   }
+  running.delete(id);
   changed();
 }
 
@@ -110,7 +170,7 @@ function stopCountdown() {
 }
 // After a hand, the next is dealt by itself unless the person paused, or opened something.
 function startCountdown() {
-  if (countdown || paused || !myChips(table) || !$('.pk-buyin').hidden) return;
+  if (countdown || paused || !chipsOfMine() || !$('.pk-buyin').hidden) return;
   countdown = { left: AUTO_DEAL, timer: setInterval(() => {
     countdown.left--;
     if (countdown.left <= 0) nextHand();
@@ -125,11 +185,12 @@ function pause() {
 
 const buyin = $('.pk-buyin');
 // The card for buying chips (`sit`, `rebuy`, `topup`) or saying how a session went (`left`).
-function buyIn(kind) {
+function buyIn(kind, slot) {
   pause();
-  const room = kind === 'topup' ? Math.min(wallet.bankroll, MAX_BUY - myChips(table)) : Math.min(wallet.bankroll, MAX_BUY);
+  if (slot !== undefined) buyin.dataset.slot = slot;
+  const room = kind === 'topup' ? Math.min(wallet.bankroll, MAX_BUY - chipsOfMine()) : Math.min(wallet.bankroll, MAX_BUY);
   const broke = kind !== 'topup' && wallet.bankroll < MIN_BUY;
-  const net = myChips(table) + session.cashed - session.bought;
+  const net = chipsOfMine() + session.cashed - session.bought;
   const title = { sit: 'Sit down', rebuy: 'You are out of chips', topup: 'Top up', left: 'You left the table' }[kind];
   const text = broke ? `Your bankroll is ${money(wallet.bankroll)}, under the ${money(MIN_BUY)} buy-in. It is play money: start again with ${money(BANKROLL)}.`
     : kind === 'left' ? `${net >= 0 ? 'Up' : 'Down'} ${money(Math.abs(net))} over ${session.hands} hand${session.hands === 1 ? '' : 's'}${session.biggest ? `, your biggest pot ${money(session.biggest)}` : ''}. Your bankroll is ${money(wallet.bankroll)}.`
@@ -143,7 +204,11 @@ function buyIn(kind) {
   $('.pk-buyin-amount', buyin).hidden = broke || kind === 'left' || room < min;
   buyin.dataset.kind = broke ? 'restart' : kind;
   $('[type=submit]', buyin).textContent = broke ? `Start again with ${money(BANKROLL)}` : kind === 'left' ? 'Sit down again' : kind === 'topup' ? 'Add' : 'Sit down';
-  $('[data-action="buyin-cancel"]', buyin).hidden = kind !== 'topup';
+  $('[data-action="buyin-cancel"]', buyin).hidden = kind !== 'topup' && !(ROOM && kind === 'sit');
+  const name = $('.pk-name-field', buyin);
+  name.hidden = !ROOM || kind !== 'sit' || broke;
+  name.querySelector('input').value ||= load(NAME) ?? '';
+  if (ROOM && kind === 'left') $('[type=submit]', buyin).textContent = 'Keep watching';
   drawBuyValue();
   buyin.hidden = false;
   document.body.classList.add('pk-buying-in');
@@ -167,11 +232,18 @@ buyin.addEventListener('submit', (event) => {
     saveWallet();
     return buyIn('sit');
   }
-  if (kind === 'left') return buyIn('sit');
+  if (kind === 'left') return ROOM ? closeBuyIn() : buyIn('sit');
   const amount = Number(buyin.elements.amount.value);
   wallet.bankroll -= amount;
-  if (kind !== 'topup') Object.assign(session, { bought: 0, hands: 0, biggest: 0, cashed: 0 });
+  if (kind === 'sit') Object.assign(session, { bought: 0, hands: 0, biggest: 0, cashed: 0 });
   session.bought += amount;
+  if (ROOM) {
+    const name = buyin.elements.name.value.trim().slice(0, 20) || 'Friend';
+    store(name, NAME);
+    guest.send(kind === 'sit' ? { type: 'sit', seat: Number(buyin.dataset.slot), name, buyIn: amount } : { type: 'topup', amount });
+    saveWallet();
+    return closeBuyIn();
+  }
   topUp(table, amount);
   saveWallet();
   closeBuyIn();
@@ -182,16 +254,20 @@ buyin.addEventListener('submit', (event) => {
 });
 // Before the first hand, the players say hello, a line every second or so; then the cards.
 function greet() {
-  INTROS.forEach((line, k) => setTimeout(() => {
+  const lines = intros(table);
+  lines.forEach((line, k) => setTimeout(() => {
     introduce(table, line);
     changed();
   }, 400 + k * 1400));
-  setTimeout(nextHand, 400 + INTROS.length * 1400 + 600);
+  setTimeout(nextHand, 400 + lines.length * 1400 + 600);
 }
 
 function leaveTable() {
   stopCountdown();
-  session.cashed = leave(table);
+  if (ROOM) {
+    session.cashed = chipsOfMine();
+    guest.send({ type: 'leave' });
+  } else session.cashed = leave(table);
   wallet.bankroll += session.cashed;
   saveWallet();
   buyIn('left');
@@ -201,29 +277,65 @@ function leaveTable() {
 // ---- the table ----
 
 const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
-const seats = [];
-function seatNode(id, i) {
+const seats = new Map(); // a player's id → its seat
+const bets = new Map(); // a player's id → its bet on the felt
+// What a player is called here: "You" for this page's own, the host's name, a friend's, an AI player's.
+const label = (id) => (id === me ? 'You' : isPerson(id) ? table.names[id] ?? 'Host' : id);
+function faceOf(id) {
+  const avatar = el('span', `pj-avatar${isPerson(id) ? '' : ' pj-avatar-agent'}`);
+  avatar.append(isPerson(id) ? personFace(id === me ? 'You' : label(id), id) : agentFace(id));
+  return avatar;
+}
+function seatNode(id) {
   const node = el('div', 'pk-seat');
-  node.dataset.pos = POS[i];
+  node.dataset.id = id;
   const face = el('span', 'pj-agent-face');
   face.dataset.presence = 'idle';
-  const avatar = el('span', `pj-avatar${id === HUMAN ? '' : ' pj-avatar-agent'}`);
-  avatar.append(id === HUMAN ? personFace('You', HUMAN) : agentFace(id));
-  face.append(avatar, el('span', 'pk-tag'));
+  face.append(faceOf(id));
   const plate = el('div', 'pk-plate');
-  const name = el('span', 'pk-name', id === HUMAN ? 'You' : id);
+  const name = el('span', 'pk-name', label(id));
   name.append(el('span', 'pk-position'));
-  plate.append(name, el('span', 'pk-stack'));
+  plate.append(name, el('span', 'pk-stack'), el('span', 'pk-tag'));
   node.append(face, plate, el('div', 'pk-hole'));
   return node;
 }
-$('.pk-seats').append(...table.players.map(({ id }, i) => (seats[i] = seatNode(id, i))));
-const bets = POS.map((pos) => {
-  const bet = el('span', 'pk-bet');
-  bet.dataset.pos = pos;
-  return bet;
+// An empty seat: a player can be asked to sit there.
+const empties = SLOTS.map((pos, k) => {
+  const node = el('button', 'pk-empty');
+  Object.assign(node, { type: 'button', hidden: true, title: 'Add a player' });
+  Object.assign(node.dataset, { pos, slot: k });
+  node.append(el('span', 'pk-empty-ring', '+'), el('span', 'pk-empty-label', 'Add player'));
+  return node;
 });
-$('.pk-table').append(...bets);
+$('.pk-seats').append(...empties);
+// Where a seat is drawn: round the table from this page's own, at the bottom.
+const posOf = (slot) => SLOTS[(slot - (table.slots[me] ?? 0) + MAX_SEATS) % MAX_SEATS];
+// The seats as the table has them now: one for each player, coming or going, in its own place; the rest empty.
+function layout() {
+  const here = lineup(table);
+  for (const [id, node] of seats) {
+    if (here.some((p) => p.id === id)) continue;
+    node.remove();
+    bets.get(id).remove();
+    for (const map of [seats, bets, was, shownBets]) map.delete(id);
+  }
+  for (const { id } of here) {
+    if (!seats.has(id)) {
+      seats.set(id, seatNode(id));
+      bets.set(id, el('span', 'pk-bet'));
+      $('.pk-seats').append(seats.get(id));
+      $('.pk-table').append(bets.get(id));
+    }
+    seats.get(id).dataset.pos = bets.get(id).dataset.pos = posOf(table.slots[id]);
+    $('.pk-name', seats.get(id)).firstChild.textContent = label(id);
+  }
+  const free = freeSeats(table);
+  for (const [k, node] of empties.entries()) {
+    node.hidden = !free.includes(k) || (ROOM && seatedNow(me));
+    node.dataset.pos = posOf(k);
+    $('.pk-empty-label', node).textContent = ROOM ? 'Sit here' : 'Add player';
+  }
+}
 
 const cardText = (c) => `${c[0] === 'T' ? '10' : c[0]}${SUIT[c[1]]}`;
 function card(c) {
@@ -280,9 +392,11 @@ function fly(from, to, amount, delay = 0) {
 
 const TAG = { fold: 'Fold', check: 'Check', call: 'Call', bet: 'Bet', raise: 'Raise to' };
 // What a seat shows over its face: what it is doing or just did.
-function tag(hand, i) {
-  const { id } = table.players[i];
+function tag(hand, i, { id, joining, leaving }) {
+  if (joining) return ['Sits in next hand', 'wait'];
+  if (leaving && (!hand || hand.street === 'done')) return ['Leaving', 'fold'];
   if (table.notes[id]?.failed) return ['Can\'t reach the model', 'failed'];
+  if (clock.ends && hand?.street !== 'done' && hand?.toAct === i) return [`${Math.max(0, Math.ceil((clock.ends - Date.now()) / 1000))}s to act`, 'wait'];
   if (running.has(id) && hand?.toAct === i) return ['Thinking…', 'wait'];
   if (!hand) return ['', ''];
   if (hand.street === 'done') {
@@ -298,58 +412,128 @@ function tag(hand, i) {
   return a ? [`${TAG[a.type]}${a.type === 'bet' || a.type === 'raise' ? ` ${money(a.amount)}` : ''}`, ''] : ['', ''];
 }
 
-let shownBets = POS.map(() => 0); // the bets drawn on the felt, to slide into the pot
+// Motion for what just changed, unless reduced: `replay` plays a class's animation again.
+function replay(node, cls) {
+  if (still) return;
+  node.classList.remove(cls);
+  void node.offsetWidth;
+  node.classList.add(cls);
+}
+// A stack's change, "+$120" or "−$40", rising off it.
+function delta(node, change) {
+  if (still || !change) return;
+  const mark = el('span', 'pk-delta', `${change > 0 ? '+' : '−'}${money(Math.abs(change))}`);
+  if (change > 0) mark.dataset.up = '';
+  node.append(mark);
+  setTimeout(() => mark.remove(), 1600);
+}
+// A street named on the felt as it is dealt.
+function banner(text) {
+  if (still) return;
+  const node = $('.pk-street');
+  node.textContent = text;
+  node.hidden = false;
+  replay(node, 'pk-street');
+  clearTimeout(banner.timer);
+  banner.timer = setTimeout(() => { node.hidden = true; }, 1400);
+}
+// Folded cards sliding into the middle, face down.
+function muck(box) {
+  if (still) return;
+  for (const card of box.querySelectorAll('.pk-card')) {
+    const a = card.getBoundingClientRect();
+    const b = $('.pk-board').getBoundingClientRect();
+    const ghost = el('span', 'pk-card pk-card-back pk-flying');
+    Object.assign(ghost.style, { left: `${a.left}px`, top: `${a.top}px` });
+    ghost.style.setProperty('--w', `${a.width}px`);
+    document.body.append(ghost);
+    ghost.animate([{ transform: 'none', opacity: 1 }, { transform: `translate(${b.left + b.width / 2 - a.left - a.width / 2}px, ${b.top + b.height / 2 - a.top}px) rotate(160deg) scale(0.6)`, opacity: 0 }], { duration: 500, easing: 'ease-in' }).finished.then(() => ghost.remove());
+  }
+}
+
+const shownBets = new Map(); // a player's bet as drawn on the felt, to slide into the pot
+const was = new Map(); // each player as last drawn, to show what changed
 let celebrated = 0; // the hand whose winners were last cheered
 function draw() {
   const hand = table.hand;
   const potNode = $('.pk-pot');
   const sameHand = hand && hand.id === draw.hand;
-  for (const [i, shown] of shownBets.entries()) if (sameHand && shown && !hand.seats[i].bet) fly(bets[i], potNode, shown);
+  layout();
+  for (const [id, shown] of shownBets) if (sameHand && shown && !hand.seats.find((s) => s.id === id)?.bet) fly(bets.get(id), potNode, shown);
+  if (sameHand && hand.street !== draw.street) banner(hand.street === 'done' ? (hand.result.showdown ? 'Showdown' : '') : hand.street[0].toUpperCase() + hand.street.slice(1));
+  if (!hand?.result?.showdown && hand?.street === 'done') $('.pk-street').hidden = true;
   draw.hand = hand?.id;
+  draw.street = hand?.street;
   const sb = hand?.actions.find((a) => a.type === 'small blind')?.seat;
   const bb = hand?.actions.find((a) => a.type === 'big blind')?.seat;
-  for (const [i, node] of seats.entries()) {
-    const { id } = table.players[i];
-    const s = hand?.seats[i];
-    const out = hand && !s.inHand;
-    node.toggleAttribute('data-folded', Boolean(out || s?.folded));
+  for (const p of lineup(table)) {
+    const { id } = p;
+    const node = seats.get(id);
+    const i = (hand ? hand.seats : table.players).findIndex((q) => q.id === id); // -1 while joining
+    const s = hand && i >= 0 ? hand.seats[i] : null;
+    const out = s && !s.inHand;
+    if (!was.has(id)) was.set(id, { acts: 0, stack: null, folded: false });
+    const before = was.get(id);
+    node.toggleAttribute('data-folded', Boolean(out || s?.folded || p.joining || (p.leaving && (!hand || hand.street === 'done'))));
     node.toggleAttribute('data-turn', Boolean(hand && hand.street !== 'done' && hand.toAct === i));
-    $('.pj-agent-face', node).dataset.presence = running.has(id) || (i === 0 && hand?.street !== 'done' && hand?.toAct === 0) ? 'working' : out || s?.folded ? 'away' : 'idle';
-    $('.pk-stack', node).textContent = out ? 'Out' : money(i === 0 ? myChips(table) : s ? s.stack : table.players[i].stack);
-    $('.pk-position', node).textContent = hand && hand.street !== 'done' ? (i === bb ? 'BB' : i === sb && sb !== hand.button ? 'SB' : '') : '';
-    const [text, kind] = tag(hand, i);
+    $('.pj-agent-face', node).dataset.presence = running.has(id) || (isPerson(id) && hand?.street !== 'done' && hand?.toAct === i) ? 'working' : out || s?.folded ? 'away' : 'idle';
+    const stack = isPerson(id) ? myChips(table, id) : s ? s.stack : i >= 0 ? table.players[i].stack : STACK;
+    const stackNode = $('.pk-stack', node);
+    stackNode.textContent = out ? 'Out' : money(stack);
+    if (before.stack !== null && stack !== before.stack) delta(stackNode, stack - before.stack);
+    before.stack = stack;
+    const acts = s ? hand.actions.filter((a) => a.seat === i && TAG[a.type]).length : 0;
+    if (sameHand && acts > before.acts) replay($('.pk-plate', node), 'pk-pulse');
+    before.acts = acts;
+    if (sameHand && s?.folded && !before.folded) muck(id === me ? $('.pk-hole-mine') : $('.pk-hole', node));
+    before.folded = Boolean(s?.folded);
+    $('.pk-position', node).textContent = s && hand.street !== 'done' ? (i === bb ? 'BB' : i === sb && sb !== hand.button ? 'SB' : '') : '';
+    const [text, kind] = tag(hand, i, p);
     const tagNode = $('.pk-tag', node);
-    if (tagNode.textContent !== text) Object.assign(tagNode, { textContent: text }).dataset.kind = kind;
-    const shown = Boolean(hand?.result?.showdown && hand.result.hands[i]);
+    if (tagNode.textContent !== text) {
+      Object.assign(tagNode, { textContent: text }).dataset.kind = kind;
+      replay(tagNode, 'pk-pulse');
+    }
+    const shown = Boolean(s && hand.result?.showdown && hand.result.hands[i]);
     node.toggleAttribute('data-shown', shown);
-    if (i) setCards($('.pk-hole', node), s?.inHand && !s.folded ? (shown ? s.hole : [null, null]) : []);
+    if (id !== me) setCards($('.pk-hole', node), s?.inHand && !s.folded ? (shown ? s.hole : [null, null]) : []);
     const bet = s?.bet ?? 0;
-    if (bet !== shownBets[i]) bets[i].replaceChildren(...(bet ? [chips(bet), money(bet)] : []));
-    shownBets[i] = bet;
+    const was_ = shownBets.get(id) ?? 0;
+    if (sameHand && bet > was_) {
+      fly($('.pj-agent-face', node), bets.get(id), bet - was_);
+      replay(bets.get(id), 'pk-bump');
+    }
+    if (bet !== was_) bets.get(id).replaceChildren(...(bet ? [chips(bet), money(bet)] : []));
+    shownBets.set(id, bet);
   }
   const puck = $('.pk-puck');
   puck.hidden = !hand;
-  if (hand) puck.dataset.pos = POS[hand.button];
+  if (hand) puck.dataset.pos = posOf(table.slots[hand.seats[hand.button].id] ?? 0);
   setCards($('.pk-board'), hand?.board ?? []);
   const pot = hand ? hand.seats.reduce((sum, s) => sum + s.total, 0) : 0;
   potNode.hidden = !pot || hand.street === 'done';
   if (pot) $('.pk-pot-amount', potNode).textContent = `Pot ${money(pot)}`;
-  if (pot && potNode.dataset.amount !== `${pot}`) $('.pk-stack-chips', potNode).replaceWith(chips(pot, 'gold'));
+  if (pot && potNode.dataset.amount !== `${pot}`) {
+    $('.pk-stack-chips', potNode).replaceWith(chips(pot, 'gold'));
+    if (sameHand) replay(potNode, 'pk-bump');
+  }
   potNode.dataset.amount = pot;
   drawResult();
   const best = new Set(hand?.result?.showdown ? hand.result.hands[hand.result.pots[0].winners[0]].cards : []);
   for (const node of document.querySelectorAll('.pk-board .pk-card, .pk-seat .pk-card, .pk-hole-mine .pk-card')) node.toggleAttribute('data-best', best.has(node.dataset.key));
   if (hand?.street === 'done' && celebrated !== hand.id) {
     celebrated = hand.id;
-    if (hand.result.won[0] > session.biggest) session.biggest = hand.result.won[0];
+    const mine = hand.result.won[seatOf(me)] ?? 0;
+    if (mine > session.biggest) session.biggest = mine;
     saveWallet();
-    if (myChips(table)) startCountdown();
-    else setTimeout(() => buyIn('rebuy'), 1500);
+    if (seatedNow(me) && !chipsOfMine()) setTimeout(() => buyIn('rebuy'), 1500);
+    else if (!ROOM) startCountdown();
     for (const [i, won] of hand.result.won.entries()) {
       if (!won) continue;
-      fly(potNode.hidden ? $('.pk-board') : potNode, $('.pj-agent-face', seats[i]), won, 450);
-      seats[i].toggleAttribute('data-won', true);
-      setTimeout(() => seats[i].removeAttribute('data-won'), 1600);
+      const node = seats.get(hand.seats[i].id);
+      fly(potNode.hidden ? $('.pk-board') : potNode, $('.pj-agent-face', node), won, 450);
+      node.toggleAttribute('data-won', true);
+      setTimeout(() => node.removeAttribute('data-won'), 1600);
     }
   }
   drawMe();
@@ -363,18 +547,21 @@ function drawResult() {
   $('.pk-result').hidden = !over || !hand;
   $('.pk-result-text').textContent = resultText();
   $('.pk-countdown').textContent = countdown ? `Next hand in ${countdown.left}…` : '';
-  $('[data-action="next"]').hidden = Boolean(countdown) || !myChips(table);
+  $('[data-action="next"]').hidden = Boolean(countdown) || !chipsOfMine() || Boolean(ROOM);
   $('[data-action="pause"]').hidden = !countdown;
+  $('[data-action="invite"]').hidden = Boolean(ROOM);
   $('[data-action="thinking"]').hidden = !hand || hand.street !== 'done';
-  const net = myChips(table) + session.cashed - session.bought;
+  const net = chipsOfMine() + session.cashed - session.bought;
   $('.pk-bank').innerHTML = '';
-  for (const [label, value] of [['Bankroll', money(wallet.bankroll)], ['On the table', money(myChips(table))], ['This session', `${net >= 0 ? '+' : '−'}${money(Math.abs(net))}`]]) {
-    const item = el('span', '', `${label} `);
+  if (away) $('.pk-bank').append(el('span', 'pk-away', away));
+  else if (ROOM && !seatedNow(me)) $('.pk-bank').append(el('span', 'pk-away', 'Watching. Pick an empty seat to sit down.'));
+  for (const [name, value] of [['Bankroll', money(wallet.bankroll)], ['On the table', money(chipsOfMine())], ['This session', `${net >= 0 ? '+' : '−'}${money(Math.abs(net))}`]]) {
+    const item = el('span', '', `${name} `);
     item.append(el('b', '', value));
     $('.pk-bank').append(item);
   }
-  $('[data-action="topup"]').disabled = !myChips(table) || Math.min(wallet.bankroll, MAX_BUY - myChips(table)) < 20;
-  $('[data-action="leave"]').disabled = !over || !myChips(table);
+  $('[data-action="topup"]').disabled = !seatedNow(me) || !chipsOfMine() || Math.min(wallet.bankroll, MAX_BUY - chipsOfMine()) < 20;
+  $('[data-action="leave"]').disabled = !over || !seatedNow(me) || !chipsOfMine();
 }
 
 // The hand's result, as the table says it: who won what, with which hand.
@@ -384,11 +571,11 @@ function resultText() {
   if (hand.street !== 'done') return '';
   const { result } = hand;
   const lines = result.pots.map((p, k) => {
-    const names = p.winners.map((i) => (i === 0 ? 'You' : hand.seats[i].id));
+    const names = p.winners.map((i) => label(hand.seats[i].id));
     const with_ = result.showdown ? ` · ${handName(hand.seats[p.winners[0]].hole, hand.board)}` : '';
     return `${k ? 'Side pot: ' : ''}${names.join(' and ')} ${names.length > 1 || names[0] === 'You' ? 'win' : 'wins'} ${money(p.amount)}${with_}`;
   });
-  if (!myChips(table)) lines.push('You are out of chips.');
+  if (seatedNow(me) && !chipsOfMine()) lines.push('You are out of chips.');
   return lines.join('. ');
 }
 
@@ -396,16 +583,14 @@ function resultText() {
 
 function drawMe() {
   const hand = table.hand;
-  const s = hand?.seats[0];
+  const s = hand?.seats[seatOf(me)];
   setCards($('.pk-hole-mine'), s?.inHand ? s.hole : []);
   $('.pk-hole-mine').style.opacity = s?.folded ? 0.5 : '';
   $('.pk-strength').textContent = !s?.inHand ? '' : s.folded ? 'Folded' : handName(s.hole, hand.board);
-  const mine = hand && hand.street !== 'done' && hand.toAct === 0;
+  const mine = hand && hand.street !== 'done' && hand.toAct === seatOf(me);
   $('.pk-controls').hidden = !mine;
-  const actor = hand && hand.street !== 'done' && hand.toAct !== null ? table.players[hand.toAct].id : null;
-  $('.pk-wait').textContent = mine || !actor ? '' : `${actor} is thinking…`;
   if (!mine) return;
-  const l = legal(hand, 0);
+  const l = legal(hand, seatOf(me));
   $('[data-action="call"]').textContent = l.check ? 'Check' : `Call ${money(l.call)}${l.call === s.stack ? ' · all in' : ''}`;
   $('[data-action="raise"]').hidden = !l.raise;
   $('.pk-sizes').hidden = !l.raise || l.raise.min === l.raise.max;
@@ -417,23 +602,40 @@ function drawMe() {
 }
 function drawRaise() {
   const hand = table.hand;
-  const l = legal(hand, 0);
+  const l = legal(hand, seatOf(me));
   const to = Number($('.pk-slider').value);
   $('[data-action="raise"]').textContent = to >= l.raise.max ? `All in ${money(l.raise.max)}` : `${hand.currentBet ? 'Raise to' : 'Bet'} ${money(to)}`;
 }
 // A raise of a size a player names: the least, half the pot, the pot, all in.
 function size(name) {
   const hand = table.hand;
-  const l = legal(hand, 0);
+  const l = legal(hand, seatOf(me));
   const pot = hand.seats.reduce((sum, s) => sum + s.total, 0) + l.toCall;
   const to = { min: l.raise.min, half: hand.currentBet + Math.round(pot / 2), pot: hand.currentBet + pot, max: l.raise.max }[name];
   $('.pk-slider').value = Math.min(l.raise.max, Math.max(l.raise.min, to));
   drawRaise();
 }
 
-function play(action) {
+// What this page's player does: landed here, or on a friend's page sent to the host, which lands it.
+function perform(message) {
+  if (ROOM) guest.send(message);
+  else apply(HUMAN, message);
+}
+const play = (action) => perform({ type: 'act', action });
+
+// What a person does, from this page or a friend's: through the writer, as an AI player's proposal.
+function apply(id, message) {
   const hand = table.hand;
-  land(table, HUMAN, { hand: hand.id, n: hand.n, turn: true }, { action });
+  const between = !hand || hand.street === 'done';
+  const amount = Math.round(Number(message.amount ?? message.buyIn)) || 0;
+  if (message.type === 'act' && hand && message.action && typeof message.action === 'object') land(table, id, { hand: hand.id, n: hand.n, turn: true }, { action: message.action });
+  else if (message.type === 'say') say(table, id, message.text);
+  else if (message.type === 'react') react(table, id, message.emoji);
+  else if (message.type === 'sit' && id !== HUMAN && amount >= MIN_BUY && amount <= MAX_BUY) {
+    if (!seatFriend(table, id, String(message.name).trim().slice(0, 20) || 'Friend', message.seat, amount)) room.send(peerOf(id), { type: 'refused', amount });
+  } else if (message.type === 'topup' && seatedNow(id) && amount > 0 && myChips(table, id) + amount <= MAX_BUY) topUp(table, amount, id);
+  else if (message.type === 'leave' && seatedNow(id) && between) leave(table, id);
+  else return;
   changed();
 }
 
@@ -444,11 +646,14 @@ let posted = 0; // the last hand whose result is in the chat
 function drawFeed() {
   const feed = $('.pk-feed');
   const stick = feed.scrollHeight - feed.scrollTop - feed.clientHeight < 40;
+  for (const node of feed.querySelectorAll('.pk-typing')) node.remove();
   for (; drawn < table.log.length; drawn++) {
     const change = table.log[drawn];
     if (change.type === 'chat') {
       const line = table.chat[change.line - 1];
       feed.append(message(line, feed.lastElementChild?.dataset.by === line.by));
+    } else if (change.type === 'react') {
+      pop(change.by, change.emoji);
     } else if (change.type === 'rebuy') {
       feed.append(dealer(`${change.by} buys back in for ${money(change.amount)}.`));
     } else if (change.type === 'failed') {
@@ -456,6 +661,7 @@ function drawFeed() {
       line.dataset.failed = '';
       const again = el('button', 'pj-link-button', 'Retry');
       again.type = 'button';
+      again.hidden = Boolean(ROOM);
       again.addEventListener('click', () => {
         again.remove();
         retry(table, change.by);
@@ -470,12 +676,23 @@ function drawFeed() {
     posted = hand.id;
     feed.append(dealer(`Hand ${hand.id}: ${resultText()}`));
   }
+  for (const id of typing) {
+    const row = message({ by: id, text: '' }, false);
+    row.classList.add('pk-typing');
+    row.dataset.by = '';
+    $('.pk-msg-text', row).append(el('i'), el('i'), el('i'));
+    $('.pk-msg-text', row).setAttribute('aria-label', `${id} is typing`);
+    feed.append(row);
+  }
   if (stick) feed.scrollTop = feed.scrollHeight;
 }
-// A reaction: the emoji pops up by the person's face and floats away.
-function react(emoji) {
+// A reaction: the emoji pops up in a bubble by its sender's face and floats away.
+function pop(id, emoji) {
+  const seat = seats.get(id);
+  if (!seat) return;
+  $('.pk-react', seat)?.remove();
   const node = el('span', 'pk-react', emoji);
-  $('.pj-agent-face', seats[0]).append(node);
+  $('.pj-agent-face', seat).append(node);
   setTimeout(() => node.remove(), 2400);
 }
 
@@ -489,17 +706,81 @@ function message(line, more) {
   item.dataset.by = line.by;
   if (more) item.dataset.more = '';
   const col = el('div', 'pk-msg-col');
-  if (line.by === HUMAN) item.dataset.mine = '';
+  if (line.by === me) item.dataset.mine = '';
   else {
-    const avatar = el('span', 'pj-avatar pj-avatar-agent');
-    avatar.append(agentFace(line.by));
-    item.append(avatar);
-    if (!more) col.append(el('span', 'pk-msg-name', line.by));
+    item.append(faceOf(line.by));
+    if (!more) col.append(el('span', 'pk-msg-name', label(line.by)));
   }
   col.append(el('div', 'pk-msg-text', line.text));
   item.append(col);
   return item;
 }
+
+// ---- who is at the table: an empty seat offers a player; a player can be asked to leave ----
+
+const menu = el('ul', 'pj-block-menu pk-menu');
+menu.setAttribute('role', 'menu');
+menu.hidden = true;
+document.body.append(menu);
+function item(content, run, disabled = '') {
+  const li = el('li');
+  li.setAttribute('role', 'menuitem');
+  li.append(...content);
+  if (disabled) Object.assign(li, { title: disabled }).setAttribute('aria-disabled', 'true');
+  else li.addEventListener('click', () => {
+    closeMenu();
+    run();
+    changed();
+  });
+  return li;
+}
+function who(id) {
+  const persona = PERSONAS.find((p) => p.id === id);
+  const avatar = el('span', 'pj-avatar pj-avatar-agent');
+  avatar.append(agentFace(id));
+  const text = el('span', 'pk-menu-text');
+  text.append(el('b', '', id), el('span', '', persona.blurb));
+  return [avatar, text];
+}
+// The menu by `anchor`: for an empty seat, the players who could sit there; for a player, to leave or stay.
+function openMenu(anchor, { slot, id }) {
+  const here = lineup(table);
+  if (id && isPerson(id)) {
+    menu.replaceChildren(el('li', 'pk-menu-head', ''), item([el('span', '', 'Ask to leave the table')], () => turnAway(id)));
+    menu.firstChild.append(faceOf(id), el('b', '', label(id)));
+  } else if (id) {
+    const p = here.find((q) => q.id === id);
+    const others = here.filter((q) => q.id !== HUMAN && !q.leaving).length;
+    menu.replaceChildren(el('li', 'pk-menu-head', ''), p.leaving
+      ? item([el('span', '', 'Stay at the table')], () => addPlayer(table, id))
+      : item([el('span', '', p.joining ? 'Don\'t sit down' : table.hand && table.hand.street !== 'done' ? 'Leave after this hand' : 'Leave the table')], () => removePlayer(table, id), others < 2 ? 'A table needs someone to play against' : ''));
+    menu.firstChild.append(...who(id));
+  } else {
+    const out = PERSONAS.filter((q) => !here.some((h) => h.id === q.id));
+    menu.replaceChildren(...out.map((q) => item(who(q.id), () => addPlayer(table, q.id, slot))));
+  }
+  const at = anchor.getBoundingClientRect();
+  menu.hidden = false;
+  const left = Math.min(Math.max(8, at.left + at.width / 2 - menu.offsetWidth / 2), innerWidth - menu.offsetWidth - 8);
+  const top = at.bottom + 4 + menu.offsetHeight < innerHeight ? at.bottom + 4 : Math.max(8, at.top - menu.offsetHeight - 4);
+  Object.assign(menu.style, { left: `${left}px`, top: `${top}px` });
+}
+function closeMenu() {
+  menu.hidden = true;
+}
+$('.pk-seats').addEventListener('click', (event) => {
+  const empty = event.target.closest('.pk-empty');
+  const seat = event.target.closest('.pk-seat');
+  if (empty && ROOM) return buyIn('sit', Number(empty.dataset.slot));
+  if (empty) return openMenu(empty, { slot: Number(empty.dataset.slot) });
+  if (seat && !ROOM && seat.dataset.id !== HUMAN && event.target.closest('.pj-agent-face, .pk-plate')) openMenu(seat, { id: seat.dataset.id });
+});
+document.addEventListener('pointerdown', (event) => {
+  if (!menu.hidden && !event.target.closest('.pk-menu, .pk-empty, .pk-seat')) closeMenu();
+});
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') closeMenu();
+});
 
 // ---- their thinking, after a hand ----
 
@@ -508,9 +789,9 @@ function showThinking() {
   const dialog = $('.pk-thinking');
   $('h2', dialog).textContent = `Their thinking, hand ${hand.id}`;
   const body = $('.pk-thinking-body', dialog);
-  body.replaceChildren(...PERSONAS.map(({ id }) => {
-    const seat = table.players.findIndex((p) => p.id === id);
-    const thoughts = table.notes[id].thoughts.filter((t) => t.hand === hand.id);
+  body.replaceChildren(...hand.seats.filter((s) => !isPerson(s.id)).map(({ id }) => {
+    const seat = hand.seats.findIndex((s) => s.id === id);
+    const thoughts = table.notes[id]?.thoughts.filter((t) => t.hand === hand.id) ?? [];
     const part = el('details', 'pj-trace-part');
     part.open = true;
     const summary = el('summary');
@@ -601,6 +882,8 @@ const forget = el('button', 'pj-link-button pk-forget', 'Forget my key and play 
 forget.type = 'button';
 forget.addEventListener('click', () => use(null));
 function drawModel() {
+  $('[data-action="key"]').hidden = Boolean(ROOM);
+  if (ROOM) return void ($('.pk-model').textContent = 'You joined a friend\'s table: the AI players run on their page.');
   $('.pk-model').textContent = !settings ? 'The players run on Claude Haiku 5.5.' : `The players run on ${settings.provider === 'anthropic' ? `Claude ${$(`[data-model="${settings.model}"]`, setup).textContent}` : settings.model}, with your key.`;
   $('[data-action="key"]').textContent = settings ? 'Change' : 'Use your own key';
 }
@@ -632,8 +915,11 @@ document.addEventListener('click', (event) => {
     setup.hidden = true;
     document.body.classList.remove('pk-setting-up');
   }
+  else if (action === 'invite') invite();
+  else if (action === 'invite-done') closeInvite();
+  else if (action === 'copy') copyLink();
   else if (action === 'fold') play({ type: 'fold' });
-  else if (action === 'call') play({ type: legal(table.hand, 0).check ? 'check' : 'call' });
+  else if (action === 'call') play({ type: legal(table.hand, seatOf(me)).check ? 'check' : 'call' });
   else if (action === 'raise') play({ type: table.hand.currentBet ? 'raise' : 'bet', amount: Number($('.pk-slider').value) });
   else if (action === 'chat') {
     const chat = $('.pk-chat');
@@ -646,18 +932,116 @@ $('.pk-thinking').addEventListener('click', (event) => {
 });
 $('.pk-reacts').addEventListener('click', (event) => {
   const emoji = event.target.closest('[data-react]')?.dataset.react;
-  if (emoji) react(emoji);
+  if (emoji) perform({ type: 'react', emoji });
 });
 $('.pk-say').addEventListener('submit', (event) => {
   event.preventDefault();
   const input = event.currentTarget.elements.text;
-  if (!say(table, HUMAN, input.value)) return;
+  if (!input.value.trim()) return;
+  perform({ type: 'say', text: input.value });
   input.value = '';
+});
+
+// ---- friends: the host's page invites them; a friend's page joins ----
+
+const peers = new Map(); // a friend's page in the room → { id, log, chat }: its player, and how much of the log and chat it was sent
+const gone = new Set(); // friends whose page went: they leave the table once the hand is over
+let room = null; // the room, once the person invites friends
+let away = ''; // a friend's page: why the line to the host is down
+const peerOf = (id) => [...peers].find(([, p]) => p.id === id)?.[0];
+
+const inviting = $('.pk-invite');
+async function invite() {
+  pause();
+  inviting.hidden = false;
+  document.body.classList.add('pk-buying-in');
+  inviting.elements.name.value = table.names[HUMAN] ?? load(NAME) ?? '';
+  room ??= await host({ joined, heard: (peer, message) => peers.has(peer) && apply(peers.get(peer).id, message), left });
+  inviting.elements.link.value = room.link;
+}
+function closeInvite() {
+  const name = inviting.elements.name.value.trim().slice(0, 20);
+  if (name) {
+    table.names[HUMAN] = name;
+    store(name, NAME);
+  }
+  inviting.hidden = true;
+  document.body.classList.remove('pk-buying-in');
+  paused = false;
   changed();
+}
+function copyLink() {
+  inviting.elements.link.select();
+  navigator.clipboard?.writeText(inviting.elements.link.value).catch(() => {});
+}
+function joined(peer, hello) {
+  if (!/^f[0-9a-f]{8}$/.test(String(hello?.id))) return room.turnAway(peer, 'Not a player');
+  peers.set(peer, { id: hello.id, log: 0, chat: 0 });
+  gone.delete(hello.id);
+  changed();
+}
+function left(peer) {
+  const id = peers.get(peer)?.id;
+  peers.delete(peer);
+  if (id && lineup(table).some((p) => p.id === id)) gone.add(id);
+  changed();
+}
+function turnAway(id) {
+  const peer = peerOf(id);
+  if (peer !== undefined) room.turnAway(peer, 'The host asked you to leave the table.');
+  left(peer);
+}
+
+// Each friend's page gets the table as its player may see it: its own
+// cards, others' once shown, the AI players' once the hand is over; the
+// log and chat since it was last sent them.
+function share() {
+  for (const [peer, p] of peers) {
+    const seat = seatOf(p.id);
+    const hand = table.hand && {
+      ...table.hand,
+      deck: [],
+      seats: table.hand.seats.map((s, i) => ({ ...s, hole: i === seat || (table.hand.result?.showdown && table.hand.result.hands[i]) || (table.hand.street === 'done' && !isPerson(s.id)) ? s.hole : s.hole.map(() => null) })),
+    };
+    const done = table.hand?.street === 'done';
+    const notes = Object.fromEntries(PERSONAS.map(({ id }) => [id, { failed: table.notes[id].failed, thoughts: done ? table.notes[id].thoughts.filter((t) => t.hand === table.hand.id) : [] }]));
+    const { rev, players, slots, names, joining, leaving, handNo } = table;
+    room.send(peer, { type: 'state', table: { rev, players, slots, names, joining, leaving, handNo, hand, notes, topUp: { [p.id]: table.topUp[p.id] ?? 0 }, log: table.log.slice(p.log), logFrom: p.log, chat: table.chat.slice(p.chat), chatFrom: p.chat }, running: [...running], typing: [...typing], clock: clock.ends ? clock.ends - Date.now() : 0 });
+    Object.assign(p, { log: table.log.length, chat: table.chat.length });
+  }
+}
+
+// A friend's page: the table as the host sends it.
+const guest = ROOM && join(ROOM, { id: me }, {
+  heard(message) {
+    away = '';
+    if (message.type === 'refused') {
+      wallet.bankroll += message.amount;
+      saveWallet();
+    }
+    if (message.type !== 'state') return draw();
+    const t = message.table;
+    table = { ...t, log: [...table.log.slice(0, t.logFrom), ...t.log], chat: [...table.chat.slice(0, t.chatFrom), ...t.chat] };
+    for (const [set, ids] of [[running, message.running], [typing, message.typing]]) set.clear() || ids.forEach((id) => set.add(id));
+    clock = { ends: message.clock && Date.now() + message.clock };
+    saveWallet();
+    draw();
+  },
+  away(reason) {
+    away = reason === 'host' ? 'The host is away. Waiting for them…' : reason === 'line' ? 'Reconnecting…' : reason;
+    if (!['host', 'line'].includes(reason) && !turnedAway) {
+      const back = chipsOfMine();
+      wallet.bankroll += back;
+      session.cashed += back;
+      turnedAway = true;
+      saveWallet();
+    }
+    draw();
+  },
 });
 
 $('.pk-slider').addEventListener('input', drawRaise);
 setup.querySelector('.pk-error').after(forget);
 drawModel();
 draw();
-buyIn('sit');
+if (!ROOM) buyIn('sit');

@@ -11,7 +11,16 @@ import { spawn } from 'node:child_process';
  * of its lines goes to `onLine` as well.
  */
 export async function launchElectron(exe, args, { env, onLine = () => {} }) {
-  const child = spawn(exe, [...args, '--remote-debugging-port=0', '--enable-logging'], { env, stdio: ['ignore', 'ignore', 'pipe'] });
+  let child;
+  for (let tries = 1; !child; tries++) {
+    try {
+      child = spawn(exe, [...args, '--remote-debugging-port=0', '--enable-logging'], { env, stdio: ['ignore', 'ignore', 'pipe'] });
+    } catch (error) {
+      // Linux's ETXTBSY: the binary was briefly open for writing elsewhere (seen on CI); it passes.
+      if (error.code !== 'ETXTBSY' || tries === 5) throw error;
+      await new Promise((done) => setTimeout(done, 200));
+    }
+  }
   const exited = new Promise((done) => child.once('exit', done));
   let stderr = ''; // its last lines, to say why a window did not show
   let partial = '';

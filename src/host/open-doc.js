@@ -1,8 +1,9 @@
 // An open doc and its buddies (docs/architecture.md, Components): the doc
-// service, which knows nothing of buddies, and the agent runtime, which
-// reads the doc and lands its runs through the doc's door and hears each
-// change it subscribes to. Here they are joined, with the calls that are
-// the buddies' own: watching, retrying, the steps, and the buddies' files.
+// service, which knows nothing of buddies, the doc as a world, which reads
+// the doc and lands what runs left behind through its door, and the agent
+// runtime, which reaches the doc only through the world and hears each
+// change. Here they are joined, with the calls that are the buddies' own:
+// watching, retrying, resuming the watches, and the buddies' files.
 
 import { newId } from '../core/comments.js';
 import { BuddyError, checkBuddyPatch } from '../core/buddies.js';
@@ -13,6 +14,7 @@ import { watchFolder } from '../store/watch.js';
 import { StoreError } from '../store/files.js';
 import { agentsFor, createBuddyRuntime } from './buddy-runtime.js';
 import { openDocService } from './doc-service.js';
+import { createDocWorld } from './doc-world.js';
 import { DocError, LEVELS, can } from './door.js';
 import { pathInProject } from './project-service.js';
 
@@ -30,15 +32,13 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
   const doc = await openDocService(docPath, { folder, room, settingsDir, secrets, emit });
   const me = () => ownerOf(settingsDir);
   const buddies = () => buddiesFor(folder, settingsDir);
-  const runtime = await createBuddyRuntime({
-    door: doc.door,
+  const world = createDocWorld({
+    door: doc.door, subscribe: doc.subscribe,
     place: () => ({ docPath: doc.docPath(), folder, room }),
     pathInProject: () => pathInProject(folder, doc.docPath()),
-    buddies, me, settingsDir, secrets, emit,
-    levelOf: async (id) => (id === (await me()).id ? 'owner' : room?.levelOf(id) ?? null),
+    buddies, me, settingsDir,
   });
-  // Every change to the doc: an edit to its text, by whom; or its comments.
-  const stopHearing = doc.subscribe(runtime.heard);
+  const runtime = await createBuddyRuntime({ world, docPath: doc.docPath, settingsDir, secrets, emit });
 
   // What else may change what is asked: the buddies' files, who may ask, the agent.
   const stopWatchingUserBuddies = watchFolder(userBuddiesDir(settingsDir), runtime.sync);
@@ -119,7 +119,7 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
       const level = LEVELS.find((l) => Object.hasOwn(calls[l], type));
       if (!level) {
         const answer = await doc.call(type, arg, who);
-        return type === 'state' ? { ...answer, agents: agentsFor(who.level, runtime.statuses()), steps: runtime.steps() } : answer;
+        return type === 'state' ? { ...answer, agents: agentsFor(who.level, runtime.statuses()), watches: runtime.watches() } : answer;
       }
       if (!can(who, level)) throw new DocError('forbidden', `${who?.name ?? 'no one'} may not ${type} here`);
       try {
@@ -149,7 +149,6 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
       runtime.sync();
     },
     async close() {
-      stopHearing();
       stopWatchingUserBuddies();
       stopWatchingProjectBuddies();
       stopFollowingRoom();

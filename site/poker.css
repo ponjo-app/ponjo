@@ -5,16 +5,22 @@
 
 body:is(.pk-setting-up, .pk-buying-in) .pk-page { filter: blur(1px); opacity: 0.6; pointer-events: none; }
 
-.pk-page { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 24px; max-width: 1280px; min-height: calc(100vh - 53px); margin: 0 auto; padding: 24px 16px; }
+/* sizes, one step up on a big screen (at the end) */
+.pk-page { --face: 56px; --hole: 20px; --shown: 32px; --board: 60px; --mine: 72px; --seat-w: 120px; --table-max: 720px; --chrome: 526px; --chat-w: 320px; --small: 13px; --big: 16px; }
+.pk-page { display: grid; grid-template-columns: minmax(0, 1fr) var(--chat-w); gap: 24px; max-width: 1280px; min-height: calc(100vh - 53px); margin: 0 auto; padding: 24px 16px; }
 .pk-page:has(.pk-chat[hidden]) { grid-template-columns: minmax(0, 1fr); }
 .pk-room { position: relative; display: flex; flex-direction: column; min-width: 0; }
 
 /* the session: what you have, and the way to add chips or leave */
 .pk-session { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.pk-bank { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 13px; color: var(--text-soft); font-variant-numeric: tabular-nums; }
+.pk-bank { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: var(--small); color: var(--text-soft); font-variant-numeric: tabular-nums; }
 .pk-bank b { color: var(--text); font-weight: 600; }
-.pk-session button { height: 28px; }
-.pk-buyin { width: 360px; max-width: calc(100vw - 32px); }
+.pk-session .pj-link-button { font-size: var(--small); color: var(--text-soft); }
+.pk-buyin, .pk-invite { width: 360px; max-width: calc(100vw - 32px); }
+.pk-link { display: flex; gap: 8px; }
+.pk-link .pj-input { flex: 1; min-width: 0; }
+.pk-link button { height: 32px; }
+.pk-away { color: var(--text); }
 .pk-buyin-amount { display: flex; align-items: center; gap: 12px; }
 .pk-buyin-amount .pk-slider { flex: 1; width: auto; }
 .pk-buyin-value { min-width: 64px; font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; text-align: right; }
@@ -23,47 +29,68 @@ body:is(.pk-setting-up, .pk-buying-in) .pk-page { filter: blur(1px); opacity: 0.
 
 /* ---- the table: an oval of felt in a wood rail, the seats round it ---- */
 
-.pk-table { position: relative; width: calc(100% - 272px); max-width: 720px; margin: 96px auto 96px; aspect-ratio: 2 / 1; }
+/* as wide as the room leaves, and short enough that the table and your cards fit the window */
+.pk-table { position: relative; width: min(calc(100% - 2 * var(--seat-w) - 32px), var(--table-max), calc((100vh - var(--chrome)) * 2)); min-width: 360px; margin: calc(var(--face) + 88px) auto calc(var(--face) + 80px); aspect-ratio: 2 / 1; } /* room above and below for a row of seats, each a face over its plate */
 .pk-felt { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; border: 16px solid var(--rail); border-radius: 9999px; background: radial-gradient(ellipse at 50% 40%, var(--felt) 55%, var(--felt-deep)); box-shadow: inset 0 0 0 4px var(--rail-deep), inset 0 6px 24px rgba(0, 0, 0, 0.25), 0 12px 0 var(--rail-deep), var(--shadow-raised); }
 .pk-felt::before { content: ""; position: absolute; inset: 24px; border: 2px solid var(--felt-line); border-radius: 9999px; pointer-events: none; }
 .pk-center { position: relative; z-index: 3; display: flex; flex-direction: column; align-items: center; gap: 12px; color: var(--felt-ink); text-align: center; }
-.pk-board { display: flex; gap: 8px; min-height: 84px; }
-.pk-pot { display: flex; align-items: center; gap: 8px; padding: 4px 12px 4px 8px; border-radius: 9999px; background: rgba(0, 0, 0, 0.22); font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.pk-board { display: flex; gap: 8px; min-height: calc(var(--board) * 1.4); }
+.pk-pot { display: flex; align-items: center; gap: 8px; padding: 4px 12px 4px 8px; border-radius: 9999px; background: rgba(0, 0, 0, 0.22); font-size: var(--big); font-weight: 600; font-variant-numeric: tabular-nums; }
 .pk-result { display: flex; flex-direction: column; align-items: center; gap: 12px; }
-.pk-result-text { max-width: 420px; margin: 0; font-size: 16px; font-weight: 600; line-height: 1.4; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3); }
+.pk-result-text { max-width: 420px; margin: 0; font-size: var(--big); font-weight: 600; line-height: 1.4; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3); }
 .pk-between { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
 .pk-between button { height: 32px; }
 
-/* a seat, outside the rail: the face, a tag for what it did over it, its
-   name and stack, its cards; in a column at the sides, in a row above and below */
-.pk-seat { position: absolute; z-index: 2; display: flex; flex-direction: column; align-items: center; gap: 6px; width: 120px; transition: opacity 0.3s; }
-.pk-seat[data-pos="top"], .pk-seat[data-pos="bottom"] { flex-direction: row; width: max-content; }
-.pk-seat[data-pos="top"] { bottom: calc(100% + 12px); left: 50%; translate: -50% 0; }
-.pk-seat[data-pos="left"] { top: 50%; right: calc(100% + 12px); translate: 0 -50%; }
-.pk-seat[data-pos="right"] { top: 50%; left: calc(100% + 12px); translate: 0 -50%; }
-.pk-seat[data-pos="bottom"] { top: calc(100% + 12px); left: 50%; translate: -50% 0; }
+/* six places round the oval, one every 60°, this page's own at the bottom:
+   a seat outside the rail, its cards on the rail in front of it, its bet
+   on the felt, the dealer button by the bet */
+:is(.pk-seat, .pk-empty, .pk-bet, .pk-puck)[data-pos="bottom"] { --a: 90deg; }
+:is(.pk-seat, .pk-empty, .pk-bet, .pk-puck)[data-pos="left"] { --a: 150deg; }
+:is(.pk-seat, .pk-empty, .pk-bet, .pk-puck)[data-pos="top-left"] { --a: 210deg; }
+:is(.pk-seat, .pk-empty, .pk-bet, .pk-puck)[data-pos="top"] { --a: 270deg; }
+:is(.pk-seat, .pk-empty, .pk-bet, .pk-puck)[data-pos="top-right"] { --a: 330deg; }
+:is(.pk-seat, .pk-empty, .pk-bet, .pk-puck)[data-pos="right"] { --a: 30deg; }
+.pk-seat, .pk-empty { --out-x: calc(var(--seat-w) / 2); --out-y: calc(var(--face) / 2 + 44px); left: calc(50% + cos(var(--a)) * (50% + var(--out-x))); top: calc(50% + sin(var(--a)) * (50% + var(--out-y))); translate: -50% -50%; }
+
+/* a seat, the same at every place: the face over a plate with its name, stack and what it did */
+.pk-seat { position: absolute; z-index: 2; display: flex; flex-direction: column; align-items: center; gap: 6px; width: var(--seat-w); transition: opacity 0.3s; }
+.pk-seat:not([data-id="you"]) :is(.pj-agent-face, .pk-plate) { cursor: pointer; }
+/* an empty seat: a dashed ring with a +, where a player can be asked to sit */
+.pk-empty { position: absolute; width: var(--seat-w); z-index: 2; display: flex; flex-direction: column; align-items: center; gap: 6px; border: 0; padding: 0; background: none; color: var(--text-faint); font-size: var(--small); }
+.pk-empty:hover { color: var(--text); }
+.pk-empty-ring { display: flex; align-items: center; justify-content: center; width: var(--face); height: var(--face); border: 2px dashed currentColor; border-radius: 50%; font-size: calc(var(--face) / 2); font-weight: 400; }
+/* a seat's menu: who could sit there, or to leave */
+.pk-menu { min-width: 260px; }
+.pk-menu li { justify-content: flex-start; gap: 8px; }
+.pk-menu .pj-avatar { --size: 32px; }
+.pk-menu-text { display: flex; flex-direction: column; line-height: 1.3; }
+.pk-menu-text span { color: var(--text-soft); font-size: 12px; }
+.pk-menu .pk-menu-head { cursor: default; border-bottom: 1px solid var(--border); border-radius: 6px 6px 0 0; margin-bottom: 4px; padding-bottom: 8px; }
+.pk-menu .pk-menu-head:hover { background: none; }
 .pk-seat[data-folded] { opacity: 0.5; }
-.pk-seat .pj-agent-face { position: relative; transition: filter 0.2s; }
-.pk-seat .pj-avatar { --size: 56px; }
+.pk-seat .pj-agent-face { position: relative; isolation: isolate; transition: filter 0.2s; }
+.pk-seat .pj-avatar { --size: var(--face); }
 .pk-seat .pj-agent-face { transition: transform 0.25s cubic-bezier(0.3, 1.5, 0.5, 1), filter 0.25s; }
 .pk-seat[data-turn] .pj-agent-face { transform: scale(1.18); filter: drop-shadow(0 10px 8px rgba(0, 0, 0, 0.32)); }
+.pk-seat[data-turn] .pk-plate { box-shadow: 0 0 0 2px var(--text); } /* the one seat to watch */
 .pk-seat[data-won] .pj-agent-face { animation: pk-hop 0.5s ease-out 3; }
-.pk-plate { display: flex; flex-direction: column; align-items: center; padding: 2px 12px 4px; border-radius: 10px; background: var(--canvas); box-shadow: var(--shadow); line-height: 1.3; }
-.pk-name { display: flex; align-items: center; gap: 4px; font-size: 13px; font-weight: 600; }
+.pk-plate { display: flex; flex-direction: column; align-items: center; width: 96px; padding: 4px 8px; border-radius: 10px; background: var(--canvas); box-shadow: var(--shadow); line-height: 1.3; transition: box-shadow 0.2s; }
+.pk-name { display: flex; align-items: center; gap: 4px; font-size: var(--small); font-weight: 600; }
 .pk-position { padding: 0 4px; border-radius: 4px; background: var(--active); color: var(--text-soft); font-size: 11px; font-weight: 600; }
 .pk-position:empty { display: none; }
-.pk-stack { font-size: 13px; font-weight: 500; font-variant-numeric: tabular-nums; color: var(--text-soft); }
-.pk-tag { position: absolute; bottom: 100%; left: 50%; translate: -50% -4px; padding: 2px 8px; border-radius: 9999px; background: var(--text); color: var(--on-text); font-size: 12px; font-weight: 600; white-space: nowrap; animation: pk-pop 0.2s ease-out; }
-.pk-tag:empty { display: none; }
-.pk-tag[data-kind="fold"], .pk-tag[data-kind="wait"] { background: var(--canvas); color: var(--text-soft); box-shadow: var(--shadow); }
-.pk-tag[data-kind="failed"] { background: var(--red); color: var(--on-text); }
-.pk-seat .pk-hole { display: flex; min-height: 42px; }
-.pk-seat .pk-hole:empty { display: none; }
-.pk-seat .pk-hole .pk-card { --w: 30px; margin-left: -10px; }
+.pk-stack { position: relative; font-size: var(--small); font-weight: 500; font-variant-numeric: tabular-nums; color: var(--text-soft); }
+/* what it did, a quiet line on its plate; always there, so plates keep their height */
+.pk-tag { display: block; max-width: 100%; min-height: 1.3em; overflow: hidden; color: var(--text); font-size: 12px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.pk-tag[data-kind="fold"], .pk-tag[data-kind="wait"] { color: var(--text-soft); font-weight: 400; }
+.pk-tag[data-kind="failed"] { color: var(--red); }
+/* its cards, on the rail in front of it: face down, small, only a sign it is in; shown, big */
+.pk-seat .pk-hole { --cw: var(--hole); position: absolute; left: 50%; top: 50%; display: flex; translate: calc(-50% - cos(var(--a)) * (var(--out-x) + var(--cw))) calc(-50% - sin(var(--a)) * (var(--out-y) + var(--cw) * 0.3)); pointer-events: none; }
+.pk-seat .pk-hole .pk-card { --w: var(--hole); margin-left: calc(var(--hole) * -0.4); }
 .pk-seat .pk-hole .pk-card:first-child { margin-left: 0; rotate: -6deg; }
 .pk-seat .pk-hole .pk-card + .pk-card { rotate: 6deg; }
-.pk-seat[data-shown] .pk-hole .pk-card { --w: 40px; }
+.pk-seat[data-shown] .pk-hole .pk-card { --w: var(--shown); }
 .pk-seat[data-pos="bottom"] .pk-hole { display: none; } /* yours are big, under the table */
+.pk-seat[data-shown] { z-index: 3; }
 
 /* a reaction: an emoji by the face, popping up and floating away */
 .pk-react { position: absolute; z-index: 5; bottom: calc(100% - 8px); right: calc(100% - 4px); padding: 6px 10px; border-radius: 14px 14px 4px 14px; background: var(--bg); box-shadow: var(--shadow-raised); font-size: 24px; line-height: 1; pointer-events: none; transform-origin: bottom right; animation: pk-float 2.4s ease-out forwards; }
@@ -71,25 +98,28 @@ body:is(.pk-setting-up, .pk-buying-in) .pk-page { filter: blur(1px); opacity: 0.
 /* bets on the felt, in front of each seat */
 .pk-bet { position: absolute; z-index: 1; display: flex; align-items: center; gap: 4px; color: var(--felt-ink); font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35); }
 .pk-bet:empty { display: none; }
-.pk-bet[data-pos="top"] { top: 22%; left: 50%; translate: -50% 0; }
-.pk-bet[data-pos="left"] { top: 50%; left: 15%; translate: 0 -50%; }
-.pk-bet[data-pos="right"] { top: 50%; right: 15%; translate: 0 -50%; }
-.pk-bet[data-pos="bottom"] { bottom: 22%; left: 50%; translate: -50% 0; }
-.pk-puck { position: absolute; z-index: 1; display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; background: var(--card); color: var(--card-ink); box-shadow: 0 2px 0 var(--rail-deep); font-size: 12px; font-weight: 600; transition: top 0.4s, left 0.4s, right 0.4s, bottom 0.4s; }
-.pk-puck[data-pos="top"] { top: 20%; left: calc(50% + 72px); }
-.pk-puck[data-pos="left"] { top: calc(50% + 32px); left: 15%; }
-.pk-puck[data-pos="right"] { top: calc(50% + 32px); right: 15%; }
-.pk-puck[data-pos="bottom"] { bottom: 20%; left: calc(50% + 72px); }
+.pk-bet { left: calc(50% + cos(var(--a)) * 31%); top: calc(50% + sin(var(--a)) * 30%); translate: -50% -50%; }
+.pk-puck { position: absolute; z-index: 1; display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; background: var(--card); color: var(--card-ink); box-shadow: 0 2px 0 var(--rail-deep); font-size: 12px; font-weight: 600; transition: top 0.4s, left 0.4s; }
+.pk-puck { left: calc(50% + cos(var(--a) + 22deg) * 36%); top: calc(50% + sin(var(--a) + 22deg) * 36%); translate: -50% -50%; } /* a little round from its seat's bet */
 
-/* chips: a little stack of discs, edge stripes in white */
-.pk-stack-chips { display: inline-flex; flex-direction: column-reverse; padding-top: 2px; }
-.pk-chip { width: 18px; height: 6px; margin-top: -2px; border-radius: 50%; background: var(--c, var(--chip-red)); box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, 0.55), 0 1px 0 rgba(0, 0, 0, 0.35); }
-.pk-chip[data-c="white"] { --c: var(--chip-white); box-shadow: inset 0 0 0 1.5px var(--chip-red), 0 1px 0 rgba(0, 0, 0, 0.35); }
+/* chips: a stack of them seen from a little above, each a disc with its
+   edge spots in white (white chips, in red) and its side in shadow */
+.pk-stack-chips { display: inline-flex; flex-direction: column-reverse; padding-top: 3px; }
+.pk-chip { --spot: rgba(255, 255, 255, 0.9); width: 22px; height: 11px; margin-top: -8px; border-radius: 50%; background: radial-gradient(ellipse at center, var(--c) 0 48%, var(--spot) 49% 54%, transparent 55%), repeating-conic-gradient(from 15deg, var(--c) 0 30deg, var(--spot) 30deg 45deg); box-shadow: 0 2px 0 color-mix(in srgb, var(--c), black 35%), 0 3px 2px rgba(0, 0, 0, 0.3); }
+.pk-chip:last-child { margin-top: 0; }
+.pk-chip[data-c="white"] { --c: var(--chip-white); --spot: var(--chip-red); }
 .pk-chip[data-c="red"] { --c: var(--chip-red); }
 .pk-chip[data-c="blue"] { --c: var(--chip-blue); }
 .pk-chip[data-c="black"] { --c: var(--chip-black); }
 .pk-chip[data-c="gold"] { --c: var(--chip-gold); }
 .pk-flying { position: fixed; z-index: 20; pointer-events: none; }
+/* what just changed: a plate that acted pulses, the pot bumps, a stack shows its change, a street is named */
+.pk-plate.pk-pulse { animation: pk-pulse 0.5s ease-out; }
+.pk-tag.pk-pulse { animation: pk-pop 0.25s ease-out; }
+.pk-bet.pk-bump, .pk-pot.pk-bump { animation: pk-bump 0.35s ease-out; }
+.pk-delta { position: absolute; bottom: 100%; left: 50%; font-size: var(--small); font-weight: 600; color: var(--text-soft); white-space: nowrap; pointer-events: none; animation: pk-delta 1.6s ease-out forwards; }
+.pk-delta[data-up] { color: var(--text); }
+.pk-street { position: absolute; z-index: 4; top: 18%; left: 50%; padding: 4px 16px; border-radius: 9999px; background: rgba(0, 0, 0, 0.32); color: var(--felt-ink); font-size: var(--big); font-weight: 600; letter-spacing: 0.02em; pointer-events: none; animation: pk-banner 1.4s ease-out forwards; }
 
 /* a card: rank and suit in its corner, the suit big at the other */
 .pk-card { --w: 56px; position: relative; flex: none; display: inline-block; width: var(--w); height: calc(var(--w) * 1.4); border-radius: calc(var(--w) * 0.14); background: var(--card); color: var(--card-ink); box-shadow: 0 1px 0 rgba(0, 0, 0, 0.12), 0 3px 8px rgba(0, 0, 0, 0.25); font-weight: 600; line-height: 1; user-select: none; }
@@ -98,7 +128,7 @@ body:is(.pk-setting-up, .pk-buying-in) .pk-page { filter: blur(1px); opacity: 0.
 .pk-rank small { font-size: 0.8em; }
 .pk-pip { position: absolute; right: 10%; bottom: 6%; font-size: calc(var(--w) * 0.5); }
 .pk-card-back { background: var(--card-back); background-image: repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.14) 0 4px, transparent 4px 8px); box-shadow: inset 0 0 0 3px var(--card), 0 1px 0 rgba(0, 0, 0, 0.12), 0 3px 8px rgba(0, 0, 0, 0.25); }
-.pk-board .pk-card { --w: 60px; }
+.pk-board .pk-card { --w: var(--board); }
 .pk-card[data-in] { animation: pk-deal 0.35s cubic-bezier(0.2, 0.9, 0.3, 1.2) backwards; }
 .pk-card[data-flip] { animation: pk-flip 0.4s ease-out backwards; }
 .pk-card[data-best] { translate: 0 -6px; box-shadow: 0 0 0 3px var(--chip-gold), 0 3px 8px rgba(0, 0, 0, 0.25); }
@@ -108,13 +138,11 @@ body:is(.pk-setting-up, .pk-buying-in) .pk-page { filter: blur(1px); opacity: 0.
 .pk-me { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 16px 32px; min-height: 128px; }
 .pk-mine { display: flex; align-items: center; gap: 16px; }
 .pk-hole-mine { display: flex; gap: 6px; }
-.pk-hole-mine .pk-card { --w: 72px; }
+.pk-hole-mine .pk-card { --w: var(--mine); }
 .pk-hole-mine .pk-card:first-child { rotate: -4deg; }
 .pk-hole-mine .pk-card + .pk-card { rotate: 4deg; }
-.pk-strength { min-width: 140px; margin: 0; font-size: 16px; font-weight: 600; }
+.pk-strength { min-width: 140px; margin: 0; font-size: var(--big); font-weight: 600; }
 .pk-act { display: flex; flex-direction: column; align-items: center; gap: 8px; min-width: 320px; }
-.pk-wait { margin: 0; color: var(--text-soft); font-size: 14px; }
-.pk-wait:empty { display: none; }
 .pk-controls { display: flex; flex-direction: column; align-items: center; gap: 8px; }
 .pk-buttons { display: flex; gap: 8px; }
 .pk-buttons button { height: 40px; min-width: 96px; padding: 0 16px; font-size: 14px; }
@@ -124,7 +152,7 @@ body:is(.pk-setting-up, .pk-buying-in) .pk-page { filter: blur(1px); opacity: 0.
 
 /* ---- the chat: what people say, a line for each hand's result ---- */
 
-.pk-chat { position: sticky; top: 77px; display: flex; flex-direction: column; height: calc(100vh - 101px); min-height: 0; border-radius: 10px; background: var(--canvas); box-shadow: var(--shadow); }
+.pk-chat { position: sticky; top: 77px; display: flex; flex-direction: column; height: calc(100vh - 101px); min-height: 0; border-left: 1px solid var(--border); }
 .pk-chat-head { display: flex; align-items: center; justify-content: space-between; padding: 8px 8px 8px 16px; border-bottom: 1px solid var(--border); }
 .pk-chat-head h2 { margin: 0; font-size: 13px; font-weight: 600; }
 .pk-chat-open { position: absolute; top: 0; right: 0; }
@@ -136,13 +164,20 @@ body:is(.pk-setting-up, .pk-buying-in) .pk-page { filter: blur(1px); opacity: 0.
 .pk-msg:has(+ .pk-msg[data-more]) .pj-avatar { visibility: hidden; } /* the face goes with the last of a run */
 .pk-msg-col { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; max-width: 80%; }
 .pk-msg-name { margin: 0 0 2px 12px; color: var(--text-soft); font-size: 12px; }
-.pk-msg-text { padding: 6px 12px; border-radius: 14px 14px 14px 4px; background: var(--bg-soft); box-shadow: inset 0 0 0 1px var(--border); font-size: 14px; line-height: 1.4; overflow-wrap: anywhere; }
+.pk-msg-text { padding: 6px 12px; border-radius: 14px 14px 14px 4px; background: var(--bg-soft); font-size: 14px; line-height: 1.4; overflow-wrap: anywhere; }
 .pk-msg[data-mine] { justify-content: flex-end; }
 .pk-msg[data-mine] .pk-msg-col { align-items: flex-end; }
 .pk-msg[data-mine] .pk-msg-text { border-radius: 14px 14px 4px 14px; background: var(--text); box-shadow: none; color: var(--on-text); }
+/* someone typing: three dots in their bubble */
+.pk-typing .pk-msg-text { display: flex; gap: 4px; padding: 12px; }
+.pk-typing i { width: 6px; height: 6px; border-radius: 50%; background: var(--text-faint); animation: pk-dot 1.2s ease-in-out infinite; }
+.pk-typing i:nth-child(2) { animation-delay: 0.15s; }
+.pk-typing i:nth-child(3) { animation-delay: 0.3s; }
+@keyframes pk-dot { 30% { transform: translateY(-3px); background: var(--text-soft); } }
 .pk-dealer { margin: 16px 0 4px; color: var(--text-faint); font-size: 12px; line-height: 1.5; text-align: center; }
 .pk-dealer[data-failed] { color: var(--red); }
-.pk-reacts { display: flex; gap: 2px; padding: 8px 12px 0; border-top: 1px solid var(--border); }
+.pk-seat[data-pos="left"] .pk-react, .pk-seat[data-pos="top"] .pk-react { right: auto; left: calc(100% - 4px); border-radius: 14px 14px 14px 4px; transform-origin: bottom left; } /* toward the table, not off the page */
+.pk-reacts { display: flex; gap: 2px; padding: 8px 12px 0; }
 .pk-reacts button { width: 32px; height: 32px; border: 0; border-radius: 6px; background: none; font-size: 18px; line-height: 1; transition: transform 0.15s; }
 .pk-reacts button:hover { background: var(--hover); transform: scale(1.15); }
 .pk-say { display: flex; align-items: center; gap: 8px; padding: 8px 16px; }
@@ -182,46 +217,55 @@ body:is(.pk-setting-up, .pk-buying-in) .pk-page { filter: blur(1px); opacity: 0.
 @keyframes pk-flip { from { transform: perspective(400px) rotateY(90deg); } }
 @keyframes pk-pop { from { opacity: 0; transform: scale(0.8); } }
 @keyframes pk-hop { 40% { transform: translateY(-12px); } }
+@keyframes pk-pulse { 30% { transform: scale(1.12); box-shadow: var(--shadow-raised); } }
+@keyframes pk-bump { 30% { transform: scale(1.15); } }
+@keyframes pk-banner { 0% { opacity: 0; transform: translate(-50%, 8px) scale(0.9); } 15%, 75% { opacity: 1; transform: translate(-50%, 0); } 100% { opacity: 0; transform: translate(-50%, -8px); } }
+@keyframes pk-delta { 0% { opacity: 0; transform: translate(-50%, 4px); } 20%, 70% { opacity: 1; transform: translate(-50%, 0); } 100% { opacity: 0; transform: translate(-50%, -16px); } }
 @keyframes pk-float { 0% { opacity: 0; transform: scale(0.4); } 15% { opacity: 1; transform: scale(1.25); } 30% { transform: scale(1); } 75% { opacity: 1; } 100% { opacity: 0; transform: translateY(-48px); } }
 @media (prefers-reduced-motion: reduce) {
-  .pk-card[data-in], .pk-card[data-flip], .pk-tag, .pk-seat[data-won] .pj-agent-face { animation: none; }
+  .pk-card[data-in], .pk-card[data-flip], .pk-seat[data-won] .pj-agent-face, .pk-pulse, .pk-bump { animation: none; }
+  .pk-street, .pk-delta { display: none; }
+  .pk-typing i { animation: none; }
   .pk-react { animation: none; }
 }
 
 /* ---- narrower: the chat under the table; a phone: a taller table ---- */
 
+@media (min-width: 1600px) and (min-height: 900px) {
+  .pk-page { --face: 72px; --hole: 26px; --shown: 42px; --board: 80px; --mine: 96px; --seat-w: 150px; --table-max: 1040px; --chrome: 610px; --chat-w: 380px; --small: 14px; --big: 20px; max-width: 1760px; }
+  .pk-buttons button { height: 44px; font-size: 16px; }
+  .pk-msg-text { font-size: 16px; }
+}
+@media (min-width: 2200px) and (min-height: 1250px) {
+  .pk-page { --face: 96px; --hole: 34px; --shown: 54px; --board: 108px; --mine: 128px; --seat-w: 190px; --table-max: 1440px; --chrome: 750px; --chat-w: 440px; --small: 16px; --big: 24px; max-width: 2400px; }
+  .pk-buttons button { height: 48px; min-width: 120px; }
+  .pk-sizes button { height: 32px; font-size: 14px; }
+  .pk-msg-text, .pk-say .pj-input { font-size: 16px; }
+  .pk-msg-name, .pk-dealer, .pk-fine { font-size: 14px; }
+  .pk-session button { height: 32px; font-size: 14px; }
+}
 @media (max-width: 960px) {
   .pk-page { grid-template-columns: minmax(0, 1fr); }
   .pk-chat { position: static; height: 50vh; }
 }
 @media (max-width: 640px) {
   .pk-page { padding: 16px 12px; }
-  .pk-table { width: calc(100% - 152px); margin: 104px auto 80px; aspect-ratio: 3 / 4; }
+  .pk-table { width: calc(100% - 152px); min-width: 0; margin: 116px auto 112px; aspect-ratio: 3 / 4; }
   .pk-felt { border-width: 10px; }
   .pk-felt::before { inset: 14px; }
   .pk-seat { width: 68px; gap: 4px; }
   .pk-seat .pj-avatar { --size: 40px; }
-  .pk-seat[data-pos="left"] { right: calc(100% + 6px); }
-  .pk-seat[data-pos="right"] { left: calc(100% + 6px); }
-  .pk-plate { padding: 2px 6px 4px; }
-  .pk-seat .pk-hole { min-height: 31px; }
-  .pk-seat .pk-hole .pk-card { --w: 22px; margin-left: -8px; }
-  .pk-seat[data-shown] .pk-hole .pk-card { --w: 30px; }
-  .pk-tag { max-width: 84px; overflow: hidden; text-overflow: ellipsis; }
+  .pk-seat, .pk-empty { --out-x: 30px; --out-y: calc(var(--face) / 2 + 36px); }
+  .pk-plate { width: 68px; padding: 2px 4px 4px; }
+  .pk-seat .pk-hole .pk-card { --w: 16px; margin-left: -6px; }
+  .pk-seat[data-shown] .pk-hole .pk-card { --w: 26px; }
+  .pk-tag { max-width: 64px; }
   .pk-board { flex-wrap: wrap; justify-content: center; gap: 4px; max-width: 200px; min-height: 0; }
   .pk-board .pk-card { --w: 36px; }
   .pk-center { gap: 6px; }
   .pk-pot { font-size: 13px; }
   .pk-bet { flex-direction: column; gap: 0; font-size: 12px; }
-  .pk-bet[data-pos="top"] { top: 7%; }
-  .pk-bet[data-pos="bottom"] { bottom: 7%; }
-  .pk-bet[data-pos="left"] { left: 5%; top: 24%; translate: 0 0; }
-  .pk-bet[data-pos="right"] { right: 5%; top: 24%; translate: 0 0; }
   .pk-puck { width: 20px; height: 20px; font-size: 11px; }
-  .pk-puck[data-pos="top"] { top: 7%; left: calc(50% + 32px); }
-  .pk-puck[data-pos="bottom"] { bottom: 7%; left: calc(50% + 32px); }
-  .pk-puck[data-pos="left"] { left: 5%; top: 70%; }
-  .pk-puck[data-pos="right"] { right: 5%; top: 70%; }
   .pk-hole-mine .pk-card { --w: 60px; }
   .pk-act { min-width: 0; width: 100%; }
 }

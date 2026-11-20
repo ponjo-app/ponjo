@@ -1,10 +1,6 @@
-// The rules (docs/agent-runtime.md, How it decides): what a doc's buddies
-// should be doing now, from the doc's threads and what this machine noted,
+// The rules (docs/agent-runtime.md, How the plan decides): what a world's
+// agents should be doing now, from its asks and what this machine noted,
 // with no clock or file of its own: a look at any time finds the same.
-
-import { askedBy } from './comments.js';
-import { lineChanges } from './diff.js';
-import { nextStepAt, take } from './bucket.js';
 
 /** How long people's edits pause before a buddy watching runs on them (ms). */
 export const SETTLE_MS = 5000;
@@ -13,65 +9,64 @@ export const SETTLE_MS = 5000;
 export const OUTSIDE = Symbol('outside');
 
 /**
- * What to start and stop now. `buddies` those the doc reaches; `threads`
- * its threads (threadsOf); `askers` the ids whose comments ask and `taken`
- * the comments this host took (askedBy); `relayed` the comments a run here
- * posted → the people that run was for, whose @mentions ask for a step;
- * `notes` buddy → { seen (thread → the time of the last comment its runs
- * were given there), lookedAt (the
- * rev its last run started at, or null: look at once), base (the doc then,
- * or null), heard (the ids of the comments then, a Set, or null), wake (the
- * lines of the doc its last run said wake it, or null: any), watch ({
- * by }, who turned it on, or null) }; `changedAt` who last
- * changed the doc's text → { rev, at (when, on the clock of `now`) }, people
- * as one (null), another program writing the file as OUTSIDE; `running`
- * the ids of the buddies running; `steps` the bucket buddies wake each other from (bucket.js); `text` the doc now.
+ * What to start and stop now. `agents` those here ({ id, name }); `asks`
+ * the world's (asksIn: { id, agent, at, from, for, depth }); `askers` the ids who
+ * may ask: an agent's ask (one with `for`) is for those of its people who
+ * still may; `notes` agent → { seen (ask id → the time of the latest comment
+ * its runs were given there), lookedAt (the version its last run started
+ * at, or null: look at once), print (its view's fingerprint then, or
+ * null: not known), wake (what its last run said wakes it, or null: any
+ * change), watch ({ by }, who turned it on, or null) }; `prints` agent →
+ * its view's fingerprint now; `woken` the ids of the agents whose view
+ * holds what wakes them; `changedAt` who
+ * last changed the world → { rev, at (when, on the clock of `now`), depth
+ * (an agent's: its run's) }, people as one (null), another program as
+ * OUTSIDE; `running` the ids of the agents running; `limit` the world's
+ * depth limit; `paused` whether its watches are paused (the breaker).
  *
- * Returns { start ([{ buddy, buddies, threads, askers, watch (null, or {
- * changes, threads (the open ones with another member's comment since it
- * last looked), heard (the ids of the comments now) }), watchOnly }]),
- * stop (ids), steps (the bucket, less
- * those spent), wakeAt (when to look again, or null), asking (a Set of
- * `${buddy} ${thread}`, each ask, looked at or not), why (buddy id → why it
- * starts or not, in words: the agent log's) }.
+ * Returns { start ([{ agent, asks, askers, watch (whether it watches),
+ * watchOnly, depth }]), stop (ids), wakeAt (when to look again, or null),
+ * asking (a Set of `${agent} ${ask}`, each ask, looked at or not), why
+ * (agent id → why it starts or not, in words: the agent log's) }.
  *
- * A comment asks a buddy until it comments after it, or a run was given it.
- * A buddy's (relayed) asks for a step, as the people its run was for, while
- * one of them may ask.
- * A watcher, while whoever turned it on may ask, is due once turned on, and
- * on another member's change since its last run started: people's once
- * they pause SETTLE_MS, a file written outside at once (it is whole: the
- * door took it once it held still), a buddy's once its run ended (so the
- * watcher sees the comment that came with it), for a step. Its own never
- * counts. One whose last run named lines to wake it is due only while the
- * doc holds one.
+ * An ask is due until a run was given it. An agent's ask is for the people
+ * its run was for, while one of them may ask.
+ * A watcher, while whoever turned it on may ask and the watches are not
+ * paused, is due once turned on, and on another member's change since its
+ * last run started: people's once they pause SETTLE_MS, a file written
+ * outside at once (it is whole: the door took it once it held still), an
+ * agent's once its run ended (so the watcher sees all it did). Its own never counts, nor a
+ * change its view no longer shows: one whose view is as it was when its
+ * last run started is not due. One whose last run named what wakes it is
+ * due only while its view holds that.
+ *
+ * A run's depth: 0 when a person or the world asked or woke it; when only
+ * an agent's ask or change did, one more than that. Past `limit`, nothing
+ * starts: agents waking each other come to rest.
  */
-export function plan({ buddies, threads, askers, taken, relayed = new Map(), notes, changedAt, running, steps, text, now }) {
-  const noteOf = (id) => notes.get(id) ?? { seen: new Map(), lookedAt: null, base: null, heard: null, wake: null, watch: null };
-  const lines = new Set(text.split(/\r?\n/));
-  const heard = new Set(threads.flatMap((t) => t.comments.map((c) => c.id)));
-  const tasks = new Map(); // buddy id → { threads, askers, asked, watch }
-  const taskOf = (id) => tasks.get(id) ?? tasks.set(id, { threads: [], askers: new Set(), asked: false, relayed: false, watch: null }).get(id);
+export function plan({ agents, asks, askers, notes, changedAt, running, prints, woken, limit, paused, now }) {
+  const noteOf = (id) => notes.get(id) ?? { seen: new Map(), lookedAt: null, print: null, wake: null, watch: null };
+  const tasks = new Map(); // agent id → { asks, askers, asked, relayed, depth, watch }
+  const taskOf = (id) => tasks.get(id) ?? tasks.set(id, { asks: [], askers: new Set(), asked: false, relayed: false, depth: Infinity, watch: null }).get(id);
   const asking = new Set();
   const why = new Map();
-  const nameOf = (by) => (by === null ? 'people' : by === OUTSIDE ? 'outside the app' : buddies.find((b) => b.id === by)?.name ?? by);
+  const nameOf = (by) => (by === null ? 'people' : by === OUTSIDE ? 'outside the app' : agents.find((b) => b.id === by)?.name ?? by);
   let wakeAt = null;
   const soonest = (at) => { wakeAt = wakeAt === null ? at : Math.min(wakeAt, at); };
-  for (const thread of threads) {
-    for (const [id, ask] of askedBy(thread, askers, taken, relayed)) {
-      const via = relayed.get(ask.id)?.filter((p) => askers.includes(p)) ?? [ask.by.id];
-      if (!via.length) continue; // the people a buddy asked for may no longer ask
-      asking.add(`${id} ${thread.id}`);
-      if (Date.parse(ask.at) <= (noteOf(id).seen.get(thread.id) ?? -Infinity)) continue;
-      const task = taskOf(id);
-      task.threads.push(thread);
-      for (const p of via) task.askers.add(p);
-      if (relayed.has(ask.id)) task.relayed = true;
-      else task.asked = true;
-    }
+  for (const ask of asks) {
+    const via = ask.for?.filter((p) => askers.includes(p)) ?? [ask.from];
+    if (!via.length) continue; // the people an agent asked for may no longer ask
+    asking.add(`${ask.agent} ${ask.id}`);
+    if (Date.parse(ask.at) <= (noteOf(ask.agent).seen.get(ask.id) ?? -Infinity)) continue;
+    const task = taskOf(ask.agent);
+    task.asks.push(ask);
+    for (const p of via) task.askers.add(p);
+    if (ask.for) task.relayed = true;
+    else task.asked = true;
+    task.depth = Math.min(task.depth, ask.for ? (ask.depth ?? 0) + 1 : 0);
   }
   for (const [id, note] of notes) {
-    if (!note.watch || !buddies.some((b) => b.id === id)) continue;
+    if (!note.watch || !agents.some((b) => b.id === id)) continue;
     if (!askers.includes(note.watch.by)) {
       why.set(id, 'not due: whoever turned on its watch may not ask');
       continue;
@@ -80,38 +75,51 @@ export function plan({ buddies, threads, askers, taken, relayed = new Map(), not
     task.askers.add(note.watch.by);
     let byPeople = note.lookedAt === null;
     let byBuddy = false;
+    let depth = Infinity; // of the agents' changes that wake it
     const changed = [];
-    for (const [by, { rev, at }] of changedAt) {
+    for (const [by, { rev, at, depth: of = 0 }] of changedAt) {
       if (note.lookedAt !== null && rev <= note.lookedAt) continue;
       if (by === id) {
         changed.push(`itself at rev ${rev}, which does not count`);
         continue;
       }
       const buddy = by !== null && by !== OUTSIDE;
-      // A buddy's counts once its run has landed, the comment with the edit.
+      // An agent's counts once its run has landed, all it did.
       if (by === OUTSIDE) byPeople = true;
-      else if (buddy && !running.has(by)) byBuddy = true;
+      else if (buddy && !running.has(by)) {
+        byBuddy = true;
+        depth = Math.min(depth, of + 1);
+      }
       else if (by === null && now - at >= SETTLE_MS) byPeople = true;
       else if (by === null) soonest(at + SETTLE_MS); // people still typing: look once they pause
       changed.push(`${nameOf(by)} at rev ${rev}${by === null && now - at < SETTLE_MS ? ', still typing' : ''}${buddy && running.has(by) ? ', still landing' : ''}`);
     }
     let since = note.lookedAt === null ? 'its first look' : changed.length ? `changed by ${changed.join(', ')}, after its look at rev ${note.lookedAt}` : `no change since its look at rev ${note.lookedAt}`;
-    // Its last run said which lines wake it: not before the doc holds one.
-    if (note.lookedAt !== null && note.wake && !note.wake.some((l) => lines.has(l))) {
+    // Its last run said what wakes it: not before its view holds that.
+    if (note.lookedAt !== null && note.wake && !woken.has(id)) {
       if (byPeople || byBuddy) since += ', but the doc holds no line that wakes it';
       byPeople = false;
       byBuddy = false;
     }
-    // What members said since it looked, as what they wrote: its own words it knows.
-    const said = note.heard === null ? [] : threads.filter((t) => !t.resolved && t.comments.some((c) => c.by.id !== id && !note.heard.has(c.id)));
-    task.watch = { changes: note.base === null ? null : lineChanges(note.base, text), threads: said, heard, due: byPeople || byBuddy, paid: !byPeople && byBuddy, since };
+    // Its view is as it was when its last run started: nothing to see.
+    if (note.lookedAt !== null && note.print != null && prints.get(id) === note.print && (byPeople || byBuddy)) {
+      since += ', but its view is as it was';
+      byPeople = false;
+      byBuddy = false;
+    }
+    if (paused && (byPeople || byBuddy)) {
+      since += ', but watches are paused';
+      byPeople = false;
+      byBuddy = false;
+    }
+    task.watch = { due: byPeople || byBuddy, depth: byPeople ? 0 : depth, since };
   }
   const start = [];
   for (const [id, task] of tasks) {
-    const buddy = buddies.find((b) => b.id === id); // a thread's opener may be gone
-    if (!buddy) continue;
+    const agent = agents.find((b) => b.id === id); // a thread's opener may be gone
+    if (!agent) continue;
     const asked = task.asked || task.relayed;
-    const reason = asked ? `asked in ${task.threads.map((t) => t.id).join(', ')}${task.asked ? '' : ' by a buddy'}` : task.watch.since;
+    const reason = asked ? `asked in ${task.asks.map((a) => a.id).join(', ')}${task.asked ? '' : ' by a buddy'}` : task.watch.since;
     if (running.has(id)) {
       why.set(id, `not due: already running (${reason})`);
       continue;
@@ -120,22 +128,17 @@ export function plan({ buddies, threads, askers, taken, relayed = new Map(), not
       why.set(id, `not due: ${reason}`);
       continue;
     }
-    if (!task.asked && (task.relayed || task.watch.paid)) { // woken by another buddy: a step, or wait for the next
-      const step = take(steps, now);
-      if (!step.ok) {
-        const next = nextStepAt(steps);
-        if (next !== null) soonest(next);
-        why.set(id, `not due: ${reason}, but no step is left${next === null ? '' : `, the next in ${Math.ceil((next - now) / 1000)} s`}`);
-        continue;
-      }
-      steps = step.bucket;
-      why.set(id, `due: ${reason} · a step taken, ${steps.left} left`);
-    } else why.set(id, `due: ${reason}`);
-    start.push({ buddy, buddies, threads: task.threads, askers: [...task.askers], watch: task.watch && { changes: task.watch.changes, threads: task.watch.threads, heard }, watchOnly: !asked && task.watch !== null });
+    const depth = Math.min(task.depth, task.watch?.due ? task.watch.depth : Infinity);
+    if (depth > limit) {
+      why.set(id, `not due: ${reason}, but at the depth limit (${limit})`);
+      continue;
+    }
+    why.set(id, `due: ${reason}${depth ? ` · depth ${depth}` : ''}`);
+    start.push({ agent, asks: task.asks, askers: [...task.askers], watch: task.watch !== null, watchOnly: !asked && task.watch !== null, depth });
   }
-  const wanted = new Set([...tasks.keys()].filter((id) => buddies.some((b) => b.id === id)));
+  const wanted = new Set([...tasks.keys()].filter((id) => agents.some((b) => b.id === id)));
   const stop = [...running].filter((id) => !wanted.has(id));
   for (const id of stop) why.set(id, 'stopped: nothing asks it now');
-  for (const b of buddies) if (!why.has(b.id)) why.set(b.id, 'not due: no ask, not watching');
-  return { start, stop, steps, wakeAt, asking, why };
+  for (const b of agents) if (!why.has(b.id)) why.set(b.id, 'not due: no ask, not watching');
+  return { start, stop, wakeAt, asking, why };
 }
