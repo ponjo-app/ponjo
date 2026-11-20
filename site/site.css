@@ -103,108 +103,51 @@ a { color: var(--accent); }
 .intro-page .intro-cta { margin-top: 32px; }
 .intro-page .intro-cta a { height: 40px; padding: 0 16px; font-size: 14px; text-decoration: none; }
 
-/* ---- architecture page: slides on how Ponjo's agents work, each a demo played step by step ---- */
+/* ---- architecture page: a story in chapters, a scene each (preview/arch-story.js) ---- */
 
-.arch-page small { display: block; color: var(--text-soft); font-size: 12px; line-height: 1.5; }
+.arch-story { display: flex; flex-direction: column; gap: 12px; max-width: 880px; margin: 0 auto; padding: 24px 16px 48px; }
+.arch-title { min-height: 1.5em; margin: 0; color: var(--text-faint); font-size: 13px; font-weight: 600; }
+.arch-stage { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 24px; height: clamp(440px, calc(100vh - 260px), 560px); padding: 24px; overflow: hidden; border-radius: 10px; background: var(--canvas); box-shadow: var(--shadow); }
+.arch-say { min-height: 3.2em; margin: 0; color: var(--text); font-size: 16px; line-height: 1.6; text-wrap: pretty; }
+.arch-nav { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.arch-nav > button { min-width: 88px; height: 32px; }
+.arch-dots { display: flex; }
+.arch-dot { width: 20px; height: 20px; padding: 6px; border: 0; border-radius: 50%; background: var(--border-strong) content-box; }
+.arch-dot[aria-current] { background-color: var(--text); }
 
-/* the page as slides: a screen each, snapped on wide screens, a dot each at the right */
-.arch-deck { padding-top: 0; padding-bottom: 0; }
-.arch-slide { display: flex; flex-direction: column; justify-content: center; padding: 24px 0; }
-.ds-page .arch-slide > h2 { margin-top: 0; font-size: 24px; }
-.ds-page .arch-eyebrow { margin: 0 0 4px; color: var(--text-faint); font-size: 13px; font-weight: 600; }
-.arch-cover h1 { max-width: 720px; font-size: 36px; text-wrap: balance; }
-.arch-hint { color: var(--text-faint); font-size: 13px; }
-.arch-dots { display: none; }
-.arch-dot { width: 8px; height: 8px; padding: 0; border: 0; border-radius: 50%; background: var(--border-strong); }
-.arch-dot[aria-current] { background: var(--text); }
-@media (min-width: 721px) and (min-height: 560px) {
-  html:has(.arch-deck) { scroll-snap-type: y mandatory; scroll-padding-top: 53px; }
-  .arch-slide { box-sizing: border-box; min-height: calc(100vh - 53px); scroll-snap-align: start; }
-  .arch-dots { position: fixed; top: 50%; right: 16px; z-index: 5; display: flex; flex-direction: column; gap: 8px; transform: translateY(-50%); }
-}
+/* the cover: Clippy, the title and what the story is about */
+.arch-cover h1 { max-width: 640px; margin: 0; font-size: 36px; font-weight: 600; line-height: 1.25; letter-spacing: -0.02em; text-align: center; text-wrap: balance; }
+.arch-cover p { max-width: 560px; margin: 0; color: var(--text-soft); font-size: 16px; line-height: 1.6; text-align: center; }
 
-/* a demo: its frame, the caption of its step, its parts */
-.arch-merge { margin-top: 16px; padding: 24px; border-radius: 10px; background: var(--canvas); box-shadow: var(--shadow); }
-.arch-merge-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; margin-bottom: 8px; }
-.arch-merge-head b { font-size: 16px; font-weight: 600; }
-.arch-merge-head span { color: var(--text-faint); font-size: 13px; }
-.ds-page .arch-caption { min-height: 3.2em; max-width: none; margin: 0 0 16px; color: var(--text); font-size: 16px; line-height: 1.6; }
-.arch-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 12px 0 0; }
-.arch-who { display: flex; align-items: center; gap: 6px; color: var(--text-soft); font-size: 12px; }
-.arch-actor { display: flex; align-items: center; gap: 6px; }
-.arch-quiet { color: var(--text-faint); font-size: 13px; }
-.arch-pane { display: flex; flex-direction: column; gap: 8px; min-width: 0; padding: 12px; border-radius: 6px; background: var(--bg-soft); }
-.arch-two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-.arch-lines { font-size: 13px; line-height: 1.6; }
-.arch-line { min-height: 1.6em; white-space: pre-wrap; }
-.arch-mine { background: var(--active); }
-.arch-list { display: flex; flex-direction: column; gap: 8px; min-height: 64px; }
-.arch-row { font-size: 13px; }
-.arch-quote { display: flex; flex-direction: column; gap: 2px; font-size: 13px; line-height: 1.6; }
-.arch-quote > div:nth-child(odd) { color: var(--text-soft); font-size: 12px; }
-.arch-verdict { margin: 12px 0 0; font-size: 13px; font-weight: 500; }
-.arch-ok { color: var(--green); }
-.arch-back { color: var(--red); }
+/* a member: its face over its name */
+.arch-actor { display: flex; flex-direction: column; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; }
+.arch-actor .pj-avatar { --size: 56px; }
+.arch-row { display: flex; align-items: center; justify-content: center; gap: 48px; }
 
-/* a recording, on a slide wider than the page's column */
-.arch-wide { position: relative; left: 50%; width: min(1200px, calc(100vw - 96px)); translate: -50% 0; }
-.arch-video { display: flex; flex-direction: column; gap: 8px; margin: 8px 0 0; }
-.arch-video video { display: block; align-self: center; width: auto; max-width: 100%; height: auto; max-height: calc(100vh - 260px); border-radius: 10px; box-shadow: var(--shadow-raised); background: var(--canvas); }
-.arch-video figcaption { color: var(--text-soft); font-size: 13px; line-height: 1.5; }
+/* a task handed over: a card you drag */
+.arch-task { display: flex; flex-direction: column; gap: 4px; width: 168px; padding: 12px 16px; border-radius: 10px; background: var(--bg); box-shadow: var(--shadow-raised); font-size: 14px; cursor: grab; touch-action: none; user-select: none; }
+.arch-task b { font-weight: 600; }
+.arch-task span { color: var(--text-soft); font-size: 12px; }
+.arch-task.arch-done span { color: var(--green); font-weight: 500; }
 
-/* the problem and the solution: a claim beside its reason, a row at a time */
-.arch-block { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: 16px; padding: 12px 0; border-top: 1px solid var(--border); font-size: 14px; }
-.arch-block.arch-who { padding-top: 0; border-top: 0; }
-.arch-blocks { color: var(--text-soft); }
-.arch-design { color: var(--text); font-weight: 500; }
-.arch-caret { display: inline-block; height: 1.1em; margin-left: 1px; border-left: 2px solid var(--text); vertical-align: text-bottom; }
-.arch-gone { opacity: 0.45; transition: opacity 0.3s; }
+/* a scene as a diagram: boxes and arrows in an SVG, members over it at the same points (sketch in arch-story.js) */
+.arch-sketch { position: relative; max-height: 100%; container-type: inline-size; }
+.arch-sketch svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.arch-sketch .pj-avatar { --size: clamp(32px, 7.4cqw, 56px); }
+.arch-at { position: absolute; translate: -50% -50%; }
+.arch-ink { fill: none; stroke: var(--text-soft); stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.arch-box { fill: var(--canvas); stroke: var(--border-strong); stroke-width: 1.25; }
+.arch-lost { stroke: var(--red); stroke-width: 2; }
+.arch-label { font-size: 13px; font-weight: 500; white-space: nowrap; }
+.arch-status { position: absolute; top: 16px; left: 24px; margin: 0; color: var(--text-soft); font-size: 13px; font-variant-numeric: tabular-nums; }
+/* what a member just did, over its face */
+.arch-tag { position: absolute; bottom: 100%; left: 50%; translate: -50% -4px; padding: 2px 8px; border-radius: 9999px; background: var(--text); color: var(--on-text); font-size: 12px; font-weight: 600; white-space: nowrap; }
+.arch-tag:empty { display: none; }
+.arch-foot { position: absolute; right: 24px; bottom: 16px; left: 24px; margin: 0; color: var(--text-faint); font-size: 12px; text-align: center; }
 
-/* a Ponjo window, in the app's own classes: header, doc, threads; and behind it, each buddy's copy */
-.arch-app { overflow: hidden; border-radius: 10px; background: var(--canvas); box-shadow: var(--shadow-raised); }
-.arch-app-head { display: flex; align-items: center; gap: 8px; height: 48px; padding: 0 12px; border-bottom: 1px solid var(--border); font-size: 13px; font-weight: 600; }
-.arch-app-head > .pj-icon { width: 16px; height: 16px; color: var(--text-soft); }
-.arch-app-body { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 24px; min-height: 200px; padding: 16px 20px 16px 32px; }
-.arch-app-doc { display: flex; flex-direction: column; gap: 12px; font-size: 15px; line-height: 1.7; }
-.arch-app-h1 { font-size: 24px; font-weight: 600; line-height: 1.3; }
-.arch-para { min-height: 1.7em; }
-.arch-app-margin { display: flex; flex-direction: column; gap: 8px; }
-.arch-app .pj-card { position: static; cursor: default; }
-.arch-app .pj-receipt { margin-top: 8px; }
-.arch-behind { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; padding: 12px; border-radius: 10px; background: var(--bg-soft); }
-.arch-behind .arch-pane { background: var(--canvas); }
-
-/* under the hood: the parts as boxes; with some in focus, they in ink and the rest dimmed */
-.arch-flow svg { display: block; width: 100%; height: auto; }
-.arch-flow rect { fill: var(--canvas); stroke: var(--border-strong); stroke-width: 1.25; }
-.arch-flow .chip { fill: var(--bg-soft); }
-.arch-flow text { fill: var(--text); font: 500 13px var(--ui-font); text-anchor: middle; }
-.arch-flow .sub { fill: var(--text-soft); font-size: 11.5px; font-weight: 400; }
-.arch-flow .small { font-size: 12px; }
-.arch-flow .start { text-anchor: start; }
-.arch-flow .end { text-anchor: end; }
-.arch-flow path { fill: none; stroke: var(--text-faint); stroke-width: 1.25; }
-.arch-flow .arch-tip { fill: var(--text-faint); stroke: none; }
-.arch-flow .on rect { stroke: var(--text); stroke-width: 2; }
-.arch-flow .on path { stroke: var(--text); stroke-width: 2; }
-.arch-flow g { transition: opacity 0.3s; }
-.arch-flow[data-focus] g:not(.on) { opacity: 0.3; }
-
-/* try it: a real turn, its steps and what landed */
-.arch-page .arch-text { display: block; width: 100%; box-sizing: border-box; height: auto; padding: 8px; resize: vertical; font: 14px/1.6 var(--ui-font); }
-.arch-file { display: flex; flex-direction: column; gap: 6px; margin-top: 16px; }
-.arch-file .ds-prose { padding: 8px 12px; border-radius: 6px; background: var(--bg-soft); white-space: pre-wrap; }
-.arch-ask { flex: 1; min-width: 200px; }
-.arch-status { display: flex; align-items: center; gap: 8px; color: var(--text-soft); font-size: 13px; }
-.arch-reply { margin: 12px 0 0; font-size: 14px; }
-.arch-tool { padding: 0 6px; border-radius: 4px; background: var(--bg-soft); box-shadow: inset 0 0 0 1px var(--border); font: 500 12px/1.6 var(--mono); }
-.ds-page .arch-trace { margin: 8px 0 0; padding: 0; list-style: none; font-size: 12px; }
-.ds-page .arch-trace li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 4px 0; color: var(--text-soft); }
-.arch-trace .arch-back { color: var(--red); }
-.arch-page .arch-slide > p:last-child { margin-top: 32px; }
-
-@media (max-width: 720px) {
-  .arch-two, .arch-block, .arch-app-body { grid-template-columns: minmax(0, 1fr); }
-  .arch-app-body { padding: 16px; }
-  .arch-merge { padding: 16px; }
+@media (max-width: 560px) {
+  .arch-stage { padding: 16px; }
+  .arch-cover h1 { font-size: 24px; }
+  .arch-row { gap: 16px; }
+  .arch-task { width: 128px; }
 }

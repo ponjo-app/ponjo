@@ -2,7 +2,7 @@
 // the doc window (web/index.html, the doc host played by
 // preview/doc-stub.js), the start window (desktop/start.html,
 // the app played by preview/start-stub.js); Folder mode's project is
-// preview/demo; the architecture page's demos (preview/arch-demos.js); and the
+// preview/demo; the architecture page's story (preview/arch-story.js); and the
 // poker table (preview/poker.js).
 // Run after `npm run build`:
 // node preview/build.js
@@ -55,7 +55,7 @@ const stub = (name, format, define) => build({
   logLevel: 'warning',
 });
 await stub('doc-stub.js', 'esm', { DEMO: JSON.stringify(DEMO) });
-await stub('arch-demos.js', 'esm'); // site/architecture.html's demos
+await stub('arch-story.js', 'esm'); // site/architecture.html's story
 await stub('poker.js', 'esm'); // site/poker.html's table
 
 const start = (await readFile(join(root, 'desktop', 'start.html'), 'utf8'))

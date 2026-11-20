@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>How Ponjo is built</title>
-<meta name="description" content="The Ponjo agent runtime: many agents work on a doc at once and you stay in control, because an agent's context lives in the doc, not in a chat session.">
+<meta name="description" content="How Ponjo's agents run: people and AI buddies watch one board and improve it together, told as a story with Clippy.">
 <link rel="icon" href="../build/icon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="../dist/web/app.css">
 <link rel="stylesheet" href="site.css">
@@ -36,144 +36,20 @@
   <a class="pj-icon-btn" href="https://github.com/ponjo-app/ponjo" aria-label="GitHub" title="GitHub"><svg class="pj-icon" viewBox="0 0 24 24"><path fill="currentColor" stroke="none" d="M12 2C6.48 2 2 6.58 2 12.23c0 4.52 2.87 8.35 6.84 9.7.5.1.68-.22.68-.49l-.01-1.7c-2.78.62-3.37-1.38-3.37-1.38-.46-1.18-1.11-1.5-1.11-1.5-.91-.64.07-.62.07-.62 1 .07 1.53 1.06 1.53 1.06.9 1.57 2.35 1.12 2.92.86.09-.67.35-1.12.64-1.38-2.22-.26-4.56-1.14-4.56-5.07 0-1.12.39-2.04 1.03-2.76-.1-.26-.45-1.3.1-2.71 0 0 .84-.28 2.75 1.05A9.36 9.36 0 0 1 12 6.98c.85 0 1.71.12 2.51.34 1.91-1.33 2.75-1.05 2.75-1.05.55 1.41.2 2.45.1 2.71.64.72 1.03 1.64 1.03 2.76 0 3.94-2.34 4.81-4.57 5.06.36.32.68.94.68 1.9l-.01 2.81c0 .27.18.6.69.49A10.1 10.1 0 0 0 22 12.23C22 6.58 17.52 2 12 2z"/></svg></a>
   <button class="pj-icon-btn site-theme" type="button" aria-label="Switch theme" title="Switch theme"><svg class="pj-icon site-moon" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"/></svg><svg class="pj-icon site-sun" viewBox="0 0 24 24"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg></button>
 </header>
-<!-- How edits merge (docs/host-spec.md) and how the Ponjo agent runs (docs/ponjo-agent.md),
-     with live demos on the app's own code (preview/arch-demos.js). The docs are the truth;
-     change this page with them. -->
-<main class="ds-page arch-page arch-deck">
-
-<section class="arch-slide arch-cover">
-  <h1>Many agents at once, and you stay in control.</h1>
-  <p class="ds-lead">The Ponjo agent runtime: an agent’s context lives in the doc, not in a chat session.</p>
-  <p class="arch-hint">Scroll to go on.</p>
-</section>
-
-<section class="arch-slide">
-  <p class="arch-eyebrow">The problem</p>
-  <h2>Context lives in a chat session</h2>
-  <div class="arch-merge" data-table="problem"></div>
-</section>
-
-<section class="arch-slide arch-wide">
-  <p class="arch-eyebrow">The problem · As we used it</p>
-  <h2>In Claude Docs, the second ask waits its turn</h2>
-  <figure class="arch-video">
-    <video muted loop playsinline preload="metadata" width="1000" height="904" data-play aria-label="A recording of Claude Docs: two comments ask Claude; the second waits until the first is answered">
-      <source src="claude-docs.webm" type="video/webm">
-      <source src="claude-docs.mp4" type="video/mp4">
-    </video>
-    <figcaption>A real session in Claude Docs, with the waiting cut out. Two comments ask @Claude; the second shows “Claude is busy with an earlier request. This one is waiting its turn.” until the first is answered.</figcaption>
-  </figure>
-</section>
-
-<section class="arch-slide">
-  <p class="arch-eyebrow">The solution</p>
-  <h2>Context lives in the doc</h2>
-  <div class="arch-merge" data-table="solution"></div>
-</section>
-
-<section class="arch-slide arch-wide">
-  <p class="arch-eyebrow">The solution · In Ponjo</p>
-  <h2>In Ponjo, you keep writing while Clippy works</h2>
-  <figure class="arch-video">
-    <video muted loop playsinline preload="metadata" width="960" height="930" data-play aria-label="A recording of Ponjo: comments ask Clippy in their own threads while the writer keeps going; each change lands as one edit with Undo">
-      <source src="ponjo-demo.webm" type="video/webm">
-      <source src="ponjo-demo.mp4" type="video/mp4">
-    </video>
-    <figcaption>A real session in Ponjo, cut to its key moments. Each comment asks @Clippy, our AI buddy, in its own thread. You keep writing and asking while it works, and each change lands as “1 edit” you can undo.</figcaption>
-  </figure>
-</section>
-
-<section class="arch-slide">
-  <p class="arch-eyebrow">1 · What you see</p>
-  <h2>Ask many things at once</h2>
-  <div class="arch-merge" data-demo="design2"></div>
-</section>
-
-<section class="arch-slide">
-  <p class="arch-eyebrow">1 · Under the hood</p>
-  <h2>No run depends on another</h2>
-  <div class="arch-merge" data-hood="parallel"></div>
-</section>
-
-<section class="arch-slide">
-  <p class="arch-eyebrow">2 · What you see</p>
-  <h2>Nothing it knows is hidden</h2>
-  <div class="arch-merge" data-demo="visible"></div>
-</section>
-
-<section class="arch-slide">
-  <p class="arch-eyebrow">2 · Under the hood</p>
-  <h2>A run knows only the doc, its comments and the project</h2>
-  <div class="arch-merge" data-hood="visible"></div>
-</section>
-
-<section class="arch-slide">
-  <p class="arch-eyebrow">3 · What you see</p>
-  <h2>Everyone shares one context</h2>
-  <div class="arch-merge" data-demo="shared"></div>
-</section>
-
-<section class="arch-slide">
-  <p class="arch-eyebrow">3 · Under the hood</p>
-  <h2>One doc, read by every run</h2>
-  <div class="arch-merge" data-hood="shared"></div>
-</section>
-
-<section class="arch-slide">
-  <p class="arch-eyebrow">4 · What you see</p>
-  <h2>You keep the last word</h2>
-  <div class="arch-merge" data-demo="design3"></div>
-</section>
-
-<section class="arch-slide">
-  <p class="arch-eyebrow">4 · Under the hood</p>
-  <h2>One writer merges every change</h2>
-  <div class="arch-merge" data-hood="control"></div>
-</section>
-
-<section class="arch-slide">
-  <p class="arch-eyebrow">Try it</p>
-  <div class="arch-merge" data-demo="turn" data-buddy="Clippy">
-    <div class="arch-merge-head"><b>Ask Clippy</b><span>A real agent, on NVIDIA Nemotron</span></div>
-    <p>Edit the paragraph while Clippy works on it, and see what happens.</p>
-    <textarea class="pj-input arch-text" data-doc rows="7" spellcheck="false" aria-label="plan.md"></textarea>
-    <div class="arch-controls">
-      <input class="pj-input arch-ask" data-ask value="@Clippy make the paragraph about the beta half as long" aria-label="Comment">
-      <button class="pj-primary" type="button" data-run>Ask</button>
-      <button class="pj-link-button" type="button" data-reset>Reset</button>
-    </div>
-    <div class="arch-status" data-status hidden><span class="pj-agent-face" data-presence="working"><span data-face="Clippy"></span></span><span data-status-text></span></div>
-    <ol class="arch-trace" data-trace></ol>
-    <div class="arch-landed" data-landed hidden>
-      <p class="arch-reply"><b>Clippy</b> <span data-reply></span></p>
-      <div class="arch-file"><span class="arch-who">Lands, as a revision of the doc</span><div class="ds-prose" data-result></div></div>
-      <p class="arch-verdict" data-verdict></p>
-    </div>
-  </div>
-  <p>More in <a href="https://github.com/ponjo-app/ponjo/blob/main/docs/architecture.md">the architecture doc</a> and <a href="https://github.com/ponjo-app/ponjo/blob/main/docs/ponjo-agent.md">the Ponjo agent's</a>.</p>
-</section>
-
-<section class="arch-slide">
-  <p class="arch-eyebrow">What’s next</p>
-  <h2>Beyond writing: a new way for agents to work</h2>
-  <div class="arch-merge" data-demo="next"></div>
-</section>
+<!-- The blackboard agent runtime (docs/runtime-vision.md) as a story in
+     chapters, played by preview/arch-story.js. The doc is the truth; change
+     this page with it. -->
+<main class="arch-story">
+  <p class="arch-title" data-title></p>
+  <div class="arch-stage" data-stage></div>
+  <p class="arch-say" data-say aria-live="polite"></p>
+  <nav class="arch-nav" aria-label="Chapters">
+    <button class="pj-secondary" type="button" data-back>Back</button>
+    <span class="arch-dots" data-dots></span>
+    <button class="pj-secondary" type="button" data-next>Next</button>
+  </nav>
 </main>
-<nav class="arch-dots" aria-label="Slides" data-dots></nav>
-<script type="module">
-  import { agentFace, personFace, buddyColor, setBuddies } from '../dist/web/faces.js';
-
-  setBuddies([{ id: 'Clippy', name: 'Clippy' }]);
-
-  for (const slot of document.querySelectorAll('[data-face]')) {
-    const name = slot.dataset.face;
-    slot.className = `pj-avatar${slot.hasAttribute('data-person') ? '' : ' pj-avatar-agent'}`;
-    slot.style.setProperty('--size', '24px');
-    slot.append(slot.hasAttribute('data-person') ? personFace(name) : agentFace(name));
-  }
-  for (const node of document.querySelectorAll('[data-buddy]')) node.style.setProperty('--buddy', buddyColor(node.dataset.buddy));
-</script>
-<script type="module" src="../dist/preview/arch-demos.js"></script>
+<script type="module" src="../dist/preview/arch-story.js"></script>
 <script type="module" src="site.js"></script>
 </body>
 </html>
