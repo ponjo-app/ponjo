@@ -22,7 +22,7 @@ const extension = (platform) => (platform === 'win32' ? '.cmd' : '');
 export const agentsDir = (dir = configDir()) => join(dir, 'agents');
 
 /** Where agent `name`'s script is on this platform. */
-export const agentScript = (name, dir = configDir(), platform = process.platform) => join(agentsDir(dir), name + extension(platform));
+export const agentScript = (name, dir = configDir(), platform = process.platform) => programIn(agentsDir(dir), name, platform);
 
 // The hash of each shipped file as last written here, by file name: a file
 // that still has it is unedited.
@@ -55,19 +55,26 @@ export async function installAgents(dir = configDir(), { reset = null, platform 
 
 /** The agents on this platform, by file name: [{ id, name, about, settings }] (agentOf). */
 export async function listAgents(dir = configDir(), platform = process.platform) {
+  return Promise.all((await programsIn(agentsDir(dir), platform)).map((id) => readAgent(id, dir)));
+}
+
+/** The programs in `folder` on this platform, by file name without its extension, sorted. */
+export async function programsIn(folder, platform = process.platform) {
   let names;
   try {
-    names = await readdir(agentsDir(dir));
+    names = await readdir(folder);
   } catch {
     return [];
   }
   const ext = extension(platform);
-  return Promise.all(names
+  return names
     .filter((n) => !n.startsWith('.') && (ext ? n.toLowerCase().endsWith(ext) : !n.includes('.')))
     .map((n) => n.slice(0, n.length - ext.length))
-    .sort()
-    .map((id) => readAgent(id, dir)));
+    .sort();
 }
+
+/** Where program `name` in `folder` is on this platform. */
+export const programIn = (folder, name, platform = process.platform) => join(folder, name + extension(platform));
 
 /** Agent `id` as its manifest declares it, if it has a valid one (agentOf). */
 export async function readAgent(id, dir = configDir()) {

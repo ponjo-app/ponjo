@@ -27,7 +27,8 @@ const TEST_PROMPT = 'Ponjo is testing that you run. Edit no file and reply only:
  * stderr, steps (the lines it wrote to PONJO_TRACE), usage, edited and
  * comments ({ before, after }), the copies at the end when it exited 0,
  * groups (the lines it wrote to PONJO_GROUPS), wake (the lines of the doc
- * it named in PONJO_WAKE), body (why it failed) }.
+ * it named in PONJO_WAKE), actions (the lines it wrote to PONJO_ACTIONS:
+ * { comment, action, input }), body (why it failed) }.
  */
 export async function execute({ buddy, files, prompt, agent, onChild = () => {}, timeoutMs = RUN_TIMEOUT_MS }) {
   const dir = await mkdtemp(join(tmpdir(), 'ponjo-run-'));
@@ -43,8 +44,9 @@ export async function execute({ buddy, files, prompt, agent, onChild = () => {},
     const trace = join(aside, 'trace.jsonl');
     const groups = join(aside, 'groups.jsonl');
     const wake = join(aside, 'wake.jsonl');
+    const actions = join(aside, 'actions.jsonl');
     const at = Date.now();
-    const result = await runScript(script, { cwd: dir, prompt, timeoutMs, env: runEnv({ doc: copy, sidecar, folder: files.project, buddy: buddy.name, settings, trace, groups, wake }), onChild });
+    const result = await runScript(script, { cwd: dir, prompt, timeoutMs, env: runEnv({ doc: copy, sidecar, folder: files.project, buddy: buddy.name, settings, trace, groups, wake, actions }), onChild });
     const steps = await traceLines(trace);
     const ran = { script, prompt, at, ms: Date.now() - at, code: result.code, stdout: result.stdout, stderr: result.stderr, steps, usage: runUsage(steps) };
     if (result.code !== 0) return { ...ran, outcome: result.timedOut ? 'timedOut' : 'failed', body: failure(script, result) };
@@ -56,6 +58,7 @@ export async function execute({ buddy, files, prompt, agent, onChild = () => {},
       comments: { before, after: await readFile(sidecar, 'utf8').catch(() => before) },
       groups: (await traceLines(groups)).filter((g) => typeof g === 'object'),
       wake: (await traceLines(wake)).filter((w) => typeof w?.line === 'string').map((w) => w.line),
+      actions: (await traceLines(actions)).filter((a) => Number.isInteger(a?.comment) && typeof a.action === 'string'),
     };
   } finally {
     await rm(dir, { recursive: true, force: true });
@@ -84,10 +87,25 @@ export async function testAgent({ script, settings }, timeoutMs = TEST_TIMEOUT_M
   }
 }
 
+/**
+ * Carry out action `id` once: its program `script` with `input` on stdin as
+ * JSON and its id as PONJO_ACTION_ID, in a new folder. Resolves to { ok,
+ * result (its output's last line), or why it failed }.
+ */
+export async function runAction({ script, id, input, timeoutMs = RUN_TIMEOUT_MS }) {
+  const dir = await mkdtemp(join(tmpdir(), 'ponjo-action-'));
+  try {
+    const result = await runScript(script, { cwd: dir, prompt: JSON.stringify(input ?? null), timeoutMs, env: { PONJO_ACTION_ID: id } });
+    return result.code === 0 ? { ok: true, result: lastLines(result.stdout).split('\n').at(-1) ?? '' } : { ok: false, why: failure(script, result) };
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+}
+
 // A run's environment (docs/agent-config.md): its copies, the project, the
 // buddy, where it may write its trace, its comments' groups of edits and
-// the lines that wake it next, and the agent's settings.
-const runEnv = ({ doc, sidecar, folder, buddy, settings, trace = '', groups = '', wake = '' }) => ({
+// the lines that wake it next and the actions it proposes, and the agent's settings.
+const runEnv = ({ doc, sidecar, folder, buddy, settings, trace = '', groups = '', wake = '', actions = '' }) => ({
   PONJO_DOC: doc,
   PONJO_COMMENTS: sidecar,
   PONJO_PROJECT: folder ?? '',
@@ -95,6 +113,7 @@ const runEnv = ({ doc, sidecar, folder, buddy, settings, trace = '', groups = ''
   PONJO_TRACE: trace,
   PONJO_GROUPS: groups,
   PONJO_WAKE: wake,
+  PONJO_ACTIONS: actions,
   ...Object.fromEntries(Object.entries(settings).map(([key, value]) => [`PONJO_SETTING_${key.toUpperCase()}`, String(value ?? '')])),
 });
 

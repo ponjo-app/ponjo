@@ -9,9 +9,11 @@ import { merge3 } from '../core/diff.js';
 import { diffOps } from '../core/ot.js';
 import { buildPrompt, newSince } from '../core/prompt.js';
 import { toChanges } from '../core/translate.js';
+import { listActions } from '../store/actions.js';
 import { readTaken } from '../store/history.js';
 import { SIDECAR_SUFFIX, readSidecarText } from '../store/files.js';
 import { settingsWithId } from '../store/settings.js';
+import { createDocActions } from './doc-actions.js';
 
 const DEPTH_LIMIT = 1000;
 
@@ -33,6 +35,14 @@ export function createDocWorld({ door, subscribe, place, pathInProject, buddies,
   const waiting = new Set();
   subscribe(() => {
     for (const done of waiting) done();
+  });
+  // What runs here proposed to do outside the doc; each result is its buddy's reply, a step deeper.
+  const actions = createDocActions({
+    settingsDir, docPath: () => place().docPath, owner: me,
+    async reply(action, body) {
+      const { id } = await door.comment({ id: newId('c'), thread: action.thread, anchor: null, body }, { ...action.buddy, kind: 'ai', level: 'write' });
+      posted.set(id, { for: action.for, depth: action.depth + 1 });
+    },
   });
 
   // Who is here: the owner, the room's teammates and the buddies, each {
@@ -57,6 +67,8 @@ export function createDocWorld({ door, subscribe, place, pathInProject, buddies,
   return {
     // How deep agents may wake each other: high, so two buddies can play a long game.
     limits: { depth: DEPTH_LIMIT },
+
+    actions,
 
     members,
 
@@ -115,6 +127,7 @@ export function createDocWorld({ door, subscribe, place, pathInProject, buddies,
         threads: threads.filter((t) => given.has(t.id)),
         watch: since === undefined ? null : newSince({ agent: agent.id, base: since?.text ?? null, heard, text: files.text, threads }),
         human: { name: (await me()).name, about: (await settingsWithId(settingsDir)).about.trim() },
+        actions: await listActions(settingsDir),
       });
       return { rev, files, prompt };
     },
@@ -123,7 +136,8 @@ export function createDocWorld({ door, subscribe, place, pathInProject, buddies,
      * Land what a run left behind, as `agent` ({ id, name, for: the people
      * it ran for, depth: its run's }), on the doc of version `version`: `old` what it was
      * given ({ files, asks }), `made` what it made ({ text, comments: {
-     * before, after }, groups, output }). Each comment's edits (its group)
+     * before, after }, groups, actions, output }); the actions on comments
+     * it posted are recorded, to be carried out (doc-actions.js). Each comment's edits (its group)
      * land as a version of their own, merged with what landed since
      * (merge3), then its comments; in a thread that asked it, just after
      * the last comment it was given. Resolves to { landed (in words, for
@@ -133,7 +147,7 @@ export function createDocWorld({ door, subscribe, place, pathInProject, buddies,
       const by = { id: agent.id, name: agent.name, kind: 'ai' };
       const { threads } = await threadsNow();
       const open = new Map(threads.filter((t) => !t.resolved).map((t) => [t.id, t]));
-      const { posts, carried } = toChanges({ by, base: old.files.text, edited: made.text, comments: made.comments, groups: made.groups, threads, asking: old.asks.map((a) => a.id), output: made.output });
+      const { posts, byLine, carried } = toChanges({ by, base: old.files.text, edited: made.text, comments: made.comments, groups: made.groups, threads, asking: old.asks.map((a) => a.id), output: made.output });
       const who = { ...by, level: 'write' };
       let prev = old.files.text;
       let conflict = false;
@@ -164,6 +178,11 @@ export function createDocWorld({ door, subscribe, place, pathInProject, buddies,
         console.error(`Could not post ${agent.name}'s comments:`, error);
         return { comments: [], landed: 'Its comments were not posted' };
       }
+      const proposed = (made.actions ?? []).filter((a) => byLine.has(a.comment)).map((a) => {
+        const c = byLine.get(a.comment);
+        return { comment: c.id, thread: c.thread ?? c.id, action: a.action, input: a.input };
+      });
+      if (proposed.length) await actions.propose(agent, proposed);
       return { comments: posts.map((c) => c.id), landed: conflict ? 'Posted; where it collided with people, their lines stayed' : 'Posted' };
     },
   };
