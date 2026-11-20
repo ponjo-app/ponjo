@@ -17,7 +17,7 @@ import { INFER } from '../agents/ponjo-core.mjs';
 import { agentFace, personFace, setBuddies, setOwner } from '../web/faces.js';
 import { icon } from '../web/icons.js';
 import { handName, legal } from './poker-dealer.js';
-import { DECIDE, HUMAN, INTROS, PERSONAS, begin, introduce, deal, fail, land, leave, myChips, newTable, plan, prompt, retry, say, topUp } from './poker-runtime.js';
+import { DECIDE, HUMAN, INTROS, PERSONAS, begin, introduce, react, deal, fail, land, leave, myChips, newTable, plan, prompt, retry, say, topUp } from './poker-runtime.js';
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const el = (tag, className = '', text = '') => Object.assign(document.createElement(tag), { className, textContent: text });
@@ -85,7 +85,7 @@ async function run(id, due) {
     } catch {}
     running.delete(id);
     if (sent !== table) return changed(); // a new game began meanwhile
-    land(table, id, basis, { thinking: args.thinking ?? text, action: args.action ?? null, say: args.say });
+    land(table, id, basis, { thinking: args.thinking ?? text, action: args.action ?? null, say: args.say, react: args.react });
   } catch (error) {
     running.delete(id);
     if (sent === table) fail(table, id, basis, String(error.message).split('\n')[0]);
@@ -449,6 +449,8 @@ function drawFeed() {
     if (change.type === 'chat') {
       const line = table.chat[change.line - 1];
       feed.append(message(line, feed.lastElementChild?.dataset.by === line.by));
+    } else if (change.type === 'react') {
+      pop(table.players.findIndex((p) => p.id === change.by), change.emoji);
     } else if (change.type === 'rebuy') {
       feed.append(dealer(`${change.by} buys back in for ${money(change.amount)}.`));
     } else if (change.type === 'failed') {
@@ -472,10 +474,12 @@ function drawFeed() {
   }
   if (stick) feed.scrollTop = feed.scrollHeight;
 }
-// A reaction: the emoji pops up by the person's face and floats away.
-function react(emoji) {
+// A reaction: the emoji pops up in a bubble by its sender's face and floats away.
+function pop(seat, emoji) {
+  if (seat < 0) return;
+  $('.pk-react', seats[seat])?.remove();
   const node = el('span', 'pk-react', emoji);
-  $('.pj-agent-face', seats[0]).append(node);
+  $('.pj-agent-face', seats[seat]).append(node);
   setTimeout(() => node.remove(), 2400);
 }
 
@@ -646,7 +650,7 @@ $('.pk-thinking').addEventListener('click', (event) => {
 });
 $('.pk-reacts').addEventListener('click', (event) => {
   const emoji = event.target.closest('[data-react]')?.dataset.react;
-  if (emoji) react(emoji);
+  if (emoji && react(table, HUMAN, emoji)) changed();
 });
 $('.pk-say').addEventListener('submit', (event) => {
   event.preventDefault();

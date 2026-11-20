@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { act, bestHand, compare, handName, legal, pots, shuffled, startHand, view } from '../preview/poker-dealer.js';
-import { HUMAN, INTROS, PERSONAS, STACK, begin, deal, introduce, land, myChips, newTable, plan, prompt, say, topUp } from '../preview/poker-runtime.js';
+import { HUMAN, INTROS, PERSONAS, REACTIONS, STACK, begin, deal, introduce, land, myChips, newTable, plan, prompt, say, topUp } from '../preview/poker-runtime.js';
 
 const rank = (cards) => bestHand(cards.split(' '));
 const beats = (a, b) => compare(rank(a).score, rank(b).score);
@@ -274,4 +274,17 @@ test('the players\' hellos are theirs to say, and wake no one', () => {
   for (const line of INTROS) introduce(table, line);
   assert.deepEqual(table.chat.map((l) => l.by), INTROS.map(([id]) => id));
   assert.deepEqual(plan(table), [], 'no one is due: there is no hand, and no line asks anything');
+});
+
+test('a player reacts with one of the table\'s emoji, which the others see and which wakes no one', () => {
+  const table = tableWithHand();
+  const id = PERSONAS[1].id;
+  for (const d of plan(table)) begin(table, d.id, d);
+  const before = plan(table).length;
+  land(table, id, begin(table, id, { turn: false, lines: [], react: false }), { thinking: 'ha', react: REACTIONS[0] });
+  land(table, id, begin(table, id, { turn: false, lines: [], react: false }), { thinking: 'no', react: '💩' });
+  assert.deepEqual(table.log.filter((c) => c.type === 'react').map((c) => [c.by, c.emoji]), [[id, REACTIONS[0]]], 'only the table\'s emoji');
+  assert.equal(plan(table).length, before, 'a reaction wakes no one');
+  const other = PERSONAS.find((p) => p.id !== id).id;
+  assert.match(prompt(table, other, { turn: false, lines: [], react: false }).situation, new RegExp(`Reactions this hand, latest last: ${id} ${REACTIONS[0]}`));
 });
