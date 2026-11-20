@@ -63,13 +63,17 @@ const PROPS = {
   baton: [['arch-prop', 'M-19 25 H-5 V31 H-19 Z']],
   reach: [['arch-prop', 'M-27 27 H-13 V33 H-27 Z']],
 };
-// A headset over a face, in its 100×100 box, and the waves at its ear when it is called.
-const HEADSET = ['M10 52 Q50 -32 90 52', 'M0 42 h14 v22 h-14 Z M86 42 h14 v22 h-14 Z'];
-const WAVES = 'M108 44 q7 9 0 18 M116 37 q13 16 0 32';
+// A headset over a face, in its 100×100 box: a band arched clear over the
+// head, rounded cups at the sides, each with a speaker's dot; and the waves
+// at its ear when it is called.
+const cup = (x) => `M${x} 44 a8 8 0 0 1 8 -8 a8 8 0 0 1 8 8 v12 a8 8 0 0 1 -8 8 a8 8 0 0 1 -8 -8 Z`;
+const HEADSET = ['M2 42 C0 -22 100 -22 98 42', `${cup(-6)} ${cup(90)}`, 'M2 50 a2.5 2.5 0 1 0 0.01 0 M98 50 a2.5 2.5 0 1 0 0.01 0'];
+const WAVES = 'M114 42 q7 9 0 18 M122 35 q13 16 0 32';
 // Looks a face has only in these scenes, drawn in its own ink in place of
 // its eyes and mouth, in its 100×100 box: [kind, path], a 'fill' solid, a
 // 'drop' filled with paper. Running: brows down, eyes set, a frown and a
-// drop of sweat. Dazed: worried brows, spiral eyes, a wobbly mouth.
+// drop of sweat. Shocked: brows up, eyes wide, mouth open, and a jolt.
+// Dazed: worried brows, spiral eyes, a wobbly mouth.
 // a spiral round (x, y): half turns that grow by `gap` each full turn
 function spiral(x, y, turns = 2, gap = 3.4) {
   let [at, r] = [x - gap / 4, gap / 2];
@@ -87,6 +91,12 @@ const LOOKS = {
     ['fill', 'M34 44 a3.5 4.5 0 1 0 7 0 a3.5 4.5 0 1 0 -7 0 M59 44 a3.5 4.5 0 1 0 7 0 a3.5 4.5 0 1 0 -7 0'],
     ['line', 'M43 62 Q50 55 57 62'],
     ['drop', 'M84 6 Q92 18 84 22 Q76 18 84 6 Z'],
+  ],
+  shocked: [
+    ['line', 'M28 26 L40 30 M72 26 L60 30'],
+    ['thin', 'M29 45 a7 8 0 1 0 14 0 a7 8 0 1 0 -14 0 M57 45 a7 8 0 1 0 14 0 a7 8 0 1 0 -14 0'],
+    ['fill', 'M34 45 a2.5 2.5 0 1 0 5 0 a2.5 2.5 0 1 0 -5 0 M62 45 a2.5 2.5 0 1 0 5 0 a2.5 2.5 0 1 0 -5 0 M44 58 h12 v9 a4 4 0 0 1 -4 4 h-4 a4 4 0 0 1 -4 -4 Z'],
+    ['thin', 'M100 14 l5 -12 M108 22 l9 -9 M112 34 l12 -4'],
   ],
   dazed: [
     ['line', 'M27 32 L40 28 M73 32 L60 28'],
@@ -137,7 +147,7 @@ function actor(name, presence, { headset = false } = {}) {
     looks.append(g);
   }
   if (headset) {
-    looks.append(path(HEADSET[0], 'arch-headset'), path(HEADSET[1], 'arch-headset-cups'));
+    looks.append(path(HEADSET[0], 'arch-headset'), path(HEADSET[1], 'arch-headset-cups'), path(HEADSET[2], 'arch-headset-dots'));
     parts.waves = path(WAVES, 'arch-waves');
     parts.waves.style.display = 'none';
     looks.append(parts.waves);
@@ -179,13 +189,21 @@ function bar(width) {
 
 const NS = 'http://www.w3.org/2000/svg';
 
-// The diagram's paper, W×H, upright on a phone: an SVG for the lines,
-// `ink` to draw one, and `place` to put a node at a point, `size` across.
+// The scene's paper, W×H, wide or upright, whichever the stage holds bigger,
+// and scaled to fill it (refit whenever the window changes): an SVG for the
+// lines, `ink` to draw one, and `place` to put a node at a point, `size`
+// across. Sizes are the stage's own, not as a slide's scale shows them.
+let fitting = null;
 function sketch(stage) {
-  const [W, H] = stage.clientWidth < 560 ? [400, 520] : [760, 420];
+  const fit = ([w, h]) => Math.min(stage.clientWidth / w, stage.clientHeight / h);
+  const [W, H] = fit([400, 520]) > fit([760, 420]) * 1.15 ? [400, 520] : [760, 420];
   const box = el('div', 'arch-sketch');
-  box.style.aspectRatio = `${W} / ${H}`;
-  box.style.width = `min(100%, ${W}px)`;
+  box.style.width = `${W}px`;
+  box.style.height = `${H}px`;
+  fitting = () => {
+    box.style.scale = String(fit([W, H]));
+  };
+  fitting();
   const svg = document.createElementNS(NS, 'svg');
   svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
   box.append(svg);
@@ -516,134 +534,264 @@ async function blackboard(scene) {
   await scene.wait(2200);
 }
 
-// A relay: Otto, Clippy and Pip, each its leg of a track, Clippy asleep with
-// z's over it. With `headsets`, each wears one, and the board by the track
-// says which legs are run.
-function race(scene, { headsets = false } = {}) {
+// A relay round an oval track: Clippy, Pip and Otto, each a leg of it, Pip
+// asleep with z's over it. Places on the track are angles, in degrees
+// clockwise from the right.
+const RUNNERS = { Clippy: 180, Pip: 270, Otto: 360 };
+const LEGS = { Clippy: [180, 240] }; // the leg Clippy runs, stopping short of Pip
+
+function race(scene) {
   const s = sketch(scene.stage);
   const up = s.upright;
-  const y = headsets ? (up ? 340 : 280) : (up ? 260 : 220); // where they stand
-  const track = y + 62;
-  const start = up ? { Otto: 60, Clippy: 180, Pip: 300 } : { Otto: 90, Clippy: 310, Pip: 530 };
-  const leg = up ? 60 : 140; // how far each runs
-  s.ink(`M${up ? 20 : 40} ${track} H${s.W - (up ? 20 : 40)}`, 'arch-ink arch-track');
+  // A track as anyone knows one: two straights joined by half circles, four
+  // lanes, lying across the scene, smaller on a phone. `r` is the radius
+  // of the line between lanes 2 and 3, `half` half a straight; `k` moves out
+  // (or in) from that line. A place on it is an angle in degrees, clockwise
+  // from the right: 90 the middle of the near straight, 270 of the far one.
+  const [cx, cy] = up ? [200, 300] : [380, 222];
+  const [half, r, lane] = up ? [52, 82, 15] : [166, 112, 18];
+  const on = (deg, k = 0) => {
+    const R = r + k;
+    const P = 2 * Math.PI * r + 4 * half; // round the line, the lengths that set where 90, 180 and 270 fall
+    let d = ((((deg / 360) % 1) + 1) % 1) * P;
+    const bend = (from, to) => [cx + to * half + R * Math.cos(from + d / r), cy + R * Math.sin(from + d / r)];
+    if (d < (Math.PI * r) / 2) return bend(0, 1);
+    d -= (Math.PI * r) / 2;
+    if (d < 2 * half) return [cx + half - d, cy + R];
+    d -= 2 * half;
+    if (d < Math.PI * r) return bend(Math.PI / 2, -1);
+    d -= Math.PI * r;
+    if (d < 2 * half) return [cx - half + d, cy - R];
+    d -= 2 * half;
+    return bend((3 * Math.PI) / 2, 1);
+  };
+  const at = (deg) => { // a runner on the track: its feet in the inside lanes
+    const [x, y] = on(deg, -lane / 2);
+    return [x, y - 30];
+  };
+  const arc = (from, to) => {
+    const points = [];
+    for (let deg = from; deg < to; deg += 4) points.push(at(deg));
+    points.push(at(to));
+    return points;
+  };
+  // an outline of the track at `k`, as a path
+  const outline = (k) => {
+    const points = [];
+    for (let deg = 0; deg < 360; deg += 2) points.push(on(deg, k));
+    return `M${points.map(([x, y]) => `${f(x)} ${f(y)}`).join(' L')} Z`;
+  };
+  s.ink(`${outline(2 * lane)} ${outline(-2 * lane)}`, 'arch-track');
+  s.ink(outline(-2 * lane), 'arch-field');
+  for (const k of [-2, -1, 0, 1, 2]) s.ink(outline(k * lane), 'arch-track-lane');
+  // the start, staggered lane by lane, on the near straight's left
+  for (let i = 0; i < 4; i++) {
+    const deg = 120 - i * 3;
+    const [x0, y0] = on(deg, (i - 2) * lane);
+    const [x1, y1] = on(deg, (i - 1) * lane);
+    s.ink(`M${f(x0)} ${f(y0)} L${f(x1)} ${f(y1)}`, 'arch-track-lane');
+  }
   const who = {};
-  for (const name of ['Otto', 'Clippy', 'Pip']) {
-    who[name] = actor(name, name === 'Clippy' ? 'away' : 'idle', { headset: headsets });
-    s.place(who[name].node, [start[name], y]);
+  for (const [name, deg] of Object.entries(RUNNERS)) {
+    who[name] = actor(name, name === 'Pip' ? 'away' : 'idle');
+    s.place(who[name].node, at(deg));
   }
-  const zzz = s.place(el('span', 'arch-zzz'), [start.Clippy + 30, y - 66]);
+  const [zx, zy] = at(RUNNERS.Pip);
+  const zzz = s.place(el('span', 'arch-zzz'), [zx + 34, zy - 66]);
   zzz.append(...'zzz'.split('').map((z) => el('i', '', z)));
-  const t = { s, up, y, track, start, leg, who, zzz };
-  if (headsets) {
-    const board = t.board = s.place(el('div', 'arch-paper arch-score'), up ? [s.W / 2, 110] : [s.W / 2, 80], up ? [240, 150] : [260, 128]);
-    board.append(el('b', '', 'Board'));
-    t.marks = {};
-    ['Otto', 'Clippy', 'Pip'].forEach((name, i) => {
-      const row = el('div', 'arch-leg');
-      t.marks[name] = el('span', 'arch-mark', '—');
-      row.append(el('span', '', `Leg ${i + 1}`), face(name), t.marks[name]);
-      board.append(row);
-    });
-  }
-  // `name` runs its leg, and is pleased with itself
-  t.runs = async (name) => {
-    await run(scene, s, who[name], [[start[name], y], [start[name] + leg, y]], 1200, { look: 'run' });
-    pose(who[name], { right: true });
-    await hop(scene, who[name], 6, 360); // done: a little hop
+  const t = { s, up, at, arc, who, zzz, middle: [cx, cy] };
+  // `name` runs its leg round the track, and is pleased with itself
+  t.runs = async (name, { arms = null, to = LEGS[name][1] } = {}) => {
+    await run(scene, s, who[name], arc(LEGS[name][0], to), 1300 + (to - LEGS[name][0]) * 4, { arms, look: 'run' });
+    pose(who[name], { arms: arms ?? 'stand', right: true });
   };
   return t;
 }
 
 // Triggered by events: each runner runs when the one before hands it the
-// baton. Clippy is asleep and misses it; the baton falls, and Pip waits.
+// baton. Clippy brings it round to Pip, who is asleep and misses it; the
+// baton falls, and Otto, waiting next, sees it go.
 async function events(scene) {
   watching(false);
   const t = race(scene);
   const { who } = t;
-  pose(who.Otto, { arms: 'baton' });
-  const foot = el('p', 'arch-foot');
-  const link = el('a', '', 'Even OpenHands drops requests when a poll fails.');
+  pose(who.Clippy, { arms: 'baton' });
+  // in the middle of the track, where it is empty: that this happens for real
+  const link = el('a', 'arch-infield', 'Even OpenHands drops requests when a poll fails.');
   link.href = OPENHANDS;
-  foot.append(link);
-  scene.stage.append(foot);
+  t.s.place(link, t.middle, t.up ? [180, 60] : [260, 40]);
+  // Otto, waiting for the baton, bounces on its toes
+  who.Otto.tag.textContent = 'Waiting…';
+  const toes = still ? null : who.Otto.figure.animate([{ translate: '0 0' }, { translate: '0 -3px' }, { translate: '0 0' }], { duration: 500, iterations: Infinity, easing: 'ease-in-out' });
 
   await scene.wait(800);
-  const to = t.start.Clippy - 70;
-  await run(scene, t.s, who.Otto, [[t.start.Otto, t.y], [to, t.y]], 1400, { arms: 'baton', look: 'run' });
-  pose(who.Otto, { arms: 'reach', right: true });
-  who.Otto.tag.textContent = 'Here!';
+  const stop = 245;
+  await t.runs('Clippy', { arms: 'baton', to: stop });
+  pose(who.Clippy, { arms: 'reach', right: true });
+  who.Clippy.tag.textContent = 'Here!';
   await scene.wait(500);
-  await hop(scene, who.Otto, 4, 300); // a nudge: take it!
+  await hop(scene, who.Clippy, 4, 300); // a nudge: take it!
   await scene.wait(600);
   // nobody takes it: it slips, falls to the track and bounces, less each time
-  pose(who.Otto, { arms: 'tap', right: true });
-  who.Otto.tag.textContent = '';
-  const baton = t.s.place(svg('-14 -5 28 10', 'arch-baton'), [to + 34, t.y - 4], [28, 10]);
+  pose(who.Clippy, { arms: 'tap', right: true });
+  who.Clippy.tag.textContent = '';
+  const [hx, hy] = t.at(stop);
+  const floor = hy + 34;
+  const baton = t.s.place(svg('-14 -5 28 10', 'arch-baton'), [hx + 34, hy - 4], [28, 10]);
   baton.append(path('M-13 -4 H13 V4 H-13 Z'));
-  const at = (x, y, turn) => ({ ...t.s.at([to + x, y]), rotate: `${turn}deg` });
-  const floor = t.track - 4;
-  await scene.move(baton, [at(34, t.y - 4, 0), at(44, floor, 70)], 420, 'cubic-bezier(0.5, 0, 1, 1)');
-  await scene.move(baton, [at(44, floor, 70), at(52, floor - 18, 130)], 200, 'cubic-bezier(0, 0, 0.5, 1)');
-  await scene.move(baton, [at(52, floor - 18, 130), at(58, floor, 175)], 200, 'cubic-bezier(0.5, 0, 1, 1)');
-  await scene.move(baton, [at(58, floor, 175), at(62, floor - 5, 185), at(64, floor, 180)], 240, 'ease-in-out');
-  const otto = who.Otto.face.querySelector('.pj-avatar');
-  otto.classList.add('pj-failed');
-  await scene.wait(600);
-  // Pip, still waiting, bounces on its toes
-  who.Pip.tag.textContent = 'Waiting…';
-  if (!still) who.Pip.figure.animate([{ translate: '0 0' }, { translate: '0 -3px' }, { translate: '0 0' }], { duration: 500, iterations: Infinity, easing: 'ease-in-out' });
-  await scene.wait(600);
-  otto.classList.remove('pj-failed');
-  await scene.wait(2600);
+  const spot = (x, y, turn) => ({ ...t.s.at([hx + x, y]), rotate: `${turn}deg` });
+  await scene.move(baton, [spot(34, hy - 4, 0), spot(44, floor, 70)], 420, 'cubic-bezier(0.5, 0, 1, 1)');
+  await scene.move(baton, [spot(44, floor, 70), spot(52, floor - 18, 130)], 200, 'cubic-bezier(0, 0, 0.5, 1)');
+  await scene.move(baton, [spot(52, floor - 18, 130), spot(58, floor, 175)], 200, 'cubic-bezier(0.5, 0, 1, 1)');
+  await scene.move(baton, [spot(58, floor, 175), spot(62, floor - 5, 185), spot(64, floor, 180)], 240, 'ease-in-out');
+  // Otto sees it fall: a jolt, and its jaw drops
+  toes?.cancel();
+  who.Otto.tag.textContent = '';
+  pose(who.Otto, { look: 'shocked' });
+  await hop(scene, who.Otto, 10, 420);
+  const clippy = who.Clippy.face.querySelector('.pj-avatar');
+  clippy.classList.add('pj-failed');
+  await scene.wait(1200);
+  clippy.classList.remove('pj-failed');
+  await scene.wait(2400);
 }
 
-// Reconciled from state: no baton. The runtime reads the board and calls,
-// in its headset, whoever's leg is not run yet, and calls again while it is
-// not: Clippy sleeps through the first call and wakes at the second.
+// The runtime as an eye on a round body, which watches the board: its lid
+// half shut while nothing changes, open when something does; its pupil
+// reads along the board's lines and turns to whoever is due.
+function eye() {
+  const node = svg('-50 -50 100 100', 'arch-eye');
+  node.append(
+    path('M-22 -40 L-28 -54 M-6 -44 L-7 -60 M10 -43 L14 -58 M25 -36 L34 -48', 'arch-eye-lash'),
+    path('M-44 0 a44 44 0 1 0 88 0 a44 44 0 1 0 -88 0', 'arch-eye-body'),
+    path('M-30 0 a30 22 0 1 0 60 0 a30 22 0 1 0 -60 0', 'arch-eye-white'),
+  );
+  const pupil = document.createElementNS(NS, 'g');
+  pupil.append(path('M-10 0 a10 10 0 1 0 20 0 a10 10 0 1 0 -20 0', 'arch-eye-pupil'), path('M2 -5 a3 3 0 1 0 6 0 a3 3 0 1 0 -6 0', 'arch-eye-glint'));
+  const lid = path('M-32 -24 H32 V24 H-32 Z', 'arch-eye-lid');
+  const clip = document.createElementNS(NS, 'clipPath');
+  clip.id = `arch-eye-${Math.random().toString(36).slice(2)}`;
+  clip.append(path('M-30 0 a30 22 0 1 0 60 0 a30 22 0 1 0 -60 0'));
+  const inside = document.createElementNS(NS, 'g');
+  inside.setAttribute('clip-path', `url(#${clip.id})`);
+  inside.append(pupil, lid);
+  node.append(clip, inside, path('M-30 0 a30 22 0 1 0 60 0 a30 22 0 1 0 -60 0', 'arch-eye-rim'));
+  return { node, pupil, lid };
+}
+
+// Reconciled from state: the runtime is an eye that watches the board, and
+// a wire runs from it to each one's headset. A change on the board opens
+// it; it reads the board, finds who is due and calls only them, in their
+// headset, again while they sleep on; done, they sleep again. Clippy's edit
+// leaves Otto's line due, so Otto is next: nobody wires that. Pip, with
+// nothing due, sleeps all through.
 async function state(scene) {
   watching(false);
-  const t = race(scene, { headsets: true });
-  const { who, marks } = t;
-  // a call from the board to `name`'s headset: a dashed line, and the waves
-  // at its ear pulse; louder, they are bigger
+  const s = sketch(scene.stage);
+  const up = s.upright;
+  const ROWS = ['Clippy', 'Otto', 'Pip'];
+  const [bx, by] = up ? [200, 84] : [380, 86];
+  const [bw, bh] = up ? [300, 128] : [320, 128];
+  const board = s.place(paper('Board', []), [bx, by], [bw, bh]);
+  board.classList.add('arch-board');
+  const lines = Object.fromEntries(ROWS.map((name) => {
+    const line = el('div', 'arch-ask arch-quiet');
+    line.style.setProperty('--buddy', buddyColor(name));
+    line.append(bar(60), face(name));
+    board.append(line);
+    return [name, line];
+  }));
+  const middle = up ? [200, 250] : [380, 236];
+  const seats = up ? { Clippy: [70, 370], Pip: [200, 450], Otto: [330, 370] } : { Clippy: [120, 330], Pip: [380, 368], Otto: [640, 330] };
+  // the wires, from under the eye to each one's ear
+  const wires = {};
+  for (const [name, [x, y]] of Object.entries(seats)) {
+    // into the cup on the side towards the eye; under it, the one to its left, from outside
+    const side = x < middle[0] ? 1 : -1;
+    const ear = [x + side * 30, y - 22];
+    const near = x === middle[0] ? [ear[0] - 36, ear[1] - 6] : [ear[0] + side * 44, ear[1] - 4];
+    const d = `M${f(middle[0])} ${f(middle[1] + 30)} C${f(middle[0])} ${f(middle[1] + 80)} ${f(near[0])} ${f(near[1])} ${f(ear[0])} ${f(ear[1])}`;
+    s.ink(d, 'arch-ink arch-wire');
+    wires[name] = d;
+  }
+  const { node, pupil, lid } = eye();
+  s.place(node, middle, [92, 92]);
+  const who = {};
+  const zzz = {};
+  for (const [name, at] of Object.entries(seats)) {
+    who[name] = actor(name, 'away', { headset: true });
+    s.place(who[name].node, at);
+    zzz[name] = s.place(el('span', 'arch-zzz'), [at[0] + 32, at[1] - 70]);
+    zzz[name].append(...'zzz'.split('').map((z) => el('i', '', z)));
+  }
+
+  const half = { scale: '1 0.55' };
+  lid.style.scale = '1 0.55';
+  const blink = (to) => scene.move(lid, [{ scale: lid.style.scale }, { scale: '1 1', offset: 0.4 }, { scale: `1 ${to}` }], 320, 'ease-in-out').then(() => { lid.style.scale = `1 ${to}`; });
+  const look = (to, ms = 260) => {
+    const [dx, dy] = [to[0] - middle[0], to[1] - middle[1]];
+    const k = 12 / Math.max(1, Math.hypot(dx, dy));
+    return scene.move(pupil, [{ translate: pupil.style.translate || '0 0' }, { translate: `${f(dx * k)}px ${f(dy * k)}px` }], ms, 'ease-in-out').then(() => { pupil.style.translate = `${f(dx * k)}px ${f(dy * k)}px`; });
+  };
+  // it reads the board, line by line, left to right
+  const read = async () => {
+    for (let i = 0; i < ROWS.length; i++) {
+      const y = by - bh / 2 + 52 + i * 26;
+      await look([bx - bw / 3, y], 160);
+      await look([bx + bw / 3, y], 220);
+    }
+  };
+  // a call down `name`'s wire: a pulse runs along it, and the headset buzzes
   const call = async (name, loud = false) => {
-    const runner = who[name].node;
-    const [from, to] = [t.board.getBoundingClientRect(), runner.getBoundingClientRect()];
-    const box = t.board.parentNode.getBoundingClientRect();
-    const k = t.s.W / box.width; // page pixels to the diagram's units
-    const line = t.s.ink(`M${f((from.left + from.width / 2 - box.left) * k)} ${f((from.bottom - box.top) * k + 4)} L${f((to.left + to.width / 2 - box.left) * k)} ${f((to.top - box.top) * k)}`, 'arch-ink arch-call');
+    await look(seats[name]);
+    const pulse = s.ink(wires[name], 'arch-ink arch-pulse');
+    await scene.draw(pulse, 500);
     const waves = who[name].parts.waves;
     waves.style.display = '';
-    waves.style.scale = loud ? '1.4' : '1';
-    await scene.move(waves, [{ opacity: 0 }, { opacity: 1 }, { opacity: 0 }, { opacity: 1 }, { opacity: 0 }], 900, 'linear');
+    waves.style.scale = loud ? '1.5' : '1';
+    await scene.move(waves, [{ opacity: 0 }, { opacity: 1 }, { opacity: 0 }, { opacity: 1 }, { opacity: 0 }], 800, 'linear');
     waves.style.display = 'none';
-    line.remove();
+    pulse.remove();
   };
-  const ran = (name) => {
-    marks[name].textContent = '✓';
-    marks[name].classList.add('arch-done');
+  // `name` wakes with a start, does its line, and sleeps again
+  const wake = async (name) => {
+    zzz[name].style.opacity = '0';
+    who[name].face.dataset.presence = 'idle';
+    pose(who[name], { look: 'shocked' });
+    await hop(scene, who[name], 14, 480);
+    pose(who[name], {});
+    who[name].face.dataset.presence = 'working';
+    await scene.wait(1100);
+    lines[name].classList.remove('arch-found');
+    lines[name].classList.add('arch-edited');
+    who[name].face.dataset.presence = 'away';
+    zzz[name].style.opacity = '';
+  };
+  const due = async (name) => {
+    lines[name].classList.remove('arch-quiet', 'arch-edited');
+    await blink(0);
+    await read();
+    lines[name].classList.add('arch-found');
   };
 
-  await scene.wait(800);
-  await call('Otto');
-  await t.runs('Otto');
-  ran('Otto');
-  await scene.wait(500);
-  await call('Clippy'); // asleep: nothing
   await scene.wait(900);
-  await call('Clippy', true); // again, since leg 2 is still not run
-  scene.fade(t.zzz, 0, 200).catch(() => {});
-  who.Clippy.face.dataset.presence = 'idle';
-  await hop(scene, who.Clippy, 16, 520); // it starts awake
-  await scene.wait(250);
-  await t.runs('Clippy');
-  ran('Clippy');
-  await scene.wait(400);
-  await call('Pip');
-  await t.runs('Pip');
-  ran('Pip');
-  await scene.wait(2600);
+  // someone asks Clippy on the board: the eye opens, reads, and calls Clippy
+  await due('Clippy');
+  await call('Clippy');
+  await wake('Clippy');
+  // Clippy's edit leaves Otto's line due: the eye sees it, and calls Otto,
+  // who sleeps through the first call, so it calls again
+  await due('Otto');
+  await call('Otto');
+  await scene.wait(700);
+  await call('Otto', true);
+  await wake('Otto');
+  // nothing due: it reads the board once more, and its lid falls
+  await read();
+  await look(middle, 300);
+  await scene.move(lid, [{ scale: '1 0' }, half], 700, 'ease-in-out');
+  lid.style.scale = '1 0.55';
+  await scene.wait(2400);
 }
 
 // An architecture as boxes, then arrows drawn in the order a change goes
@@ -854,7 +1002,7 @@ async function outcome(scene) {
   link.href = 'poker.html';
   foot.append(link, ', built apart with a small runtime of its own, came to the same shape: a pure plan, a view per player, a writer that refuses stale moves.');
   const body = el('div', 'arch-outcome-body');
-  body.append(el('h2', '', 'What you get'), list, stats, foot);
+  body.append(list, stats, foot);
   scene.stage.append(body);
 
   for (const item of items) {
@@ -877,30 +1025,32 @@ async function outcome(scene) {
 outcome.once = true;
 
 // [eyebrow, the idea in a line, the scene]
+// [the part it is in, its title, the idea in a line, the scene]
 const CHAPTERS = [
-  ['', 'Press Start.', cover],
-  ['How you work', '', point('Agents work beside you, in front of a blackboard,', 'instead of apart from you, in an isolated room.')],
-  ['How you work · Delegate', 'Delegate: each agent works alone on its own copy. The copies clash, and you merge them by hand.', delegate],
-  ['How you work · Blackboard', 'Blackboard: everyone works on one board and sees every change. Nothing to hand off, nothing to merge.', blackboard],
-  ['When agents run', '', point('Agent orchestration is a state reconciliation problem,', 'instead of an event triggering problem.')],
-  ['When agents run · Events', 'Triggered by events: each agent runs when the one before hands it on. Miss one handoff, and the race stops.', events],
-  ['When agents run · State', 'Reconciled from state: the runtime reads the board and calls whoever’s leg isn’t run, again until it is. Nobody wires who goes next, and a missed call costs nothing.', state],
-  ['Architecture · Event-triggered', 'The common way: state lives in messages in flight and in each agent’s memory. Lose a message and the work is lost, and someone has to wire who triggers whom.', eventsArchitecture],
-  ['Architecture · Blackboard', 'One board, one writer: people and agents propose changes, the writer lands them in order, and the runtime reads the board to start whoever is due.', architecture],
-  ['Summary', 'Two ways to run many agents, side by side.', summary],
-  ['Outcome', 'What emerges when the board is the only state, and the runtime decides from it.', outcome],
+  ['', '', '', cover],
+  ['How you work', '', '', point('Agents work beside you, in front of a blackboard,', 'instead of apart from you, in an isolated room.')],
+  ['How you work', 'Delegate', 'Each agent works alone on its own copy. The copies clash, and you merge them by hand.', delegate],
+  ['How you work', 'Blackboard', 'Everyone works on one board and sees every change. Nothing to hand off, nothing to merge.', blackboard],
+  ['When agents run', '', '', point('Agent orchestration is a state reconciliation problem,', 'instead of an event triggering problem.')],
+  ['When agents run', 'Triggered by events', 'Each agent runs when the one before hands it on. Miss one handoff, and the race stops.', events],
+  ['When agents run', 'Reconciled from state', 'The runtime watches the board and calls only whoever is due, again until it is done. The rest sleep on; nobody wires who goes next, and a missed call costs nothing.', state],
+  ['Architecture', 'Event-triggered, the common way', 'State lives in messages in flight and in each agent’s memory. Lose a message and the work is lost, and someone has to wire who triggers whom.', eventsArchitecture],
+  ['Architecture', 'Blackboard', 'One board, one writer. People and agents propose changes, the writer lands them in order, and the runtime reads the board to start whoever is due.', architecture],
+  ['Summary', 'Two ways to run many agents', '', summary],
+  ['Outcome', 'What you get', 'What emerges when the board is the only state, and the runtime decides from it.', outcome],
 ];
 
 // ---- the story: a chapter at a time, with Back, Next and a dot for each ----
 
 const stage = document.querySelector('[data-stage]');
 const caption = document.querySelector('[data-say]');
-const title = document.querySelector('[data-title]');
+const kicker = document.querySelector('[data-kicker]');
+const heading = document.querySelector('[data-heading]');
 const back = document.querySelector('[data-back]');
 const next = document.querySelector('[data-next]');
 const dots = CHAPTERS.map(([name], i) => {
   const dot = button('', 'arch-dot');
-  dot.setAttribute('aria-label', name || 'Start');
+  dot.setAttribute('aria-label', [name, CHAPTERS[i][1]].filter(Boolean).join(': ') || 'Start');
   dot.addEventListener('click', () => open(i));
   return dot;
 });
@@ -913,8 +1063,9 @@ let scene = null;
 async function open(i) {
   scene?.stop();
   current = i;
-  const [eyebrow, idea, play] = CHAPTERS[i];
-  title.textContent = eyebrow;
+  const [part, name, idea, play] = CHAPTERS[i];
+  kicker.textContent = part;
+  heading.textContent = name;
   caption.textContent = idea;
   dots.forEach((dot, j) => dot.toggleAttribute('aria-current', i === j));
   back.disabled = i === 0;
@@ -922,6 +1073,7 @@ async function open(i) {
   const run = (scene = new Scene(stage));
   try {
     do {
+      fitting = null;
       stage.replaceChildren();
       stage.className = 'arch-stage';
       await play(run);
@@ -930,6 +1082,18 @@ async function open(i) {
     if (error !== STOPPED) throw error;
   }
 }
+
+// On a screen wider than tall, the story is a slide, 1280×720, scaled to the
+// window (site.css); otherwise it runs down the page as it is.
+const deck = document.querySelector('.arch-story');
+const portrait = window.matchMedia('(max-aspect-ratio: 6/5), (max-width: 720px)');
+function fitDeck() {
+  const header = document.querySelector('.site-header').offsetHeight;
+  deck.style.setProperty('--fit', portrait.matches ? 1 : Math.min((window.innerWidth - 32) / 1280, (window.innerHeight - header - 16) / 720));
+  fitting?.();
+}
+window.addEventListener('resize', fitDeck);
+fitDeck();
 
 back.addEventListener('click', () => open(current - 1));
 next.addEventListener('click', () => open((current + 1) % CHAPTERS.length));

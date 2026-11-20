@@ -50,6 +50,8 @@
   /* the campfire (site/werewolf.html) only: the ground by day (on the light theme) and by night (on the dark), the fire, and a werewolf found out */
   --camp-day: #efe4cb; --camp-day-deep: #e2d0aa; --camp-night: #161d32; --camp-night-deep: #0d1222;
   --fire: #f0882a; --fire-core: #ffd35c; --fire-glow: rgba(255, 160, 60, 0.42); --log: #7a4a2b; --wolf: #c8402f;
+  /* the running track (site/architecture.html) only: a track, its lane lines and the field inside it, never the UI */
+  --track: #b9b5ad; --track-line: #fffdf7; --field: #a9c98f;
   color-scheme: light;
 }
 :root[data-font="serif"] { --doc-font: var(--serif); --doc-size: 17px; --doc-leading: 1.65; --doc-tracking: 0; }
@@ -69,6 +71,7 @@
     --shadow-raised: 0 8px 24px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 250, 240, 0.09);
     --felt: #215c3e; --felt-deep: #17472f; --rail: #5f3c24; --rail-deep: #462b19; --card: #f4f0e6; --suit-red: #d8473a; --card-back: #3a58a8;
     --wolf: #e0614f;
+    --track: #5c5a55; --track-line: #ece6da; --field: #5f7d50;
     color-scheme: dark;
   }
 }
@@ -84,6 +87,7 @@
     --shadow-raised: 0 8px 24px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 250, 240, 0.09);
     --felt: #215c3e; --felt-deep: #17472f; --rail: #5f3c24; --rail-deep: #462b19; --card: #f4f0e6; --suit-red: #d8473a; --card-back: #3a58a8;
     --wolf: #e0614f;
+    --track: #5c5a55; --track-line: #ece6da; --field: #5f7d50;
     color-scheme: dark;
   }
 }
