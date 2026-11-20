@@ -443,6 +443,20 @@ test('a watcher runs at once on a file written outside the app, with no pause fo
     assert.ok(Date.now() - at < SETTLE_MS, 'before people\'s pause would end');
     assert.match((await runs())[1].prompt, /^\+Written by another program\.$/m);
   });
+test('a watch run goes on when the file is written outside the app, lands, and runs again on what it did not see', { timeout: 60_000 }, async () => {
+  await withDoc(async ({ docPath, settingsDir, call, state, runs, release }) => {
+    await call('watch', { buddy: 'Clippy', on: true });
+    await until(async () => (await runs()).length === 1, 'its first look, held');
+    await writeFile(docPath, `${(await state()).text}Written by another program.\n`);
+    await until(async () => (await state()).text.includes('Written by another program.'), 'the change taken');
+    await sleep(1000);
+    assert.equal((await readFile(join(settingsDir, 'logs', 'runs.jsonl'), 'utf8').catch(() => '')), '', 'not ended');
+    await release('Clippy');
+    await until(async () => (await state()).threads.some((t) => t.comments[0].by.name === 'Clippy'), 'it lands');
+    assert.equal((await runLog(settingsDir))[0].outcome, 'ok');
+    await until(async () => (await runs()).length === 2, 'a run on what it did not see', 10_000);
+    assert.match((await runs())[1].prompt, /^\+Written by another program\.$/m);
+  }, { content: `${SAMPLE}\nhold-watch\n` });
 });
 
 test('a watch run is ended when a person types again, with no answer, and runs again once they pause', { timeout: 60_000 }, async () => {
