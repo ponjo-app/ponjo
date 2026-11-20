@@ -646,6 +646,142 @@ async function state(scene) {
   await scene.wait(2600);
 }
 
+// An architecture as boxes, then arrows drawn in the order a change goes
+// round, then its loop played over and over: a dot goes along `loop`, the
+// arrows by number ([i, true] backwards), and each box it reaches lights up.
+// `at` places each box (upright on a phone, else wide); a box in `ink` is
+// drawn in ink, as the board is; an arrow's words sit over it if it runs
+// across, on it otherwise.
+async function diagram(scene, { boxes, at, arrows, loop, ink = [] }) {
+  watching(false);
+  const s = sketch(scene.stage);
+  const place = s.upright ? at.up : at.wide;
+  const size = s.upright ? [150, 80] : [168, 72];
+  const shown = Object.fromEntries(Object.entries(boxes).map(([key, [name, what]]) => {
+    const box = s.place(el('div', ink.includes(key) ? 'arch-node arch-node-ink' : 'arch-node'), place[key], size);
+    box.append(el('b', '', name), el('span', '', what));
+    box.style.opacity = '0';
+    return [key, box];
+  }));
+  // where the line from box centre `a` to `b` leaves `a`, a little clear of it
+  const edge = ([x, y], [tx, ty]) => {
+    const [dx, dy] = [tx - x, ty - y];
+    const t = Math.min(size[0] / 2 / Math.abs(dx || 1e-9), size[1] / 2 / Math.abs(dy || 1e-9));
+    const k = 8 / Math.hypot(dx, dy);
+    return [x + dx * (t + k), y + dy * (t + k)];
+  };
+  const head = ([x0, y0], [x1, y1]) => {
+    const k = Math.hypot(x1 - x0, y1 - y0);
+    const [ux, uy] = [(x1 - x0) / k, (y1 - y0) / k];
+    const wing = (side) => `${f(x1 - ux * 10 + side * uy * 6)} ${f(y1 - uy * 10 - side * ux * 6)}`;
+    return `M${wing(1)} L${f(x1)} ${f(y1)} L${wing(-1)}`;
+  };
+
+  for (const box of Object.values(shown)) {
+    scene.fade(box, 1, 300).catch(() => {});
+    await scene.wait(70);
+  }
+  await scene.wait(400);
+  const ends = []; // each arrow's two ends
+  for (const [a, b, words, both] of arrows) {
+    const [from, to] = [edge(place[a], place[b]), edge(place[b], place[a])];
+    ends.push([from, to]);
+    const line = s.ink(`M${f(from[0])} ${f(from[1])} L${f(to[0])} ${f(to[1])}`);
+    await scene.draw(line, 380);
+    s.ink(head(from, to));
+    if (both) s.ink(head(to, from));
+    const across = Math.abs(to[1] - from[1]) < 1;
+    const mid = [(from[0] + to[0]) / 2, (from[1] + to[1]) / 2 - (across ? 14 : 0)];
+    const label = s.place(el('span', across ? 'arch-label arch-label-over' : 'arch-label', words), mid);
+    await scene.fade(label, 1, 200);
+  }
+  if (still) return;
+
+  // the loop: a dot from the box it starts at, along each arrow in turn
+  const dot = s.place(el('i', 'arch-token'), place[arrows[loop[0][0]][0]]);
+  const light = (key) => {
+    shown[key].classList.add('arch-node-on');
+    setTimeout(() => shown[key].classList.remove('arch-node-on'), 500);
+  };
+  for (;;) {
+    await scene.fade(dot, 1, 200);
+    light(arrows[loop[0][0]][0]);
+    for (const [i, back] of loop) {
+      const [from, to] = back ? [...ends[i]].reverse() : ends[i];
+      await scene.move(dot, [s.at(from), s.at(to)], 650, 'ease-in-out');
+      light(arrows[i][back ? 0 : 1]);
+      await scene.wait(250);
+    }
+    await scene.fade(dot, 0, 200);
+    await scene.wait(1200);
+  }
+}
+
+// The common way: events in a queue, an orchestrator that wires who handles
+// what, agents each with a session and memory of their own, results handed
+// back to be merged.
+function eventsArchitecture(scene) {
+  return diagram(scene, {
+    boxes: {
+      people: ['You', 'webhooks, a clock'],
+      queue: ['Event queue', 'messages in flight'],
+      orchestrator: ['Orchestrator', 'wires who handles what'],
+      a: ['Agent A', 'its own session and memory'],
+      b: ['Agent B', 'its own session and memory'],
+      results: ['Results', 'one per agent, merged by hand'],
+    },
+    at: {
+      wide: { people: [110, 80], queue: [380, 80], orchestrator: [650, 80], a: [245, 228], b: [515, 228], results: [380, 368] },
+      up: { people: [95, 55], queue: [305, 55], orchestrator: [305, 190], a: [95, 325], b: [305, 325], results: [200, 460] },
+    },
+    arrows: [
+      ['people', 'queue', 'event'],
+      ['queue', 'orchestrator', 'delivers'],
+      ['orchestrator', 'a', 'triggers'],
+      ['orchestrator', 'b', 'triggers'],
+      ['a', 'queue', 'emits an event'],
+      ['a', 'results', 'hands back'],
+      ['b', 'results', 'hands back'],
+    ],
+    // an event, to the orchestrator, to A; A's event, back round to B; both hand back
+    loop: [[0], [1], [2], [4], [1], [3], [6]],
+  });
+}
+eventsArchitecture.once = true;
+
+// The blackboard: who changes the board and who reads it. You edit; the
+// writer lands it on the board; the runtime reads the board and starts a
+// run; the run gives its agent program its view and proposes the edits back.
+function architecture(scene) {
+  return diagram(scene, {
+    boxes: {
+      people: ['You', 'and outside programs'],
+      writer: ['Writer', 'the only one that changes the board'],
+      board: ['Board', 'the state, all there is'],
+      runtime: ['Runtime', 'reads the board, starts who is due'],
+      run: ['Run', 'one agent, once'],
+      program: ['Agent program', 'Claude Code, Codex…'],
+    },
+    at: {
+      wide: { people: [110, 90], writer: [380, 90], board: [650, 90], program: [110, 320], run: [380, 320], runtime: [650, 320] },
+      up: { people: [95, 55], writer: [305, 55], board: [305, 185], runtime: [305, 315], run: [95, 315], program: [95, 455] },
+    },
+    arrows: [
+      ['people', 'writer', 'edit'],
+      ['writer', 'board', 'lands, in order'],
+      ['board', 'runtime', 'reads'],
+      ['runtime', 'run', 'starts'],
+      ['run', 'program', 'view in, edits out', true],
+      ['run', 'writer', 'proposes'],
+    ],
+    // you edit; it lands; the runtime reads it and starts a run; the run's
+    // program works and the run proposes; that lands, and the runtime reads again
+    loop: [[0], [1], [2], [3], [4], [4, true], [5], [1], [2]],
+    ink: ['board'],
+  });
+}
+architecture.once = true;
+
 // [eyebrow, the idea in a line, the scene]
 const CHAPTERS = [
   ['', 'Press Start.', cover],
@@ -655,6 +791,8 @@ const CHAPTERS = [
   ['When agents run', '', point('Agent orchestration is a state reconciliation problem,', 'instead of an event triggering problem.')],
   ['When agents run · Events', 'Triggered by events: each agent runs when the one before hands it on. Miss one handoff, and the race stops.', events],
   ['When agents run · State', 'Reconciled from state: the runtime reads the board and calls whoever’s leg isn’t run, again until it is. Nobody wires who goes next, and a missed call costs nothing.', state],
+  ['Architecture · Event-triggered', 'The common way: state lives in messages in flight and in each agent’s memory. Lose a message and the work is lost, and someone has to wire who triggers whom.', eventsArchitecture],
+  ['Architecture · Blackboard', 'One board, one writer: people and agents propose changes, the writer lands them in order, and the runtime reads the board to start whoever is due.', architecture],
 ];
 
 // ---- the story: a chapter at a time, with Back, Next and a dot for each ----
