@@ -18,7 +18,7 @@ export const SETTINGS_VERSION = 3;
  * agentSettings). `trace` keeps each run's trace (src/store/runs.js
  * logRun), to read in a doc's Runs. A doc's watches pause once its buddies
  * run `pauseAfter` times within `pauseWithin` minutes, until someone
- * resumes them (src/host/buddy-runtime.js, the breaker).
+ * resumes them (src/core/runtime.js, the breaker).
  */
 export const DEFAULT_SETTINGS = Object.freeze({
   id: null,
@@ -27,6 +27,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
   theme: 'system',
   views: Object.freeze({}),
   agents: Object.freeze({}),
+  actions: Object.freeze({}),
   agent: 'claude',
   trace: false,
   pauseAfter: 300,
@@ -52,6 +53,7 @@ const VALID = {
   theme: oneOf('system', 'light', 'dark'),
   views: perId,
   agents: perId,
+  actions: perId,
   agent: (v) => typeof v === 'string' && NAME_PATTERN.test(v),
   trace: boolean,
   pauseAfter: (v) => FIELD_RULES.number(BREAKER_FIELDS[0], v),
@@ -129,6 +131,9 @@ export const viewSettings = (settings, view) => declared(settings.views[view.id]
  * valid, else its default; a secret from `secrets`, the agent's decrypted
  * ones, else none.
  */
+/** Whether action `id` asks the owner first (docs/agent-runtime.md#outside-actions): unless its `ask` is set false. */
+export const asksFirst = (settings, id) => objectOr(settings.actions[id]).ask !== false;
+
 export const agentSettings = (settings, agent, secrets = {}) => values(objectOr(settings.agents[agent.id]), agent.settings, secrets);
 
 /**
@@ -170,7 +175,7 @@ function values(stored, fields = [], secrets = {}) {
   }));
 }
 
-const KINDS = ['views', 'agents'];
+const KINDS = ['views', 'agents', 'actions'];
 const objectOr = (value) => (isObject(value) ? value : {});
 
 // `{ <id>: { <key>: boolean | string | number } }`, the shape of `views` and `agents`.

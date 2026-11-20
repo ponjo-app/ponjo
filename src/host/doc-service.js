@@ -27,6 +27,7 @@ import { secretTails } from '../store/secrets.js';
 import { readTrace, readUsage, tracedRuns } from '../store/runs.js';
 import { watchDoc } from '../store/watch.js';
 import { agentsDir, installAgents, listAgents, SHIPPED_AGENTS } from '../store/agents.js';
+import { listActions } from '../store/actions.js';
 import { linkURL, pathInProject, projectService, saveImage } from './project-service.js';
 import { DocError, LEVELS, can } from './door.js';
 import { RoomError } from './room.js';
@@ -670,7 +671,7 @@ export async function openDocService(docPath, { folder = null, room = null, sett
           throw error;
         }
       },
-      scripts: async () => ({ agents: await listAgents(settingsDir), shipped: SHIPPED_AGENTS, folder: agentsDir(settingsDir), secrets: secretTails(secrets()) }),
+      scripts: async () => ({ agents: await listAgents(settingsDir), shipped: SHIPPED_AGENTS, folder: agentsDir(settingsDir), secrets: secretTails(secrets()), actions: await listActions(settingsDir) }),
       // A shipped agent script, written again as it came.
       async resetScript(body) {
         if (!SHIPPED_AGENTS.includes(body?.name)) throw new DocError('bad_input', 'not a shipped agent');

@@ -62,11 +62,11 @@ export function files({ doc, sidecar, project }) {
 
 // The contract: the prompt on stdin, the copies' paths and the settings in
 // the environment, the edits and comments applied to the copies, each
-// comment's edits to PONJO_GROUPS, and the model's last words on stdout.
+// comment's edits to PONJO_GROUPS, its actions to PONJO_ACTIONS, and the model's last words on stdout.
 // Each message of the turn but the prompt goes to the trace, a line each, as
 // it comes: the model's with how long it took and its usage.
 async function main() {
-  const { PONJO_DOC: docCopy, PONJO_COMMENTS: sidecarCopy, PONJO_PROJECT: project, PONJO_GROUPS: groups, PONJO_TRACE: trace } = process.env;
+  const { PONJO_DOC: docCopy, PONJO_COMMENTS: sidecarCopy, PONJO_PROJECT: project, PONJO_GROUPS: groups, PONJO_ACTIONS: actions, PONJO_TRACE: trace } = process.env;
   const { PONJO_SETTING_PROVIDER: provider, PONJO_SETTING_ENDPOINT: endpoint, PONJO_SETTING_EFFORT: effort, PONJO_SETTING_WEB: web } = process.env;
   // Each provider has its own model and key, kept when another is picked.
   const { [`PONJO_SETTING_${provider.toUpperCase()}_MODEL`]: model, [`PONJO_SETTING_${provider.toUpperCase()}_KEY`]: key } = process.env;
@@ -94,6 +94,7 @@ async function main() {
     await writeFile(docCopy, texts.doc);
     await writeFile(sidecarCopy, texts.sidecar);
     if (groups) await writeFile(groups, texts.groups.map((group) => `${JSON.stringify(group)}\n`).join(''));
+    if (actions) await writeFile(actions, texts.actions.map((action) => `${JSON.stringify(action)}\n`).join(''));
     process.stdout.write(texts.text); // its last words, for the trace: never posted
   } catch (failure) {
     await note(messages.slice(noted)); // the last step's results

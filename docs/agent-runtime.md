@@ -86,7 +86,8 @@ runtime pauses the board's watches and tells a person.
 
 A run changes nothing itself, so it can be stopped, refused or lost at no
 cost. An action on the outside world (a message, a deploy) belongs in the
-proposal, for the world to carry out once, if the asker's intent allows it.
+proposal, for the world to carry out once ([outside
+actions](#outside-actions)).
 
 ## Refused and failed
 
@@ -99,6 +100,51 @@ proposal, for the world to carry out once, if the asker's intent allows it.
   own: an agent is slow and costs money.
 - **A failed read of the world** is tried again, later each time (1 s up to
   30 s).
+
+## Outside actions
+
+An action on the outside world (a message, a call to an API, a deploy) is
+part of a proposal, never something a run does itself.
+
+- **Proposed.** A run lists its actions next to its other changes, each
+  with the action's name and its input. Only actions the owner installed on
+  this machine can be named; the prompt lists them. Nothing in the world
+  can install one.
+- **Carried out once, after it lands.** An action exists only once its
+  proposal lands; a run that is refused, redone, stopped or failed leaves
+  none. Each landed action gets an id and a record on this machine:
+  proposed, approved, started, then done or failed. The record is never in
+  the world's shared state: shared state is data.
+- **Never twice on its own.** An action that started and did not end (the
+  host stopped) is not started again: it shows as "may have run", with
+  Retry for a person. The action is given its id, so a service that takes
+  an idempotency key drops a second try.
+- **Approved first.** Each action asks the owner first, by default. Only the
+  owner approves, as it runs on the owner's machine with the owner's keys;
+  others see it waiting. The owner may set an action to run without asking,
+  and then only for runs the owner started. Who approved and when is
+  recorded with the action.
+- **Its result** joins the world as the action's reply, at the depth of the
+  run that proposed it plus 1, so agents cannot loop through the outside
+  world.
+- **Not undone.** Undo takes back the edits the action came with, never the
+  action.
+
+Reading stays with the agent program: its folder, the project, the web.
+What it reads can end up where others see it, and a fetch can carry data
+out in its URL. So the shipped agent programs are set to read, edit, search
+and fetch only: no shell and none of the person's own tool servers.
+Whatever a person adds to their script or their program's config can act
+outside unchecked, and the guarantees above hold only for actions that are
+proposed.
+
+In Ponjo: an action is a plugin in `actions/` of the config folder, a
+program and a manifest, as an agent is; it gets its input on stdin and its
+id as `PONJO_ACTION_ID`. A run lists its actions in `PONJO_ACTIONS`, each
+on one of its comments, and the record is in `logs/actions.jsonl`. The
+action shows under its comment with what it does, its input, and Approve
+and Decline for the owner; its result is a reply in that thread. Settings >
+Actions lists them, each with Ask first (on by default).
 
 ## State
 
@@ -133,8 +179,9 @@ What the code does differently from the runtime above:
 - Every member sees the whole doc and every thread; in project mode the
   agent program may read the project folder.
 - Nothing is refused: the doc world merges.
-- An agent program may act outside the doc as its own config allows.
 
-Code: the loop is `src/host/buddy-runtime.js`, the plan `src/core/due.js`,
-the run `src/host/runner.js`; the doc world `src/host/doc-world.js`, its
+Code: the loop is `src/core/runtime.js`, which reaches nothing but the world
+and what its host gives it, so it can run in a Worker too; the plan
+`src/core/due.js`. On the doc host, `src/host/buddy-runtime.js` gives it the
+run (`src/host/runner.js`), the logs and the settings; the doc world `src/host/doc-world.js`, its
 asks `asksIn` (`src/core/comments.js`) and its prompt `src/core/prompt.js`.

@@ -72,6 +72,7 @@ let hoverId = null; // the thread whose card is under the pointer
 let typedAt = -Infinity; // when the human last typed in the doc
 let shownAgents = ''; // the agent statuses on screen, as JSON
 let agents = []; // the agent statuses on screen
+let actions = []; // the actions buddies proposed here (src/host/doc-actions.js)
 let shownComments = ''; // the comments on screen, as JSON
 let missing = false; // the doc was moved or deleted on disk: nothing is saved
 let offline = false; // the line to the doc host is down (client.onLine)
@@ -254,6 +255,9 @@ async function start() {
     onUndo: undoReply,
     onRedo: redoReply,
     onRetry: (buddy) => api.retry(buddy).catch(() => {}),
+    actionsOf: (reply) => actions.filter((a) => a.comment === reply),
+    mayDecide: () => level === 'owner',
+    onDecide: (decision, id) => api.decideAction(decision, id),
     onShowEdits: (id) => (id ? showRun(id) : hideRun()),
     onSelect: (id) => {
       select(id);
@@ -302,6 +306,7 @@ async function start() {
   docBar.setWatches(initial.watches);
   shownAgents = JSON.stringify(initial.agents);
   agents = initial.agents;
+  actions = initial.actions ?? [];
   applyComments(initial);
   showUnsaved(initial.notSaved);
   setInterval(() => margin.rerender(), 30_000); // relative times, stale "working"
@@ -417,6 +422,10 @@ async function start() {
     afterTyping('sidecar', refreshThreads); // a buddy's turn's receipt is read from its version
   });
   events.on('watches', (data) => docBar.setWatches(data));
+  events.on('actions', (data) => {
+    actions = data;
+    margin.rerender();
+  });
   events.on('agents', (data) => {
     showAgents(data);
     runs.refresh(); // a run that ended has its trace

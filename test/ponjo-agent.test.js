@@ -56,8 +56,8 @@ function fake(...replies) {
 
 const results = (messages) => messages.filter((m) => m.role === 'tool').map((m) => m.content);
 
-/** What a turn gives back: the doc's text, the sidecar's with `lines` appended, the comments' groups, and the model's last words. */
-const left = (doc, lines, groups = [], text = '') => ({ doc, sidecar: HEADER + lines.map((line) => `${JSON.stringify(line)}\n`).join(''), groups, text });
+/** What a turn gives back: the doc's text, the sidecar's with `lines` appended, the comments' groups and actions, and the model's last words. */
+const left = (doc, lines, groups = [], text = '', actions = []) => ({ doc, sidecar: HEADER + lines.map((line) => `${JSON.stringify(line)}\n`).join(''), groups, actions, text });
 
 /** A step with no call, which ends the turn. */
 const DONE = { calls: [], text: '', sent: 'as the API sent it' };
@@ -100,6 +100,19 @@ test('a turn replies in another thread by the id the comments file gives, each c
   assert.deepEqual(done.groups, [{ comment: 0, doc: two }, { comment: 1, doc: both }], 'each after the ones before it');
   assert.equal(done.doc, both);
   assert.deepEqual(results(infer.messages), ['Posted when your turn ends, as a reply in c_other1, with its edit, applied now: read the doc to see them.', 'Posted when your turn ends, as a reply in c_other1, with its edit, applied now: read the doc to see them.']);
+});
+
+test('a comment may propose actions outside the doc: each is named by that comment\'s line; ones not well formed send the comment back', async () => {
+  const { doc, sidecar } = await copies();
+  const infer = fake(
+    calling(['comment', { on: '', body: 'Bad.', actions: [{ input: {} }] }], ['comment', { on: '', body: 'Noted.' }], ['comment', { on: '', body: 'Posting the plan.', actions: [{ action: 'post', input: { text: 'hi' } }, { action: 'ping' }] }]),
+    DONE,
+  );
+  assert.deepEqual(
+    await turn({ prompt: 'p', doc, sidecar }, { infer, readFile: seen({ doc, sidecar }) }),
+    left(SAMPLE, [{ body: 'Noted.' }, { body: 'Posting the plan.' }], [], '', [{ comment: 1, action: 'post', input: { text: 'hi' } }, { comment: 1, action: 'ping', input: null }]),
+  );
+  assert.match(results(infer.messages)[0], /^Not posted: actions is \[\{ action, input \}\]/);
 });
 
 test('the prompt\'s situation comes after the doc, apart: the rules and the doc are one message, marked to cache', async () => {
@@ -380,7 +393,7 @@ test('Anthropic: the Messages API, cached up to the last message, the model\'s c
     assert.equal(first.headers['anthropic-version'], '2023-06-01');
     const { tools, messages, ...rest } = second.body;
     assert.deepEqual(rest, { model: 'claude-opus-5-5', max_tokens: 16_000, output_config: { effort: 'low' }, tool_choice: { type: 'auto' } }, 'no thinking setting: the model thinks as it needs');
-    assert.deepEqual(tools.map((t) => [t.name, Object.keys(t.input_schema.properties).join(), t.cache_control]), [['read', 'path,lines', undefined], ['find', 'pattern,path', undefined], ['grep', 'pattern,path', undefined], ['comment', 'thread,on,body,edits', undefined]]);
+    assert.deepEqual(tools.map((t) => [t.name, Object.keys(t.input_schema.properties).join(), t.cache_control]), [['read', 'path,lines', undefined], ['find', 'pattern,path', undefined], ['grep', 'pattern,path', undefined], ['comment', 'thread,on,body,edits,actions', undefined]]);
     assert.deepEqual(messages, [
       { role: 'user', content: [{ type: 'text', text: opening(doc, 'the prompt'), cache_control: { type: 'ephemeral' } }] },
       { role: 'assistant', content: [thinking, { type: 'tool_use', id: 'toolu_1', name: 'read', input: { path: doc, lines: [1, 1] } }] },

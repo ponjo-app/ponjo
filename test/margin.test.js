@@ -6,7 +6,7 @@
 
 import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, realpath, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -43,6 +43,13 @@ before(async () => {
   await writeFile(join(folder, 'plan.md'), SAMPLE);
   await writeFile(join(folder, 'plan.md.comments.jsonl'), [{ comments: 3 }, ...COMMENTS].map((line) => JSON.stringify(line)).join('\n') + '\n');
   const config = await fakeConfig();
+  // An action Clippy's reply proposed, waiting for the owner (src/host/doc-actions.js).
+  await mkdir(join(config, 'actions'));
+  await mkdir(join(config, 'logs'));
+  await writeFile(join(config, 'actions', 'post'), '#!/bin/sh\necho "posted to #ops"\n', { mode: 0o755 });
+  await writeFile(join(config, 'actions', 'post.cmd'), '@echo posted to #ops\r\n');
+  await writeFile(join(config, 'actions', 'post.json'), JSON.stringify({ name: 'Post', about: 'Posts a message.', input: '{ "text": "…" }' }));
+  await writeFile(join(config, 'logs', 'actions.jsonl'), `${JSON.stringify({ id: 'a_post0001', state: 'proposed', doc: await realpath(join(folder, 'plan.md')), comment: 'c_capreply', thread: 'c_capacity', action: 'post', name: 'Post', input: { text: 'The doc is current.' }, buddy: { id: 'Clippy', name: 'Clippy' }, for: [], depth: 0, at: at(11) })}\n`);
   const env = { ...process.env, PONJO_CONFIG_DIR: config };
   delete env.ELECTRON_RUN_AS_NODE;
   const electron = createRequire(import.meta.url)('electron');
@@ -103,4 +110,21 @@ test('the threads with no place in the text are one comment icon at the top; it 
   await page.evaluate(`document.querySelector('.pj-page').dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))`);
   await waitFor(async () => (await margin()).aside.length === 0, 10_000, 'the threads closed');
   assert.equal((await margin()).button.expanded, 'false');
+});
+
+test('an action a reply proposed shows under it, its input in full; the owner approves it, and it is done', { timeout: 60_000 }, async () => {
+  await page.evaluate(`document.querySelector('.pj-margin [data-thread="c_capacity"]').click()`);
+  const action = () => page.evaluate(`(() => {
+    const box = document.querySelector('.pj-margin [data-thread="c_capacity"] .pj-action');
+    return box && { tag: box.querySelector('.pj-version-tag').textContent, input: box.querySelector('.pj-trace-text').textContent, buttons: [...box.querySelectorAll('button')].map((b) => b.textContent), foot: box.querySelector('.pj-action-foot > span').textContent };
+  })()`);
+  const waiting = await waitFor(action, 10_000, 'the action');
+  assert.equal(waiting.tag, 'Waiting');
+  assert.deepEqual(JSON.parse(waiting.input), { text: 'The doc is current.' });
+  assert.deepEqual(waiting.buttons, ['Decline', 'Approve'], 'the owner decides');
+  await page.evaluate(`[...document.querySelectorAll('.pj-margin .pj-action button')].find((b) => b.textContent === 'Approve').click()`);
+  await waitFor(async () => (await action())?.tag === 'Done', 20_000, 'done');
+  const done = await action();
+  assert.deepEqual(done.buttons, [], 'nothing left to decide');
+  assert.match(done.foot, /^Approved by .+\. posted to #ops$/);
 });

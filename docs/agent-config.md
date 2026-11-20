@@ -19,6 +19,7 @@ An agent is a filter ([architecture](host-spec.md#a-run)):
 | `PONJO_TRACE` | a file, out of the working folder, the agent may write its steps to (see [Traces](#traces)) |
 | `PONJO_GROUPS` | a file, out of the working folder, the agent may write its comments' edits to (see [Groups](#groups)) |
 | `PONJO_WAKE` | a file, out of the working folder, the agent may write the lines of the doc that wake it next to (see [Wake](#wake)) |
+| `PONJO_ACTIONS` | a file, out of the working folder, the agent may write the actions outside the doc its comments propose to (see [Actions](#actions)) |
 | `PONJO_SETTING_<KEY>` | each of the agent's [settings](#settings) |
 | stdout | anything; kept in the trace, never posted |
 | Exit 0 | success; the app adds the appended comments and merges the doc copy's edits into the doc, each with the comment it comes with. |
@@ -96,6 +97,26 @@ lines are this machine's, in memory, gone when the watch is turned off or
 the app starts again; they only make a buddy run less, and an ask runs it
 whatever they say.
 
+### Actions
+
+An agent acts outside the doc only by proposing an action with one of its
+comments ([outside actions](agent-runtime.md#outside-actions)). The prompt
+lists the actions installed here, each with what it does and the input it
+takes. In `PONJO_ACTIONS`, a line for each:
+`{"comment":<its comment's place among the lines it appended, from
+0>,"action":"<its file name>","input":<JSON>}`. An action on a comment
+that does not land, or not installed here, is dropped. The Ponjo agent
+gives them with its comment.
+
+An action is a program in `actions/` of the config folder (`<name>.cmd` on
+Windows) with its manifest `<name>.json`: `{ name, about, input }`, what it
+does and what it takes, in words. None ship, and one without a valid
+manifest is not offered. It runs in a new folder with the input on stdin, as
+JSON, and its id as `PONJO_ACTION_ID`, the same if it is carried out again,
+for a service that drops a second try. Exit 0 is done, and its output's
+last line the result, posted as its buddy's reply in the thread; any other
+exit failed.
+
 ## Agents
 
 An agent is a plugin: a **manifest** says what can be set, a
@@ -142,6 +163,7 @@ script needs nothing to read them:
 ```sh
 #!/bin/sh
 exec claude -p "@\"$PONJO_DOC\"" --permission-mode acceptEdits --no-session-persistence \
+  --tools Read,Edit,Write,Glob,Grep,WebSearch,WebFetch --strict-mcp-config \
   ${PONJO_SETTING_MODEL:+--model "$PONJO_SETTING_MODEL"} \
   ${PONJO_PROJECT:+--add-dir "$PONJO_PROJECT" --disallowedTools "Edit(/$PONJO_PROJECT/**)" \
     --append-system-prompt "The paths in the prompt are the project's. …"}
@@ -168,16 +190,24 @@ which Ponjo does not limit: Claude Code reads its working folder and the
 `workspace-write` sandbox reads the whole disk. Running a buddy on them is
 at the user's own risk, under the CLI's own permissions.
 
-Everything else (web, shell, which files it may read or write) is the CLI's
-own config (`~/.claude/settings.json`, `~/.codex/config.toml`), as when you
-run it yourself. Ponjo neither grants nor blocks it.
+The shipped scripts give an agent no way to act on the outside world: an
+action there would skip the writer, and could be done twice or by no one's
+leave ([agent runtime](agent-runtime.md#outside-actions)). Claude Code gets
+only its tools to read, edit, search and fetch (`--tools`), and none of
+the user's MCP servers (`--strict-mcp-config`). Codex reads and edits only:
+it loads no `~/.codex/config.toml` (`--ignore-user-config`), so none of its
+MCP servers, and no apps or plugins; its sandbox gives its commands no
+network. A fetch still reaches the web, and can carry out what it read in
+its URL. What these scripts cannot stop is the CLI's own: Claude Code's
+hooks in `~/.claude/settings.json`, and anything a user adds to a script
+or its CLI's config, at their own risk.
 
 An agent is not told where the real doc is. If its CLI lets it write there
 anyway, the app sees an outside change and merges it; a broken sidecar line
 is skipped, and history keeps every version.
 
-What a prompt hidden in a doc can make an agent do is what your CLI's
-config allows.
+What a prompt hidden in a doc can make an agent do is what its script and
+its CLI's config allow.
 
 ## Traces
 

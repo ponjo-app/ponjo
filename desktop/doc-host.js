@@ -35,6 +35,7 @@ import { existsSync } from 'node:fs';
 import { realpath } from 'node:fs/promises';
 import { openDoc } from '../src/host/open-doc.js';
 import { agentsFor } from '../src/host/buddy-runtime.js';
+import { actionsFor } from '../src/host/doc-actions.js';
 import { projectService } from '../src/host/project-service.js';
 import { createRoom } from '../src/host/room.js';
 import { renameFile } from './files.js';
@@ -98,7 +99,7 @@ function docAt(docPath, folder) {
     const entry = { service: null, folder, ports: new Map(), opens: 0 };
     entry.service = await openDoc(docPath, { folder, room: folder && roomOf(folder), secrets: () => secrets, emit: (event, data) => {
       for (const [port, { level }] of entry.ports) {
-        if ((event !== 'settings' && event !== 'room') || level === 'owner') port.postMessage({ event, data: event === 'agents' ? agentsFor(level, data) : data });
+        if ((event !== 'settings' && event !== 'room') || level === 'owner') port.postMessage({ event, data: event === 'agents' ? agentsFor(level, data) : event === 'actions' ? actionsFor(level, data) : data });
       }
     } });
     docs.set(docId, entry);

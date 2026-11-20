@@ -254,6 +254,26 @@
     </div>
     <div style="position: relative; width: 64px; height: 26px"><button class="pj-unplaced pj-unplaced-failed" type="button" title="1 on the whole document, 2 whose text was deleted"><svg class="pj-icon" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><span>3</span></button></div>
   </div>
+  <h3>An action under its comment</h3>
+  <p>An action a buddy proposed outside the doc is a <code>.pj-action</code> under the comment it came with, after its receipt: a hairline box, 12px <code>--text-soft</code>. Its head has the play icon, its name (13px, 500, <code>--text</code>) and its state on a <code>.pj-version-tag</code>: Waiting, Running, Done, Declined, or Failed and May have run in red. Then its input in full, a <code>.pj-trace-text</code> up to 120px tall. Then a line on who decided and what came of it, in red when it failed or may have run. While it waits, the owner has Decline (link button) and Approve (secondary), and "Runs on your computer, with your keys."; a teammate reads "Waiting for the owner to approve." Once it failed or may have run, the owner has Retry. Settings &gt; Actions lists the actions, each a <code>.pj-setting</code> with its name, what it does, and Ask first beside its switch.</p>
+  <div class="ds-row">
+    <div class="pj-card pj-card-active ds-card">
+      <div class="pj-msg-head"><span class="pj-who"><span class="pj-name">Clippy</span><span class="pj-time">3 min ago</span></span></div>
+      <div class="pj-body">I'll post the new date to #ops, with why.</div>
+      <div class="pj-action"><div class="pj-action-head"><svg class="pj-icon" viewBox="0 0 24 24"><path d="M7 4.5v15l12-7.5z"/></svg><span class="pj-action-name">Post</span><span class="pj-version-tag">Waiting</span></div><pre class="pj-trace-text">{
+  "channel": "#ops",
+  "text": "Launch moves to June 2."
+}</pre><div class="pj-action-foot"><span>Runs on your computer, with your keys.</span><button class="pj-link-button" type="button">Decline</button><button class="pj-secondary" type="button">Approve</button></div></div>
+    </div>
+    <div class="pj-card pj-card-active ds-card">
+      <div class="pj-msg-head"><span class="pj-who"><span class="pj-name">Clippy</span><span class="pj-time">3 min ago</span></span></div>
+      <div class="pj-body">I'll post the new date to #ops, with why.</div>
+      <div class="pj-action pj-action-failed"><div class="pj-action-head"><svg class="pj-icon" viewBox="0 0 24 24"><path d="M7 4.5v15l12-7.5z"/></svg><span class="pj-action-name">Post</span><span class="pj-version-tag" data-failed>Failed</span></div><pre class="pj-trace-text">{
+  "channel": "#ops",
+  "text": "Launch moves to June 2."
+}</pre><div class="pj-action-foot"><span>Error: channel_not_found</span><button class="pj-link-button" type="button">Retry</button></div></div>
+    </div>
+  </div>
   <h3>Tooltip and keys</h3>
   <div class="ds-row">
     <span class="pj-tip ds-tip">Undo <kbd>⌘Z</kbd></span>

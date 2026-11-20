@@ -24,6 +24,8 @@ const MENTION_BEFORE_CARET = /(^|[^A-Za-z0-9._-])@([A-Za-z0-9._-]*)$/;
  *           onResolve: (threadId: string) => Promise<void>, onReopen: (threadId: string) => Promise<void>,
  *           onUndo: (replyId: string) => Promise<void>, onRedo: (replyId: string) => Promise<void>,
  *           onRetry: (buddyId: string) => Promise<void>,
+ *           actionsOf?: (replyId: string) => object[], mayDecide?: () => boolean,
+ *           onDecide?: (decision: 'approve' | 'decline' | 'retry', actionId: string) => Promise<void>,
  *           onShowEdits: (replyId: string | null) => void,
  *           onSelect: (threadId: string | null) => void, onHover: (threadId: string | null) => void,
  *           anchorTops: (items: { id: string, anchor: object }[]) => Map<string, number>,
@@ -230,6 +232,7 @@ export function createCommentMargin(margin, handlers) {
     } else if (comment.failed && !comment.host) row.append(el('div', 'pj-card-note pj-msg-note', `The run failed. @mention ${shown} again to retry.`));
     if (edits[comment.id]?.conflict) row.append(el('div', 'pj-card-note pj-msg-note', `People changed some of the same lines while it worked, so its edit there was not applied. @mention ${shown} again to redo it.`));
     if (edits[comment.id]) row.append(receipt(comment.id, edits[comment.id]));
+    for (const action of handlers.actionsOf?.(comment.id) ?? []) row.append(actionBox(action));
     row.classList.toggle('pj-msg-failed', Boolean(comment.failed));
     return row;
   }
@@ -256,6 +259,50 @@ export function createCommentMargin(margin, handlers) {
       });
       box.append(show, receiptButton('undo', `Undo ${them}`, () => handlers.onUndo(id)));
     }
+    return box;
+  }
+
+  // An action the reply proposed outside the doc (docs/agent-runtime.md#outside-actions):
+  // its name and state, its input in full, then who decided and what came
+  // of it; for the owner, Approve and Decline while it waits, Retry once it
+  // failed or may have run.
+  function actionBox(action) {
+    const failed = action.state === 'failed' || action.state === 'unknown';
+    const box = el('div', `pj-action${failed ? ' pj-action-failed' : ''}`);
+    const head = el('div', 'pj-action-head');
+    const tag = el('span', 'pj-version-tag', ACTION_STATES[action.state] ?? action.state);
+    if (failed) tag.dataset.failed = '';
+    head.append(icon('play'), el('span', 'pj-action-name', action.name), tag);
+    box.append(head, el('pre', 'pj-trace-text', JSON.stringify(action.input, null, 2)));
+    const owner = handlers.mayDecide?.() ?? false;
+    const decided = action.by ? `${action.state === 'declined' ? 'Declined' : 'Approved'} by ${action.by.name}, ${relativeTime(action.at)}.` : action.state === 'proposed' ? '' : 'Ran without asking.';
+    const said = {
+      proposed: owner ? 'Runs on your computer, with your keys.' : 'Waiting for the owner to approve.',
+      approved: decided, started: decided, declined: decided,
+      done: `${decided} ${action.result ?? ''}`.trim(),
+      failed: owner && action.why ? lastLine(action.why) : `${decided} It failed.`,
+      unknown: 'Started, then Ponjo stopped: it may have run.',
+    }[action.state] ?? '';
+    const foot = el('div', 'pj-action-foot');
+    const words = el('span', '', said);
+    if (owner && action.why) words.title = action.why;
+    foot.append(words);
+    const decide = (label, decision, className) => {
+      const button = el('button', className, label);
+      button.type = 'button';
+      button.addEventListener('click', (event) => {
+        event.stopPropagation();
+        button.disabled = true;
+        handlers.onDecide(decision, action.id).catch(() => { button.disabled = false; });
+      });
+      foot.append(button);
+    };
+    if (owner && action.state === 'proposed') {
+      decide('Decline', 'decline', 'pj-link-button');
+      decide('Approve', 'approve', 'pj-secondary');
+    }
+    if (owner && failed) decide('Retry', 'retry', 'pj-link-button');
+    box.append(foot);
     return box;
   }
 
@@ -649,6 +696,15 @@ function checkIcon() {
   path.setAttribute('d', 'M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z');
   svg.append(path);
   return svg;
+}
+
+// An action's state, as its tag says it.
+const ACTION_STATES = { proposed: 'Waiting', approved: 'Approved', started: 'Running', done: 'Done', declined: 'Declined', failed: 'Failed', unknown: 'May have run' };
+
+// Why an action failed, in a line: its program's last line of output, before the line that names the program (runner.js).
+function lastLine(why) {
+  const lines = why.split('\n').filter((l) => l.trim());
+  return lines.length > 1 ? lines.at(-2) : lines[0] ?? '';
 }
 
 function linkButton(text, onClick) {

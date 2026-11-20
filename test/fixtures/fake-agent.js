@@ -15,6 +15,7 @@
 //   resolve                             append the line that resolves the thread
 //   resolve-first                       append the line that resolves the sidecar's first thread
 //   tamper                              change the first comment's line, and append one that resolves its thread
+//   act <name> <json>                   propose action <name> with input <json> on its reply, in PONJO_ACTIONS
 // Watching the doc, it says "Watching." on the whole doc when it has no
 // thread of its own there yet (found in the sidecar's copy, as any agent
 // reads it), else "Saw <n> new lines." in it, n the lines the changes put in;
@@ -101,6 +102,7 @@ for (const thread of todo) {
   if (/\bquiet\b/.test(thread.ask)) continue;
   const said = thread.ask.match(/\bsay (.*)/)?.[1];
   append(JSON.stringify({ thread: thread.id, body: said ?? (edits.length ? `Replaced "${edits[0][1]}".` : 'Nothing to change.') }));
+  for (const [, action, input] of thread.ask.matchAll(/\bact (\S+) (\{.*?\})(?=$|\s*;;)/gm)) appendFileSync(process.env.PONJO_ACTIONS, `${JSON.stringify({ comment: appended - 1, action, input: JSON.parse(input) })}\n`);
   if (groups && text !== was && !/\bungrouped\b/.test(thread.ask)) appendFileSync(groups, `${JSON.stringify({ comment: appended - 1, doc: text })}\n`);
 }
 const watch = prompt.match(/You watch the doc\.[\s\S]*$/)?.[0];

@@ -209,6 +209,18 @@ and 30 days, and by model.
   see why (the end of its output); a teammate sees only that it failed. It
   runs again on Retry, when someone writes in the thread, or once you fix
   the agent's settings or key.
+- **Actions outside the doc.** An AI buddy acts outside the doc (posts a
+  message, opens an issue) only by proposing an action with its comment,
+  never by itself. The action shows under that comment: what it is, its
+  input in full, and that it waits. You, and only you, **Approve** or
+  **Decline** it: it runs on your computer, with your keys, once. Then it
+  says who approved it and when, and its result is the buddy's reply in the
+  thread. One that failed, or that was running when Ponjo stopped and may
+  have run, shows in red with **Retry**; it never runs again on its own.
+  Undo on the comment takes back its edits, never its actions. **Settings >
+  Actions** lists the actions installed on this computer (none come with
+  Ponjo), each with **Ask first**, on by default; off, that action runs at
+  once, and only for what you asked.
 
 ## Seeing teammates work
 
