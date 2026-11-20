@@ -4,23 +4,18 @@
 // (werewolf-runtime.js). Here, as on the poker page (preview/poker.js): the
 // controller, which on every change looks at the game and starts the runs
 // `plan` says are due, never acting on an event itself; a run, one call of
-// the visitor's model through INFER (agents/ponjo-core.mjs); and the game
-// drawn from the person's own view alone, with the app's classes and faces.
-// The players run on Claude Haiku through infer.ponjo.app (relay/worker.js),
-// or on the visitor's own key and model, kept in this browser.
+// the visitor's model (game-page.js, shared with the poker page, with the
+// log's messages); and the game drawn from the person's own view alone,
+// with the app's classes and faces.
 // preview/build.js bundles it into dist/preview, as the site serves it.
 
 /* global document, matchMedia, HTMLDialogElement */
 
-import { INFER } from '../agents/ponjo-core.mjs';
 import { agentFace, personFace, setBuddies, setOwner } from '../web/faces.js';
 import { icon } from '../web/icons.js';
+import { $, el, message, models, notice, typingMessage } from './game-page.js';
 import { DECIDE, HUMAN, MAX_SPEECH, PERSONAS, ROLE_NAMES, begin, decided, expire, fail, isPerson, land, newGame, plan, prompt, retry, show, turn } from './werewolf-runtime.js';
 
-const $ = (selector, root = document) => root.querySelector(selector);
-const el = (tag, className = '', text = '') => Object.assign(document.createElement(tag), { className, textContent: text });
-const SAVED = 'ponjo-poker'; // the visitor's own provider, key and model: the poker page's, so one key serves both
-const HOSTED = 'https://infer.ponjo.app/infer/anthropic'; // Ponjo's key and model, for ponjo.app's pages only
 const TURN = 90_000; // ms a turn may take; then everyone still due is taken as doing nothing
 const NIGHT = 6000; // ms a night lasts at least, so its length says nothing about who acted in it
 
@@ -30,24 +25,11 @@ setOwner(HUMAN);
 let game = null;
 const running = new Set(); // players with a run going
 const typing = new Set(); // players typing their speech, shown in the log
-let settings = load(SAVED); // the visitor's own provider, key and model, or null for Ponjo's
-
-function load(key) {
-  try {
-    return JSON.parse(localStorage.getItem(key)) ?? null;
-  } catch {
-    return null;
-  }
-}
-function store(value, key = SAVED) {
-  try {
-    if (value) localStorage.setItem(key, JSON.stringify(value));
-    else localStorage.removeItem(key);
-  } catch {}
-}
-const infer = () => (!settings ? INFER.anthropic({ model: 'claude-haiku-5-5', key: 'ponjo' }, HOSTED) // the Worker sets the key, model and effort
-  : settings.provider === 'openai' ? INFER.openai({ endpoint: settings.endpoint, model: settings.model, key: settings.key })
-    : INFER.anthropic({ model: settings.model, key: settings.key, effort: 'low' }));
+// The players' model. Once the visitor picks another, what failed is tried again.
+const ai = models(() => {
+  if (game) for (const [id, n] of Object.entries(game.notes)) if (n.failed) retry(game, id);
+  changed();
+});
 
 // ---- the controller ----
 
@@ -98,7 +80,7 @@ async function run({ id, kind }) {
   draw();
   const { rules, situation } = prompt(game, id);
   try {
-    const { calls, text } = await infer()([{ role: 'user', content: rules, cache: true }, { role: 'user', content: situation }], [DECIDE]);
+    const { calls, text } = await ai.infer()([{ role: 'user', content: rules, cache: true }, { role: 'user', content: situation }], [DECIDE]);
     let args = {};
     try {
       args = JSON.parse(calls.find((c) => c.name === 'decide')?.args ?? '{}');
@@ -324,11 +306,12 @@ function drawFeed(v) {
   const rows = [];
   let last = null; // who said the row before, to run their bubbles together
   const say = (i, text, note) => {
-    rows.push(message(game.players[i], text, note, last === i));
+    const id = game.players[i];
+    rows.push(message({ face: !isPerson(id) && faceOf(id), name: id, text, note, mine: isPerson(id), more: last === i }));
     last = i;
   };
   const line = (text, secret) => {
-    const row = el('li', 'pk-dealer', secret ? `${secret}: ${text}` : text);
+    const row = notice(secret ? `${secret}: ${text}` : text);
     if (secret) row.dataset.secret = '';
     rows.push(row);
     last = null;
@@ -353,17 +336,11 @@ function drawFeed(v) {
       line(`The vote: ${votes.join(', ')}. ${e.out === null ? 'A tie: no one is out.' : `${Name(e.out)} ${e.out === v.seat ? 'are' : 'is'} out.`}`);
     } else if (e.type === 'over') line(e.winner === 'village' ? 'Every werewolf is dead: the village wins.' : 'The werewolves are as many as the rest: they win.');
   }
-  for (const id of typing) {
-    const row = message(id, '', '', false);
-    row.classList.add('pk-typing');
-    $('.pk-msg-text', row).append(el('i'), el('i'), el('i'));
-    $('.pk-msg-text', row).setAttribute('aria-label', `${id} is typing`);
-    rows.push(row);
-  }
+  for (const id of typing) rows.push(typingMessage(faceOf(id), id));
   for (const [id, n] of Object.entries(game.notes)) {
     if (!n.failed) continue;
     const named = v.phase !== 'night' || v.pack?.includes(game.players.indexOf(id)); // at night, who failed would say who has a role
-    const row = el('li', 'pk-dealer', `${named ? id : 'A player'} could not reach the model: ${n.failed.why}`);
+    const row = notice(`${named ? id : 'A player'} could not reach the model: ${n.failed.why}`);
     row.dataset.failed = '';
     const again = el('button', 'pj-link-button', 'Retry');
     again.type = 'button';
@@ -377,24 +354,6 @@ function drawFeed(v) {
   feed.replaceChildren(...rows);
   if (stick) feed.scrollTop = feed.scrollHeight;
 }
-// A message: yours on the right; others' on the left with their face and,
-// first in a run of theirs, their name.
-function message(id, text, note, more) {
-  const item = el('li', 'pk-msg');
-  if (more) item.dataset.more = '';
-  const col = el('div', 'pk-msg-col');
-  if (isPerson(id)) item.dataset.mine = '';
-  else item.append(faceOf(id));
-  if (!more && (!isPerson(id) || note)) {
-    const head = el('span', 'pk-msg-name', isPerson(id) ? '' : id);
-    if (note) head.append(el('small', '', note));
-    col.append(head);
-  }
-  col.append(el('div', 'pk-msg-text', text));
-  item.append(col);
-  return item;
-}
-
 function draw() {
   if (!game || holdNight()) return;
   const v = show(game);
@@ -452,82 +411,6 @@ starting.addEventListener('submit', (event) => {
   startGame(size);
 });
 
-// ---- setup: the visitor's provider, key and model, as on the poker page ----
-
-const setup = $('.pk-setup');
-let provider = settings?.provider ?? 'anthropic';
-let model = settings?.provider === 'anthropic' ? settings.model : 'claude-haiku-5-5';
-
-function pick(attr, value) {
-  for (const b of setup.querySelectorAll(`[${attr}]`)) b.setAttribute('aria-checked', String(b.getAttribute(attr) === value));
-}
-function drawSetup() {
-  pick('data-provider', provider);
-  pick('data-model', model);
-  for (const f of setup.querySelectorAll('[data-for]')) f.hidden = f.dataset.for !== provider;
-  const endpoint = setup.elements.endpoint.value || setup.elements.endpoint.placeholder;
-  let host = 'api.anthropic.com';
-  if (provider === 'openai') try { host = new URL(endpoint).host; } catch { host = 'the base URL above'; }
-  $('[data-host]', setup).textContent = host;
-  const key = setup.elements.key;
-  key.required = !(settings && settings.provider === provider);
-  key.placeholder = settings?.provider === provider ? `••••••••${settings.key.slice(-4)}` : provider === 'anthropic' ? 'sk-ant-…' : '';
-}
-function openSetup() {
-  if (settings?.provider) provider = settings.provider;
-  if (settings?.provider === 'openai') {
-    setup.elements.endpoint.value = settings.endpoint;
-    setup.elements.model.value = settings.model;
-  }
-  setup.elements.key.value = '';
-  $('.pk-error', setup).hidden = true;
-  forget.hidden = !settings;
-  drawSetup();
-  setup.hidden = false;
-  document.body.classList.add('pk-setting-up');
-  setup.elements.key.focus();
-}
-setup.addEventListener('click', (event) => {
-  const b = event.target.closest('[data-provider], [data-model]');
-  if (!b) return;
-  if (b.dataset.provider) provider = b.dataset.provider;
-  if (b.dataset.model) model = b.dataset.model;
-  drawSetup();
-});
-setup.elements.endpoint.addEventListener('input', drawSetup);
-setup.addEventListener('submit', (event) => {
-  event.preventDefault();
-  const f = setup.elements;
-  const key = f.key.value.trim() || (settings?.provider === provider ? settings.key : '');
-  const next = provider === 'openai'
-    ? { provider, key, endpoint: f.endpoint.value.trim() || f.endpoint.placeholder, model: f.model.value.trim() || f.model.placeholder }
-    : { provider, key, model };
-  const error = $('.pk-error', setup);
-  if (!key) {
-    error.textContent = 'Paste an API key.';
-    error.hidden = false;
-    return;
-  }
-  use(next);
-});
-// From now on the players run on `next`, the visitor's own, or null for Ponjo's: what failed is tried again.
-function use(next) {
-  settings = next;
-  store(settings);
-  setup.hidden = true;
-  document.body.classList.remove('pk-setting-up');
-  drawModel();
-  if (game) for (const [id, n] of Object.entries(game.notes)) if (n.failed) retry(game, id);
-  changed();
-}
-const forget = el('button', 'pj-link-button pk-forget', 'Forget my key and play on Ponjo\'s');
-forget.type = 'button';
-forget.addEventListener('click', () => use(null));
-function drawModel() {
-  $('.pk-model').textContent = !settings ? 'The players run on Claude Haiku 5.5.' : `The players run on ${settings.provider === 'anthropic' ? `Claude ${$(`[data-model="${settings.model}"]`, setup).textContent}` : settings.model}, with your key.`;
-  $('[data-action="key"]').textContent = settings ? 'Change' : 'Use your own key';
-}
-
 // ---- wiring ----
 
 document.addEventListener('click', (event) => {
@@ -535,16 +418,11 @@ document.addEventListener('click', (event) => {
   if (action === 'new') openStart();
   else if (action === 'thinking') showThinking();
   else if (action === 'close') $('.pk-thinking').close();
-  else if (action === 'key') openSetup();
-  else if (action === 'cancel') {
-    setup.hidden = true;
-    document.body.classList.remove('pk-setting-up');
-  }
+  else if (action === 'key') ai.open();
 });
 $('.pk-thinking').addEventListener('click', (event) => {
   if (event.target === event.currentTarget) event.currentTarget.close(); // a click on the backdrop
 });
 
-setup.querySelector('.pk-error').after(forget);
-drawModel();
+ai.draw();
 openStart();

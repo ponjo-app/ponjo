@@ -4,11 +4,9 @@
 // from the rules and what they can see (poker-runtime.js). Here: the
 // controller, which on every change looks at the table and starts the runs
 // `plan` says are due, never acting on an event itself; a run, one call of
-// the visitor's model through INFER (agents/ponjo-core.mjs); and the table
-// drawn with the app's classes and faces. The players run on Claude Haiku
-// through infer.ponjo.app (relay/worker.js), which holds Ponjo's key; or,
-// with a visitor's own key, kept in this browser and sent only to their
-// model's provider, on the model they pick. The person may invite friends
+// the visitor's model (game-page.js, which this page shares with the
+// werewolf page, with its log's messages); and the table drawn with the
+// app's classes and faces. The person may invite friends
 // (poker-share.js): their pages join by a link, and this page, the host's,
 // sends each what its player may see and lands what they do through the
 // same writer. A friend's page, opened at `#join=<room>`, only draws.
@@ -16,22 +14,18 @@
 
 /* global document, location, matchMedia, innerWidth, innerHeight, HTMLDialogElement */
 
-import { INFER } from '../agents/ponjo-core.mjs';
+import { $, el, load, message, models, notice, store, typingMessage } from './game-page.js';
 import { agentFace, personFace, setBuddies, setOwner } from '../web/faces.js';
 import { icon } from '../web/icons.js';
 import { handName, legal } from './poker-dealer.js';
 import { DECIDE, HUMAN, MAX_SEATS, PERSONAS, STACK, addPlayer, begin, force, freeSeats, intros, introduce, isPerson, lineup, react, removePlayer, deal, fail, land, leave, myChips, newTable, plan, prompt, retry, say, seatFriend, topUp } from './poker-runtime.js';
 import { host, join } from './poker-share.js';
 
-const $ = (selector, root = document) => root.querySelector(selector);
-const el = (tag, className = '', text = '') => Object.assign(document.createElement(tag), { className, textContent: text });
-const SAVED = 'ponjo-poker';
 const WALLET = 'ponjo-poker-bankroll';
 const BANKROLL = 1000; // play dollars a new player starts with, and starts again with
 const [MIN_BUY, MAX_BUY] = [200, 1000];
 const AUTO_DEAL = 4; // seconds from a hand's result to the next hand
 const money = (n) => `$${n.toLocaleString('en')}`;
-const HOSTED = 'https://infer.ponjo.app/infer/anthropic'; // Ponjo's key and model, for ponjo.app's pages only
 const SLOTS = ['bottom', 'left', 'top-left', 'top', 'top-right', 'right']; // the six seats round the table, from the one this page sits in
 const TURN = 30_000; // ms a person has to act while friends are at the table; then the dealer checks or folds
 const NAME = 'ponjo-poker-name';
@@ -45,23 +39,8 @@ const me = ROOM ? `f${[...crypto.getRandomValues(new Uint8Array(4))].map((b) => 
 let table = newTable(0); // the person sits down with a buy-in; a friend's page, the table as the host sends it
 const running = new Set(); // players with a run going
 const typing = new Set(); // players typing a line, shown in the chat
-let settings = load(SAVED); // the visitor's own provider, key and model, or null for Ponjo's
 
-// ---- what the visitor keeps in this browser: their model, their bankroll ----
-
-function load(key) {
-  try {
-    return JSON.parse(localStorage.getItem(key)) ?? null;
-  } catch {
-    return null;
-  }
-}
-function store(value, key = SAVED) {
-  try {
-    if (value) localStorage.setItem(key, JSON.stringify(value));
-    else localStorage.removeItem(key);
-  } catch {}
-}
+// ---- what the visitor keeps in this browser: their bankroll ----
 
 // The bankroll, with what was on the table when they last left the page: it comes back to them.
 const wallet = (({ bankroll = BANKROLL, onTable = 0, restarts = 0 } = {}) => ({ bankroll: bankroll + onTable, restarts }))(load(WALLET) ?? undefined);
@@ -69,9 +48,11 @@ const session = { bought: 0, hands: 0, biggest: 0, cashed: 0 };
 const chipsOfMine = () => (turnedAway ? 0 : myChips(table, me));
 const saveWallet = () => store({ ...wallet, onTable: chipsOfMine() }, WALLET);
 let turnedAway = false; // a friend's page the host asked to leave: its chips are back in its bankroll
-const infer = () => (!settings ? INFER.anthropic({ model: 'claude-haiku-5-5', key: 'ponjo' }, HOSTED) // the Worker sets the key, model and effort
-  : settings.provider === 'openai' ? INFER.openai({ endpoint: settings.endpoint, model: settings.model, key: settings.key })
-    : INFER.anthropic({ model: settings.model, key: settings.key, effort: 'low' }));
+// The players' model. Once the visitor picks another, what failed is tried again.
+const ai = models(() => {
+  for (const { id } of PERSONAS) if (table.notes[id].failed) retry(table, id);
+  changed();
+});
 
 // ---- the controller ----
 
@@ -131,7 +112,7 @@ async function run(id, due) {
   draw();
   const { rules, situation } = prompt(table, id, due, basis.talk);
   try {
-    const { calls, text } = await infer()([{ role: 'user', content: rules, cache: true }, { role: 'user', content: situation }], [DECIDE]);
+    const { calls, text } = await ai.infer()([{ role: 'user', content: rules, cache: true }, { role: 'user', content: situation }], [DECIDE]);
     let args = {};
     try {
       args = JSON.parse(calls.find((c) => c.name === 'decide')?.args ?? '{}');
@@ -651,13 +632,13 @@ function drawFeed() {
     const change = table.log[drawn];
     if (change.type === 'chat') {
       const line = table.chat[change.line - 1];
-      feed.append(message(line, feed.lastElementChild?.dataset.by === line.by));
+      feed.append(chatLine(line, feed.lastElementChild?.dataset.by === line.by));
     } else if (change.type === 'react') {
       pop(change.by, change.emoji);
     } else if (change.type === 'rebuy') {
-      feed.append(dealer(`${change.by} buys back in for ${money(change.amount)}.`));
+      feed.append(notice(`${change.by} buys back in for ${money(change.amount)}.`));
     } else if (change.type === 'failed') {
-      const line = dealer(`${change.by} could not reach the model: ${change.why}`);
+      const line = notice(`${change.by} could not reach the model: ${change.why}`);
       line.dataset.failed = '';
       const again = el('button', 'pj-link-button', 'Retry');
       again.type = 'button';
@@ -674,16 +655,9 @@ function drawFeed() {
   const hand = table.hand;
   if (hand?.street === 'done' && posted !== hand.id) {
     posted = hand.id;
-    feed.append(dealer(`Hand ${hand.id}: ${resultText()}`));
+    feed.append(notice(`Hand ${hand.id}: ${resultText()}`));
   }
-  for (const id of typing) {
-    const row = message({ by: id, text: '' }, false);
-    row.classList.add('pk-typing');
-    row.dataset.by = '';
-    $('.pk-msg-text', row).append(el('i'), el('i'), el('i'));
-    $('.pk-msg-text', row).setAttribute('aria-label', `${id} is typing`);
-    feed.append(row);
-  }
+  for (const id of typing) feed.append(typingMessage(faceOf(id), id));
   if (stick) feed.scrollTop = feed.scrollHeight;
 }
 // A reaction: the emoji pops up in a bubble by its sender's face and floats away.
@@ -696,23 +670,11 @@ function pop(id, emoji) {
   setTimeout(() => node.remove(), 2400);
 }
 
-function dealer(text) {
-  return el('li', 'pk-dealer', text);
-}
-// A message: yours on the right; others' on the left with their face and,
-// first in a run of theirs, their name.
-function message(line, more) {
-  const item = el('li', 'pk-msg');
+// A line of chat: yours on the right, others' with their face and name.
+function chatLine(line, more) {
+  const mine = line.by === me;
+  const item = message({ face: !mine && faceOf(line.by), name: label(line.by), text: line.text, mine, more });
   item.dataset.by = line.by;
-  if (more) item.dataset.more = '';
-  const col = el('div', 'pk-msg-col');
-  if (line.by === me) item.dataset.mine = '';
-  else {
-    item.append(faceOf(line.by));
-    if (!more) col.append(el('span', 'pk-msg-name', label(line.by)));
-  }
-  col.append(el('div', 'pk-msg-text', line.text));
-  item.append(col);
   return item;
 }
 
@@ -810,82 +772,12 @@ function showThinking() {
   if (dialog instanceof HTMLDialogElement) dialog.showModal();
 }
 
-// ---- setup: the visitor's provider, key and model ----
+// ---- the players' model: Ponjo's, or the visitor's own key (game-page.js) ----
 
-const setup = $('.pk-setup');
-let provider = settings?.provider ?? 'anthropic';
-let model = settings?.provider === 'anthropic' ? settings.model : 'claude-haiku-5-5';
-
-function pick(attr, value) {
-  for (const b of setup.querySelectorAll(`[${attr}]`)) b.setAttribute('aria-checked', String(b.getAttribute(attr) === value));
-}
-function drawSetup() {
-  pick('data-provider', provider);
-  pick('data-model', model);
-  for (const f of setup.querySelectorAll('[data-for]')) f.hidden = f.dataset.for !== provider;
-  const endpoint = setup.elements.endpoint.value || setup.elements.endpoint.placeholder;
-  let host = 'api.anthropic.com';
-  if (provider === 'openai') try { host = new URL(endpoint).host; } catch { host = 'the base URL above'; }
-  $('[data-host]', setup).textContent = host;
-  const key = setup.elements.key;
-  key.required = !(settings && settings.provider === provider);
-  key.placeholder = settings?.provider === provider ? `••••••••${settings.key.slice(-4)}` : provider === 'anthropic' ? 'sk-ant-…' : '';
-}
-function openSetup() {
-  if (settings?.provider) provider = settings.provider;
-  if (settings?.provider === 'openai') {
-    setup.elements.endpoint.value = settings.endpoint;
-    setup.elements.model.value = settings.model;
-  }
-  setup.elements.key.value = '';
-  $('.pk-error', setup).hidden = true;
-  forget.hidden = !settings;
-  drawSetup();
-  setup.hidden = false;
-  document.body.classList.add('pk-setting-up');
-  setup.elements.key.focus();
-}
-setup.addEventListener('click', (event) => {
-  const b = event.target.closest('[data-provider], [data-model]');
-  if (!b) return;
-  if (b.dataset.provider) provider = b.dataset.provider;
-  if (b.dataset.model) model = b.dataset.model;
-  drawSetup();
-});
-setup.elements.endpoint.addEventListener('input', drawSetup);
-setup.addEventListener('submit', (event) => {
-  event.preventDefault();
-  const f = setup.elements;
-  const key = f.key.value.trim() || (settings?.provider === provider ? settings.key : '');
-  const next = provider === 'openai'
-    ? { provider, key, endpoint: f.endpoint.value.trim() || f.endpoint.placeholder, model: f.model.value.trim() || f.model.placeholder }
-    : { provider, key, model };
-  const error = $('.pk-error', setup);
-  if (!key) {
-    error.textContent = 'Paste an API key.';
-    error.hidden = false;
-    return;
-  }
-  use(next);
-});
-// From now on the players run on `next`, the visitor's own, or null for Ponjo's: what failed is tried again.
-function use(next) {
-  settings = next;
-  store(settings);
-  setup.hidden = true;
-  document.body.classList.remove('pk-setting-up');
-  drawModel();
-  for (const { id } of PERSONAS) if (table.notes[id].failed) retry(table, id);
-  changed();
-}
-const forget = el('button', 'pj-link-button pk-forget', 'Forget my key and play on Ponjo\'s');
-forget.type = 'button';
-forget.addEventListener('click', () => use(null));
 function drawModel() {
   $('[data-action="key"]').hidden = Boolean(ROOM);
-  if (ROOM) return void ($('.pk-model').textContent = 'You joined a friend\'s table: the AI players run on their page.');
-  $('.pk-model').textContent = !settings ? 'The players run on Claude Haiku 5.5.' : `The players run on ${settings.provider === 'anthropic' ? `Claude ${$(`[data-model="${settings.model}"]`, setup).textContent}` : settings.model}, with your key.`;
-  $('[data-action="key"]').textContent = settings ? 'Change' : 'Use your own key';
+  if (ROOM) $('.pk-model').textContent = 'You joined a friend\'s table: the AI players run on their page.';
+  else ai.draw();
 }
 
 // ---- wiring ----
@@ -909,11 +801,7 @@ document.addEventListener('click', (event) => {
   else if (action === 'close') $('.pk-thinking').close();
   else if (action === 'key') {
     pause();
-    openSetup();
-  }
-  else if (action === 'cancel') {
-    setup.hidden = true;
-    document.body.classList.remove('pk-setting-up');
+    ai.open();
   }
   else if (action === 'invite') invite();
   else if (action === 'invite-done') closeInvite();
@@ -1041,7 +929,6 @@ const guest = ROOM && join(ROOM, { id: me }, {
 });
 
 $('.pk-slider').addEventListener('input', drawRaise);
-setup.querySelector('.pk-error').after(forget);
 drawModel();
 draw();
 if (!ROOM) buyIn('sit');

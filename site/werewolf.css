@@ -32,7 +32,6 @@
 .ww-clock:empty { display: none; }
 
 .pk-dealer[data-secret] { color: var(--text-soft); }
-.pk-msg-name small { margin-left: 4px; color: var(--text-faint); }
 .ww-start { width: 360px; max-width: calc(100vw - 32px); }
 .ww-start .pj-segmented { align-self: flex-start; }
 
