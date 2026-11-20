@@ -40,37 +40,59 @@ body, .pk-chat, .pk-plate, .ww-say { transition: background-color 1.2s, color 1.
 /* who voted for whom: an arrow from each voter to their pick */
 .ww-votes { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; color: var(--text-soft); pointer-events: none; }
 .ww-votes line { stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; }
-.ww-votes line[data-mine] { stroke: var(--text); stroke-dasharray: 4 4; }
+.ww-votes line[data-kind="mine"] { stroke: var(--text); stroke-dasharray: 4 4; }
+.ww-votes line[data-kind="pack"] { stroke: var(--wolf); }
 
 /* the phase and the narrator's line, over the clearing, clear of what is said in it */
 .ww-center { order: -1; min-height: 64px; margin-bottom: 64px; display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; transition: color 1.2s; }
-.ww-phase { margin: 0; font-size: 20px; font-weight: 600; }
-.ww-sub { margin: 0; max-width: 260px; color: var(--text-soft); font-size: 13px; line-height: 1.4; transition: color 1.2s; }
-.ww-sub:empty { display: none; }
+.ww-phase { display: inline-flex; align-items: center; gap: 8px; margin: 0; font-size: 20px; font-weight: 600; }
+.ww-time .pj-icon { display: block; width: 22px; height: 22px; }
+.ww-sub { display: inline-flex; align-items: center; gap: 6px; min-height: 18px; margin: 0; color: var(--text-soft); font-size: 13px; line-height: 1.4; transition: color 1.2s; }
+.ww-sub .ww-role-mark { width: 18px; height: 18px; }
 .ww-over { margin-top: 6px; }
 
 /* a player: their face, eyes open or shut; their plate, with what they did and what you know of them */
 .ww-seat { --r: 46%; position: absolute; left: calc(50% + cos(var(--a)) * var(--r)); top: calc(50% + sin(var(--a)) * var(--r)); translate: -50% -50%; z-index: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; width: 112px; padding: 0; border: 0; background: none; color: var(--text); font: inherit; cursor: pointer; transition: opacity 0.3s; }
-.ww-seat[data-dead] :is(.pj-agent-face, .pk-name) { opacity: 0.5; }
-.ww-seat .pj-avatar { --size: 56px; }
-.ww-seat .pj-avatar { filter: none; opacity: 1; }
-.ww-seat[data-dead] .pj-avatar { filter: grayscale(1); }
+.ww-seat[data-dead] .pk-name { opacity: 0.5; }
+.ww-seat .pj-avatar { --size: 56px; filter: none; opacity: 1; transition: filter 0.9s, opacity 0.9s, transform 0.9s cubic-bezier(0.5, 1.6, 0.5, 1); }
+.ww-seat[data-dead] .pj-avatar { filter: grayscale(1); opacity: 0.55; transform: translateY(6px) rotate(-14deg) scale(0.9); } /* slumped: it falls as the day shows who died */
 .ww-role-symbols { position: absolute; width: 0; height: 0; overflow: hidden; }
 .ww-role-label { display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; vertical-align: middle; }
 .ww-role-mark { width: 1.15em; height: 1.15em; flex: none; pointer-events: none; fill: var(--bg); stroke: var(--text); stroke-width: 1.8; stroke-linejoin: round; stroke-linecap: round; }
-.ww-seat .pj-agent-face { transition: transform 0.25s cubic-bezier(0.3, 1.5, 0.5, 1); }
+.ww-seat .pj-agent-face { position: relative; transition: transform 0.25s cubic-bezier(0.3, 1.5, 0.5, 1); }
 .ww-seat[data-turn] .pj-agent-face { transform: scale(1.15); }
 .ww-seat[data-turn] .pk-plate { box-shadow: 0 0 0 2px var(--text); }
-.ww-seat[data-pickable] .pk-plate { outline: 1px dashed var(--text-soft); outline-offset: 2px; }
+.ww-seat[data-pickable]:hover .pj-agent-face { transform: translateY(-6px) scale(1.1); } /* pick me */
+.ww-seat[data-pickable]:hover .pj-avatar { filter: drop-shadow(0 8px 6px var(--scrim)); }
 .ww-seat:hover .pk-plate { background: var(--bg); }
-.ww-seat .pk-plate { width: 104px; gap: 1px; }
+.ww-seat .pk-plate { width: 96px; gap: 2px; }
 .ww-seat .pk-tag { white-space: normal; }
-.ww-seat .pk-tag[data-kind="dead"] { color: var(--text-soft); font-weight: 500; }
-.ww-chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 2px; }
-.ww-chips:empty { display: none; }
-.ww-chip { padding: 0 6px; border-radius: 4px; background: var(--active); color: var(--text); font-size: 11px; font-weight: 500; line-height: 17px; white-space: nowrap; }
-.ww-chip[data-kind="wolf"] { background: var(--wolf); color: var(--on-text); }
-.ww-chip[data-kind="note"] { background: none; box-shadow: inset 0 0 0 1px var(--text-faint); color: var(--text-soft); }
+.ww-seat .pk-tag:empty { display: none; }
+
+/* what you know of a player: their role, or your guess, dashed, on pills under the name; what happened, by their face */
+.ww-badge { position: absolute; z-index: 2; display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; background: var(--bg); box-shadow: var(--shadow-raised); color: var(--text); }
+.ww-badge[data-at="status"] { bottom: -4px; right: -8px; }
+.ww-pills { display: flex; flex-wrap: wrap; justify-content: center; gap: 3px; }
+.ww-pills:not(:has(.ww-pill:not([hidden]))) { display: none; }
+.ww-pill { display: inline-flex; align-items: center; gap: 3px; padding: 0 6px 0 4px; border-radius: 4px; background: var(--active); color: var(--text); font-size: 11px; font-weight: 500; line-height: 18px; white-space: nowrap; }
+.ww-pill[data-kind="wolf"] { background: var(--wolf); color: var(--on-text); }
+.ww-pill[data-kind="note"] { background: none; color: var(--text-soft); outline: 1px dashed var(--text-soft); outline-offset: -1px; }
+.ww-pill .ww-role-mark, .ww-pill .pj-icon { width: 13px; height: 13px; }
+.ww-badge[data-kind="voted"] { animation: ww-pop 0.35s cubic-bezier(0.3, 1.6, 0.5, 1); }
+.ww-badge .ww-role-mark, .ww-badge .pj-icon { width: 15px; height: 15px; }
+.ww-claw { position: absolute; z-index: 1; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; }
+.ww-claw .ww-role-mark { width: 70%; height: 70%; fill: none; stroke: var(--wolf); stroke-width: 2.6; animation: ww-slash 0.5s ease-out, ww-throb 1.6s ease-in-out 0.5s infinite; }
+.ww-dots { display: flex; justify-content: center; gap: 3px; }
+.ww-dots:empty { display: none; }
+.ww-dots i { width: 7px; height: 7px; border-radius: 50%; background: var(--text); animation: ww-pop 0.35s cubic-bezier(0.3, 1.6, 0.5, 1) backwards; }
+/* your turn: a ring round your face, draining */
+.ww-timer { position: absolute; inset: -7px; width: calc(100% + 14px); height: calc(100% + 14px); rotate: -90deg; opacity: 0; pointer-events: none; transition: opacity 0.3s; }
+.ww-timer-on { opacity: 1; }
+.ww-timer circle { fill: none; stroke: var(--text); stroke-width: 2; stroke-linecap: round; stroke-dasharray: 100; }
+@keyframes ww-drain { to { stroke-dashoffset: 100; } }
+@keyframes ww-pop { from { opacity: 0; transform: scale(0.2); } }
+@keyframes ww-slash { from { opacity: 0; clip-path: inset(0 0 100% 0); } to { opacity: 1; clip-path: inset(0); } }
+@keyframes ww-throb { 50% { opacity: 0.55; } }
 
 /* what a player just said, by their seat, toward the fire */
 .ww-say { position: absolute; z-index: 2; left: 50%; top: 28px; width: max-content; max-width: 180px; padding: 6px 10px; border-radius: 14px; background: var(--bg); box-shadow: var(--shadow-raised); color: var(--text); font-size: 13px; line-height: 1.35; text-align: left; translate: calc(-50% - cos(var(--a)) * 140px) calc(-50% - sin(var(--a)) * 110px); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; pointer-events: none; animation: pj-pop 0.15s ease-out; }
@@ -82,23 +104,19 @@ body, .pk-chat, .pk-plate, .ww-say { transition: background-color 1.2s, color 1.
 .ww-menu li[data-do] { font-weight: 600; }
 
 .ww-me { display: flex; flex-direction: column; align-items: center; gap: 12px; width: min(100%, 560px); margin: 0 auto; }
-.ww-role { margin: 0; font-size: 14px; text-align: center; }
-.ww-role b { font-weight: 600; }
-.ww-hint { display: block; margin-top: 4px; color: var(--text-faint); font-size: 12px; }
-.ww-hint:empty { display: none; }
+.ww-hint { margin: 0; color: var(--text-faint); font-size: 12px; }
 .ww-act { display: flex; flex-direction: column; gap: 8px; width: 100%; }
 .ww-ask { margin: 0; font-size: 14px; font-weight: 600; text-align: center; }
 .ww-text { width: 100%; box-sizing: border-box; min-height: 3lh; max-height: 8lh; field-sizing: content; resize: none; font: 14px/1.5 var(--ui-font); }
 .ww-buttons { flex-wrap: wrap; justify-content: center; }
-.ww-clock { margin: 0; color: var(--text-faint); font-size: 12px; text-align: center; }
-.ww-clock:empty { display: none; }
 
 .pk-dealer[data-secret] { color: var(--text-soft); }
 .ww-start { width: 360px; max-width: calc(100vw - 32px); }
 .ww-start .pj-segmented { align-self: flex-start; }
 
 @media (prefers-reduced-motion: reduce) {
-  .ww-flame, .ww-flame-core, .ww-smoke { animation: none; }
+  .ww-flame, .ww-flame-core, .ww-smoke, .ww-claw .ww-role-mark, .ww-dots i, .ww-badge, .ww-pill { animation: none; }
+  .ww-seat .pj-avatar { transition: none; }
 }
 @media (max-width: 640px) {
   .ww-board { width: calc(100% - 72px); min-width: 0; }
@@ -107,8 +125,10 @@ body, .pk-chat, .pk-plate, .ww-say { transition: background-color 1.2s, color 1.
   .ww-fire { width: 64px; height: 64px; }
   .ww-seat { width: 72px; gap: 4px; }
   .ww-seat .pj-avatar { --size: 40px; }
+  .ww-badge { width: 20px; height: 20px; }
+  .ww-badge .ww-role-mark, .ww-badge .pj-icon { width: 12px; height: 12px; }
   .ww-seat .pk-plate { width: 72px; }
-  .ww-say { max-width: 140px; font-size: 12px; translate: calc(-50% - cos(var(--a)) * 70px) calc(-50% - sin(var(--a)) * 64px); }
+  .ww-say { max-width: 140px; font-size: 12px; translate: calc(-50% - cos(var(--a)) * 70px) calc(-50% - sin(var(--a)) * 96px); }
   .ww-phase { font-size: 16px; }
   .ww-sub { font-size: 12px; color: var(--text-soft); }
 }
