@@ -21,13 +21,9 @@ import { execute, killTree, testAgent } from './runner.js';
 
 // A look that could not read the doc (a sidecar locked or unreadable, a
 // buddy file gone as it was read) is tried again this long after, twice as
-// long each time, up to LOOK_AGAIN_MAX_MS: no event may come to try it.
+// long each time, up to LOOK_AGAIN_MAX_MS: no change may come to try it.
 const LOOK_AGAIN_MS = 1000;
 const LOOK_AGAIN_MAX_MS = 30_000;
-// A look on the clock, this often, finds what an event lost would have
-// woken (a look at any time finds the same), and says so: a lost event is a
-// bug to fix, not one to hide.
-const RESYNC_MS = 60_000;
 
 // A time as the agent log writes it, on this machine's clock: 2026-11-18 21:40:12.203.
 const stamp = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${d.toTimeString().slice(0, 8)}.${String(d.getMilliseconds()).padStart(3, '0')}`;
@@ -45,9 +41,9 @@ export function agentsFor(level, agents) {
  * The buddies of one open doc. `world` is the doc's (doc-world.js), the
  * five calls it reaches the doc by; `docPath()` names the doc in the logs
  * and notes. `emit` tells every window (`agents`, `steps`). `timeoutMs`
- * ends a run that hangs; `resyncMs` is how often a look comes on the clock.
+ * ends a run that hangs.
  */
-export async function createBuddyRuntime({ world, docPath, settingsDir, secrets, emit, timeoutMs, resyncMs = RESYNC_MS }) {
+export async function createBuddyRuntime({ world, docPath, settingsDir, secrets, emit, timeoutMs }) {
   // What this machine notes of each buddy (plan): { seen, lookedAt, since
   // (the files of its last watch run's view, or null), wake (the lines that
   // run named, or null), failed (ask, or 'watch' for its watch, → { at, why
@@ -56,7 +52,7 @@ export async function createBuddyRuntime({ world, docPath, settingsDir, secrets,
   const notes = new Map();
   const noteOf = (id) => notes.get(id) ?? notes.set(id, { seen: new Map(), lookedAt: null, since: null, wake: null, failed: new Map(), watch: null }).get(id);
   for (const [id, { by }] of Object.entries(await readWatching(docPath(), settingsDir))) noteOf(id).watch = { by };
-  let version = (await world.wait(Infinity, 0)).rev; // the world's version, as last heard
+  let version = (await world.wait(Infinity, 0)).rev; // the world's version, as last read from its log
   for (const note of notes.values()) note.lookedAt = version; // no run on opening
   const changedAt = new Map(); // who last changed the text → { rev, at }, people as null
   let steps = { left: null, cap: DEFAULT_SETTINGS.steps, every: DEFAULT_SETTINGS.refillEvery * 1000, at: performance.now() };
@@ -125,18 +121,7 @@ export async function createBuddyRuntime({ world, docPath, settingsDir, secrets,
     })();
     return looking;
   }
-  // A look on the clock while nothing is set to wake one: what it starts, no
-  // event woke.
-  let byClock = false;
-  const resync = setInterval(() => {
-    if (looking || stopped) return;
-    byClock = timerAt === Infinity;
-    look(`the clock${byClock ? ', with no look set' : ''}`);
-  }, resyncMs);
-  resync.unref?.();
   async function lookOnce() {
-    const clock = byClock;
-    byClock = false;
     const why = [...whys].join('; ');
     whys.clear();
     const members = await world.members();
@@ -168,10 +153,6 @@ export async function createBuddyRuntime({ world, docPath, settingsDir, secrets,
     const names = new Map([...runs].map(([id, r]) => [id, r.task.agent.name]).concat(here.map((b) => [b.id, b.name])));
     for (const id of p.stop) end(runs.get(id));
     for (const task of p.start) if (!stopped) verdicts.set(task.agent.id, `${verdicts.get(task.agent.id)} · started ${startRun(task)}`);
-    if (clock && p.start.length) {
-      console.warn(`A look on the clock started ${p.start.map((t) => t.agent.name).join(', ')}: no event woke it, so one was lost`);
-      verdicts.set(' lost', 'no event woke this look: one was lost');
-    }
     const rows = [...verdicts].map(([id, reason]) => [names.get(id) ?? '', reason]);
     const width = Math.max(...rows.map(([name]) => name.length));
     tell(`look · ${why || 'asked to'}`, ...rows.map(([name, reason]) => `${name.padEnd(width)}  ${reason}`));
@@ -221,6 +202,7 @@ export async function createBuddyRuntime({ world, docPath, settingsDir, secrets,
     let answered = null;
     try {
       view = await world.view(task.agent, { since: task.watch ? noteOf(task.agent.id).since : undefined, asks: task.asks });
+      run.from = view.rev;
       const { settings } = await readSettings(settingsDir);
       result = await execute({
         buddy: task.agent, files: view.files, prompt: view.prompt, timeoutMs,
@@ -356,37 +338,46 @@ export async function createBuddyRuntime({ world, docPath, settingsDir, secrets,
     await look('the buddies or who may ask changed');
   }
 
-  return {
-    /**
-     * A change landed in the doc's log (doc-service.js, subscribe): { rev,
-     * by: { id, kind }, comments }. Comments changed: look. The text: a
-     * person's ends the runs only a watch started, for they saw the doc as
-     * it was, and the watchers look again once people pause; one found on
-     * disk ends none (a program may write more often than a run lasts: the
-     * run lands merged by line, and runs again on it) and, being whole, has
-     * them look at once, as a buddy's does.
-     */
-    heard({ rev, by: author, comments }) {
+  // A change landed in the world's log (wait): { rev, by: { id, kind }, at,
+  // comments }. Comments changed: look. The text: a person's ends the runs
+  // only a watch started, for they saw the doc as it was, and the watchers
+  // look again once people pause; one found on disk ends none (a program
+  // may write more often than a run lasts: the run lands merged by line,
+  // and runs again on it) and, being whole, has them look at once, as a
+  // buddy's does.
+  function changed({ rev, by: author, at, comments }) {
+    const who = author.kind === 'buddy' ? nameOf(author.id) : author.kind === 'person' ? 'a person' : 'outside the app';
+    if (comments) {
+      look(`a comment by ${who}, rev ${rev}`);
+      return;
+    }
+    const by = author.kind === 'buddy' ? author.id : author.kind === 'outside' ? OUTSIDE : null;
+    changedAt.set(by, { rev, at });
+    if (![...notes.values()].some((n) => n.watch)) return;
+    if (by !== null) {
+      look(`an edit by ${who}, rev ${rev}`);
+      return;
+    }
+    for (const run of runs.values()) {
+      if (!run.task.watchOnly || run.landing || run.cancelled) continue;
+      noteOf(run.task.agent.id).lookedAt = run.from;
+      end(run);
+    }
+    wake(at + SETTLE_MS, `an edit by ${who}, rev ${rev}, once people pause`);
+  }
+  // Wait for the world to change after the version last read, and take
+  // each change, until closed: a change that lands meanwhile is in the
+  // log the next wait reads.
+  (async () => {
+    while (!stopped) {
+      const { rev, log } = await world.wait(version, Infinity);
+      if (stopped) return;
       version = rev;
-      const who = author.kind === 'buddy' ? nameOf(author.id) : author.kind === 'person' ? 'a person' : 'outside the app';
-      if (comments) {
-        look(`a comment by ${who}, rev ${rev}`);
-        return;
-      }
-      const by = author.kind === 'buddy' ? author.id : author.kind === 'outside' ? OUTSIDE : null;
-      changedAt.set(by, { rev, at: performance.now() });
-      if (![...notes.values()].some((n) => n.watch)) return;
-      if (by !== null) {
-        look(`an edit by ${who}, rev ${rev}`);
-        return;
-      }
-      for (const run of runs.values()) {
-        if (!run.task.watchOnly || run.landing || run.cancelled) continue;
-        noteOf(run.task.agent.id).lookedAt = run.from;
-        end(run);
-      }
-      wake(performance.now() + SETTLE_MS, `an edit by ${who}, rev ${rev}, once people pause`);
-    },
+      for (const change of log) changed(change);
+    }
+  })().catch((error) => console.error('Could not wait for the doc to change:', error));
+
+  return {
     /** What is asked may have changed (`why`): look again. */
     look,
     sync,
@@ -419,7 +410,6 @@ export async function createBuddyRuntime({ world, docPath, settingsDir, secrets,
     async close() {
       stopped = true;
       clearTimeout(timer);
-      clearInterval(resync);
       await looking;
       for (const run of runs.values()) end(run);
       await Promise.all([...runs.values()].map((r) => r.done));

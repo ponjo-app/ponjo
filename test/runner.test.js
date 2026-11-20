@@ -191,24 +191,32 @@ test('a script that exits 1 writes nothing: the buddy\'s status says the thread 
 
 // The runtime over a doc world whose door only holds threads, for what it does
 // whatever the doc: `read()` gives the sidecar's lines, or throws.
-async function withRuntime(read, fn, options = {}) {
+// `change(change, told)` lands a change in the door's log ({ by, comments }),
+// and tells the world of it unless `told` is false.
+async function withRuntime(read, fn) {
   const settingsDir = await fakeConfig();
   const docPath = await tempDoc('Text.\n');
   const ask = { id: 'c_asked0001', anchor: null, by: { id: 'u_me000001', name: 'me', kind: 'human' }, at: '2026-11-17T10:00:00.000Z', body: '@X look' };
   await noteTaken(docPath, settingsDir, ask, [ask.id]);
   const landed = [];
+  const changes = [];
+  const listeners = [];
+  const change = (c, told = true) => {
+    changes.push({ rev: changes.length + 1, at: performance.now(), comments: false, ...c });
+    if (told) for (const listener of listeners) listener();
+  };
   const world = createDocWorld({
     door: {
-      text: () => 'Text.\n', rev: () => 0, epoch: () => 'e_1', missing: () => false,
+      text: () => 'Text.\n', rev: () => changes.length, epoch: () => 'e_1', missing: () => false, changes: (since) => changes.slice(Math.max(0, since)),
       readComments: async () => ({ lines: read(ask).map((comment) => ({ comment })), problem: null }),
       submit: async () => ({}), comment: async (arg) => { landed.push(arg); return { at: new Date().toISOString() }; },
     },
-    subscribe: () => {}, place: () => ({ docPath, folder: null, room: null }), pathInProject: async () => 'doc.md',
+    subscribe: (listener) => listeners.push(listener), place: () => ({ docPath, folder: null, room: null }), pathInProject: async () => 'doc.md',
     buddies: async () => [{ id: 'b_x', name: 'X', about: '' }], me: async () => ({ id: 'u_me000001', name: 'me' }), settingsDir,
   });
-  const runtime = await createBuddyRuntime({ world, docPath: () => docPath, settingsDir, secrets: () => ({}), emit: () => {}, ...options });
+  const runtime = await createBuddyRuntime({ world, docPath: () => docPath, settingsDir, secrets: () => ({}), emit: () => {} });
   try {
-    await fn({ runtime, landed, settingsDir });
+    await fn({ runtime, landed, settingsDir, change });
   } finally {
     await runtime.close();
   }
@@ -250,21 +258,14 @@ test('a look that could not read the doc is tried again, later each time, until 
   });
 });
 
-test('a look on the clock starts what no event woke, and says an event was lost', async () => {
-  let asks = false; // the ask comes, but no event says so
-  const warned = [];
-  const warn = console.warn;
-  console.warn = (message) => warned.push(message);
-  try {
-    await withRuntime((ask) => (asks ? [ask] : []), async ({ runtime, landed }) => {
-      await runtime.look();
-      asks = true;
-      await until(() => landed.length === 1, 'the run, from a look on the clock', 5000);
-      assert.match(warned.join('\n'), /A look on the clock started X: no event woke it, so one was lost/);
-    }, { resyncMs: 300 });
-  } finally {
-    console.warn = warn;
-  }
+test('a change the world was not told of is in the log its next wait reads: a person\'s edit still has the watcher run once they pause', { timeout: 30_000 }, async () => {
+  await withRuntime(() => [], async ({ runtime, landed, change }) => {
+    await runtime.calls.watch({ buddy: 'b_x', on: true }, { id: 'u_me000001' });
+    await until(() => landed.length === 1 && runtime.running().length === 0, 'its first look');
+    change({ by: { id: 'u_me000001', kind: 'person' } }, false); // its notification lost
+    change({ by: { id: 'u_me000001', kind: 'person' }, comments: true });
+    await until(() => landed.length === 2, 'a run on the edit, once people pause', 10_000);
+  });
 });
 
 test('a teammate hears that a run failed, not why', () => {

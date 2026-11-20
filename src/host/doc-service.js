@@ -82,7 +82,8 @@ export async function openDocService(docPath, { folder = null, room = null, sett
   // new one takes the text again). `log` holds the latest landed edits, the
   // one that made rev `logStart + k + 1` at k, to move a window's edit from
   // an older rev, to know a window's edit sent again, and to tell a window
-  // what it missed: { ops, id, event }.
+  // what it missed, and the doc world what changed: { ops, id, event, at
+  // (when it landed, performance.now()) }.
   // `written` is the text the file holds as last written or read,
   // `writtenHash` its hash: a file that is not that changed outside.
   // `writtenStat` is the file's stat as this service last wrote it: a file
@@ -126,7 +127,7 @@ export async function openDocService(docPath, { folder = null, room = null, sett
   // and its `reply`), an outside change, an undo.
   function land(ops, meta) {
     const event = { epoch, rev: rev + 1, ops, id: meta.id ?? null, by: meta.by, ...(meta.reply ? { reply: meta.reply } : {}) };
-    log.push({ ops, id: meta.id, event });
+    log.push({ ops, id: meta.id, event, at: performance.now() });
     if (meta.id) landedRevs.set(meta.id, rev + 1);
     if (log.length > LOG_SIZE) {
       log.shift();
@@ -142,7 +143,7 @@ export async function openDocService(docPath, { folder = null, room = null, sett
   // its edits.
   function changedComments(by) {
     const event = { epoch, rev: rev + 1, ops: [], id: null, by, comments: true };
-    log.push({ ops: [], event });
+    log.push({ ops: [], event, at: performance.now() });
     if (log.length > LOG_SIZE) {
       log.shift();
       logStart++;
@@ -699,11 +700,14 @@ export async function openDocService(docPath, { folder = null, room = null, sett
   const api = {
     /**
      * The doc for a client in this process (the doc world): its text, rev,
-     * epoch, whether it is missing, its comments as read (readComments),
-     * and `submit` and `comment` through the door.
+     * epoch, whether it is missing, the changes after rev `since` that the
+     * log still holds (changes: [{ rev, by, at, comments }], `comments`
+     * when only the comments changed), its comments as read
+     * (readComments), and `submit` and `comment` through the door.
      */
     door: {
       text: () => text, rev: () => rev, epoch: () => epoch, missing: () => missing,
+      changes: (since) => log.slice(Math.max(0, since - logStart)).map(({ event, at }) => ({ rev: event.rev, by: event.by, at, comments: event.comments === true })),
       readComments: () => readComments(),
       submit: (arg, who) => api.call('submit', arg, who),
       comment: (arg, who) => api.call('comment', arg, who),

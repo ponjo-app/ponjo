@@ -13,27 +13,22 @@ import { readTaken } from '../store/history.js';
 import { SIDECAR_SUFFIX, readSidecarText } from '../store/files.js';
 import { settingsWithId } from '../store/settings.js';
 
-const LOG_SIZE = 1000; // the changes kept to answer a wait
-
 /**
  * The world of one open doc. `door` is how it reads the doc and lands a
- * change: { text(), rev(), epoch(), missing(), readComments() (the
- * sidecar's lines and problem), submit(arg, who), comment(arg, who) }.
- * `subscribe(fn)` hears each change as it lands, `{ rev, by: { id, kind } }`
- * (doc-service.js). `place()` is { docPath, folder, room } as they are now,
+ * change: { text(), rev(), epoch(), missing(), changes(since) (those after
+ * rev `since`), readComments() (the sidecar's lines and problem),
+ * submit(arg, who), comment(arg, who) }. `subscribe(fn)` calls `fn` as each
+ * change lands (doc-service.js). `place()` is { docPath, folder, room } as they are now,
  * `pathInProject()` the doc's path in its project (`/`-separated);
  * `buddies()` the buddies the doc reaches and `me()` the owner.
  */
 export function createDocWorld({ door, subscribe, place, pathInProject, buddies, me, settingsDir }) {
   // The comments a run here posted → the people it was for: its @mentions ask.
   const posted = new Map();
-  // The latest changes, oldest first, each { rev, by, at (performance.now()) },
-  // and who waits for the next.
-  const log = [];
+  // Who waits for the next change: each is told as one lands, then reads
+  // the door's log, so a change it was not told of is in it all the same.
   const waiting = new Set();
-  subscribe(({ rev, by }) => {
-    log.push({ rev, by, at: performance.now() });
-    if (log.length > LOG_SIZE) log.shift();
+  subscribe(() => {
     for (const done of waiting) done();
   });
 
@@ -62,11 +57,13 @@ export function createDocWorld({ door, subscribe, place, pathInProject, buddies,
     /**
      * Wait until something changed after `version`, or until `deadline`
      * (performance.now()): { rev (the version now), log (the changes after
-     * `version`, oldest first) }.
+     * `version` the door's log still holds, oldest first: { rev, by: { id,
+     * kind ('person', 'buddy' or 'outside') }, at (performance.now()),
+     * comments (whether only the comments changed) }) }.
      */
     async wait(version, deadline) {
       for (;;) {
-        const since = log.filter((c) => c.rev > version);
+        const since = door.changes(version);
         if (since.length || performance.now() >= deadline) return { rev: door.rev(), log: since };
         await new Promise((resolve) => {
           const done = () => {

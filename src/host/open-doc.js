@@ -39,8 +39,6 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
     buddies, me, settingsDir,
   });
   const runtime = await createBuddyRuntime({ world, docPath: doc.docPath, settingsDir, secrets, emit });
-  // Every change to the doc: an edit to its text, by whom; or its comments.
-  const stopHearing = doc.subscribe(runtime.heard);
 
   // What else may change what is asked: the buddies' files, who may ask, the agent.
   const stopWatchingUserBuddies = watchFolder(userBuddiesDir(settingsDir), runtime.sync);
@@ -151,7 +149,6 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
       runtime.sync();
     },
     async close() {
-      stopHearing();
       stopWatchingUserBuddies();
       stopWatchingProjectBuddies();
       stopFollowingRoom();
