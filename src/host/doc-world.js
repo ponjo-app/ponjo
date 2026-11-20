@@ -76,12 +76,12 @@ export function createDocWorld({ door, subscribe, place, pathInProject, buddies,
      * Wait until something changed after `version`, or until `deadline`
      * (performance.now()): { rev (the version now), log (the changes after
      * `version` the door's log still holds, oldest first: { rev, by: { id,
-     * kind ('person', 'buddy' or 'outside') }, at (performance.now()),
-     * comments (whether only the comments changed) }) }.
+     * kind ('person', 'agent' or 'outside') }, at (performance.now()),
+     * asks (whether only the comments changed, and so only what is asked) }) }.
      */
     async wait(version, deadline) {
       for (;;) {
-        const since = door.changes(version);
+        const since = door.changes(version).map(({ by, comments, ...change }) => ({ ...change, by: by.kind === 'buddy' ? { ...by, kind: 'agent' } : by, asks: comments }));
         if (since.length || performance.now() >= deadline) return { rev: door.rev(), log: since };
         await new Promise((resolve) => {
           const done = () => {
@@ -134,7 +134,8 @@ export function createDocWorld({ door, subscribe, place, pathInProject, buddies,
 
     /**
      * Land what a run left behind, as `agent` ({ id, name, for: the people
-     * it ran for, depth: its run's }), on the doc of version `version`: `old` what it was
+     * it ran for, depth: its run's }), on the doc of version `version`,
+     * unless one of those people may no longer ask: `old` what it was
      * given ({ files, asks }), `made` what it made ({ text, comments: {
      * before, after }, groups, actions, output }); the actions on comments
      * it posted are recorded, to be carried out (doc-actions.js). Each comment's edits (its group)
@@ -144,6 +145,8 @@ export function createDocWorld({ door, subscribe, place, pathInProject, buddies,
      * its trace), comments (the ids of those it posted) }.
      */
     async propose(agent, version, old, made) {
+      const here = await members();
+      if (!agent.for.every((id) => here.some((m) => m.id === id && m.mayAsk))) return { comments: [], landed: 'Dropped: whoever asked can no longer edit' };
       const by = { id: agent.id, name: agent.name, kind: 'ai' };
       const { threads } = await threadsNow();
       const open = new Map(threads.filter((t) => !t.resolved).map((t) => [t.id, t]));

@@ -11,7 +11,7 @@ import { newId } from './comments.js';
 import { OUTSIDE, SETTLE_MS, plan } from './due.js';
 
 // A look that could not read the world (in a doc: a sidecar locked or
-// unreadable, a buddy file gone as it was read) is tried again this long
+// unreadable, an agent's file gone as it was read) is tried again this long
 // after, twice as long each time, up to LOOK_AGAIN_MAX_MS: no change may come to try it.
 const LOOK_AGAIN_MS = 1000;
 const LOOK_AGAIN_MAX_MS = 30_000;
@@ -128,7 +128,7 @@ export async function createRuntime({ world, run, print, wakes, breaker, watchin
     let gone = false;
     for (const [id, note] of notes) for (const key of note.failed.keys()) if (key !== 'watch' && !p.asking.has(`${id} ${key}`)) gone = note.failed.delete(key);
     if (gone) broadcastAgents();
-    const verdicts = new Map(p.why ?? [['', problem ? `nothing starts: ${problem}` : 'nothing starts: no buddy here']]);
+    const verdicts = new Map(p.why ?? [['', problem ? `nothing starts: ${problem}` : 'nothing starts: no agent here']]);
     const names = new Map([...runs].map(([id, r]) => [id, r.task.agent.name]).concat(here.map((b) => [b.id, b.name])));
     for (const id of p.stop) end(runs.get(id));
     for (const task of p.start) if (!stopped) verdicts.set(task.agent.id, `${verdicts.get(task.agent.id)} · started ${startRun(task)}`);
@@ -203,8 +203,7 @@ export async function createRuntime({ world, run, print, wakes, breaker, watchin
 
   // A run ended: the agent's notes say what it was given and how it went,
   // and what it left behind is proposed to the world, as the agent, for
-  // whoever asked it, at most at their level: a run one of whose askers
-  // may no longer ask lands nothing. A failed run lands nothing: it is
+  // whoever asked it: the world lands it as they may. A failed run lands nothing: it is
   // noted as the agent's failure in each ask it was given that still asks
   // it (and for its watch), and asks again only when someone writes there,
   // on Retry, or once the agent program or its settings change. Resolves to
@@ -225,15 +224,13 @@ export async function createRuntime({ world, run, print, wakes, breaker, watchin
       if (failed) note.failed.set('watch', { at: new Date().toISOString(), why: result.body });
       else note.failed.delete('watch');
     }
-    const members = await world.members();
-    for (const asker of task.askers) if (!members.some((m) => m.id === asker && m.mayAsk)) return { comments: [], landed: 'Dropped: whoever asked can no longer edit' };
     if (failed) {
       const still = new Set((await world.asks().catch(() => [])).filter((a) => a.agent === id).map((a) => a.id));
       for (const a of task.asks) note.failed.delete(a.id);
       const at = new Date().toISOString();
       for (const a of task.asks) if (still.has(a.id)) note.failed.set(a.id, { at, why: result.body });
       broadcastAgents();
-      return { comments: [], landed: 'Failed' };
+      return { landed: 'Failed' };
     }
     for (const a of task.asks) note.failed.delete(a.id);
     broadcastAgents();
@@ -303,26 +300,26 @@ export async function createRuntime({ world, run, print, wakes, breaker, watchin
     try {
       shown = (await world.members()).filter((m) => m.kind === 'agent').map(({ kind, mayAsk, ...b }) => b);
     } catch (error) {
-      console.error('Could not read the buddies:', error);
+      console.error('Could not read the members:', error);
     }
     broadcastAgents();
-    await look('the buddies or who may ask changed');
+    await look('the agents or who may ask changed');
   }
 
   // A change landed in the world's log (wait): { rev, by: { id, kind }, at,
-  // comments }. Comments changed: look. Otherwise a person's change ends
+  // asks }. Only what is asked changed: look. Otherwise a person's change ends
   // the runs only a watch started, for they saw the world as it was, and
   // the watchers look again once people pause; one from outside the app
   // ends none (a program may write more often than a run lasts: the run
   // lands merged, and runs again on it) and, being whole, has them look at
   // once, as an agent's does.
-  function changed({ rev, by: author, at, comments }) {
-    const who = author.kind === 'buddy' ? nameOf(author.id) : author.kind === 'person' ? 'a person' : 'outside the app';
-    if (comments) {
-      look(`a comment by ${who}, rev ${rev}`);
+  function changed({ rev, by: author, at, asks }) {
+    const who = author.kind === 'agent' ? nameOf(author.id) : author.kind === 'person' ? 'a person' : 'outside the app';
+    if (asks) {
+      look(`asks changed by ${who}, rev ${rev}`);
       return;
     }
-    const by = author.kind === 'buddy' ? author.id : author.kind === 'outside' ? OUTSIDE : null;
+    const by = author.kind === 'agent' ? author.id : author.kind === 'outside' ? OUTSIDE : null;
     changedAt.set(by, { rev, at, depth: depths.get(by) ?? 0 });
     if (![...notes.values()].some((n) => n.watch)) return;
     if (by !== null) {

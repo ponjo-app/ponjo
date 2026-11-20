@@ -44,7 +44,8 @@ members()                           who is here: id, name, person or agent, may 
 asks()                              open asks: id, agent, when, from whom
 view(member, { since, asks })       what this member sees: files, a prompt, the version
 wait(version, deadline)             block until something changed after version, or the deadline;
-                                    → the new version and the log since: version, author, time
+                                    → the new version and the log since: version, author, time,
+                                      whether only what is asked changed
 propose(member, version, old, new)  → landed, or refused because …
 ```
 
@@ -55,6 +56,9 @@ propose(member, version, old, new)  → landed, or refused because …
 - `propose` is the only way a run changes the world. The writer lands it
   under the world's rules (a doc merges; a game refuses a stale move), in
   order with every other change.
+- Who may ask is the world's to say (`mayAsk`), and what an ask is: a
+  comment that @mentions a buddy, a player's turn. The runtime knows no
+  levels; it starts work only for those the world says may ask.
 
 ## How the plan decides
 
@@ -163,8 +167,12 @@ only, never the world's content. In Ponjo: Settings > Agents > Agent log.
 
 ## Security
 
-- Only people start work: an ask from a person who may write, or a watch a
-  person turned on. A request found in a file asks no one.
+What the runtime holds to in every world. Who may ask, and what asks, is
+each world's (in Ponjo: [host spec](host-spec.md#buddies)).
+
+- Work starts only for a member who may ask: their ask, an agent's ask for
+  them, or a watch they turned on. A run is proposed for them, and the
+  world lands it as they may.
 - A run sees only its member's view and changes only through `propose`.
 - Outside any view: whoever runs the host can read its files, and an agent
   program must be kept by its own permissions from opening files outside

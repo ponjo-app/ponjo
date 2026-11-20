@@ -70,7 +70,7 @@ export async function createBuddyRuntime({ world, docPath, settingsDir, secrets,
     async ended({ id, task, view, result, answered }) {
       const trace = { script: result.script, prompt: result.prompt, steps: result.steps ?? [], stdout: result.stdout ?? '', stderr: result.stderr ?? '', base: view?.files.text ?? null, edited: result.edited ?? null, comments: result.comments ?? null, landed: answered?.landed ?? 'Ended without an answer' };
       const why = result.outcome === 'ok' || result.outcome === 'stopped' ? '' : `: ${String(result.body ?? '').split('\n')[0].slice(0, 200)}`;
-      tell(`run ${id} of ${task.agent.name} ended: ${result.outcome}${why} in ${(result.ms / 1000).toFixed(1)} s · ${trace.landed}, ${answered?.comments.length ?? 0} comments`);
+      tell(`run ${id} of ${task.agent.name} ended: ${result.outcome}${why} in ${(result.ms / 1000).toFixed(1)} s · ${trace.landed}, ${answered?.comments?.length ?? 0} comments`);
       await logRun(settingsDir, { doc: docPath(), run: id, buddy: task.agent.name, threads: task.asks.map((a) => a.id), ...(task.watch ? { watched: true } : {}), comments: answered?.comments ?? [], at: new Date(result.at).toISOString(), ms: result.ms, outcome: result.outcome, code: result.code, ...(result.usage ? { usage: result.usage } : {}) }, trace);
     },
   });

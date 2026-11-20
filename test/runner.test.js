@@ -271,6 +271,20 @@ test('a change the world was not told of is in the log its next wait reads: a pe
   });
 });
 
+test('the doc lands a run only while everyone it ran for may still ask', async () => {
+  const landed = [];
+  const room = { list: () => ({ teammates: [{ id: 'u_mate0001', name: 'Mate', level: 'read' }] }) };
+  const world = createDocWorld({
+    door: { text: () => 'Text.\n', rev: () => 0, changes: () => [], readComments: async () => ({ lines: [], problem: null }), comment: async (arg) => landed.push(arg) },
+    subscribe: () => {}, place: () => ({ docPath: 'doc.md', folder: null, room }), pathInProject: async () => 'doc.md',
+    buddies: async () => [{ id: 'b_x', name: 'X', about: '' }], me: async () => ({ id: 'u_me000001', name: 'me' }), settingsDir: await fakeConfig(),
+  });
+  const made = { text: 'Text.\n', comments: { before: '', after: '' }, groups: [] };
+  const old = { files: { text: 'Text.\n' }, asks: [] };
+  assert.deepEqual(await world.propose({ id: 'b_x', name: 'X', for: ['u_me000001', 'u_mate0001'], depth: 0 }, 0, old, made), { comments: [], landed: 'Dropped: whoever asked can no longer edit' });
+  assert.deepEqual(landed, []);
+});
+
 test('a teammate hears that a run failed, not why', () => {
   const agents = [{ id: 'b_x', name: 'X', state: 'ready', threadIds: [], failed: [{ thread: 'c_t', at: 'now', why: '/home/me/agents/claude: no key' }] }];
   assert.deepEqual(agentsFor('owner', agents), agents);
@@ -473,7 +487,7 @@ test('a watcher whose run named a line in PONJO_WAKE runs again only once the do
     await until(async () => (await state()).agents.every((a) => a.state === 'ready'), 'that run to end');
     await edit(`${(await state()).text}Another line.\n`);
     await sleep(SETTLE_MS + 1500);
-    assert.equal((await runs()).length, 1, 'the doc holds no line that wakes it');
+    assert.equal((await runs()).length, 1, 'its view holds nothing that wakes it');
     await edit(`${(await state()).text.replace('wake-line Your turn, Clippy.\n', '')}Your turn, Clippy.\n`);
     await until(async () => (await runs()).length === 2, 'a run once the doc holds it', 10_000);
     await until(async () => (await state()).agents.every((a) => a.state === 'ready'), 'that run to end');
@@ -489,7 +503,7 @@ test('a buddy\'s @mention asks the buddy it names, a step deeper: it runs and an
     await until(async () => (await handed())?.comments.length === 2, 'Ada\'s thread, then Ben\'s answer there');
     assert.deepEqual((await handed()).comments.map((c) => [c.by.name, c.body]), [['Ada', '@Ben over to you'], ['Ben', 'Nothing to change.']]);
     assert.deepEqual((await runs()).map((r) => r.buddy), ['Ada', 'Ben']);
-    assert.match(await readFile(join(settingsDir, 'logs', 'agents.log'), 'utf8'), /Ben +due: asked in c_\w+ by a buddy · depth 1 · started/, 'one deeper than Ada\'s run, which a person asked');
+    assert.match(await readFile(join(settingsDir, 'logs', 'agents.log'), 'utf8'), /Ben +due: asked in c_\w+ by an agent · depth 1 · started/, 'one deeper than Ada\'s run, which a person asked');
   }, { buddies: { Ada: 'Hands over.\n', Ben: 'Answers.\n' } });
 });
 
