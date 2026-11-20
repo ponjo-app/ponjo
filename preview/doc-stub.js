@@ -295,6 +295,7 @@ An agent is a filter ([architecture](host-spec.md#a-run)):
 | \`PONJO_BUDDY\` | the buddy's name |
 | \`PONJO_TRACE\` | a file, out of the working folder, the agent may write its steps to (see [Traces](#traces)) |
 | \`PONJO_GROUPS\` | a file, out of the working folder, the agent may write its comments' edits to (see [Groups](#groups)) |
+| \`PONJO_WAKE\` | a file, out of the working folder, the agent may write the lines of the doc that wake it next to (see [Wake](#wake)) |
 | \`PONJO_SETTING_<KEY>\` | each of the agent's [settings](#settings) |
 | stdout | anything; kept in the trace, never posted |
 | Exit 0 | success; the app adds the appended comments and merges the doc copy's edits into the doc, each with the comment it comes with. |
@@ -358,6 +359,17 @@ not end at its copy, lands all its edits with its last comment; with no
 comment, with the one it left out: the last paragraph it printed, in one
 line of at most 280 characters, else "Edited the doc.", in the first thread
 that asked it, or else on the whole doc. No edit lands without a comment.
+
+### Wake
+
+A buddy watching the doc runs on every change by another member. An agent
+that knows what it waits for (its turn, its item) says so in \`PONJO_WAKE\`:
+a line \`{"line":"<a line of the doc, whole>"}\` for each line that wakes it.
+Until its next run, a change wakes it only while the doc holds one of them,
+such as \`Action on: Ada\`. An agent that writes none wakes on any change. The
+lines are this machine's, in memory, gone when the watch is turned off or
+the app starts again; they only make a buddy run less, and an ask runs it
+whatever they say.
 
 ## Agents
 
@@ -521,6 +533,7 @@ All in memory, on this machine only. Never written to the shared files.
 per buddy:  seen     thread \u2192 time of the last comment its runs were given
             lookedAt rev its last run started at
             base     the doc as its last run started
+            wake     the lines its last run said wake it, or null: any
             failed   thread or watch \u2192 why
             watch    { by } or null (also noted in the config folder)
 per doc:    changedAt  author \u2192 rev (and time) of their last change to the text
@@ -563,7 +576,9 @@ landed. It holds names, revs and thread ids, never the doc's text.
   it is whole), or another buddy changed it and its run has ended, so the
   watcher sees the comment with the edit. A buddy's own change never counts. A run woken by another buddy costs one step. It is
   told what changed since its last: the doc's lines, and each thread another
-  member wrote in, whole, as a person watching sees new comments.
+  member wrote in, whole, as a person watching sees new comments. If its
+  last run named lines in \`PONJO_WAKE\`, it is due only while the doc holds
+  one of them ([agent config](agent-config.md#wake)).
 
 ## A run
 
@@ -1060,13 +1075,17 @@ may ask. A watcher is due once set, then on another member's change since
 its last run started: people's once they pause for 5 s (\`SETTLE_MS\`); a
 file written outside the app at once, for it is whole (the door took it
 once it held still); a buddy's once that buddy's run has ended: its edits
-land before its comments, and the watcher sees both. Its own change never wakes it. A
-person editing again while a run only a watch started is on ends that run
-with no answer, for it saw the doc as it was. Each run is told what
-changed since its last: in the text (\`lineChanges\`), and in the threads,
-each open one another member wrote in, whole (the ids of the comments it
+land before its comments, and the watcher sees both. Its own change never
+wakes it. A person editing again while a run only a watch started is on
+ends that run with no answer, for it saw the doc as it was. A file written
+outside the app does not: a program may write more often than a run lasts,
+which would end every run. The run lands, merged by line, and runs again on
+the change. Each run is told what changed since its last: in the text
+(\`lineChanges\`), and in the threads, each open one another member wrote in, whole (the ids of the comments it
 heard then are noted with \`base\`). It reads the rest in the comments
-itself, and comments where it will, as any member.
+itself, and comments where it will, as any member. A run may name, in
+\`PONJO_WAKE\`, lines of the doc that wake it ([wake](agent-config.md#wake)):
+until its next run the watcher is due only while the doc holds one, whole.
 
 **Steps.** So that buddies cannot wake each other for ever, a run woken by
 another buddy's change takes a step from the doc's steps: up to 20, one
@@ -2079,7 +2098,8 @@ for a window), **e2e** (the packaged app, under xvfb on Linux).
   they pause. A watch run that fails, before its buddy has a thread, shows
   on the buddy, why to the owner alone, and Retry runs it again.
 - A watcher runs on people's edits once they pause, unless a run since
-  already saw them.
+  already saw them. One whose run named a line in \`PONJO_WAKE\` runs again
+  only once the doc holds it; its next run names its lines anew.
 - A buddy's change wakes each other buddy watching, never itself, each such
   run taking a step, a person's pause none; with none left they wait, and
   Refill fills them; with steps coming on their own, they go on as each
