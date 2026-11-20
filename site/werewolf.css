@@ -20,7 +20,14 @@ body, .pk-chat, .pk-plate, .ww-say { transition: background-color 1.2s, color 1.
 .ww-fire::before { content: ""; position: absolute; inset: -130%; border-radius: 50%; background: radial-gradient(closest-side, var(--fire-glow), transparent); opacity: 0; transition: opacity 1.2s; }
 .ww-board[data-time="night"] .ww-fire::before { opacity: 1; }
 .ww-fire svg { position: relative; width: 100%; height: 100%; overflow: visible; }
-.ww-log { fill: var(--log); }
+.ww-night-sky, .ww-board[data-time="night"] .ww-day-sky { display: none; }
+.ww-board[data-time="night"] .ww-night-sky { display: inline; }
+.ww-embers { opacity: 0; }
+.ww-board[data-time="night"] .ww-embers { opacity: 1; }
+@media (prefers-reduced-motion: no-preference) {
+  .ww-board[data-time="night"] .ww-embers { animation: ww-drift 3.8s ease-out infinite; }
+  @keyframes ww-drift { 0%, 100% { opacity: 0; } 25% { opacity: .75; } 85%, 100% { transform: translate(3px, -8px); } }
+}
 .ww-flame { fill: var(--fire); transform-origin: 50% 80%; animation: ww-flicker 1.6s ease-in-out infinite alternate; }
 .ww-flame-core { fill: var(--fire-core); transform-origin: 50% 80%; animation: ww-flicker 1.1s ease-in-out infinite alternate-reverse; }
 :is(.ww-flame, .ww-flame-core) { opacity: 0; transition: opacity 0.8s; }
@@ -46,6 +53,11 @@ body, .pk-chat, .pk-plate, .ww-say { transition: background-color 1.2s, color 1.
 .ww-seat { --r: 46%; position: absolute; left: calc(50% + cos(var(--a)) * var(--r)); top: calc(50% + sin(var(--a)) * var(--r)); translate: -50% -50%; z-index: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; width: 112px; padding: 0; border: 0; background: none; color: var(--text); font: inherit; cursor: pointer; transition: opacity 0.3s; }
 .ww-seat[data-dead] :is(.pj-agent-face, .pk-name) { opacity: 0.5; }
 .ww-seat .pj-avatar { --size: 56px; }
+.ww-seat .pj-avatar { filter: none; opacity: 1; }
+.ww-seat[data-dead] .pj-avatar { filter: grayscale(1); }
+.ww-role-symbols { position: absolute; width: 0; height: 0; overflow: hidden; }
+.ww-role-label { display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; vertical-align: middle; }
+.ww-role-mark { width: 1.15em; height: 1.15em; flex: none; pointer-events: none; fill: var(--bg); stroke: var(--text); stroke-width: 1.8; stroke-linejoin: round; stroke-linecap: round; }
 .ww-seat .pj-agent-face { transition: transform 0.25s cubic-bezier(0.3, 1.5, 0.5, 1); }
 .ww-seat[data-turn] .pj-agent-face { transform: scale(1.15); }
 .ww-seat[data-turn] .pk-plate { box-shadow: 0 0 0 2px var(--text); }
