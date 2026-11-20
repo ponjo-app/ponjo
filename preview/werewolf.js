@@ -173,7 +173,18 @@ const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const label = (id) => (isPerson(id) ? 'You' : id);
 const cap = (text) => text[0].toUpperCase() + text.slice(1);
 const roleName = (role) => cap(ROLE_NAMES[role]);
-const article = (role) => (role === 'seer' || role === 'witch' ? 'the' : 'a');
+function roleLabel(role) {
+  const label = el('span', 'ww-role-label');
+  const mark = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  mark.classList.add('ww-role-mark');
+  mark.setAttribute('viewBox', '0 0 24 24');
+  mark.setAttribute('aria-hidden', 'true');
+  const use = document.createElementNS(mark.namespaceURI, 'use');
+  use.setAttribute('href', `#ww-${role}`);
+  mark.append(use);
+  label.append(mark, roleName(role));
+  return label;
+}
 function faceOf(id) {
   const avatar = el('span', `pj-avatar${isPerson(id) ? '' : ' pj-avatar-agent'}`);
   avatar.append(isPerson(id) ? personFace('You', id) : agentFace(id));
@@ -244,10 +255,10 @@ function tag(v, i, died) {
 function chips(v, i) {
   const out = [];
   const role = v.seats[i].role;
-  if (role) out.push([roleName(role), role === 'wolf' ? 'wolf' : '']);
+  if (role) out.push([roleLabel(role), role === 'wolf' ? 'wolf' : '']);
   else {
     const check = v.log.findLast((e) => e.type === 'check' && e.target === i);
-    if (check) out.push([check.wolf ? 'Werewolf' : 'Good', check.wolf ? 'wolf' : '']);
+    if (check) out.push([check.wolf ? roleLabel('wolf') : 'Good', check.wolf ? 'wolf' : '']);
   }
   const tonight = (type) => v.phase === 'night' && v.log.some((e) => e.type === type && e.day === v.day && e.target === i);
   if (tonight('attacked') && called('witch')) out.push(['Attacked tonight', '']);
@@ -259,7 +270,7 @@ function chips(v, i) {
   const vote = lastVote(v);
   const votes = vote ? Object.values(vote.votes).filter((t) => t === i).length : 0;
   if (votes) out.push([`${votes} vote${votes > 1 ? 's' : ''}`, '']);
-  if (notes.has(i) && v.phase !== 'over') out.push([`${roleName(notes.get(i))}?`, 'note']);
+  if (notes.has(i) && v.phase !== 'over') out.push([[roleLabel(notes.get(i)), '?'], 'note']);
   return out;
 }
 
@@ -292,7 +303,8 @@ function drawRing(v) {
       if (!still) tagNode.animate([{ opacity: 0, transform: 'scale(0.8)' }, { opacity: 1, transform: 'none' }], { duration: 250, easing: 'ease-out' });
     }
     $('.ww-chips', node).replaceChildren(...chips(v, i).map(([t, k]) => {
-      const chip = el('span', 'ww-chip', t);
+      const chip = el('span', 'ww-chip');
+      chip.append(...[t].flat());
       if (k) chip.dataset.kind = k;
       return chip;
     }));
@@ -359,8 +371,8 @@ const form = $('.ww-act');
 function drawMe(v) {
   const others = v.pack?.filter((i) => i !== v.seat).map((i) => game.players[i]) ?? [];
   const line = $('.ww-role');
-  line.replaceChildren(`You are ${article(v.role)} `, el('b', '', ROLE_NAMES[v.role]), '.');
-  if (others.length) line.append(` The other werewolf${others.length > 1 ? 's' : ''}: ${others.join(' and ')}.`);
+  line.replaceChildren('Your role: ', roleLabel(v.role), '.');
+  if (others.length) line.append(` Your pack: ${others.join(' and ')}.`);
   if (v.potions && v.role === 'witch') line.append(` Save ${v.potions.save ? 'unused' : 'used'}, poison ${v.potions.poison ? 'unused' : 'used'}.`);
   if (!v.alive && v.phase !== 'over' && v.phase !== 'last') line.append(' You are dead: the game plays on.');
   line.append(el('span', 'ww-hint', v.phase === 'over' ? '' : ' Click a player to note what you think they are.'));
@@ -451,7 +463,7 @@ function openMenu(node) {
   const v = shown;
   const id = game.players[i];
   const act = actionOn(v, i);
-  const guess = (role) => item(`${roleName(role)}?`, () => {
+  const guess = (role) => item([roleLabel(role), '?'], () => {
     notes.set(i, role);
     draw();
   }, notes.get(i) === role);
@@ -494,7 +506,7 @@ document.addEventListener('keydown', (event) => {
 
 // ---- the log: what the person's seat saw, as a chat app shows it ----
 
-const SECRET = { pick: 'Pack', kill: 'Pack', check: 'Seer', attacked: 'Witch', save: 'Witch', poison: 'Witch' };
+const SECRET = { pick: 'wolf', kill: 'wolf', check: 'seer', attacked: 'witch', save: 'witch', poison: 'witch' };
 function drawFeed(v) {
   const feed = $('.pk-feed');
   const stick = feed.scrollHeight - feed.scrollTop - feed.clientHeight < 40;
@@ -508,9 +520,13 @@ function drawFeed(v) {
     rows.push(message({ face: !isPerson(id) && faceOf(id), name: id, text, note, mine: isPerson(id), more: last === i }));
     last = i;
   };
-  const line = (text, secret) => {
-    const row = notice(secret ? `${secret}: ${text}` : text);
-    if (secret) row.dataset.secret = '';
+  const line = (text, secret, ...suffix) => {
+    const row = notice(text);
+    if (secret) {
+      row.dataset.secret = '';
+      row.prepend(roleLabel(secret), ': ');
+    }
+    row.append(...suffix);
     rows.push(row);
     last = null;
   };
@@ -522,7 +538,7 @@ function drawFeed(v) {
       line(`${Name(e.seat)} ${e.seat === v.seat ? 'want' : 'wants'} to kill ${name(e.target)}${e.round === 2 ? ' (second pick)' : ''}.`, secret);
       if (e.text) say(e.seat, e.text, 'to the pack');
     } else if (e.type === 'kill') line(e.target === null ? 'The pack kills no one.' : `The pack kills ${name(e.target)}.`, secret);
-    else if (e.type === 'check') line(`${Name(e.seat)} checked ${name(e.target)}: ${e.wolf ? 'a werewolf' : 'not a werewolf'}.`, secret);
+    else if (e.type === 'check') line(`${Name(e.seat)} checked ${name(e.target)}: ${e.wolf ? '' : 'not '}`, secret, roleLabel('wolf'), '.');
     else if (e.type === 'attacked') line(`The wolves attacked ${name(e.target)}.`, secret);
     else if (e.type === 'save') line(`${Name(e.seat)} saved ${name(e.target)}.`, secret);
     else if (e.type === 'poison') line(`${Name(e.seat)} poisoned ${name(e.target)}.`, secret);
@@ -586,7 +602,9 @@ function showThinking() {
     const part = el('details', 'pj-trace-part');
     part.open = true;
     const summary = el('summary');
-    summary.append(icon('chevron'), faceOf(id), el('span', 'pj-trace-title', id), el('span', 'pj-trace-meta', `${roleName(roles[seat])}, ${game.state.seats[seat].alive ? 'alive' : 'dead'}`));
+    const meta = el('span', 'pj-trace-meta');
+    meta.append(roleLabel(roles[seat]), game.state.seats[seat].alive ? ', alive' : ', dead');
+    summary.append(icon('chevron'), faceOf(id), el('span', 'pj-trace-title', id), meta);
     part.append(summary);
     const thoughts = game.notes[id].thoughts;
     if (!thoughts.length) part.append(el('p', 'pj-empty', 'No decisions.'));
