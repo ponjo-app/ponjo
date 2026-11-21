@@ -1189,18 +1189,17 @@ function calls(scene) {
 }
 calls.once = true;
 
-// The common ways to run many agents, as docs/runtime-vision.md compares
-// them: [the way, who uses it], then a row per difference.
+// The common way, an orchestrator, against Ponjo's controller, as
+// docs/runtime-vision.md compares them: [the way, who uses it], then a row
+// per difference.
 const WAYS = [
-  ['Orchestrator and handoffs', 'Claude Code subagents, OpenAI Agents SDK, CrewAI'],
-  ['Graph', 'LangGraph'],
-  ['Group chat', 'AutoGen'],
-  ['Blackboard', 'Ponjo’s runtime'],
+  ['Orchestrator', 'Claude Code subagents, OpenAI Agents SDK, CrewAI'],
+  ['Controller', 'Ponjo’s runtime'],
 ];
 const DIFFERENCES = [
-  ['1 · At once', 'Each on its own copy', 'Branches, merged after', 'One speaks at a time', 'All on one board'],
-  ['1 · People', 'Hand off, then review', 'Answer when it pauses', 'Take a turn', 'Act beside agents'],
-  ['2 · Who acts next', 'An LLM', 'Edges you wire', 'A selector, often an LLM', 'Code, from the board'],
+  ['1 · At once', 'Each agent on its own copy', 'Everyone on one board'],
+  ['1 · People', 'Hand off, then review', 'Act beside the agents'],
+  ['2 · Who acts next', 'An LLM decides', 'Code reads the board'],
 ];
 
 function approachMark(role) {
@@ -1303,7 +1302,7 @@ const CHAPTERS = [
   ['How it is built', 'Blackboard', 'The board is the only state. The runtime reads it and starts whoever is due.', architecture, 'solution'],
   ['How it is built', 'One runtime, many worlds', 'The same runtime, whatever the app.', worlds],
   ['How it is built', 'The world’s five calls', 'Answer these, and the runtime runs agents in your app.', calls],
-  ['Compared', 'The common ways to run many agents', '', summary],
+  ['Compared', 'Orchestrator or controller', '', summary],
   ['Outcome', 'What you get', '', outcome],
 ];
 
