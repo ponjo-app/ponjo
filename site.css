@@ -247,6 +247,35 @@ a { color: var(--accent); }
 .arch-board b { color: var(--chalk); font-size: 13px; }
 .arch-board .arch-bar { height: 8px; }
 .arch-board .arch-bar:not(.arch-mine) { background: var(--chalk); opacity: 0.5; }
+/* the board's version; a line in a row with, while it is a proposal, dashed, the version it was made on; refused, in red */
+.arch-version { display: inline-block; margin-left: 8px; font-weight: 400; opacity: 0.75; }
+.arch-line { display: flex; align-items: center; gap: 8px; }
+.arch-board .arch-bar.arch-proposed { background: color-mix(in srgb, var(--buddy) 30%, transparent); outline: 1.5px dashed var(--buddy); outline-offset: 1px; }
+.arch-on { color: var(--chalk); font-size: 11px; opacity: 0.75; white-space: nowrap; }
+/* other worlds on a board: a poker table's cards, face down in chalk, one turned up in its player's colour; a village's faces */
+.arch-cards, .arch-village { display: flex; gap: 8px; }
+.arch-card { width: 18px; height: 26px; border-radius: 3px; background: var(--chalk); opacity: 0.5; }
+.arch-card.arch-up { background: var(--buddy); opacity: 1; }
+.arch-sketch .arch-village .pj-avatar { --size: 24px; }
+/* the world's five calls: a code card, the call being made lit, its answer after it */
+.arch-code { display: flex; flex-direction: column; gap: 4px; box-sizing: border-box; padding: 16px; border-radius: 10px; background: var(--bg-soft); font-family: var(--mono); font-size: 13px; }
+.arch-call { display: flex; align-items: baseline; gap: 0; padding: 4px 8px; border-radius: 6px; color: var(--text-soft); white-space: nowrap; transition: background-color 0.25s, color 0.25s; }
+.arch-call b { color: var(--text); font-weight: 600; }
+.arch-call-on { background: var(--highlight); color: var(--text); }
+.arch-answer { margin-left: auto; padding-left: 12px; color: var(--text-faint); opacity: 0; }
+.arch-call-on .arch-answer { color: var(--text); }
+.arch-source { margin-top: auto; padding: 0 8px; color: var(--text-faint); font-size: 12px; }
+/* the poker table: a seat a player, its cards; the others' greyed while one looks; the pot, its chips */
+.arch-seats { display: flex; justify-content: space-around; }
+.arch-seat { display: flex; flex-direction: column; align-items: center; gap: 6px; transition: opacity 0.3s; }
+.arch-seat .arch-cards { gap: 4px; }
+.arch-seat.arch-hidden { opacity: 0.35; }
+.arch-sketch .arch-seat .pj-avatar { --size: 24px; }
+.arch-pot { display: flex; align-items: center; gap: 6px; min-height: 16px; }
+.arch-chip { width: 14px; height: 14px; border-radius: 9999px; background: var(--buddy); }
+.arch-chip.arch-proposed { background: color-mix(in srgb, var(--buddy) 30%, transparent); outline: 1.5px dashed var(--buddy); outline-offset: 1px; }
+.arch-chip.arch-refused { background: color-mix(in srgb, var(--red) 60%, transparent); outline-color: var(--red); }
+.arch-line.arch-refused .arch-bar { background: color-mix(in srgb, var(--red) 60%, transparent); outline-color: var(--red); }
 
 /* a scene as a diagram: boxes and arrows in an SVG, members over it at the same points (sketch in arch-story.js) */
 .arch-sketch { position: absolute; top: 50%; left: 50%; translate: -50% -50%; container-type: inline-size; }
@@ -283,11 +312,12 @@ a { color: var(--accent); }
 .arch-node-ink b, .arch-node-ink span { color: var(--chalk); }
 .arch-label { padding: 0 4px; background: var(--canvas); color: var(--text-soft); font-size: 12px; white-space: nowrap; }
 .arch-label-over { background: none; }
-/* the summary: the design system's table, its cells words that wrap, the blackboard column in ink */
+/* the comparison: the design system's table, its cells words that wrap, who uses each way under its name, the blackboard column in ink */
 .arch-stage.arch-summary { justify-content: safe center; overflow-y: auto; }
 .arch-compare { max-width: 960px; }
 .arch-compare :is(th, td) { padding: 8px 12px; text-align: left; vertical-align: top; white-space: normal; line-height: 1.45; }
-.arch-compare td:first-child { max-width: none; width: 22%; overflow: visible; }
+.arch-compare td:first-child { max-width: none; width: 16%; overflow: visible; }
+.arch-who { display: block; margin-top: 2px; color: var(--text-faint); font-size: 12px; font-weight: 400; }
 .arch-compare td:last-child { color: var(--text); }
 /* the outcome: what you get, then the numbers as tiles */
 .arch-stage.arch-outcome { justify-content: safe center; overflow-y: auto; }
