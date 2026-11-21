@@ -1092,6 +1092,79 @@ function architecture(scene) {
 }
 architecture.once = true;
 
+// One runtime, many worlds: three boards, an editor's page, a poker table
+// and a werewolf village, and one runtime as an eye under them, a wire to
+// each. It looks at each in turn and calls an agent there: on the page Clippy
+// writes a line, at the table Otto's card turns up, in the village, asleep
+// at night, Pip wakes.
+async function worlds(scene) {
+  const s = sketch(scene.stage);
+  const up = s.upright;
+  const size = up ? [106, 104] : [200, 124];
+  const spots = up ? [[70, 100], [200, 100], [330, 100]] : [[140, 100], [380, 100], [620, 100]];
+  const middle = up ? [200, 360] : [380, 320];
+  const page = paper('Editor', [80, 55]);
+  const table = paper('Poker', []);
+  const cards = el('div', 'arch-cards');
+  for (const name of ['Clippy', 'Otto', 'Pip']) {
+    const card = el('i', 'arch-card');
+    card.style.setProperty('--buddy', buddyColor(name));
+    cards.append(card);
+  }
+  table.append(cards);
+  const village = paper('Werewolf', []);
+  const folk = el('div', 'arch-village');
+  const sleepers = ['Clippy', 'Otto', 'Pip'].map((name) => face(name, { presence: 'away' }));
+  folk.append(...sleepers);
+  village.append(folk);
+  const boards = [page, table, village];
+  const wires = boards.map((board, i) => {
+    s.place(board, spots[i], size).classList.add('arch-board');
+    const [x, y] = [spots[i][0], spots[i][1] + size[1] / 2 + 8];
+    return s.ink(`M${f(middle[0])} ${f(middle[1] - 40)} C${f(middle[0])} ${f(middle[1] - 110)} ${f(x)} ${f(y + 70)} ${f(x)} ${f(y)}`, 'arch-ink arch-wire');
+  });
+  const { node, pupil, lid } = eye();
+  s.place(node, middle, [92, 92]);
+  s.place(el('span', 'arch-label', 'One runtime'), [middle[0], middle[1] + 52]);
+  lid.style.scale = '1 0';
+  const look = (to) => {
+    const [dx, dy] = [to[0] - middle[0], to[1] - middle[1]];
+    const k = 12 / Math.max(1, Math.hypot(dx, dy));
+    const translate = `${f(dx * k)}px ${f(dy * k)}px`;
+    return scene.move(pupil, [{ translate: pupil.style.translate || '0 0' }, { translate }], 320, 'ease-in-out').then(() => { pupil.style.translate = translate; });
+  };
+  const call = async (i) => {
+    await look(spots[i]);
+    const pulse = s.ink(wires[i].getAttribute('d'), 'arch-ink arch-pulse');
+    await scene.draw(pulse, 500);
+    pulse.remove();
+  };
+
+  await scene.wait(700);
+  // the editor: Clippy writes a line
+  await call(0);
+  const line = bar(70);
+  paint(line, 'Clippy');
+  page.append(line);
+  await scene.move(line, [{ width: '0%' }, { width: '70%' }], 900, 'ease-in-out');
+  await scene.wait(500);
+  // poker: Otto's card turns up
+  await call(1);
+  const card = cards.children[1];
+  await scene.move(card, [{ scale: '1 1' }, { scale: '0 1' }], 180, 'ease-in');
+  card.classList.add('arch-up');
+  await scene.move(card, [{ scale: '0 1' }, { scale: '1 1' }], 220, 'ease-out');
+  await scene.wait(500);
+  // werewolf: at night all asleep, Pip wakes
+  await call(2);
+  sleepers[2].dataset.presence = 'working';
+  await scene.move(sleepers[2], [{ translate: '0 0' }, { translate: '0 -6px' }, { translate: '0 0' }], 420, SPRING);
+  await scene.wait(900);
+  sleepers[2].dataset.presence = 'away';
+  await look(middle);
+  await scene.wait(1800);
+}
+
 // The common ways to run many agents, as docs/runtime-vision.md compares
 // them: [the way, who uses it], then a row per difference.
 const WAYS = [
@@ -1101,9 +1174,9 @@ const WAYS = [
   ['Blackboard', 'Ponjo’s runtime'],
 ];
 const DIFFERENCES = [
-  ['1 · Working at once', 'In parallel, each on its own copy; the lead merges', 'Branches in one step, merged by reducers', 'One speaker at a time', 'Everyone at once; the writer lands each change in order and refuses stale ones'],
-  ['1 · People', 'Give the task, review the result', 'Answer while the graph waits', 'Take a turn in the chat', 'Members, acting while agents act'],
-  ['2 · Who acts next', 'An LLM: the lead, or an agent handing on', 'The edges you wire, some routed by an LLM', 'A selector: in turn, or an LLM picks', 'Code, reading the board: the same answer every time'],
+  ['1 · At once', 'Each on its own copy', 'Branches, merged after', 'One speaks at a time', 'All on one board'],
+  ['1 · People', 'Hand off, then review', 'Answer when it pauses', 'Take a turn', 'Act beside agents'],
+  ['2 · Who acts next', 'An LLM', 'Edges you wire', 'A selector, often an LLM', 'Code, from the board'],
 ];
 
 function approachMark(role) {
@@ -1146,9 +1219,9 @@ summary.once = true;
 async function outcome(scene) {
   scene.stage.classList.add('arch-outcome');
   const GETS = [
-    ['Parallel work on one board, with no branches.', 'Many agents and people act at once; nothing to merge back.'],
-    ['Coordination with no orchestrator.', 'One agent’s change is the next one’s cue.'],
-    ['Always on, with no jobs.', 'Agents act whenever the board changes, whoever changed it. When nothing changes, nothing runs.'],
+    ['Parallel work on one board,', 'with no branches.'],
+    ['Coordination', 'with no orchestrator.'],
+    ['Always on,', 'with no jobs.'],
   ];
   const list = el('ul', 'arch-gets');
   const items = GETS.map(([what, why]) => {
@@ -1169,14 +1242,14 @@ async function outcome(scene) {
     tile.append(el('b', '', value), el('span', '', what));
     stats.append(tile);
   }
-  const foot = el('p', 'arch-note', 'Open-card Hold’em on Ponjo’s runtime, with scripted agents. The ');
-  const link = el('a', '', 'poker page');
+  const foot = el('p', 'arch-note', 'Hold’em on this runtime, with scripted agents. Play: ');
+  const link = el('a', '', 'Poker');
   link.href = 'poker.html';
   const werewolf = el('a', '', 'Werewolf');
   werewolf.href = 'werewolf.html';
   const spy = el('a', '', 'Who’s the Spy');
   spy.href = 'spy.html';
-  foot.append(link, ', built apart with a small runtime of its own, came to the same shape: a pure plan, a view per player, a writer that refuses stale moves. It now runs on this runtime, as do ', werewolf, ' and ', spy, ', where each seat sees only its own cards or role.');
+  foot.append(link, ', ', werewolf, ', ', spy, '.');
   const body = el('div', 'arch-outcome-body');
   body.append(list, stats, foot);
   stats.style.opacity = foot.style.opacity = '0';
@@ -1195,17 +1268,18 @@ outcome.once = true;
 const CHAPTERS = [
   ['', '', '', cover],
   ['Difference 1 of 2', '', '', point('People and agents work on one board, at the same time,', 'instead of each on its own copy, taking turns.')],
-  ['Difference 1: one board, at the same time', 'Each on its own copy', 'Each agent works on its own copy. Run two at once and one builds on a stale copy, so to stay correct they take turns: wait, review, redo.', delegate, 'problem'],
-  ['Difference 1: one board, at the same time', 'One board', 'Everyone works on one board at once. Agents propose, and one writer lands each change in order, by the world’s rules. Here, as at a poker table, a change made on a stale board is refused, and the agent tries again on the new one.', blackboard, 'solution'],
+  ['1 · One board, at the same time', 'Each on its own copy', 'Copies go stale, so agents take turns.', delegate, 'problem'],
+  ['1 · One board, at the same time', 'One board', 'Agents propose; one writer lands each change in order. Here, a stale one is refused.', blackboard, 'solution'],
   ['Difference 2 of 2', '', '', point('The board decides who acts next,', 'instead of an LLM handing on, or a chain of events.')],
-  ['Difference 2: who acts next', 'Handed on by an LLM', 'With handoffs or a lead agent, an LLM decides who goes next: sometimes it forgets, or picks the wrong one. Nothing was lost. It was never sent.', handoff, 'problem'],
-  ['Difference 2: who acts next', 'Seen on the board', 'An agent only does its own work. The change is the signal: code reads the board and finds who is due, the same every time.', seen, 'solution'],
-  ['Difference 2: who acts next', 'Triggered by events', 'Pip is asleep when the baton comes. Miss one handoff, and the race stops. A durable queue keeps the baton, but someone still wires who runs next.', events, 'problem'],
-  ['Difference 2: who acts next', 'Reconciled from state', 'The runtime watches the board and calls only whoever is due, again until it is done, as a thermostat reads the room. Nobody wires who goes next, and a missed call or a restart costs nothing: the board still shows who is due.', state, 'solution'],
-  ['How it is built: both in one loop', 'Event-triggered, the common way', 'State lives in messages in flight and in each agent’s memory. Lose a message and the work is lost, and someone has to wire who triggers whom.', eventsArchitecture, 'problem'],
-  ['How it is built: both in one loop', 'Blackboard', 'One board, one writer: people and agents propose changes, and the writer lands them in order (difference 1). The runtime reads the board to start whoever is due (difference 2).', architecture, 'solution'],
+  ['2 · Who acts next', 'Handed on by an LLM', 'An LLM decides who goes next. When it forgets, the work stops.', handoff, 'problem'],
+  ['2 · Who acts next', 'Seen on the board', 'Code reads the board and finds who is due.', seen, 'solution'],
+  ['2 · Who acts next', 'Triggered by events', 'Miss one event, and the race stops.', events, 'problem'],
+  ['2 · Who acts next', 'Reconciled from state', 'A missed call, a restart: the board still shows who is due.', state, 'solution'],
+  ['How it is built', 'Event-triggered, the common way', 'The state is in messages and agents’ memories. Lose one, lose the work.', eventsArchitecture, 'problem'],
+  ['How it is built', 'Blackboard', 'The board is the only state. The runtime reads it and starts whoever is due.', architecture, 'solution'],
+  ['How it is built', 'One runtime, many worlds', 'A world answers five calls: members, asks, view, wait, propose.', worlds],
   ['Compared', 'The common ways to run many agents', '', summary],
-  ['Outcome', 'What you get', 'What emerges when the board is the only state, and the runtime decides from it.', outcome],
+  ['Outcome', 'What you get', '', outcome],
 ];
 
 // ---- the story: a chapter at a time, with Back, Next and a dot for each ----
