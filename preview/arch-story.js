@@ -172,7 +172,7 @@ function pose(member, { arms = 'stand', legs = 'stand', look = null, right = fal
   member.figure.classList.toggle('arch-right', right);
 }
 
-// A doc drawn as lines, not words: a title and grey bars.
+// A board or a page drawn as lines, not words: a title and grey bars.
 function paper(title, widths) {
   const node = el('div', 'arch-paper');
   node.append(el('b', '', title), ...widths.map(bar));
@@ -327,10 +327,10 @@ function point(claim, instead) {
   return page;
 }
 
-// Who watches the doc wears glasses (faces.js): the buddies on the blackboard.
+// Who watches the board wears glasses (faces.js): the buddies on the blackboard.
 const watching = (on) => setBuddies(['Clippy', 'Otto', 'Pip'].map((name) => ({ id: name, name, watching: on })));
 
-// A bar of a doc, now `name`'s edit, in its colour.
+// A bar of a board, now `name`'s edit, in its colour.
 function paint(node, name) {
   node.style.setProperty('--buddy', buddyColor(name));
   node.classList.add('arch-mine');
@@ -406,7 +406,7 @@ async function run(scene, s, member, points, ms, { walk = false, arms = null, lo
   if (stop && !walk) scene.move(figure, [{ rotate: `${lean}deg`, scale: '1.06 0.94' }, { rotate: '0deg', scale: '1 1' }], 360, SPRING).catch(() => {});
 }
 
-// Delegate, with two agents, each in a room of its own: a copy of the doc
+// Delegate, with two agents, each in a room of its own: a copy of the board
 // goes to each desk, each agent rewrites lines unseen by the other, then both
 // run theirs back to you at once, and crash into each other on the way.
 async function delegate(scene) {
@@ -423,7 +423,7 @@ async function delegate(scene) {
   const me = actor('You', 'idle');
   s.place(me.node, you);
   desk(home);
-  s.place(paper('Doc', [80, 60, 70]), home, SIZE);
+  s.place(paper('Board', [80, 60, 70]), home, SIZE);
   const buddies = {};
   const door = {};
   const seat = {};
@@ -520,7 +520,7 @@ async function blackboard(scene) {
   watching(true);
   const s = sketch(scene.stage);
   const up = s.upright;
-  const board = s.place(paper('Doc', [85, 60]), [s.W / 2, up ? 150 : 120], up ? [360, 220] : [520, 180]);
+  const board = s.place(paper('Board', [85, 60]), [s.W / 2, up ? 150 : 120], up ? [360, 220] : [520, 180]);
   board.classList.add('arch-board');
   let version = 1;
   const stamp = el('span', 'arch-version', 'v1');
@@ -1077,7 +1077,7 @@ function architecture(scene) {
       up: { people: [95, 55], writer: [305, 55], board: [305, 185], runtime: [305, 315], run: [95, 315], program: [95, 455] },
     },
     arrows: [
-      ['people', 'writer', 'edit'],
+      ['people', 'writer', 'change'],
       ['writer', 'board', 'lands, in order'],
       ['board', 'runtime', 'reads'],
       ['runtime', 'run', 'starts'],
@@ -1098,7 +1098,7 @@ const WAYS = [
   ['Orchestrator and handoffs', 'Claude Code subagents, OpenAI Agents SDK, CrewAI'],
   ['Graph', 'LangGraph'],
   ['Group chat', 'AutoGen'],
-  ['Blackboard', 'Ponjo'],
+  ['Blackboard', 'Ponjo’s runtime'],
 ];
 const DIFFERENCES = [
   ['1 · Working at once', 'In parallel, each on its own copy; the lead merges', 'Branches in one step, merged by reducers', 'One speaker at a time', 'Everyone at once; the writer lands each change in order and refuses stale ones'],
@@ -1146,7 +1146,7 @@ summary.once = true;
 async function outcome(scene) {
   scene.stage.classList.add('arch-outcome');
   const GETS = [
-    ['Parallel work on one board, with no branches.', 'Many agents and people edit at once; nothing to merge back.'],
+    ['Parallel work on one board, with no branches.', 'Many agents and people act at once; nothing to merge back.'],
     ['Coordination with no orchestrator.', 'One agent’s change is the next one’s cue.'],
     ['Always on, with no jobs.', 'Agents act whenever the board changes, whoever changed it. When nothing changes, nothing runs.'],
   ];
@@ -1196,7 +1196,7 @@ const CHAPTERS = [
   ['', '', '', cover],
   ['Difference 1 of 2', '', '', point('People and agents work on one board, at the same time,', 'instead of each on its own copy, taking turns.')],
   ['Difference 1: one board, at the same time', 'Each on its own copy', 'Each agent works on its own copy. Run two at once and one builds on a stale copy, so to stay correct they take turns: wait, review, redo.', delegate, 'problem'],
-  ['Difference 1: one board, at the same time', 'One board', 'Everyone works on one board at once. Agents propose, and one writer lands each change in order; a change made on a stale board is refused, and the agent tries again on the new one.', blackboard, 'solution'],
+  ['Difference 1: one board, at the same time', 'One board', 'Everyone works on one board at once. Agents propose, and one writer lands each change in order, by the world’s rules. Here, as at a poker table, a change made on a stale board is refused, and the agent tries again on the new one.', blackboard, 'solution'],
   ['Difference 2 of 2', '', '', point('The board decides who acts next,', 'instead of an LLM handing on, or a chain of events.')],
   ['Difference 2: who acts next', 'Handed on by an LLM', 'With handoffs or a lead agent, an LLM decides who goes next: sometimes it forgets, or picks the wrong one. Nothing was lost. It was never sent.', handoff, 'problem'],
   ['Difference 2: who acts next', 'Seen on the board', 'An agent only does its own work. The change is the signal: code reads the board and finds who is due, the same every time.', seen, 'solution'],

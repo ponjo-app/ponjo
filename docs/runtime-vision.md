@@ -132,7 +132,7 @@ Two differences; the rest follows from them.
 
 The common ways to run many agents, as their docs describe them in 2026:
 
-| | Orchestrator and handoffs: Claude Code subagents, OpenAI Agents SDK, CrewAI | Graph: LangGraph | Group chat: AutoGen | Blackboard: Ponjo |
+| | Orchestrator and handoffs: Claude Code subagents, OpenAI Agents SDK, CrewAI | Graph: LangGraph | Group chat: AutoGen | Blackboard: Ponjo's runtime |
 |---|---|---|---|---|
 | Working at once | Workers in parallel, each on its own copy; the lead merges | Branches in one step, merged by reducers | One speaker at a time | Everyone at once; the writer lands in order and refuses stale moves |
 | People | Give the task and review the result | Answer at interrupts, while the graph waits | Take a turn in the chat | Members, acting while agents act |
