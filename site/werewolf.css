@@ -131,7 +131,8 @@ body, .pk-chat, .pk-plate { transition: background-color 1.2s, color 1.2s; }
 .ww-buttons { flex-wrap: wrap; justify-content: center; }
 
 .pk-dealer[data-secret] { color: var(--text-soft); }
-.ww-start { width: 360px; max-width: calc(100vw - 32px); }
+.ww-start, .ww-join { width: 360px; max-width: calc(100vw - 32px); }
+.ww-people { margin: 0; }
 .ww-start .pj-segmented { align-self: flex-start; }
 .ww-cast { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 0; padding: 0; list-style: none; color: var(--text); font-size: 13px; font-weight: 400; }
 

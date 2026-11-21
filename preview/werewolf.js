@@ -1,30 +1,46 @@
-// The werewolf page (site/werewolf.html): a person and AI players round a
-// fire at one game of werewolf. The rules (werewolf-rules.js) own what must
-// be exact; the players decide the rest from the rules and what their seat
-// may see (werewolf-world.js). Ponjo's agent runtime (src/core/runtime.js)
+// The werewolf page (site/werewolf.html): a person, any friends they invite
+// and AI players round a fire at one game of werewolf. The rules
+// (werewolf-rules.js) own what must be exact; the players decide the rest
+// from the rules and what their seat may see (werewolf-world.js). Ponjo's agent runtime (src/core/runtime.js)
 // runs them on each game as a world, as on the poker page (preview/poker.js).
 // Here: a run, one call of the visitor's model (game-page.js, shared with
 // the poker page, with the log's messages); a narrator, who calls the night
 // a role at a time; and the game drawn from the person's own view alone,
 // with what they know of each player on their seat and their own guesses.
+// Friends join by a link (poker-share.js), as on the spy page: the host's
+// page holds the game and runs the AI players, and sends each friend's page
+// its seat's view; a friend's page, opened at `#join=<room>`, only draws and
+// sends what its player does. A friend who joins mid-game watches, seeing
+// what everyone sees, and plays from the next game; one who leaves
+// mid-game has each of their turns taken as doing nothing.
 // preview/build.js bundles it into dist/preview, as the site serves it.
 
 /* global document, location, matchMedia, HTMLDialogElement, innerWidth, innerHeight, addEventListener */
 
 import { agentFace, personFace, setBuddies, setOwner } from '../web/faces.js';
 import { icon } from '../web/icons.js';
-import { $, arrows, el, message, models, notice, typingMessage } from './game-page.js';
+import { $, arrows, el, load, message, models, notice, store, typingMessage } from './game-page.js';
+import { host, join } from './poker-share.js';
 import { DECIDE, HUMAN, MAX_SPEECH, PERSONAS, ROLE_NAMES, cast, createWorld, decided, expire, isPerson, land, newGame, show, turn } from './werewolf-world.js';
 import { createRuntime } from '../src/core/runtime.js';
 import { createRuntimePanel } from '../web/runtime-panel.js';
 
 const TURN = 90_000; // ms a turn may take; then everyone still due is taken as doing nothing
 const SVG = 'http://www.w3.org/2000/svg';
+const NAME = 'ponjo-poker-name'; // the visitor's name at a friend's table, as the poker page keeps it
+const MAX_PEOPLE = 8; // at the table, as at the largest game
+const ROOM = new URLSearchParams(location.hash.slice(1)).get('join'); // a friend's page: the room of the game it joins
+const me = ROOM ? `f${[...crypto.getRandomValues(new Uint8Array(4))].map((b) => b.toString(16).padStart(2, '0')).join('')}` : HUMAN; // who this page plays as
 
 setBuddies(PERSONAS.map(({ id }) => ({ id, name: id })));
 setOwner(HUMAN);
 
-let game = null;
+let game = null; // the host's; a friend's page draws what the host sends (`remote`)
+let remote = null; // a friend's page: the host's last state
+let away = ''; // a friend's page: why the line to the host is down
+let people = [HUMAN]; // the host and the friends at the table, in the order they joined
+let names = {}; // the people's names, by id
+let players = []; // the game's seats' ids
 let world = null; // the game as a world, and Ponjo's runtime on it: new with each game
 let runtime = null;
 let held = false; // the narrator is behind the game: no one speaks in the dark
@@ -46,7 +62,9 @@ const ai = models(() => {
 // the turn. While the narrator is behind the game at dawn, the day waits
 // for it: no one speaks in the dark (the world's `ready`).
 function changed() {
-  if (!game) return;
+  if (!game) return share();
+  const gone = players.filter((id) => isPerson(id) && !people.includes(id));
+  while (!hellos.going && game.state.phase !== 'over' && expire(game, gone)); // a friend gone: their turns are taken as doing nothing
   held = draw();
   world.changed();
   runtime.look('the page drew the game');
@@ -69,6 +87,10 @@ const KIND_CALL = { kill: 'wolves', check: 'seer', potion: 'witch' };
 let call = { day: 0, at: 0, since: 0 };
 // Moves the narrator on as far as it may; returns whether it is behind the game, and looks again when it may move.
 function pace() {
+  if (ROOM) {
+    call = remote.call;
+    return remote.held;
+  }
   const s = game.state;
   if (s.phase === 'night' && call.day !== s.day) call = { day: s.day, at: 0, since: Date.now() };
   const to = s.phase === 'night' ? CALLS.indexOf(s.step) : call.day === s.day ? CALLS.length : call.at;
@@ -133,13 +155,13 @@ async function run({ agent }, { files: basis, prompt: { rules, situation } }) {
 // With ?debug, the page shows what the runtime does (the runtime panel):
 // every player's role and thinking, so only on asking. An ask is a turn of
 // the game, its day, phase and step (turn, werewolf-rules.js).
-const panel = new URLSearchParams(location.search).has('debug') && createRuntimePanel({
+const panel = !ROOM && new URLSearchParams(location.search).has('debug') && createRuntimePanel({
   where: 'this game', faceOf, retry: (id) => runtime.retry(id),
   askText: (id) => {
     const [, day, phase, step] = id.split(':');
     return `${phase === 'night' ? 'Night' : 'Day'} ${day}${step ? `, ${step}` : ''}`;
   },
-});
+}) || null; // null without ?debug: `false?.add()` would throw
 
 // A new game is a new world, with Ponjo's runtime on it; the last game's
 // runtime ends its runs, which land nothing. What the runtime says of the
@@ -173,27 +195,36 @@ async function play(here) {
   await runtime.sync();
 }
 
+let gameNo = 0;
 async function startGame(size) {
-  game = newGame(size);
+  game = newGame(size, { people, names: { ...names } });
+  gameNo++;
   failed = new Map();
   held = false;
-  $('.site-theme').hidden = true; // the game sets light and dark now
   running.clear();
   typing.clear();
-  notes = new Map();
-  myVote = null;
   clearTimeout(clock.timer);
   clock = { at: '', ends: 0 };
   call = { day: 0, at: 0, since: 0 };
+  seatUp(game.players);
+  hellos = { going: true, said: [] }; // no one acts before the hellos
+  await play(game);
+  greet();
+}
+
+// The seats of a new game round the fire, this page's player at the bottom.
+function seatUp(ids) {
+  players = ids;
+  $('.site-theme').hidden = true; // the game sets light and dark now
+  notes = new Map();
+  myVote = null;
   formAt = '';
   shown = null;
   arrowsFor = '';
   for (const node of seats) node.remove();
-  seats = game.players.map((id, i) => seatNode(id, i, game.players.length));
+  const mine = Math.max(0, players.indexOf(me));
+  seats = players.map((id, i) => seatNode(id, (i - mine + players.length) % players.length, i, players.length));
   $('.ww-ring').append(...seats);
-  hellos = { going: true, said: [] }; // no one acts before the hellos
-  await play(game);
-  greet();
 }
 
 // Before the first night, the players say hello round the fire, each in
@@ -203,10 +234,10 @@ const HELLO_MS = 2200;
 let hellos = { going: false, said: [] };
 function greet() {
   const here = game;
-  const players = game.players.flatMap((id, seat) => (isPerson(id) ? [] : [{ seat, text: PERSONAS.find((p) => p.id === id).hello }]));
+  const lines = game.players.flatMap((id, seat) => (isPerson(id) ? [] : [{ seat, text: PERSONAS.find((p) => p.id === id).hello }]));
   hellos = { going: true, said: [] };
   changed();
-  players.forEach((line, k) => setTimeout(() => {
+  lines.forEach((line, k) => setTimeout(() => {
     if (here !== game) return;
     hellos.said.push(line);
     changed();
@@ -215,7 +246,7 @@ function greet() {
     if (here !== game) return;
     hellos.going = false;
     changed();
-  }, 600 + players.length * HELLO_MS + 1200);
+  }, 600 + lines.length * HELLO_MS + 1200);
 }
 
 // ---- the clearing ----
@@ -223,7 +254,7 @@ function greet() {
 let seats = [];
 let shown = null; // the view last drawn
 const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
-const label = (id) => (isPerson(id) ? 'You' : id);
+const label = (id) => (id === me ? 'You' : isPerson(id) ? names[id] ?? (id === HUMAN ? 'Host' : 'Friend') : id);
 const cap = (text) => text[0].toUpperCase() + text.slice(1);
 const roleName = (role) => cap(ROLE_NAMES[role]);
 const WORD = { wolf: 'Wolf', seer: 'Seer', witch: 'Witch', villager: 'Villager', good: 'Good' }; // a role on its token; good: the seer found them no wolf
@@ -251,15 +282,15 @@ function token(role, guess = false) {
 }
 function faceOf(id) {
   const avatar = el('span', `pj-avatar${isPerson(id) ? '' : ' pj-avatar-agent'}`);
-  avatar.append(isPerson(id) ? personFace('You', id) : agentFace(id));
+  avatar.append(isPerson(id) ? personFace(names[id] ?? 'You', id) : agentFace(id)); // drawn from their name, the same on every page
   return avatar;
 }
-// A seat: the face, with its badges round it and, for the person, the ring that drains on their turn; the plate, a name and vote dots.
-function seatNode(id, i, n) {
+// A seat: the face, with its badges round it and, for this page's player, the ring that drains on their turn; the plate, a name and vote dots.
+function seatNode(id, at, i, n) {
   const node = el('button', 'ww-seat');
   node.type = 'button';
   node.dataset.seat = i;
-  node.style.setProperty('--a', `${90 + (360 * i) / n}deg`); // you at the bottom, the rest round in seat order
+  node.style.setProperty('--a', `${90 + (360 * at) / n}deg`); // you at the bottom, the rest round in seat order
   const face = el('span', 'pj-agent-face');
   face.dataset.presence = 'idle';
   const mark = (className, at) => {
@@ -268,7 +299,7 @@ function seatNode(id, i, n) {
     return node;
   };
   face.append(faceOf(id), mark('ww-badge', 'status'), Object.assign(el('span', 'ww-claw'), { hidden: true }));
-  if (isPerson(id)) {
+  if (id === me) {
     const ring = document.createElementNS(SVG, 'svg');
     ring.classList.add('ww-timer');
     ring.setAttribute('viewBox', '0 0 40 40');
@@ -310,7 +341,7 @@ const lastVote = (v) => (v.phase === 'vote' ? null : v.log.findLast((e) => e.typ
  * Each mark is [key, node, kind, words].
  */
 function marks(v, i) {
-  const id = game.players[i];
+  const id = players[i];
   const out = { ...identity(v, i), status: null, claw: null, dots: 0, words: [] };
   for (const e of v.log) {
     if (e.type === 'dawn' && e.deaths.includes(i)) out.status = [`died:${e.day}`, () => icon('moon'), 'dead', `Died, night ${e.day}`];
@@ -323,7 +354,7 @@ function marks(v, i) {
   const vote = lastVote(v);
   if (vote) {
     out.dots = Object.values(vote.votes).filter((t) => t === i).length;
-    if (i in vote.votes) out.words.push(vote.votes[i] === null ? 'Abstained' : `Voted ${label(game.players[vote.votes[i]])}`);
+    if (i in vote.votes) out.words.push(vote.votes[i] === null ? 'Abstained' : `Voted ${label(players[vote.votes[i]])}`);
     if (out.dots) out.words.push(`${out.dots} vote${out.dots > 1 ? 's' : ''}`);
   }
   out.words.unshift(...[out.fact, out.status, out.note].filter(Boolean).map((m) => m[3]), ...(out.claw ? [out.claw] : []));
@@ -347,7 +378,7 @@ function identity(v, i) {
 
 // A face's eyes: shut at night unless the narrator called its role and the person may know it; shut for good once dead.
 function presence(v, i) {
-  const id = game.players[i];
+  const id = players[i];
   if (!v.seats[i].alive) return 'away';
   if (v.phase === 'night') {
     const role = i === v.seat ? v.role : v.pack?.includes(i) ? 'wolf' : null;
@@ -373,12 +404,12 @@ function badge(node, mark) {
 
 function drawRing(v) {
   for (const [i, node] of seats.entries()) {
-    const id = game.players[i];
+    const id = players[i];
     const m = marks(v, i);
     node.toggleAttribute('data-dead', !v.seats[i].alive);
     node.toggleAttribute('data-turn', v.speaker === i);
     node.toggleAttribute('data-pickable', Boolean(actionOn(v, i)));
-    node.title = [i === v.seat ? 'You' : id, ...m.words].join(' · ');
+    node.title = [label(id), ...m.words].join(' · ');
     $('.pj-agent-face', node).dataset.presence = presence(v, i);
     for (const at of ['fact', 'note', 'status']) badge($(`[data-at="${at}"]`, node), m[at]);
     $('.ww-claw', node).hidden = !m.claw;
@@ -396,6 +427,7 @@ function drawRing(v) {
 
 // Your turn: a ring round your face that drains as your time runs out.
 function drawTimer(v) {
+  if (v.seat < 0) return; // watching
   const ring = $('.ww-timer', seats[v.seat]);
   const on = myTurn(v) && clock.ends > 0;
   ring.classList.toggle('ww-timer-on', on);
@@ -425,7 +457,7 @@ function drawVotes(v) {
   const ms = arrows($('.ww-votes'), pairs, (i) => $('.pj-avatar', seats[i]), fresh && !still);
   if (ms !== null) votesIn = ms;
 }
-addEventListener('resize', () => game && draw());
+addEventListener('resize', () => draw());
 
 // Over the clearing: the sun or the moon and the day, and one line that
 // changes with the moment: the narrator's call, the vote, last words.
@@ -438,8 +470,9 @@ function drawCenter(v) {
   time.dataset.icon = night ? 'moon' : 'sun';
   $('.ww-phase-text').textContent = v.phase === 'gather' ? 'Round the fire' : v.phase === 'over' ? (v.winner === 'village' ? 'The village wins' : 'The werewolves win') : `${night ? 'Night' : 'Day'} ${v.day}`;
   const call_ = CALLS[Math.min(call.at, CALLS.length - 1)];
-  const [key, mark, words] = v.phase === 'gather' ? ['gather', null, 'Everyone says hello']
-    : v.phase === 'over' ? ['over', null, (v.role === 'wolf') === (v.winner === 'wolves') ? 'You won' : 'You lost']
+  const [key, mark, words] = away ? ['away', null, away]
+    : v.phase === 'gather' ? ['gather', null, 'Everyone says hello']
+    : v.phase === 'over' ? ['over', null, v.seat < 0 ? '' : (v.role === 'wolf') === (v.winner === 'wolves') ? 'You won' : 'You lost']
       : night ? [`call:${call_}`, call_ === 'dusk' ? null : symbol(call_ === 'wolves' ? 'wolf' : call_), CALL_TEXT[call_]]
         : v.phase === 'vote' ? ['vote', symbol('ballot'), 'Vote']
           : v.phase === 'last' ? ['last', null, 'Last words'] : ['day', null, ''];
@@ -466,7 +499,7 @@ function drawMe(v) {
   }
   const kind = v.due.kind;
   const attacked = v.log.findLast((e) => e.type === 'attacked' && e.day === v.day);
-  const victim = attacked && (attacked.target === v.seat ? 'You were' : `${game.players[attacked.target]} was`);
+  const victim = attacked && (attacked.target === v.seat ? 'You were' : `${label(players[attacked.target])} was`);
   $('.ww-ask').textContent = {
     kill: () => (v.due.round === 2 ? 'The pack disagreed: pick again.' : 'Pick tonight\'s kill.'),
     check: () => 'Pick a player to check.',
@@ -477,7 +510,7 @@ function drawMe(v) {
   }[kind]();
   $('[data-do="abstain"]', form).hidden = kind !== 'vote';
   $('[data-do="save"]', form).hidden = kind !== 'potion' || !v.due.save;
-  if (attacked) $('[data-do="save"]', form).textContent = `Save ${label(game.players[attacked.target])}`;
+  if (attacked) $('[data-do="save"]', form).textContent = `Save ${label(players[attacked.target])}`;
   $('[data-do="pass"]', form).hidden = kind !== 'potion';
 }
 
@@ -499,10 +532,11 @@ function drawChat(v) {
   box.maxLength = MAX_SPEECH;
   box.placeholder = { all: kind === 'last' ? 'Your last words…' : 'Speak to the village…', pack: 'A line to the pack, sent with your pick', muted: '' }[audience];
   $('[type=submit]', chat).disabled = audience !== 'all' || !box.value.trim();
-  const speaker = v.speaker === null ? null : v.speaker === v.seat ? 'You' : game.players[v.speaker];
+  const speaker = v.speaker === null ? null : label(players[v.speaker]);
   const why = audience === 'all' ? [icon('users'), 'Everyone hears you.']
     : audience === 'pack' ? [token('wolf'), 'Only the pack hears you.']
-      : [symbol('muted'), !v.alive && !['over', 'last'].includes(v.phase) ? 'You are out: the dead don\'t speak.'
+      : [symbol('muted'), v.seat < 0 && v.phase !== 'over' ? 'You are watching: you play from the next game.'
+        : !v.alive && !['over', 'last'].includes(v.phase) ? 'You are out: the dead don\'t speak.'
         : v.phase === 'over' ? 'The game is over.'
           : v.phase === 'gather' ? 'Muted while everyone says hello.'
             : v.phase === 'night' ? 'Muted: it is night, and everyone\'s eyes are shut.'
@@ -519,7 +553,7 @@ chat.addEventListener('submit', (event) => {
   event.preventDefault();
   if (chat.dataset.audience === 'all') perform('speak');
 });
-box.addEventListener('input', () => drawChat(show(game)));
+box.addEventListener('input', () => shown && drawChat(shown));
 box.addEventListener('keydown', (event) => {
   if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
     event.preventDefault();
@@ -527,20 +561,28 @@ box.addEventListener('keydown', (event) => {
   }
 });
 
-// What the person does, through the writer, as an AI player's proposal: what they said goes with it.
+// What the person does, through the writer, as an AI player's proposal:
+// what they said goes with it. On a friend's page, it goes to the host,
+// which lands it, and says if it was turned away.
 function perform(type, target) {
-  const v = show(game);
+  const v = ROOM ? remote.view : show(game);
   if (!v.due) return;
   const action = { type, ...(target !== undefined ? { target } : {}) };
-  const { rejected } = land(game, HUMAN, { at: v.due.at }, { action, say: box.value });
-  const error = $('.ww-error');
-  error.textContent = rejected ?? '';
-  error.hidden = !rejected;
+  let rejected = null;
+  if (ROOM) guest.send({ type: 'act', action: { ...action, at: v.due.at }, say: box.value });
+  else ({ rejected } = land(game, HUMAN, { at: v.due.at }, { action, say: box.value }));
+  refused(rejected);
   if (!rejected) {
     form.hidden = true; // drawn again once the narrator has moved on
     if (type === 'vote' || type === 'abstain') myVote = { day: v.day, target: target ?? null };
   }
-  changed();
+  if (ROOM) draw();
+  else changed();
+}
+function refused(why) {
+  const error = $('.ww-error');
+  error.textContent = why ?? '';
+  error.hidden = !why;
 }
 form.addEventListener('submit', (event) => event.preventDefault());
 form.addEventListener('click', (event) => {
@@ -568,7 +610,7 @@ function item(content, run, selected = false) {
 function openMenu(node) {
   const i = Number(node.dataset.seat);
   const v = shown;
-  const id = game.players[i];
+  const id = players[i];
   const act = actionOn(v, i);
   const guess = (role) => item(token(role, true), () => {
     notes.set(i, role);
@@ -576,7 +618,7 @@ function openMenu(node) {
   }, notes.get(i) === role);
   const head = el('li', 'pk-menu-head');
   const who = el('span', 'pk-menu-text');
-  who.append(el('b', '', i === v.seat ? 'You' : id));
+  who.append(el('b', '', label(id)));
   if (!isPerson(id)) who.append(el('span', '', PERSONAS.find((p) => p.id === id).blurb));
   head.append(faceOf(id), who);
   const items = [head];
@@ -602,7 +644,7 @@ function openMenu(node) {
 }
 $('.ww-ring').addEventListener('click', (event) => {
   const node = event.target.closest('.ww-seat');
-  if (node && game) openMenu(node);
+  if (node && shown) openMenu(node);
 });
 document.addEventListener('pointerdown', (event) => {
   if (!menu.hidden && !event.target.closest('.ww-menu, .ww-seat')) menu.hidden = true;
@@ -617,15 +659,15 @@ const SECRET = { pick: 'wolf', kill: 'wolf', check: 'seer', attacked: 'witch', s
 function drawFeed(v) {
   const feed = $('.pk-feed');
   const stick = feed.scrollHeight - feed.scrollTop - feed.clientHeight < 40;
-  const name = (i) => (i === v.seat ? 'you' : game.players[i]);
+  const name = (i) => (i === v.seat ? 'you' : label(players[i]));
   const Name = (i) => cap(name(i));
   const names = (list) => list.map(Name).join(' and ');
   const rows = [];
   let last = null; // who said the row before, to run their bubbles together
   const known = (i) => Object.values(identity(v, i)).filter(Boolean).map((m) => m[1]());
   const say = (i, text, note, pack = false) => {
-    const id = game.players[i];
-    const row = message({ face: !isPerson(id) && faceOf(id), name: [id, ...known(i)], text, note: pack ? el('span', 'ww-only', 'only the pack') : note, mine: isPerson(id), more: last === i && !pack });
+    const id = players[i];
+    const row = message({ face: id !== me && faceOf(id), name: [label(id), ...known(i)], text, note: pack ? el('span', 'ww-only', 'only the pack') : note, mine: id === me, more: last === i && !pack });
     if (pack) row.dataset.audience = 'pack';
     rows.push(row);
     last = pack ? null : i;
@@ -665,31 +707,44 @@ function drawFeed(v) {
   }
   for (const id of typing) rows.push(typingMessage(faceOf(id), id));
   for (const [id, why] of failed) {
-    const named = v.phase !== 'night' || v.pack?.includes(game.players.indexOf(id)); // at night, who failed would say who has a role
+    const named = v.phase !== 'night' || v.pack?.includes(players.indexOf(id)); // at night, who failed would say who has a role
     const row = notice(`${named ? id : 'A player'} could not reach the model: ${why}`);
     row.dataset.failed = '';
-    const again = el('button', 'pj-link-button', 'Retry');
-    again.type = 'button';
-    again.addEventListener('click', () => runtime.retry(id));
-    row.append(' ', again);
+    if (ROOM) row.append(' Waiting for the host to retry.');
+    else {
+      const again = el('button', 'pj-link-button', 'Retry');
+      again.type = 'button';
+      again.addEventListener('click', () => runtime.retry(id));
+      row.append(' ', again);
+    }
     rows.push(row);
   }
   feed.replaceChildren(...rows);
   if (stick) feed.scrollTop = feed.scrollHeight;
 }
 
-// Draws the person's view: while the players say hello, round the fire
-// before night falls; while the narrator has not yet called dawn, the night
-// as it was. Returns whether the narrator is behind the game.
+// Draws this page's player's view: while the players say hello, round the
+// fire before night falls; while the narrator has not yet called dawn, the
+// night as it was. Returns whether the narrator is behind the game. On the
+// host's page, friends get theirs.
 function draw() {
-  if (!game) return false;
+  const behind = paint();
+  if (!ROOM) share(behind);
+  return behind;
+}
+function paint() {
+  const look = () => (ROOM ? remote.view : show(game));
+  if (ROOM ? !remote?.view : !game) {
+    if (ROOM) $('.ww-phase-text').textContent = away || 'Waiting for the host to start a game';
+    return false;
+  }
   if (hellos.going) {
-    const v = { ...show(game), phase: 'gather', due: null, log: [] };
+    const v = { ...look(), phase: 'gather', due: null, log: [] };
     for (const part of [drawVotes, drawRing, drawCenter, drawMe, drawChat, drawFeed]) part(v);
     return true;
   }
   const held = pace();
-  const v = held && game.state.phase !== 'night' && shown ? { ...shown, due: null } : show(game);
+  const v = held && look().phase !== 'night' && shown ? { ...shown, due: null } : look();
   shown = v;
   drawVotes(v);
   drawRing(v);
@@ -705,20 +760,21 @@ function draw() {
 function showThinking() {
   const dialog = $('.pk-thinking');
   $('h2', dialog).textContent = 'Their thinking';
-  const roles = game.state.seats.map((s) => s.role);
-  $('.pk-thinking-body', dialog).replaceChildren(...game.players.filter((id) => !isPerson(id)).map((id) => {
-    const seat = game.players.indexOf(id);
+  const { seats: all } = shown; // the game is over: every role shows
+  const thinking = ROOM ? remote.notes : game.notes;
+  $('.pk-thinking-body', dialog).replaceChildren(...players.filter((id) => !isPerson(id)).map((id) => {
+    const seat = players.indexOf(id);
     const part = el('details', 'pj-trace-part');
     part.open = true;
     const summary = el('summary');
     const meta = el('span', 'pj-trace-meta');
-    meta.append(token(roles[seat]), game.state.seats[seat].alive ? ' alive' : ' dead');
+    meta.append(token(all[seat].role), all[seat].alive ? ' alive' : ' dead');
     summary.append(icon('chevron'), faceOf(id), el('span', 'pj-trace-title', id), meta);
     part.append(summary);
-    const thoughts = game.notes[id].thoughts;
+    const thoughts = thinking[id]?.thoughts ?? [];
     if (!thoughts.length) part.append(el('p', 'pj-empty', 'No decisions.'));
     for (const t of thoughts) {
-      const target = Number.isInteger(t.action?.target) ? ` ${isPerson(game.players[t.action.target]) ? 'you' : game.players[t.action.target]}` : '';
+      const target = Number.isInteger(t.action?.target) ? ` ${label(players[t.action.target])}` : '';
       part.append(el('h3', 'pj-setting-group', `${t.phase === 'night' ? 'Night' : 'Day'} ${t.day}${t.action ? ` · ${t.action.type}${target}` : ''}`));
       part.append(el('pre', 'pj-trace-text pj-trace-thinking', t.text));
     }
@@ -727,7 +783,7 @@ function showThinking() {
   if (dialog instanceof HTMLDialogElement) dialog.showModal();
 }
 
-// ---- a new game: how many players, and the roles that makes ----
+// ---- a new game: how many players, who is at the table, and the roles that makes ----
 
 const starting = $('.ww-start');
 let size = 7;
@@ -739,6 +795,10 @@ function openStart() {
     item.append(token(role));
     return item;
   }));
+  const seated = Math.min(people.length, size);
+  const list = people.map(label);
+  const watch = people.length > size ? ` The last ${people.length - size === 1 ? 'one watches' : `${people.length - size} watch`}.` : '';
+  $('.ww-people').textContent = people.length === 1 ? '' : `At the table: ${list.slice(0, -1).join(', ')} and ${list.at(-1)}.${watch} AI players take the ${size - seated === 1 ? 'other seat' : `other ${size - seated} seats`}.`;
   starting.hidden = false;
   document.body.classList.add('pk-buying-in');
 }
@@ -755,6 +815,104 @@ starting.addEventListener('submit', (event) => {
   startGame(size);
 });
 
+// ---- friends: the host's page invites them; a friend's page joins ----
+
+const peers = new Map(); // a friend's page in the room → its player's id
+let room = null; // the room, once the host invites friends
+const inviting = $('.pk-invite');
+async function invite() {
+  inviting.hidden = false;
+  document.body.classList.add('pk-setting-up');
+  inviting.elements.name.value = names[HUMAN] ?? load(NAME) ?? '';
+  room ??= await host({ joined, heard: (peer, message) => peers.has(peer) && apply(peer, message), left });
+  inviting.elements.link.value = room.link;
+}
+function closeInvite() {
+  const name = inviting.elements.name.value.trim().slice(0, 20);
+  if (name) {
+    names[HUMAN] = name;
+    store(name, NAME);
+  }
+  inviting.hidden = true;
+  document.body.classList.remove('pk-setting-up');
+  if (!starting.hidden) openStart();
+  changed();
+}
+function joined(peer, hello) {
+  if (!/^f[0-9a-f]{8}$/.test(String(hello?.id))) return room.turnAway(peer, 'Not a player');
+  peers.set(peer, hello.id);
+  changed();
+}
+function left(peer) {
+  const id = peers.get(peer);
+  peers.delete(peer);
+  people = people.filter((p) => p !== id);
+  if (!starting.hidden) openStart();
+  changed();
+}
+// What a friend's page sends: to sit at the table, or what its player does.
+function apply(peer, message) {
+  const id = peers.get(peer);
+  if (message.type === 'sit') {
+    if (people.includes(id)) return;
+    if (people.length >= MAX_PEOPLE) return room.turnAway(peer, 'The table is full.');
+    people.push(id);
+    names[id] = String(message.name ?? '').trim().slice(0, 20) || 'Friend';
+    if (!starting.hidden) openStart();
+  } else if (message.type === 'act' && message.action && typeof message.action === 'object') {
+    const { type, target, at } = message.action;
+    if (!game?.players.includes(id)) return;
+    const { rejected } = land(game, id, { at }, { action: { type: String(type), ...(Number.isInteger(target) ? { target } : {}) }, say: String(message.say ?? '') });
+    if (rejected) room.send(peer, { type: 'rejected', why: rejected });
+  } else return;
+  changed();
+}
+
+// Each friend's page gets the game as its player may see it: its own
+// seat's view (what everyone sees, if it is watching), the narrator's call,
+// and the AI players' thinking once the game is over.
+function share(behind = held) {
+  if (!room) return;
+  const over = game?.state.phase === 'over';
+  for (const [peer, id] of peers) {
+    room.send(peer, { type: 'state', gameNo, players, names, view: game && show(game, id), hellos, call, held: behind, notes: over ? game.notes : {}, running: [...running], typing: [...typing], failed: [...failed], clock: clock.ends ? clock.ends - Date.now() : 0, clockAt: clock.at });
+  }
+}
+
+// A friend's page: the game as the host sends it.
+const guest = ROOM && join(ROOM, { id: me }, {
+  heard(message) {
+    away = '';
+    if (message.type === 'rejected') {
+      refused(message.why);
+      return draw();
+    }
+    if (message.type !== 'state') return;
+    const fresh = message.gameNo !== remote?.gameNo;
+    remote = message;
+    names = message.names;
+    if (fresh && message.view) seatUp(message.players);
+    hellos = message.hellos;
+    for (const [set, ids] of [[running, message.running], [typing, message.typing]]) set.clear() || ids.forEach((id) => set.add(id));
+    failed = new Map(message.failed);
+    clock = { at: message.clockAt, ends: message.clock && Date.now() + message.clock };
+    draw();
+  },
+  away(reason) {
+    away = reason === 'host' ? 'The host is away. Waiting for them…' : reason === 'line' ? 'Reconnecting…' : reason;
+    draw();
+  },
+});
+const joining = $('.ww-join');
+joining.addEventListener('submit', (event) => {
+  event.preventDefault();
+  const name = joining.elements.name.value.trim().slice(0, 20) || 'Friend';
+  store(name, NAME);
+  guest.send({ type: 'sit', name });
+  joining.hidden = true;
+  document.body.classList.remove('pk-buying-in');
+});
+
 // ---- wiring ----
 
 document.addEventListener('click', (event) => {
@@ -763,10 +921,28 @@ document.addEventListener('click', (event) => {
   else if (action === 'thinking') showThinking();
   else if (action === 'close') $('.pk-thinking').close();
   else if (action === 'key') ai.open();
+  else if (action === 'invite') invite();
+  else if (action === 'invite-done') closeInvite();
+  else if (action === 'copy') {
+    inviting.elements.link.select();
+    navigator.clipboard?.writeText(inviting.elements.link.value).catch(() => {});
+  } else if (action === 'watch') {
+    joining.hidden = true;
+    document.body.classList.remove('pk-buying-in');
+  }
 });
 $('.pk-thinking').addEventListener('click', (event) => {
   if (event.target === event.currentTarget) event.currentTarget.close(); // a click on the backdrop
 });
 
-ai.draw();
-openStart();
+if (ROOM) {
+  for (const node of document.querySelectorAll('[data-action="new"], [data-action="key"]')) node.hidden = true;
+  $('.pk-model').textContent = 'You joined a friend\'s game: the AI players run on their page.';
+  joining.elements.name.value = load(NAME) ?? '';
+  joining.hidden = false;
+  document.body.classList.add('pk-buying-in');
+  draw();
+} else {
+  ai.draw();
+  openStart();
+}

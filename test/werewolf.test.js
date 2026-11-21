@@ -251,6 +251,21 @@ test('a speech is the speaker\'s action; a run that says nothing is asked again'
   assert.equal(game.state.log.at(-1).silent, true, 'out of time: the next speaker said nothing');
 });
 
+test('friends at the table: people sit first, by name; one gone only times out their own turn; a watcher sees no secret', () => {
+  const game = newTable(7, { people: [HUMAN, 'fa1b2c3d4'], names: { fa1b2c3d4: 'Mia' }, roles: ['villager', 'wolf', 'witch', 'seer', 'villager', 'wolf', 'villager'] });
+  assert.deepEqual(game.players, [HUMAN, 'fa1b2c3d4', 'Rosa', 'Jax', 'Wen', 'Otis', 'Priya']);
+  assert.match(prompt(game, 'Otis').situation, /seat 2, Mia, a person \(werewolf\)/, 'the pack knows its friend by name');
+  assert.match(prompt(game, 'Rosa').situation, /seat 1, the host, a person: alive/);
+  assert.equal(expire(game, ['fa1b2c3d4']), true, 'Mia is gone: her pick is taken as none');
+  assert.deepEqual(game.log.at(-1).late, ['fa1b2c3d4']);
+  assert.equal(game.state.step, 'wolves', 'Otis still picks');
+  assert.equal(expire(game, ['fa1b2c3d4']), false, 'nothing more of Mia\'s is due');
+  const watcher = show(game, 'f00000000');
+  assert.equal(watcher.seat, -1);
+  assert.ok(watcher.seats.every((x) => x.role === null) && !watcher.pack && !watcher.due);
+  assert.ok(!watcher.log.some((e) => e.type === 'pick'), 'not the pack\'s picks');
+});
+
 test('each AI player has its own character, and a prompt gives it with the player\'s role', () => {
   assert.equal(new Set(PERSONAS.map((p) => p.id)).size, PERSONAS.length);
   assert.ok(PERSONAS.length >= Math.max(...SIZES) - 1);
@@ -280,7 +295,7 @@ function secrets(game) {
   const witch = s.seats.findIndex((x) => x.role === 'witch');
   const out = [];
   for (const [i, x] of s.seats.entries()) {
-    out.push({ test: (me) => new RegExp(`seat ${i + 1}, ${me === i ? 'you' : i === 0 ? 'the person' : game.players[i]} \\(${ROLE_NAMES[x.role]}\\)`), may: x.role === 'wolf' ? wolves : [i], shown: true });
+    out.push({ test: (me) => new RegExp(`seat ${i + 1}, ${me === i ? 'you' : i === 0 ? 'the host, a person' : game.players[i]} \\(${ROLE_NAMES[x.role]}\\)`), may: x.role === 'wolf' ? wolves : [i], shown: true });
   }
   for (const e of s.log) if (e.type === 'pick' && e.text) out.push({ test: () => new RegExp(`\\b${e.text}\\b`), may: wolves });
   out.push({ test: () => /wants to kill seat|The pack (chose|killed)/, may: wolves });

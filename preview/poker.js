@@ -133,7 +133,7 @@ const ASKS = { turn: (hand) => `Turn, hand ${hand}`, line: (n) => `Chat line ${n
 const panel = !ROOM && new URLSearchParams(location.search).has('debug') && createRuntimePanel({
   where: 'this table', faceOf, retry: (id) => runtime.retry(id),
   askText: (id) => ASKS[id.split(':')[0]]?.(id.split(':')[1]) ?? id,
-});
+}) || null; // null without ?debug: `false?.add()` would throw
 
 // The table as a world, and on the host's page, Ponjo's runtime on it. What
 // it says of the players (statuses): who is at work, and whose run failed.
