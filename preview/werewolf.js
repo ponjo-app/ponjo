@@ -1056,7 +1056,7 @@ $('.pk-thinking').addEventListener('click', (event) => {
 });
 
 if (ROOM) {
-  for (const node of document.querySelectorAll('[data-action="new"], [data-action="key"]')) node.hidden = true;
+  for (const node of document.querySelectorAll('[data-action="new"], [data-action="key"], [data-action="invite"]')) node.hidden = true;
   $('.pk-model').textContent = 'You joined a friend\'s game: the AI players run on their page.';
   joining.elements.name.value = load(NAME) ?? '';
   joining.hidden = false;
