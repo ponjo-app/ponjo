@@ -1,12 +1,11 @@
 // The poker page (site/poker.html): a person and three AI players at one
 // No-Limit Hold'em table, chatting while they play. The dealer
 // (poker-dealer.js) owns what must be exact; the players decide the rest
-// from the rules and what they can see (poker-runtime.js). Here: the
-// controller, which on every change looks at the table and starts the runs
-// `plan` says are due, never acting on an event itself; a run, one call of
-// the visitor's model (game-page.js, which this page shares with the
-// werewolf page, with its log's messages); and the table drawn with the
-// app's classes and faces. The person may invite friends
+// from the rules and what they can see (poker-world.js). Ponjo's agent
+// runtime (src/core/runtime.js) runs them on the table as a world. Here: a
+// run, one call of the visitor's model (game-page.js, which this page
+// shares with the werewolf page, with its log's messages); and the table
+// drawn with the app's classes and faces. The person may invite friends
 // (poker-share.js): their pages join by a link, and this page, the host's,
 // sends each what its player may see and lands what they do through the
 // same writer. A friend's page, opened at `#join=<room>`, only draws.
@@ -18,7 +17,8 @@ import { $, el, load, message, models, notice, store, typingMessage } from './ga
 import { agentFace, personFace, setBuddies, setOwner } from '../web/faces.js';
 import { icon } from '../web/icons.js';
 import { handName, legal } from './poker-dealer.js';
-import { DECIDE, HUMAN, MAX_SEATS, PERSONAS, STACK, addPlayer, begin, force, freeSeats, intros, introduce, isPerson, lineup, react, removePlayer, deal, fail, land, leave, myChips, newTable, plan, prompt, retry, say, seatFriend, topUp } from './poker-runtime.js';
+import { DECIDE, HUMAN, MAX_SEATS, PERSONAS, STACK, addPlayer, createWorld, force, freeSeats, intros, introduce, isPerson, lineup, react, removePlayer, deal, land, leave, myChips, newTable, say, seatFriend, topUp } from './poker-world.js';
+import { createRuntime } from '../src/core/runtime.js';
 import { host, join } from './poker-share.js';
 
 const WALLET = 'ponjo-poker-bankroll';
@@ -38,6 +38,7 @@ const me = ROOM ? `f${[...crypto.getRandomValues(new Uint8Array(4))].map((b) => 
 let table = newTable(0); // the person sits down with a buy-in; a friend's page, the table as the host sends it
 const running = new Set(); // players with a run going
 const typing = new Set(); // players typing a line, shown in the chat
+let failed = new Map(); // players whose run failed → why, until Retry
 
 // ---- what the visitor keeps in this browser: their bankroll ----
 
@@ -49,20 +50,21 @@ const saveWallet = () => store({ ...wallet, onTable: chipsOfMine() }, WALLET);
 let turnedAway = false; // a friend's page the host asked to leave: its chips are back in its bankroll
 // The players' model. Once the visitor picks another, what failed is tried again.
 const ai = models(() => {
-  for (const { id } of PERSONAS) if (table.notes[id].failed) retry(table, id);
+  runtime?.retry();
   changed();
 });
 
 // ---- the controller ----
 
-// Every change: draw it, then look again. A look starts what `plan` says is due,
-// times a person's turn, and sends friends the table; that is all it does.
-// A friend's page only draws.
+// Every change: draw it, and tell the world, whose runtime looks again
+// and starts the runs that are due; time a person's turn, and send
+// friends the table. A friend's page only draws.
 function changed() {
   if (!table.hand || table.hand.street === 'done') for (const id of gone) if (gone.delete(id) && seatedNow(id)) leave(table, id);
   draw();
   if (ROOM) return;
-  for (const due of plan(table, running)) run(due.id, due);
+  world.changed();
+  runtime?.sync(); // who is at the table may have changed
   timeTurn();
   share();
 }
@@ -103,35 +105,52 @@ function thinkTime(id, due) {
 }
 const typeTime = (text) => Math.min(3000, Math.max(700, text.length * 35));
 
-async function run(id, due) {
-  const basis = begin(table, id, due);
-  if (!due.turn && !basis.talk) return; // woken only to talk, and not talking this time
+// A run: one call of the model on what the player sees, then the player's
+// own time to think; its proposal goes to the world, which lands the action
+// and then, once the player is seen typing it, the line. A run woken only
+// to talk, on a turn it stays quiet, calls no model.
+async function run({ agent }, { files: basis, prompt: { rules, situation } }) {
+  const at = Date.now();
   const started = performance.now();
-  running.add(id);
-  draw();
-  const { rules, situation } = prompt(table, id, due, basis.talk);
+  if (!basis.turn && !basis.talk) return { at, ms: 0, outcome: 'ok', made: null };
   try {
     const { calls, text } = await ai.infer()([{ role: 'user', content: rules, cache: true }, { role: 'user', content: situation }], [DECIDE]);
     let args = {};
     try {
       args = JSON.parse(calls.find((c) => c.name === 'decide')?.args ?? '{}');
     } catch {}
-    await wait(thinkTime(id, due) - (performance.now() - started));
-    land(table, id, basis, { thinking: args.thinking ?? text, action: args.action ?? null, react: args.react });
-    if (typeof args.say === 'string' && args.say.trim()) {
-      typing.add(id);
-      changed();
-      await wait(typeTime(args.say));
-      typing.delete(id);
-      land(table, id, basis, { say: args.say });
-    }
+    await wait(thinkTime(agent.id, basis) - (performance.now() - started));
+    return { at, ms: performance.now() - started, outcome: 'ok', made: { thinking: args.thinking ?? text, action: args.action ?? null, react: args.react, say: args.say } };
   } catch (error) {
-    typing.delete(id);
-    fail(table, id, basis, String(error.message).split('\n')[0]);
+    return { at, ms: performance.now() - started, outcome: 'failed', body: String(error.message).split('\n')[0] };
   }
-  running.delete(id);
-  changed();
 }
+
+// The table as a world, and on the host's page, Ponjo's runtime on it. What
+// it says of the players (statuses): who is at work, and whose run failed.
+const world = createWorld(() => table, {
+  async typing(id, text) {
+    typing.add(id);
+    draw();
+    share();
+    await wait(typeTime(text));
+    typing.delete(id);
+  },
+});
+const runtime = ROOM ? null : await createRuntime({
+  world, run,
+  breaker: async () => ({ pauseAfter: Infinity, pauseWithin: 10 }), // the table has no watches to pause
+  watching: { read: async () => ({}), note: () => {} },
+  trace: (event) => console.debug('runtime', event.type, event), // for the devtools, until the runtime has a view of its own
+  emit(type, statuses) {
+    if (type !== 'agents') return;
+    running.clear();
+    for (const s of statuses) if (s.asks.length) running.add(s.id);
+    failed = new Map(statuses.filter((s) => s.failed.length).map((s) => [s.id, s.failed.at(-1).why]));
+    draw();
+    share();
+  },
+});
 
 function nextHand() {
   if (!deal(table)) return buyIn('rebuy');
@@ -544,7 +563,7 @@ function drawMe() {
   $('.pk-strength').textContent = !s?.inHand ? '' : s.folded ? 'Folded' : handName(s.hole, hand.board);
   const actor = hand?.street !== 'done' && hand?.seats[hand.toAct]?.id;
   const mine = actor === me && !away;
-  const failure = !away && table.notes[actor]?.failed;
+  const failure = !away && failed.has(actor) && { why: failed.get(actor) };
   const recovery = $('.pk-recovery');
   recovery.hidden = !failure;
   $('[data-action="retry"]', recovery).hidden = Boolean(ROOM);
@@ -767,10 +786,7 @@ document.addEventListener('click', (event) => {
   if (action === 'next') nextHand();
   else if (action === 'retry' && !ROOM) {
     const actor = $('.pk-recovery').dataset.actor;
-    if (table.notes[actor]?.failed) {
-      retry(table, actor);
-      changed();
-    }
+    if (failed.has(actor)) runtime.retry(actor);
   }
   else if (action === 'topup') buyIn('topup');
   else if (action === 'leave') leaveTable();
@@ -868,9 +884,9 @@ function share() {
       seats: table.hand.seats.map((s, i) => ({ ...s, hole: i === seat || (table.hand.result?.showdown && table.hand.result.hands[i]) || (table.hand.street === 'done' && !isPerson(s.id)) ? s.hole : s.hole.map(() => null) })),
     };
     const done = table.hand?.street === 'done';
-    const notes = Object.fromEntries(PERSONAS.map(({ id }) => [id, { failed: table.notes[id].failed, thoughts: done ? table.notes[id].thoughts.filter((t) => t.hand === table.hand.id) : [] }]));
+    const notes = Object.fromEntries(PERSONAS.map(({ id }) => [id, { thoughts: done ? table.notes[id].thoughts.filter((t) => t.hand === table.hand.id) : [] }]));
     const { rev, players, slots, names, joining, leaving, handNo } = table;
-    room.send(peer, { type: 'state', table: { rev, players, slots, names, joining, leaving, handNo, hand, notes, topUp: { [p.id]: table.topUp[p.id] ?? 0 }, log: table.log.slice(p.log), logFrom: p.log, chat: table.chat.slice(p.chat), chatFrom: p.chat }, running: [...running], typing: [...typing], clock: clock.ends ? clock.ends - Date.now() : 0 });
+    room.send(peer, { type: 'state', table: { rev, players, slots, names, joining, leaving, handNo, hand, notes, topUp: { [p.id]: table.topUp[p.id] ?? 0 }, log: table.log.slice(p.log), logFrom: p.log, chat: table.chat.slice(p.chat), chatFrom: p.chat }, running: [...running], typing: [...typing], failed: [...failed], clock: clock.ends ? clock.ends - Date.now() : 0 });
     Object.assign(p, { log: table.log.length, chat: table.chat.length });
   }
 }
@@ -887,6 +903,7 @@ const guest = ROOM && join(ROOM, { id: me }, {
     const t = message.table;
     table = { ...t, log: [...table.log.slice(0, t.logFrom), ...t.log], chat: [...table.chat.slice(0, t.chatFrom), ...t.chat] };
     for (const [set, ids] of [[running, message.running], [typing, message.typing]]) set.clear() || ids.forEach((id) => set.add(id));
+    failed = new Map(message.failed);
     clock = { ends: message.clock && Date.now() + message.clock };
     saveWallet();
     draw();

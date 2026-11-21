@@ -1,8 +1,12 @@
-// The poker page's dealer and runtime (preview/poker-dealer.js, preview/poker-runtime.js).
+// The poker page's dealer and its table as a world (preview/poker-dealer.js,
+// preview/poker-world.js), on Ponjo's runtime (src/core/runtime.js).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { plan } from '../src/core/due.js';
+import { createRuntime } from '../src/core/runtime.js';
 import { act, bestHand, compare, handName, legal, pots, shuffled, startHand, view } from '../preview/poker-dealer.js';
-import { HUMAN, MAX_SEATS, PERSONAS, REACTIONS, STACK, addPlayer, begin, force, freeSeats, deal, intros, introduce, land, leave, lineup, myChips, newTable, plan, prompt, removePlayer, say, seatFriend, topUp } from '../preview/poker-runtime.js';
+import { HUMAN, MAX_SEATS, PERSONAS, REACTIONS, STACK, addPlayer, begin, createWorld, force, freeSeats, deal, intros, introduce, land, leave, lineup, myChips, newTable, prompt, removePlayer, say, seatFriend, topUp } from '../preview/poker-world.js';
+import { until } from './helpers.js';
 
 const rank = (cards) => bestHand(cards.split(' '));
 const beats = (a, b) => compare(rank(a).score, rank(b).score);
@@ -153,7 +157,7 @@ test('a split pot gives the odd chip to the first winner left of the button', ()
   assert.deepEqual(hand.seats.map((s) => s.stack), [975, 1013, 1012]);
 });
 
-test('a seat sees only its own cards until a showdown', () => {
+test('a seat sees only its own cards until a showdown', async () => {
   const hand = startHand({ id: 1, players: players(1000, 1000, 1000), button: -1, blinds: [10, 20] });
   const v = view(hand, 1);
   assert.deepEqual(v.seats.map((s) => Boolean(s.hole)), [false, true, false]);
@@ -161,7 +165,30 @@ test('a seat sees only its own cards until a showdown', () => {
   for (const card of [...hand.seats[0].hole, ...hand.seats[2].hole]) assert.ok(!seen.includes(`"${card}"`), `${card} is in seat 1's view`);
 });
 
-// ---- the runtime ----
+// ---- the table as a world ----
+
+// Who Ponjo's runtime finds due on `table` (src/core/due.js, plan, on the
+// world's asks): [{ id, turn, lines, react, asks }]. `given` is what earlier
+// runs were given, as the runtime notes it (give).
+async function dueNow(table, given = new Map()) {
+  const world = createWorld(() => table);
+  const members = await world.members();
+  const { start } = plan({
+    agents: members.filter((m) => m.kind === 'agent'), asks: await world.asks(), askers: members.filter((m) => m.mayAsk).map((m) => m.id), notes: given,
+    changedAt: new Map(), running: new Set(), prints: new Map(), woken: new Set(), limit: world.limits.depth, settleMs: 0, paused: false, now: 0,
+  });
+  return start.map(({ agent, asks }) => ({
+    id: agent.id, asks,
+    turn: asks.some((a) => a.id.startsWith('turn:')),
+    lines: asks.filter((a) => a.id.startsWith('line:')).map((a) => table.chat[Number(a.id.slice(5)) - 1]),
+    react: asks.some((a) => a.id.startsWith('react:')),
+  }));
+}
+// A run is given what `due` was due for: those asks ask it no more.
+function give(given, due) {
+  if (!given.has(due.id)) given.set(due.id, { seen: new Map(), lookedAt: null, print: null, wake: null, watch: null });
+  for (const a of due.asks) given.get(due.id).seen.set(a.id, Date.parse(a.until));
+}
 
 const tableWithHand = () => {
   const table = newTable();
@@ -170,16 +197,17 @@ const tableWithHand = () => {
 };
 const toAct = (table) => table.players[table.hand.toAct].id;
 
-test('random play: chips are kept, and a prompt never holds a card it may not see', () => {
+test('random play: chips are kept, and a prompt never holds a card it may not see', async () => {
   const pick = (list) => list[Math.floor(Math.random() * list.length)];
   for (let game = 0; game < 30; game++) {
     const table = newTable();
+    const world = createWorld(() => table);
     let chips = 4 * STACK;
     for (let k = 0; k < 20 && deal(table); k++) {
       while (table.hand.street !== 'done') { // nobody's cards are shown before the hand is over
         for (const { id } of table.hand.seats.filter((s) => s.id !== HUMAN)) {
           const seat = table.players.findIndex((p) => p.id === id);
-          const { rules, situation } = prompt(table, id, { turn: true, lines: [], react: false });
+          const { rules, situation } = (await world.view({ id }, { asks: (await world.asks()).filter((a) => a.agent === id) })).prompt;
           for (const [i, s] of table.hand.seats.entries()) {
             for (const card of s.hole) assert.equal(new RegExp(`\\b${card}\\b`).test(`${rules}\n${situation}`), i === seat, `${id}'s prompt and seat ${i}'s ${card}`);
           }
@@ -203,45 +231,50 @@ test('random play: chips are kept, and a prompt never holds a card it may not se
   }
 });
 
-test('the player to act is due; a line to the table wakes the players, a reply to a reply no one', () => {
+test('the player to act is due; a line to the table wakes the players, a reply to a reply no one', async () => {
   const table = tableWithHand();
-  const due = plan(table);
+  const given = new Map();
+  const due = await dueNow(table, given);
   assert.deepEqual(due.filter((d) => d.turn).map((d) => d.id), toAct(table) === HUMAN ? [] : [toAct(table)]);
-  for (const d of due) begin(table, d.id, d);
-  assert.ok(plan(table).every((d) => d.turn), 'seen lines do not wake again');
+  for (const d of due) give(given, d);
+  assert.deepEqual(await dueNow(table, given), [], 'what a run was given asks no more');
 
   say(table, HUMAN, 'Nice weather for poker.');
-  assert.equal(plan(table).length, 3);
-  for (const d of plan(table)) begin(table, d.id, d);
+  assert.equal((await dueNow(table, given)).length, 3);
+  for (const d of await dueNow(table, given)) give(given, d);
   say(table, HUMAN, 'Penny, what are the odds?');
-  assert.deepEqual(plan(table).map((d) => d.id).filter((id) => !plan(table).find((d) => d.id === id).turn || plan(table).find((d) => d.id === id).lines.length), ['Penny']);
-  const basis = begin(table, 'Penny', plan(table).find((d) => d.id === 'Penny'));
-  land(table, 'Penny', basis, { thinking: 'x', say: 'About one in three, Duke.' });
+  const [penny] = await dueNow(table, given);
+  assert.deepEqual((await dueNow(table, given)).map((d) => d.id), ['Penny']);
+  give(given, penny);
+  land(table, 'Penny', begin(table, 'Penny', penny), { thinking: 'x', say: 'About one in three, Duke.', for: [HUMAN] });
   assert.equal(table.chat.at(-1).depth, 1);
-  const duke = plan(table).find((d) => d.id === 'Duke');
+  const duke = (await dueNow(table, given)).find((d) => d.id === 'Duke');
   assert.equal(duke.lines.length, 1, 'named, Duke is due');
-  land(table, 'Duke', begin(table, 'Duke', duke, 0), { thinking: 'x', say: 'Penny, you always say that.' });
+  give(given, duke);
+  land(table, 'Duke', begin(table, 'Duke', duke, 0), { thinking: 'x', say: 'Penny, you always say that.', for: [HUMAN] });
   assert.equal(table.chat.at(-1).depth, 2);
-  assert.ok(!plan(table).find((d) => d.id === 'Penny')?.lines.length, 'a reply to a reply wakes no one');
+  assert.deepEqual(await dueNow(table, given), [], 'a reply to a reply wakes no one');
 });
 
-test('only one answer lands to a line the person says to the whole table', () => {
+test('only one answer lands to a line the person says to the whole table', async () => {
   const table = tableWithHand();
   const line = say(table, HUMAN, 'Who is winning tonight?');
-  const runs = plan(table).filter((d) => d.lines.length).map((d) => [d.id, begin(table, d.id, d)]);
+  const runs = (await dueNow(table)).filter((d) => d.lines.length).map((d) => [d.id, begin(table, d.id, d)]);
   for (const [id, basis] of runs) land(table, id, basis, { thinking: 'x', say: `${id} is.` });
   assert.equal(table.chat.filter((l) => l.about === line.id).length, 1);
 });
 
-test('a stale action is turned away, an illegal one too, and the player is asked again', () => {
+test('a stale action is turned away, an illegal one too, and the player is asked again', async () => {
   const table = tableWithHand();
   while (toAct(table) === HUMAN) land(table, HUMAN, { hand: table.hand.id, n: table.hand.n, turn: true }, { action: { type: 'call' } });
   const id = toAct(table);
+  const given = new Map();
+  give(given, (await dueNow(table)).find((d) => d.id === id));
   const basis = begin(table, id, { turn: true, lines: [], react: false });
   const out = land(table, id, basis, { thinking: 'check it', action: { type: 'check' } }); // preflop, facing the big blind: illegal unless it is the big blind
   if (out.rejected) {
     assert.match(out.rejected, /cannot check/);
-    assert.equal(plan(table).find((d) => d.id === id).turn, true, 'asked again');
+    assert.equal((await dueNow(table, given)).find((d) => d.id === id)?.turn, true, 'asked again');
     assert.match(prompt(table, id, { turn: true, lines: [], react: false }).situation, /turned away: You cannot check/);
   }
   const fresh = begin(table, id, { turn: true, lines: [], react: false });
@@ -277,27 +310,28 @@ test('an AI player out of chips buys back in; the person must buy in themselves,
   assert.deepEqual(table.log.filter((c) => c.type === 'rebuy').map((c) => c.by), [PERSONAS[0].id]);
 });
 
-test('the players\' hellos are theirs to say, and wake no one', () => {
+test('the players\' hellos are theirs to say, and wake no one', async () => {
   const table = newTable(500);
   for (const line of intros(table)) introduce(table, line);
   assert.deepEqual(table.chat.map((l) => l.by), ['Gary', 'Duke', 'Penny', 'Gary'], 'each says hello in seat order, then more');
-  assert.deepEqual(plan(table), [], 'no one is due: there is no hand, and no line asks anything');
+  assert.deepEqual(await dueNow(table), [], 'no one is due: there is no hand, and no line asks anything');
 });
 
-test('a player reacts with one of the table\'s emoji, which the others see and which wakes no one', () => {
+test('a player reacts with one of the table\'s emoji, which the others see and which wakes no one', async () => {
   const table = tableWithHand();
   const id = PERSONAS[1].id;
-  for (const d of plan(table)) begin(table, d.id, d);
-  const before = plan(table).length;
+  const given = new Map();
+  for (const d of await dueNow(table)) give(given, d);
+  const before = (await dueNow(table, given)).length;
   land(table, id, begin(table, id, { turn: false, lines: [], react: false }), { thinking: 'ha', react: REACTIONS[0] });
   land(table, id, begin(table, id, { turn: false, lines: [], react: false }), { thinking: 'no', react: '💩' });
   assert.deepEqual(table.log.filter((c) => c.type === 'react').map((c) => [c.by, c.emoji]), [[id, REACTIONS[0]]], 'only the table\'s emoji');
-  assert.equal(plan(table).length, before, 'a reaction wakes no one');
+  assert.equal((await dueNow(table, given)).length, before, 'a reaction wakes no one');
   const other = PERSONAS.find((p) => p.id !== id).id;
   assert.match(prompt(table, other, { turn: false, lines: [], react: false }).situation, new RegExp(`Reactions this hand, latest last: ${id} ${REACTIONS[0]}`));
 });
 
-test('players come and go between hands: a seat is taken at the next hand, given up after this one', () => {
+test('players come and go between hands: a seat is taken at the next hand, given up after this one', async () => {
   const table = newTable(500);
   assert.equal(addPlayer(table, 'Gary'), false, 'already here');
   assert.equal(addPlayer(table, 'Nobody'), false);
@@ -315,7 +349,7 @@ test('players come and go between hands: a seat is taken at the next hand, given
   assert.deepEqual(lineup(table).map((p) => [p.id, p.joining, p.leaving]), [[HUMAN, false, false], ['Gary', false, false], ['Mabel', false, false], ['Duke', false, true], ['Penny', false, false], ['Lex', true, false]]);
   // Lex was given seat 4, the only one free; check where it went
   assert.equal(table.slots.Lex, 4);
-  assert.equal(plan(table).some((d) => d.id === 'Lex'), false, 'not seated yet: never due');
+  assert.equal((await dueNow(table)).some((d) => d.id === 'Lex'), false, 'not seated yet: never due');
   table.hand.street = 'done';
   deal(table);
   assert.deepEqual(table.hand.seats.map((s) => s.id), [HUMAN, 'Gary', 'Mabel', 'Lex', 'Penny'], 'Lex took seat 3 once Duke left it');
@@ -366,7 +400,7 @@ test('a player talks as often as its character: quiet runs say nothing; the pers
   assert.equal(table.chat.at(-1).by, 'Penny');
 });
 
-test('after a big hand, the winner and one other have a word, not the whole table', () => {
+test('after a big hand, the winner and one other have a word, not the whole table', async () => {
   const table = newTable(500, ['Gary', 'Duke', 'Penny', 'Mabel']);
   deal(table);
   while (table.hand.street !== 'done') {
@@ -374,13 +408,13 @@ test('after a big hand, the winner and one other have a word, not the whole tabl
     const id = table.hand.seats[seat].id;
     land(table, id, { hand: table.hand.id, n: table.hand.n, turn: true }, { action: { type: 'allin' } });
   }
-  const due = plan(table).filter((d) => d.react).map((d) => d.id);
+  const due = (await dueNow(table)).filter((d) => d.react).map((d) => d.id);
   assert.equal(due.length, 2);
   const won = table.hand.seats[table.hand.result.won.findIndex(Boolean)].id;
   assert.ok(due.includes(won) || won === HUMAN, 'the winner, if an AI player, has a word');
 });
 
-test('friends sit with their own chips, by name; one with none sits a hand out; one who leaves cashes out', () => {
+test('friends sit with their own chips, by name; one with none sits a hand out; one who leaves cashes out', async () => {
   const table = newTable(500, ['Gary', 'Duke']);
   assert.equal(seatFriend(table, 'ann', 'Ann', 0, 300), false, 'the person\'s seat');
   assert.equal(seatFriend(table, 'ann', 'Ann', 3, 300), true);
@@ -389,13 +423,13 @@ test('friends sit with their own chips, by name; one with none sits a hand out; 
   deal(table);
   assert.deepEqual(table.hand.seats.map((s) => s.id), [HUMAN, 'Gary', 'Duke', 'ann']);
   assert.equal(table.hand.seats[3].stack + table.hand.seats[3].total, 300);
-  assert.equal(plan(table).some((d) => d.id === 'ann'), false, 'a person is never a run');
+  assert.equal((await dueNow(table)).some((d) => d.id === 'ann'), false, 'a person is never a run');
   // the AI players see her by name, and a line she says to the table wakes them
   const ai = table.hand.seats.find((s) => s.id === 'Gary').id;
   assert.match(prompt(table, ai, { turn: false, lines: [], react: false }).situation, /- Ann: stack/);
   const line = say(table, 'ann', 'Gary, nice hat.');
   assert.deepEqual(line.to, ['Gary']);
-  assert.deepEqual(plan(table).filter((d) => d.lines.length).map((d) => d.id), ['Gary']);
+  assert.deepEqual((await dueNow(table)).filter((d) => d.lines.length).map((d) => d.id), ['Gary']);
   // her time runs out on her turn: the dealer checks or folds for her
   while (table.hand.street !== 'done' && table.hand.seats[table.hand.toAct].id !== 'ann') force(table, table.hand.seats[table.hand.toAct].id);
   if (table.hand.street !== 'done') {
@@ -435,4 +469,57 @@ test('with no person holding chips there is no hand', () => {
   seatFriend(table, 'ann', 'Ann', 2, 0);
   assert.equal(deal(table), false);
   assert.equal(table.hand, null);
+});
+
+test('on Ponjo\'s runtime: the AI players play hand after hand, chips are kept, no card leaks, refusals fall back, and the table comes to rest', async () => {
+  const table = newTable();
+  const world = createWorld(() => table);
+  const chips = 4 * STACK;
+  const leaks = [];
+  let runs = 0;
+  // A model: Duke always raises by 1, which the dealer turns away; the others
+  // check or call, and now and then say something to the table.
+  async function run({ agent }, { files: basis, prompt: { rules, situation } }) {
+    runs++;
+    const at = Date.now();
+    if (!basis.turn && !basis.talk) return { at, ms: 0, outcome: 'ok', made: null };
+    const me = table.hand.seats.findIndex((s) => s.id === agent.id);
+    if (basis.turn) {
+      for (const [i, s] of table.hand.seats.entries()) for (const card of s.hole) if (i !== me && new RegExp(`\\b${card}\\b`).test(`${rules}\n${situation}`)) leaks.push(`${agent.id} saw ${card}`);
+    }
+    const l = legal(table.hand, me);
+    const action = !basis.turn ? null : agent.id === 'Duke' ? { type: 'raise', amount: 1 } : { type: l.check ? 'check' : 'call' };
+    const line = Math.random() < 0.3 ? `${PERSONAS.find((p) => p.id !== agent.id).id}, your move.` : undefined;
+    return { at, ms: 0, outcome: 'ok', made: { thinking: 'hm', action, say: line } };
+  }
+  const runtime = await createRuntime({
+    world, run, breaker: async () => ({ pauseAfter: Infinity, pauseWithin: 10 }),
+    watching: { read: async () => ({}), note: () => {} }, trace: () => {}, emit: () => {},
+  });
+  try {
+    await runtime.sync();
+    for (let hand = 1; hand <= 8 && deal(table); hand++) {
+      world.changed();
+      await until(() => {
+        if (table.hand.street === 'done') return true;
+        if (table.hand.seats[table.hand.toAct].id === HUMAN) {
+          land(table, HUMAN, { hand: table.hand.id, n: table.hand.n, turn: true }, { action: { type: legal(table.hand).check ? 'check' : 'call' } });
+          world.changed();
+        }
+        return false;
+      }, `hand ${hand} to end`);
+    }
+    await until(() => runtime.running().length === 0, 'the last runs to end');
+    const settled = runs;
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    assert.equal(runs, settled, 'the table comes to rest');
+  } finally {
+    await runtime.close();
+  }
+  const rebought = table.log.filter((c) => c.type === 'rebuy').reduce((sum, c) => sum + c.amount, 0);
+  assert.equal(table.hand.seats.reduce((sum, s) => sum + s.stack, 0), chips + rebought, 'no chip made or lost but by buying in');
+  assert.deepEqual(leaks, []);
+  assert.ok(table.log.some((c) => c.type === 'action' && c.by === 'Duke' && c.forced), 'Duke, turned away three times, is checked or folded by the dealer');
+  assert.ok(table.log.filter((c) => c.type === 'rejected' && c.by === 'Duke').length >= 3);
+  assert.ok(table.hand.id >= 2, 'more than one hand was played');
 });

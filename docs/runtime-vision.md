@@ -121,9 +121,10 @@ Open-card Hold'em on Ponjo's real runtime, with scripted agents, lost no
 actions. Small fixes that follow from these principles took it from 3.4 runs
 and 5.2 s per action to 1 run and 0.25 s. The [poker page](https://ponjo.app/poker.html),
 three AI players and you at one table, was built from scratch with its own
-small runtime (`preview/poker-runtime.js`) and arrived at the same shape: a
-pure plan, one view that hides others' cards, a writer that refuses stale
-moves, and table talk limited by depth.
+small runtime and arrived at the same shape: a pure plan, one view that
+hides others' cards, a writer that refuses stale moves, and table talk
+limited by depth. It now runs on Ponjo's runtime, as a world
+(`preview/poker-world.js`).
 
 ## Not for
 
