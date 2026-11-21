@@ -112,16 +112,23 @@ a { color: var(--accent); }
 
 /* ---- architecture page: a story in chapters, a scene each (preview/arch-story.js) ---- */
 
-/* the chapters down the page, a screen each under the header and the bar of parts (the one
-   in view lit), the page snapping to a screen's top once near it; a slide is 1280×720, scaled
-   by --fit (arch-story.js), its title, the scene and what it shows as one, no frame; on a screen
-   taller than wide, the page instead, as tall as the screen */
-:root:has(.arch-slides) { scroll-snap-type: y proximity; }
+/* on a wide screen, the chapters are a stack of pages under the header and the bar of parts
+   (the current one lit): the one on top shown, the one it turns to under or over it, the sheet
+   that moves with a shadow, the page itself never scrolling; a slide is 1280×720, scaled by
+   --fit (arch-story.js), its title, the scene and what it shows as one, no frame. On a phone,
+   the chapters run down the page, each as tall as it is, its scene in the upright sketch's shape */
+:root:has(.arch-paged) { overflow: hidden; }
+.arch-paged { position: relative; height: calc(100dvh - var(--top, 94px)); overflow: clip; }
+.arch-paged .arch-frame { position: absolute; inset: 0; visibility: hidden; background: var(--canvas); }
+.arch-paged .arch-frame[data-page] { visibility: visible; }
+.arch-paged .arch-frame[data-page="under"] { z-index: 1; }
+.arch-paged .arch-frame:is([data-page="top"], [data-page="over"]) { z-index: 2; }
+.arch-paged .arch-frame[data-page="over"] { box-shadow: var(--shadow-raised); }
 .arch-parts { position: sticky; top: var(--header-height, 53px); z-index: 9; display: flex; justify-content: center; gap: 2px; padding: 6px 16px; overflow-x: auto; scrollbar-width: none; background: var(--canvas); border-bottom: 1px solid var(--border); }
 .arch-parts a { display: flex; flex: none; align-items: center; height: 28px; padding: 0 8px; border-radius: 6px; color: var(--text-faint); font-size: 13px; font-weight: 500; text-decoration: none; white-space: nowrap; }
 .arch-parts a:hover { background: var(--hover); color: var(--text-soft); }
 .arch-parts a[aria-current] { background: var(--active); color: var(--text); }
-.arch-frame { display: grid; grid-template: minmax(0, 1fr) / minmax(0, 1fr); place-items: center; height: calc(100dvh - var(--top, 94px)); overflow: hidden; scroll-snap-align: start; scroll-margin-top: var(--top, 94px); }
+.arch-frame { display: grid; grid-template: minmax(0, 1fr) / minmax(0, 1fr); place-items: center; overflow: hidden; }
 .arch-story { box-sizing: border-box; display: flex; flex-direction: column; gap: 16px; width: 1280px; height: 720px; padding: 32px 64px; scale: var(--fit, 1); }
 .arch-head { display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center; }
 .arch-head:has(:empty + :empty) { display: none; }
@@ -134,12 +141,14 @@ a { color: var(--accent); }
 .arch-stage { position: relative; flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 24px; overflow: hidden; }
 .arch-say { min-height: 3em; max-width: 880px; margin: 0 auto; color: var(--text-soft); font-size: 24px; line-height: 1.45; text-align: center; text-wrap: balance; }
 @media (max-aspect-ratio: 6/5), (max-width: 720px) {
-  .arch-frame { display: block; height: auto; }
-  .arch-story { width: auto; height: calc(100dvh - var(--top, 94px)); min-height: 560px; padding: 16px; gap: 12px; scale: none; }
-  .arch-parts { justify-content: flex-start; }
+  .arch-frame { display: block; scroll-margin-top: var(--header-height, 53px); }
+  .arch-story { width: auto; height: auto; padding: 32px 16px; gap: 12px; scale: none; }
+  .arch-stage { flex: none; width: 100%; max-width: 480px; margin: 0 auto; aspect-ratio: 400 / 520; }
+  .arch-stage:is(.arch-cover, .arch-point, .arch-summary, .arch-outcome) { max-width: none; aspect-ratio: auto; }
+  .arch-parts { display: none; }
   .arch-kicker { font-size: 13px; }
   .arch-heading { font-size: 24px; }
-  .arch-say { min-height: 4.5em; font-size: 16px; line-height: 1.5; }
+  .arch-say { min-height: 0; font-size: 16px; line-height: 1.5; }
 }
 
 /* the cover: Clippy, the title and what the story is about */

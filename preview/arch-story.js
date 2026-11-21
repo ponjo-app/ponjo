@@ -4,7 +4,7 @@
 // plays while on screen. With reduced motion a chapter shows its last frame
 // and holds still. preview/build.js bundles it into dist/preview.
 
-/* global document, window, IntersectionObserver */
+/* global document, window, history, location, IntersectionObserver */
 
 import { INK, agentFace, buddyColor, personFace, setBuddies, setOwner, setPeople } from '../web/faces.js';
 
@@ -1385,11 +1385,16 @@ const CHAPTERS = [
   ['Outcome', 'What you get', '', outcome],
 ];
 
-// ---- the story: the chapters down the page, each a screen ----
+// ---- the story: on a wide screen, pages turned one at a time; on a phone, down the page ----
 
-// Each chapter is a section, its last frame drawn until it is on screen; on
-// screen, its scene plays, over and over, fresh each time, until it leaves.
-// A bar under the header names the parts and lights the one in view.
+// Each chapter is a section. On a screen wider than tall they are a stack of
+// pages: a turn of the wheel or the trackpad, an arrow, PageDown or Space
+// turns exactly one, the page on top sliding up off the next (or the one
+// before dropping back over it), the same every time; the page on top plays.
+// On a phone they run down the page, and a chapter plays once mostly in
+// view, until it is out of it. A chapter not playing shows its last frame.
+// A bar under the header names the parts and lights the current one; each
+// chapter has a link.
 const slug = (words) => words.toLowerCase().replace(/[’']/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 const main = document.querySelector('.arch-slides');
 const partsBar = document.querySelector('[data-parts]');
@@ -1433,40 +1438,126 @@ async function show(c, quiet) {
   }
 }
 
-// The chapter mostly in view plays; one that leaves goes back to its last frame.
+const portrait = window.matchMedia('(max-aspect-ratio: 6/5), (max-width: 720px)');
+const paged = () => !portrait.matches;
+
+// The chapter playing, the others drawn still, and its part lit in the bar.
 let playing = null;
+function play(c) {
+  if (playing === c) return;
+  if (playing) show(playing, true);
+  playing = c;
+  show(c, false);
+  for (const [title, link] of parts) link.toggleAttribute('aria-current', title === c.title);
+  const lit = parts.get(c.title);
+  if (lit) partsBar.scrollTo({ left: lit.offsetLeft - (partsBar.clientWidth - lit.offsetWidth) / 2, behavior: 'smooth' });
+}
+
+// Paged: the page on top turns to page `to`, as a sheet of paper.
+let current = 0;
+let turning = false;
+async function turn(to) {
+  to = Math.max(0, Math.min(chapters.length - 1, to));
+  if (to === current || turning) return;
+  turning = true;
+  const from = chapters[current];
+  const next = chapters[to];
+  const forward = to > current;
+  current = to;
+  history.replaceState(null, '', `#${next.section.id}`);
+  play(next);
+  next.section.dataset.page = forward ? 'under' : 'over';
+  from.section.dataset.page = forward ? 'over' : 'under';
+  const off = [{ translate: '0 0' }, { translate: '0 -100%' }];
+  const sheet = (forward ? from : next).section.animate(forward ? off : off.reverse(), { duration: still ? 0 : 520, easing: 'cubic-bezier(0.4, 0, 0.2, 1)', fill: 'forwards' });
+  await sheet.finished;
+  delete from.section.dataset.page;
+  next.section.dataset.page = 'top';
+  sheet.cancel();
+  turning = false;
+}
+
+// One gesture, one page: a burst of wheel events (a trackpad's glide too)
+// turns once, and the next turn waits for a pause.
+let resting = true;
+let rest = null;
+window.addEventListener('wheel', (event) => {
+  if (!paged() || event.ctrlKey) return;
+  event.preventDefault();
+  clearTimeout(rest);
+  rest = setTimeout(() => { resting = true; }, 220);
+  if (!resting || Math.abs(event.deltaY) < 4) return;
+  resting = false;
+  turn(current + Math.sign(event.deltaY));
+}, { passive: false });
+const KEYS = { ArrowDown: 1, ArrowRight: 1, PageDown: 1, ArrowUp: -1, ArrowLeft: -1, PageUp: -1 };
+document.addEventListener('keydown', (event) => {
+  if (!paged() || event.metaKey || event.ctrlKey || event.altKey || event.target.closest('input, textarea, select, button, summary')) return;
+  const step = event.key === ' ' ? (event.shiftKey ? -1 : 1) : KEYS[event.key];
+  const to = event.key === 'Home' ? 0 : event.key === 'End' ? chapters.length - 1 : step && current + step;
+  if (to === undefined) return;
+  event.preventDefault();
+  turn(to);
+});
+let touchY = null;
+main.addEventListener('touchstart', (event) => { touchY = event.touches[0].clientY; }, { passive: true });
+main.addEventListener('touchend', (event) => {
+  const dy = touchY - event.changedTouches[0].clientY;
+  if (paged() && Math.abs(dy) > 40) turn(current + Math.sign(dy));
+});
+const byId = (id) => chapters.findIndex((c) => c.section.id === id);
+window.addEventListener('hashchange', () => {
+  if (paged() && byId(location.hash.slice(1)) >= 0) turn(byId(location.hash.slice(1)));
+});
+partsBar.addEventListener('click', (event) => {
+  const link = event.target.closest('a');
+  if (!link || !paged()) return;
+  event.preventDefault();
+  turn(byId(link.hash.slice(1)));
+});
+
+// Down the page: the chapter mostly in view plays, until it is out of view.
 const watcher = new IntersectionObserver((entries) => {
+  if (paged()) return;
   for (const { target, intersectionRatio } of entries) {
     const c = chapters.find((chapter) => chapter.section === target);
-    if (intersectionRatio >= 0.6 && playing !== c) {
-      if (playing) show(playing, true);
-      playing = c;
-      show(c, false);
-      for (const [title, link] of parts) link.toggleAttribute('aria-current', title === c.title);
-      const lit = parts.get(c.title);
-      if (lit) partsBar.scrollTo({ left: lit.offsetLeft - (partsBar.clientWidth - lit.offsetWidth) / 2, behavior: 'smooth' });
-    } else if (intersectionRatio < 0.6 && playing === c) {
+    if (intersectionRatio >= 0.5) play(c);
+    else if (intersectionRatio === 0 && playing === c) {
       playing = null;
       show(c, true);
     }
   }
-}, { threshold: [0, 0.6] });
+}, { threshold: [0, 0.5] });
 for (const c of chapters) watcher.observe(c.section);
 
+// Pages or the page, as the screen is: the chapter in view stays the one.
+function layout() {
+  main.classList.toggle('arch-paged', paged());
+  for (const c of chapters) delete c.section.dataset.page;
+  if (paged()) {
+    chapters[current].section.dataset.page = 'top';
+    play(chapters[current]);
+  } else if (current) {
+    chapters[current].section.scrollIntoView();
+  }
+  fit();
+}
+
 // A slide is 1280×720, scaled to the screen left under the header and the
-// bar (site.css); on a screen taller than wide, it runs down the page as it is.
-const portrait = window.matchMedia('(max-aspect-ratio: 6/5), (max-width: 720px)');
+// bar (site.css); on a phone, the page as it is.
 function fit() {
   const top = document.querySelector('.site-header').offsetHeight + partsBar.offsetHeight;
   document.documentElement.style.setProperty('--header-height', `${top - partsBar.offsetHeight}px`);
   document.documentElement.style.setProperty('--top', `${top}px`);
-  main.style.setProperty('--fit', portrait.matches ? 1 : Math.min((window.innerWidth - 32) / 1280, (window.innerHeight - top - 16) / 720));
+  main.style.setProperty('--fit', paged() ? Math.min((window.innerWidth - 32) / 1280, (window.innerHeight - top - 16) / 720) : 1);
   for (const refit of fitters.values()) refit();
 }
 window.addEventListener('resize', fit);
+portrait.addEventListener('change', layout);
 motionPreference.addEventListener('change', () => {
   still = motionPreference.matches;
   for (const c of chapters) show(c, c !== playing);
 });
-fit();
 for (const c of chapters) show(c, true);
+current = Math.max(0, byId(location.hash.slice(1)));
+layout();
