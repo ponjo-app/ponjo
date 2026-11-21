@@ -697,8 +697,10 @@ function eye() {
 // a wire runs from it to each one's headset. A change on the board opens
 // it; it reads the board, finds who is due and calls only them, in their
 // headset, again while they sleep on; done, they sleep again. Clippy's edit
-// leaves Otto's line due, so Otto is next: nobody wires that. Pip, with
-// nothing due, sleeps all through.
+// leaves Otto's line due, so Otto is next: nobody wires that. Otto sleeps
+// through the call, and the runtime restarts: its eye shuts, it forgets all
+// it knew, and on opening reads the board afresh. Otto's line is still lit,
+// so it calls Otto again. Pip, with nothing due, sleeps all through.
 async function state(scene) {
   watching(false);
   const s = sketch(scene.stage);
@@ -730,6 +732,8 @@ async function state(scene) {
   }
   const { node, pupil, lid } = eye();
   s.place(node, middle, [92, 92]);
+  const restarting = s.place(el('span', 'arch-label', 'Restarting…'), [middle[0], middle[1] - 62]);
+  restarting.style.opacity = '0';
   const who = {};
   const zzz = {};
   for (const [name, at] of Object.entries(seats)) {
@@ -783,6 +787,17 @@ async function state(scene) {
     who[name].face.dataset.presence = 'away';
     zzz[name].style.opacity = '';
   };
+  // the runtime restarts: its eye shuts, a while, and opens with nothing remembered
+  const restart = async () => {
+    await look(middle, 200);
+    await scene.move(lid, [{ scale: lid.style.scale }, { scale: '1 1' }], 360, 'ease-in');
+    lid.style.scale = '1 1';
+    await scene.fade(restarting, 1, 200);
+    await scene.wait(1100);
+    await scene.fade(restarting, 0, 200);
+    await scene.move(lid, [{ scale: '1 1' }, { scale: '1 0' }], 360, 'ease-out');
+    lid.style.scale = '1 0';
+  };
   const due = async (name) => {
     lines[name].classList.remove('arch-quiet', 'arch-edited');
     await blink(0);
@@ -796,10 +811,13 @@ async function state(scene) {
   await call('Clippy');
   await wake('Clippy');
   // Clippy's edit leaves Otto's line due: the eye sees it, and calls Otto,
-  // who sleeps through the first call, so it calls again
+  // who sleeps through the call; the runtime restarts, reads the board
+  // afresh, finds Otto's line still lit, and calls again
   await due('Otto');
   await call('Otto');
   await scene.wait(700);
+  await restart();
+  await read();
   await call('Otto', true);
   await wake('Otto');
   // nothing due: it reads the board once more, and its lid falls
@@ -1048,7 +1066,7 @@ const CHAPTERS = [
   ['Where agents work', 'Blackboard', 'Everyone works on one board and sees every change. Nothing to hand off, nothing to merge.', blackboard, 'solution'],
   ['What makes an agent run', '', '', point('Agent orchestration is a state reconciliation problem,', 'instead of an event triggering problem.')],
   ['What makes an agent run', 'Triggered by events', 'Each agent runs when the one before hands it on. Miss one handoff, and the race stops.', events, 'problem'],
-  ['What makes an agent run', 'Reconciled from state', 'The runtime watches the board and calls only whoever is due, again until it is done. The rest sleep on; nobody wires who goes next, and a missed call costs nothing.', state, 'solution'],
+  ['What makes an agent run', 'Reconciled from state', 'The runtime watches the board and calls only whoever is due, again until it is done. Nobody wires who goes next, and a missed call or a restart costs nothing: the board still shows who is due.', state, 'solution'],
   ['Architecture', 'Event-triggered, the common way', 'State lives in messages in flight and in each agent’s memory. Lose a message and the work is lost, and someone has to wire who triggers whom.', eventsArchitecture, 'problem'],
   ['Architecture', 'Blackboard', 'One board, one writer. People and agents propose changes, the writer lands them in order, and the runtime reads the board to start whoever is due.', architecture, 'solution'],
   ['Summary', 'Two ways to run many agents', '', summary],
