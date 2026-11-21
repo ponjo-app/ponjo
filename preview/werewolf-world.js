@@ -1,14 +1,16 @@
-// The werewolf page's runtime (site/werewolf.html), the way Ponjo's buddies run
-// (docs/agent-runtime.md): one game everyone shares, with a change log;
-// `plan`, which looks at the game and says which players are due, never
-// acting on an event itself; `prompt`, what a player is shown, built from
-// its seat's `view` alone; and `land`, the one writer, which lands proposals
-// in order and turns away a stale or illegal one. Unlike poker, players are
-// often due at once (the wolves at night, everyone in a vote): the writer
-// collects their actions, and the rules end the phase once all are in, or
-// `expire` once its time is up. A day's speech is a player's action on its
-// turn, not side chat. Pure but for `game`, which `land` and `expire`
-// change; the page (preview/werewolf.js) runs the model and draws the game.
+// The werewolf game (site/werewolf.html) as a world for Ponjo's agent
+// runtime (src/core/runtime.js, the contract; docs/agent-runtime.md), as
+// the poker table is (preview/poker-world.js): one game everyone shares,
+// with a change log; who is asked, as the rules say (`due`); `prompt`, what
+// a player is shown, built from its seat's `view` alone; and `land`, the
+// one writer, which lands proposals in order and turns away a stale or
+// illegal one, asking the player again, and after MAX_TRIES playing the
+// rules' fallback. Unlike poker, players are often asked at once (the
+// wolves at night, everyone in a vote): the writer collects their actions,
+// and the rules end the phase once all are in, or `expire` once its time is
+// up. A day's speech is a player's action on its turn, not side chat. When
+// the players run is the runtime's; the page (preview/werewolf.js) runs the
+// model and draws the game.
 
 import { MAX_SPEECH, act, deal, due, fallback, newGame as start, turn, view } from './werewolf-rules.js';
 
@@ -97,52 +99,46 @@ export const PERSONAS = [
  * A new game at a table of `size`: the person in seat 0, then AI players,
  * `ids` or the first of PERSONAS. `roles` are each seat's; dealt at random
  * if left out. Notes, per AI player: its thinking, and how its last
- * proposal went.
+ * proposal went; `asked`, per AI player, the turn it was last asked for and
+ * when (an Ask's time, runtime.js).
  */
 export function newGame(size = 7, { ids = PERSONAS.slice(0, size - 1).map((p) => p.id), roles = deal(size) } = {}) {
   const players = [HUMAN, ...ids];
-  return {
-    rev: 0, log: [], players, state: start(roles),
-    notes: Object.fromEntries(ids.map((id) => [id, { tries: 0, triesAt: '', rejected: '', failed: null, thoughts: [] }])),
+  const game = {
+    rev: 0, log: [], players, state: start(roles), asked: {},
+    notes: Object.fromEntries(ids.map((id) => [id, { tries: 0, triesAt: '', rejected: '', thoughts: [] }])),
   };
+  ask(game);
+  return game;
 }
 export const isPerson = (id) => id === HUMAN;
 export const seatOf = (game, id) => game.players.indexOf(id);
+
+// A time for an ask, each later than the last (the runtime tells asks apart by them).
+let last = 0;
+const stamp = () => new Date((last = Math.max(Date.now(), last + 1))).toISOString();
+
+// Each AI player the rules ask for a turn it was not asked for yet is asked
+// from now: another player's action in the same turn asks it nothing new.
+function ask(game) {
+  const at = turn(game.state);
+  for (const { seat } of due(game.state)) {
+    const id = game.players[seat];
+    if (!isPerson(id) && game.asked[id]?.turn !== at) game.asked[id] = { turn: at, at: stamp() };
+  }
+}
 
 // Every change lands here: a revision, a line in the log.
 function commit(game, change) {
   game.rev++;
   game.log.push({ rev: game.rev, ...change });
+  ask(game);
 }
 
-/**
- * Who is due now, all at once: [{ id, seat, kind }], `kind` as the rules
- * say (kill, check, potion, speak, vote, last). `running`: the ids with a
- * run going, never due. A player whose run failed on this turn waits for Retry.
- */
-export function plan(game, running = new Set()) {
-  const at = turn(game.state);
-  return due(game.state).flatMap(({ seat, kind }) => {
-    const id = game.players[seat];
-    if (isPerson(id) || running.has(id) || game.notes[id].failed?.at === at) return [];
-    return [{ id, seat, kind }];
-  });
-}
-
-// A run begins on the game as it is now: the moment its action will be for.
+// What a run of `id` is made on, which its proposal lands against (`land`):
+// the moment its action will be for, and what the rules ask of it.
 export function begin(game, id) {
-  game.notes[id].failed = null;
-  return { at: turn(game.state) };
-}
-
-// A run failed (the model could not be reached): nothing lands; it waits for Retry, or the timer.
-export function fail(game, id, basis, why) {
-  game.notes[id].failed = { at: basis.at, why };
-  commit(game, { type: 'failed', by: id, why });
-}
-export function retry(game, id) {
-  game.notes[id].failed = null;
-  commit(game, { type: 'retry', by: id });
+  return { at: turn(game.state), kind: due(game.state).find((d) => d.seat === seatOf(game, id))?.kind ?? null };
 }
 
 /**
@@ -176,6 +172,7 @@ export function land(game, id, basis, { thinking = '', action = null, say = '' }
     n.tries = n.triesAt === at ? n.tries + 1 : 1;
     n.triesAt = at;
     n.rejected = still ? `Your last action was turned away: ${out.error}` : '';
+    if (still) game.asked[id] = { turn: at, at: stamp() }; // asked again
     if (still && n.tries >= MAX_TRIES) {
       game.state = fallback(game.state, [seat]);
       commit(game, { type: 'action', by: id, kind: mine.kind, forced: true });
@@ -191,6 +188,74 @@ export function expire(game) {
   if (!late.length) return;
   game.state = fallback(game.state);
   commit(game, { type: 'expired', late });
+}
+
+// ---- the game as a world ----
+
+/**
+ * The game as Ponjo's runtime reaches it: the five calls and what they need
+ * (runtime.js, the contract), for this one `game`: a new game is a new
+ * world. `typing(id, text)` resolves once the page has shown AI player `id`
+ * typing its speech `text` for as long as that takes, so a speech lands
+ * after it is seen typed; `ready()` says whether the page lets the players
+ * act now (not while they say hello, nor while the narrator is behind the
+ * day). The page calls `changed()` after each change it makes itself; the
+ * waits then read the game's log.
+ */
+export function createWorld(game, { typing = async () => {}, ready = () => true } = {}) {
+  const waiting = new Set();
+  const changed = () => {
+    for (const done of waiting) done();
+  };
+  return {
+    changed,
+    // No player asks another: every ask is the rules'.
+    limits: { depth: 1 },
+    // The game has no watches.
+    settleMs: 0,
+    print: () => '',
+    wakes: () => false,
+
+    async members() {
+      return game.players.map((id) => (isPerson(id) ? { id, name: 'the person', kind: 'person', mayAsk: true } : { id, name: id, kind: 'agent', mayAsk: false }));
+    },
+    // Each AI player the rules ask for an action, from the person whose game it is.
+    async asks() {
+      if (!ready()) return [];
+      return due(game.state).flatMap(({ seat }) => {
+        const id = game.players[seat];
+        if (isPerson(id)) return [];
+        const { turn: at, at: when } = game.asked[id];
+        return [{ id: `turn:${at}`, agent: id, from: HUMAN, at: when, until: when }];
+      });
+    },
+    // What `agent` sees: `files` is what its run is made on (begin), `prompt` { rules, situation }.
+    async view(agent) {
+      return { rev: game.rev, files: begin(game, agent.id), prompt: prompt(game, agent.id) };
+    },
+    async wait(version, deadline) {
+      for (;;) {
+        const since = game.log.filter((c) => c.rev > version);
+        if (since.length || performance.now() >= deadline) return { rev: game.rev, log: since.map((c) => ({ rev: c.rev, by: { id: c.by ?? null, kind: !c.by ? 'world' : isPerson(c.by) ? 'person' : 'agent' }, at: performance.now(), asks: true, stale: false })) };
+        await new Promise((resolve) => {
+          const done = () => {
+            waiting.delete(done);
+            resolve();
+          };
+          waiting.add(done);
+        });
+      }
+    },
+    // A run's proposal ({ thinking, action, say }, as `decided` takes the
+    // model's answer), landed against what it was made on: a speech once
+    // the player is seen typing it. Resolves to { landed, rejected }.
+    async propose(agent, version, old, made) {
+      if ((old.files.kind === 'speak' || old.files.kind === 'last') && made.say.trim()) await typing(agent.id, made.say);
+      const out = land(game, agent.id, old.files, made);
+      changed();
+      return out;
+    },
+  };
 }
 
 // ---- what a player is shown ----
