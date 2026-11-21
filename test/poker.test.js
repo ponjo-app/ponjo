@@ -2,11 +2,10 @@
 // preview/poker-world.js), on Ponjo's runtime (src/core/runtime.js).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { plan } from '../src/core/due.js';
 import { createRuntime } from '../src/core/runtime.js';
 import { act, bestHand, compare, handName, legal, pots, shuffled, startHand, view } from '../preview/poker-dealer.js';
 import { HUMAN, MAX_SEATS, PERSONAS, REACTIONS, STACK, addPlayer, begin, createWorld, force, freeSeats, deal, intros, introduce, land, leave, lineup, myChips, newTable, prompt, removePlayer, say, seatFriend, topUp } from '../preview/poker-world.js';
-import { until } from './helpers.js';
+import { dueIn, give, until } from './helpers.js';
 
 const rank = (cards) => bestHand(cards.split(' '));
 const beats = (a, b) => compare(rank(a).score, rank(b).score);
@@ -167,27 +166,15 @@ test('a seat sees only its own cards until a showdown', async () => {
 
 // ---- the table as a world ----
 
-// Who Ponjo's runtime finds due on `table` (src/core/due.js, plan, on the
-// world's asks): [{ id, turn, lines, react, asks }]. `given` is what earlier
-// runs were given, as the runtime notes it (give).
-async function dueNow(table, given = new Map()) {
-  const world = createWorld(() => table);
-  const members = await world.members();
-  const { start } = plan({
-    agents: members.filter((m) => m.kind === 'agent'), asks: await world.asks(), askers: members.filter((m) => m.mayAsk).map((m) => m.id), notes: given,
-    changedAt: new Map(), running: new Set(), prints: new Map(), woken: new Set(), limit: world.limits.depth, settleMs: 0, paused: false, now: 0,
-  });
-  return start.map(({ agent, asks }) => ({
-    id: agent.id, asks,
+// Who Ponjo's runtime finds due on `table` (dueIn), with what each run is for:
+// [{ id, asks, turn, lines, react }].
+async function dueNow(table, given) {
+  return (await dueIn(createWorld(() => table), given)).map(({ id, asks }) => ({
+    id, asks,
     turn: asks.some((a) => a.id.startsWith('turn:')),
     lines: asks.filter((a) => a.id.startsWith('line:')).map((a) => table.chat[Number(a.id.slice(5)) - 1]),
     react: asks.some((a) => a.id.startsWith('react:')),
   }));
-}
-// A run is given what `due` was due for: those asks ask it no more.
-function give(given, due) {
-  if (!given.has(due.id)) given.set(due.id, { seen: new Map(), lookedAt: null, print: null, wake: null, watch: null });
-  for (const a of due.asks) given.get(due.id).seen.set(a.id, Date.parse(a.until));
 }
 
 const tableWithHand = () => {

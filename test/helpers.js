@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { openDoc } from '../src/host/open-doc.js';
 import { diffOps } from '../src/core/ot.js';
+import { plan } from '../src/core/due.js';
 
 // Keep tests away from the real user's settings file.
 process.env.PONJO_CONFIG_DIR = mkdtempSync(join(tmpdir(), 'ponjo-config-'));
@@ -102,4 +103,27 @@ export async function until(check, what = 'a condition', timeout = 20_000) {
     if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}`);
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
+}
+
+// ---- worlds ----
+
+/**
+ * Who Ponjo's runtime finds due in `world` now (src/core/due.js, plan, on
+ * the world's members and asks): [{ id, asks }], an agent's id and the asks
+ * a run of it would be given. `given` is what earlier runs were given, as
+ * the runtime notes it (give).
+ */
+export async function dueIn(world, given = new Map()) {
+  const members = await world.members();
+  const { start } = plan({
+    agents: members.filter((m) => m.kind === 'agent'), asks: await world.asks(), askers: members.filter((m) => m.mayAsk).map((m) => m.id), notes: given,
+    changedAt: new Map(), running: new Set(), prints: new Map(), woken: new Set(), limit: world.limits.depth, settleMs: world.settleMs, paused: false, now: 0,
+  });
+  return start.map(({ agent, asks }) => ({ id: agent.id, asks }));
+}
+
+/** A run is given what `due` (dueIn) was due for: those asks ask it no more. */
+export function give(given, due) {
+  if (!given.has(due.id)) given.set(due.id, { seen: new Map(), lookedAt: null, print: null, wake: null, watch: null });
+  for (const a of due.asks) given.get(due.id).seen.set(a.id, Date.parse(a.until));
 }
