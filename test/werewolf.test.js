@@ -394,3 +394,31 @@ test('on Ponjo\'s runtime: the AI players play a whole game, no secret reaches a
   assert.ok(game.log.some((c) => c.type === 'action' && c.by === 'Jax' && c.forced), 'Jax, turned away three times, is played for by the rules');
   assert.ok(['village', 'wolves'].includes(game.state.winner));
 });
+
+test('after the game the table chats: a line wakes the AI players it names; to everyone, all, and one answer lands', async () => {
+  const lines = [];
+  const game = newTable(6, { people: [HUMAN, 'fann'], names: { fann: 'Ann' }, lines, no: 1 });
+  const world = createWorld(game);
+  assert.match(land(game, HUMAN, { at: '' }, { say: 'Hi' }).rejected ?? 'turned away', /./, 'no chat while the game is on');
+  game.state = { ...game.state, phase: 'over', winner: 'village' };
+  land(game, HUMAN, { at: '' }, { say: 'Rosa, were you a wolf?' });
+  const [rosa, ...rest] = await dueIn(world);
+  assert.deepEqual([rosa.id, rest.length], ['Rosa', 0], 'named, Rosa is asked');
+  const { files, prompt: { situation } } = await world.view({ id: 'Rosa' }, { asks: rosa.asks });
+  assert.match(situation, /The game is over[\s\S]*the host said "Rosa, were you a wolf\?"/);
+  land(game, 'Rosa', files, { say: 'Not me, dear. Ask Jax.', for: [HUMAN] });
+  const given = new Map();
+  give(given, rosa);
+  const [jax] = await dueIn(world, given);
+  assert.equal(jax.id, 'Jax', 'Rosa named Jax');
+  give(given, jax);
+  land(game, 'Jax', (await world.view({ id: 'Jax' }, { asks: jax.asks })).files, { say: 'Rosa, nope!', for: [HUMAN] });
+  assert.deepEqual(await dueIn(world, given), [], 'a reply to a reply wakes no one');
+  land(game, 'fann', { at: '' }, { say: 'Good game, all!' });
+  const all = await dueIn(world, given);
+  assert.equal(all.length, 4, 'a line to everyone asks every AI player');
+  for (const d of all) land(game, d.id, (await world.view({ id: d.id }, { asks: d.asks })).files, { say: 'Thanks!' });
+  assert.equal(lines.filter((l) => l.text === 'Thanks!').length, 1, 'one answer lands');
+  assert.equal(land(game, 'fbob', { at: '' }, { say: 'Hi' }).rejected, 'You were not in this game.');
+  assert.ok(lines.every((l) => l.game === 1 && l.after));
+});

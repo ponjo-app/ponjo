@@ -24,6 +24,7 @@ import { $, arrows, el, load, message, models, notice, store, typingMessage } fr
 import { RECONNECT_MS, guestId, host, join } from './poker-share.js';
 import { DECIDE, HUMAN, MAX_SPEECH, PERSONAS, ROLE_NAMES, cast, createWorld, decided, expire, isPerson, land, newGame, show, turn } from './werewolf-world.js';
 import { createRuntime } from '../src/core/runtime.js';
+import { MAX_LINE, named, say } from './table-talk.js';
 import { createRuntimePanel } from '../web/runtime-panel.js';
 
 const TURN = 90_000; // ms a turn may take; then everyone still due is taken as doing nothing
@@ -42,6 +43,7 @@ let away = ''; // a friend's page: why the line to the host is down
 let people = [HUMAN]; // the host and the friends at the table, in the order they joined
 let names = {}; // the people's names, by id
 let players = []; // the game's seats' ids
+let lines = []; // the table's chat, from game to game (table-talk.js); a friend's page, the host's
 let world = null; // the game as a world, and Ponjo's runtime on it: new with each game
 let runtime = null;
 let held = false; // the narrator is behind the game: no one speaks in the dark
@@ -63,7 +65,7 @@ const ai = models(() => {
 // the turn. While the narrator is behind the game at dawn, the day waits
 // for it: no one speaks in the dark (the world's `ready`).
 function changed() {
-  if (!game) return share();
+  if (!game) return void draw(); // before any game: the chat, and friends get it
   const gone = players.filter((id) => isPerson(id) && !people.includes(id));
   while (!hellos.going && game.state.phase !== 'over' && expire(game, gone)); // a friend gone: their turns are taken as doing nothing
   held = draw();
@@ -198,8 +200,8 @@ async function play(here) {
 
 let gameNo = 0;
 async function startGame(size) {
-  game = newGame(size, { people, names: { ...names } });
   gameNo++;
+  game = newGame(size, { people, names: { ...names }, lines, no: gameNo });
   failed = new Map();
   held = false;
   running.clear();
@@ -530,6 +532,7 @@ function drawCenter(v) {
     if (!still && words) sub.animate([{ opacity: 0, transform: 'translateY(6px)' }, { opacity: 1, transform: 'none' }], { duration: 400, easing: 'ease-out' });
   }
   $('.ww-over').hidden = v.phase !== 'over';
+  $('[data-action="thinking"]').hidden = false;
 }
 
 // ---- you: what you may do now ----
@@ -567,24 +570,27 @@ function drawMe(v) {
 const chat = $('.ww-chat-box');
 const box = chat.elements.text;
 let chatAt = ''; // the turn the box was set up for
+// This page's player may chat: outside a game (none yet, or it is over), once at the table.
+const chatting = (v) => (!v || (v.phase === 'over' && v.seat >= 0)) && (ROOM ? remote?.people ?? [] : people).includes(me);
 function drawChat(v) {
-  const kind = myTurn(v) ? v.due.kind : null;
-  const audience = kind === 'speak' || kind === 'last' ? 'all' : kind === 'kill' ? 'pack' : 'muted';
-  if (chatAt !== (v.due?.at ?? '')) {
-    chatAt = v.due?.at ?? '';
+  const kind = v && myTurn(v) ? v.due.kind : null;
+  const audience = kind === 'speak' || kind === 'last' || chatting(v) ? 'all' : kind === 'kill' ? 'pack' : 'muted';
+  if (chatAt !== (v?.due?.at ?? '')) {
+    chatAt = v?.due?.at ?? '';
     box.value = '';
   }
   chat.dataset.audience = audience;
   box.disabled = audience === 'muted';
-  box.maxLength = MAX_SPEECH;
-  box.placeholder = { all: kind === 'last' ? 'Your last words…' : 'Speak to the village…', pack: 'A line to the pack, sent with your pick', muted: '' }[audience];
+  box.maxLength = kind ? MAX_SPEECH : MAX_LINE;
+  box.placeholder = { all: !kind ? 'Chat with the table…' : kind === 'last' ? 'Your last words…' : 'Speak to the village…', pack: 'A line to the pack, sent with your pick', muted: '' }[audience];
   $('[type=submit]', chat).disabled = audience !== 'all' || !box.value.trim();
-  const speaker = v.speaker === null ? null : label(players[v.speaker]);
-  const why = audience === 'all' ? [icon('users'), 'Everyone hears you.']
+  const speaker = v?.speaker == null ? null : label(players[v.speaker]);
+  const why = audience === 'all' ? [icon('users'), kind ? 'Everyone hears you.' : 'Everyone at the table hears you.']
     : audience === 'pack' ? [token('wolf'), 'Only the pack hears you.']
-      : [symbol('muted'), v.seat < 0 && v.phase !== 'over' ? 'You are watching: you play from the next game.'
+      : [symbol('muted'), !v ? 'Join the table to chat.'
+        : v.seat < 0 && v.phase !== 'over' ? 'You are watching: you play from the next game.'
         : !v.alive && !['over', 'last'].includes(v.phase) ? 'You are out: the dead don\'t speak.'
-        : v.phase === 'over' ? 'The game is over.'
+        : v.phase === 'over' ? 'The game is over: you watched it.'
           : v.phase === 'gather' ? 'Muted while everyone says hello.'
             : v.phase === 'night' ? 'Muted: it is night, and everyone\'s eyes are shut.'
               : v.phase === 'vote' ? 'Muted while everyone votes.'
@@ -598,9 +604,26 @@ function drawChat(v) {
 }
 chat.addEventListener('submit', (event) => {
   event.preventDefault();
-  if (chat.dataset.audience === 'all') perform('speak');
+  if (chat.dataset.audience !== 'all') return;
+  if (chatting(ROOM ? remote?.view : game && show(game))) talk(me, box.value);
+  else perform('speak');
 });
-box.addEventListener('input', () => shown && drawChat(shown));
+box.addEventListener('input', () => drawChat(shown));
+
+// A line in the chat outside a game, by `id` (this page's player, or a
+// friend's, on the host's page): after a game, through its writer, for its
+// AI players may answer; before any, the people's alone. A friend's page
+// sends it to the host.
+function talk(id, text) {
+  const line = String(text).trim().slice(0, MAX_LINE);
+  if (!line) return;
+  if (id === me) box.value = '';
+  if (ROOM) return void guest.send({ type: 'chat', say: line });
+  if (!people.includes(id)) return;
+  if (game?.state.phase === 'over') land(game, id, { at: '' }, { say: line });
+  else if (!game) say(lines, { by: id, text: line, to: named(people, (p) => names[p] ?? '', line), isPerson, kind: 'chat', game: gameNo + 1, after: false });
+  changed();
+}
 box.addEventListener('keydown', (event) => {
   if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
     event.preventDefault();
@@ -731,6 +754,16 @@ function drawFeed(v) {
     rows.push(row);
     last = null;
   };
+  // the chat before this game, and (below) after it
+  const no = ROOM ? remote.gameNo : gameNo;
+  const chatted = (after) => (ROOM ? remote.lines : lines).filter((l) => l.kind === 'chat' && l.after === after && l.game === no);
+  const chatLine = (l) => {
+    const i = players.indexOf(l.by);
+    if (i >= 0) return say(i, l.text, '');
+    rows.push(message({ face: l.by !== me && faceOf(l.by), name: label(l.by), text: l.text, mine: l.by === me, more: last === l.by }));
+    last = l.by;
+  };
+  chatted(false).forEach(chatLine);
   for (const h of hellos.said) say(h.seat, h.text, '');
   for (const e of v.log) {
     const secret = SECRET[e.type];
@@ -759,6 +792,7 @@ function drawFeed(v) {
       line(`The vote: ${votes.join(', ')}. ${e.out === null ? 'A tie: no one is out.' : `${Name(e.out)} ${e.out === v.seat ? 'are' : 'is'} out.`}`);
     } else if (e.type === 'over') line(e.winner === 'village' ? 'Every werewolf is dead: the village wins.' : 'The werewolves are as many as the rest: they win.');
   }
+  chatted(true).forEach(chatLine);
   for (const id of typing) rows.push(typingMessage(faceOf(id), id));
   for (const [id, why] of failed) {
     const named = v.phase !== 'night' || v.pack?.includes(players.indexOf(id)); // at night, who failed would say who has a role
@@ -789,7 +823,11 @@ function draw() {
 function paint() {
   const look = () => (ROOM ? remote.view : show(game));
   if (ROOM ? !remote?.view : !game) {
-    if (ROOM) $('.ww-phase-text').textContent = away || 'Waiting for the host to start a game';
+    $('.ww-phase-text').textContent = ROOM ? away || 'Waiting for the host to start a game' : 'Round the fire';
+    $('.ww-over').hidden = Boolean(ROOM); // before any game, the host's way to start one
+    $('[data-action="thinking"]').hidden = true;
+    drawChat(null);
+    drawLobby();
     return false;
   }
   if (hellos.going) {
@@ -807,6 +845,19 @@ function paint() {
   drawChat(v);
   drawFeed(v);
   return held;
+}
+
+// Before any game, the log is the chat of the people at the table.
+function drawLobby() {
+  const feed = $('.pk-feed');
+  const no = (ROOM ? remote?.gameNo ?? 0 : gameNo) + 1;
+  let last = null;
+  feed.replaceChildren(...(ROOM ? remote?.lines ?? [] : lines).filter((l) => l.kind === 'chat' && !l.after && l.game === no).map((l) => {
+    const row = message({ face: l.by !== me && faceOf(l.by), name: label(l.by), text: l.text, mine: l.by === me, more: last === l.by });
+    last = l.by;
+    return row;
+  }));
+  feed.scrollTop = feed.scrollHeight;
 }
 
 // ---- their thinking, after the game ----
@@ -921,7 +972,8 @@ function apply(peer, message) {
     people.push(id);
     names[id] = String(message.name ?? '').trim().slice(0, 20) || 'Friend';
     if (!starting.hidden) openStart();
-  } else if (message.type === 'act' && message.action && typeof message.action === 'object') {
+  } else if (message.type === 'chat') return talk(id, message.say ?? '');
+  else if (message.type === 'act' && message.action && typeof message.action === 'object') {
     const { type, target, at } = message.action;
     if (!game?.players.includes(id)) return;
     const { rejected } = land(game, id, { at }, { action: { type: String(type), ...(Number.isInteger(target) ? { target } : {}) }, say: String(message.say ?? '') });
@@ -937,7 +989,7 @@ function share(behind = held) {
   if (!room) return;
   const over = game?.state.phase === 'over';
   for (const [peer, id] of peers) {
-    room.send(peer, { type: 'state', gameNo, people, players, names, view: game && show(game, id), hellos, call, held: behind, notes: over ? game.notes : {}, running: [...running], typing: [...typing], failed: [...failed], clock: clock.ends ? clock.ends - Date.now() : 0, clockAt: clock.at });
+    room.send(peer, { type: 'state', gameNo, people, players, names, lines, view: game && show(game, id), hellos, call, held: behind, notes: over ? game.notes : {}, running: [...running], typing: [...typing], failed: [...failed], clock: clock.ends ? clock.ends - Date.now() : 0, clockAt: clock.at });
   }
 }
 
@@ -984,6 +1036,11 @@ joining.addEventListener('submit', (event) => {
 document.addEventListener('click', (event) => {
   const action = event.target.closest('[data-action]')?.dataset.action;
   if (action === 'new') openStart();
+  else if (action === 'later') { // chat first: the start is under New game
+    starting.hidden = true;
+    document.body.classList.remove('pk-buying-in');
+    draw();
+  }
   else if (action === 'thinking') showThinking();
   else if (action === 'close') $('.pk-thinking').close();
   else if (action === 'key') ai.open();
