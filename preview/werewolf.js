@@ -337,7 +337,7 @@ const lastVote = (v) => (v.phase === 'vote' ? null : v.log.findLast((e) => e.typ
 /**
  * What the person knows of seat `i`, as marks on its face, and in words for
  * its tooltip: `fact` (its role, or the seer's check), `note` (the person's
- * guess, dashed), `status` (voted, or how it died: a ballot or the moon),
+ * guess, dashed), `status` (voted, or how it died, as `deathOf` says),
  * `claw` (the night's victim, to the pack and the witch), `dots` (its votes).
  * Each mark is [key, node, kind, words].
  */
@@ -345,10 +345,10 @@ function marks(v, i) {
   const id = players[i];
   const out = { ...identity(v, i), status: null, claw: null, dots: 0, words: [] };
   for (const e of v.log) {
-    if (e.type === 'dawn' && e.deaths.includes(i)) out.status = [`died:${e.day}`, () => icon('moon'), 'dead', `Died, night ${e.day}`];
-    if (e.type === 'vote' && e.out === i) out.status = [`out:${e.day}`, () => symbol('ballot'), 'dead', `Voted out, day ${e.day}`];
     if (e.type === 'save' && e.target === i && v.seats[i].alive) out.status = [`saved:${e.day}`, () => symbol('witch'), '', `You saved them, night ${e.day}`];
   }
+  const death = deathOf(v, i);
+  if (death) out.status = [`${death.how}:${death.day}`, () => deathMark(death.how), death.how, deathText(death)];
   if (v.phase === 'vote' && v.voted.includes(i)) out.status = ['voted', () => symbol('ballot'), 'voted', 'Has voted'];
   const tonight = (type) => v.phase === 'night' && v.log.some((e) => e.type === type && e.day === v.day && e.target === i);
   if ((tonight('kill') && v.pack) || (tonight('attacked') && called('witch'))) out.claw = v.pack ? 'The pack\'s kill tonight' : 'Attacked tonight';
@@ -377,10 +377,54 @@ function identity(v, i) {
   };
 }
 
+/**
+ * How seat `i` died, as far as this view may know: `how` is vote (voted
+ * out, with its `votes`), wolves (the pack's kill), poison (the witch's),
+ * both, or night (died in the night, how not known). Everyone sees who
+ * died at dawn; how stays with the pack (its kill) and the witch (her
+ * poison) until the game is over, when everyone sees it. Null while alive.
+ */
+function deathOf(v, i) {
+  if (v.seats[i].alive) return null;
+  const vote = v.log.find((e) => e.type === 'vote' && e.out === i);
+  if (vote) return { how: 'vote', day: vote.day, votes: Object.values(vote.votes).filter((t) => t === i).length };
+  const dawn = v.log.find((e) => e.type === 'dawn' && e.deaths.includes(i));
+  if (!dawn) return null;
+  const by = (type) => v.log.some((e) => e.type === type && e.day === dawn.day && e.target === i);
+  const [wolves, poison] = [by('kill'), by('poison')];
+  return { how: wolves && poison ? 'both' : wolves ? 'wolves' : poison ? 'poison' : 'night', day: dawn.day };
+}
+// A death's mark: the claw, the poison, both, the ballot, or the moon for a death not yet told.
+const deathMark = (how) => (how === 'vote' ? symbol('ballot') : how === 'night' ? icon('moon') : how === 'both' ? [symbol('claw'), symbol('poison')] : symbol(how === 'wolves' ? 'claw' : 'poison'));
+const HOW = { wolves: 'killed by the wolves', poison: 'poisoned by the witch', both: 'attacked by the wolves and poisoned by the witch' };
+function deathText({ how, day, votes }) {
+  if (how === 'vote') return `Voted out on day ${day}, by ${votes} vote${votes === 1 ? '' : 's'}`;
+  return how === 'night' ? `Died in night ${day}: how stays secret until the game ends` : `${cap(HOW[how])}, night ${day}`;
+}
+
+// A player dies: a start, then the fall, and over the face, how: the claw
+// slashing, the poison dripping, the ballot dropping, or the moon rising.
+function die(node, how) {
+  if (still) return;
+  const face = $('.pj-agent-face', node);
+  face.animate([
+    { transform: 'none' },
+    { transform: 'translateY(-10px) scale(1.12)', offset: 0.18 },
+    { transform: 'translateX(-4px) rotate(5deg)', offset: 0.32 },
+    { transform: 'translateX(4px) rotate(-5deg)', offset: 0.44 },
+    { transform: 'none', offset: 0.56 },
+  ], { duration: 1600, easing: 'ease-out' });
+  const strike = el('span', 'ww-death');
+  strike.dataset.how = how;
+  strike.append(...[deathMark(how)].flat());
+  face.append(strike);
+  strike.addEventListener('animationend', (event) => event.target === strike && strike.remove());
+}
+
 // A face's eyes: shut at night unless the narrator called its role and the person may know it; shut for good once dead.
 function presence(v, i) {
   const id = players[i];
-  if (!v.seats[i].alive) return 'away';
+  if (!v.seats[i].alive) return 'dead';
   if (v.phase === 'night') {
     const role = i === v.seat ? v.role : v.pack?.includes(i) ? 'wolf' : null;
     if (!role || CALLS[call.at] !== ROLE_CALL[role]) return 'away';
@@ -407,6 +451,8 @@ function drawRing(v) {
   for (const [i, node] of seats.entries()) {
     const id = players[i];
     const m = marks(v, i);
+    if (!v.seats[i].alive && !node.hasAttribute('data-dead') && node.hasAttribute('data-drawn')) die(node, deathOf(v, i)?.how ?? 'night');
+    node.toggleAttribute('data-drawn', true); // a seat already dead when first drawn does not die again
     node.toggleAttribute('data-dead', !v.seats[i].alive);
     node.toggleAttribute('data-turn', v.speaker === i);
     node.toggleAttribute('data-pickable', Boolean(actionOn(v, i)));
@@ -697,7 +743,14 @@ function drawFeed(v) {
     else if (e.type === 'attacked') line(`The wolves attacked ${name(e.target)}.`, secret);
     else if (e.type === 'save') line(`${Name(e.seat)} saved ${name(e.target)}.`, secret);
     else if (e.type === 'poison') line(`${Name(e.seat)} poisoned ${name(e.target)}.`, secret);
-    else if (e.type === 'dawn') line(`Day ${e.day}. ${e.deaths.length ? `${names(e.deaths)} died in the night.` : 'No one died in the night.'}`);
+    else if (e.type === 'dawn') {
+      // how, to whoever may know it (deathOf): the pack its kill, the witch her poison, everyone once the game is over
+      const told = e.deaths.map((i) => [i, deathOf(v, i)?.how ?? 'night']);
+      const known = told.filter(([, how]) => how !== 'night');
+      const rest = told.filter(([, how]) => how === 'night').map(([i]) => i);
+      const said = [...known.map(([i, how]) => `${Name(i)} ${i === v.seat ? 'were' : 'was'} ${HOW[how]}`), ...(rest.length ? [`${names(rest)} died in the night`] : [])];
+      line(`Day ${e.day}. ${said.length ? `${said.join('. ')}.` : 'No one died in the night.'}`);
+    }
     else if (e.type === 'speech' || e.type === 'last') {
       if (e.silent) line(`${Name(e.seat)} said nothing${e.type === 'last' ? ' as last words' : ''}.`);
       else say(e.seat, e.text, e.type === 'last' ? 'last words' : '');
