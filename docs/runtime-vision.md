@@ -130,13 +130,14 @@ Two differences; the rest follows from them.
 2. **Code decides who goes next, from the board.** Not an LLM, and not a
    chain of events: the same answer every time, and nothing to lose.
 
-The common ways to run many agents, as their docs describe them in 2026:
+Against the common way, an orchestrator, as its runtimes' docs describe it
+in 2026:
 
-| | Orchestrator and handoffs: Claude Code subagents, OpenAI Agents SDK, CrewAI | Graph: LangGraph | Group chat: AutoGen | Blackboard: Ponjo's runtime |
-|---|---|---|---|---|
-| Working at once | Workers in parallel, each on its own copy; the lead merges | Branches in one step, merged by reducers | One speaker at a time | Everyone at once; the writer lands in order and refuses stale moves |
-| People | Give the task and review the result | Answer at interrupts, while the graph waits | Take a turn in the chat | Members, acting while agents act |
-| Who goes next | An LLM: the lead starts workers, or an agent hands on | The edges you wire, some routed by an LLM | A selector: in turn, or an LLM picks | Code, from the board |
+| | Orchestrator: Claude Code subagents, OpenAI Agents SDK, CrewAI | Controller: Ponjo's runtime |
+|---|---|---|
+| Working at once | Workers in parallel, each on its own copy; the lead merges | Everyone at once; the writer lands in order and refuses stale moves |
+| People | Give the task and review the result | Members, acting while agents act |
+| Who goes next | An LLM: the lead starts workers, or an agent hands on | Code, from the board |
 
 ## Evidence
 
