@@ -20,8 +20,10 @@ and anyone may act at any moment.
 
 Delegate runtimes start a run per event, so a lost event loses the work:
 even OpenHands [drops requests](https://github.com/OpenHands/extensions/blob/cfd1d0f873c0d97e0a1c30093b34c6364a1141c0/skills/github-repo-monitor/scripts/main.py#L1012-L1042)
-when a poll fails. And each agent acts on its own private context, so
-parallel agents are kept apart on branches and merged by hand.
+when a poll fails. Often the next event is an agent's own call: an LLM
+decides whether to hand on, and to whom, so it may never be sent. And each
+agent acts on its own private context, which goes stale once another
+changes the work, so to stay correct agents take turns.
 
 ## Four principles
 

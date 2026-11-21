@@ -194,6 +194,14 @@ a { color: var(--accent); }
 .arch-field { fill: var(--bg-soft); }
 .arch-track-lane { fill: none; stroke: var(--canvas); stroke-width: 1.8; }
 .arch-baton { overflow: visible; fill: var(--canvas); stroke: var(--text); stroke-width: 2; }
+/* a thought over a head, trailing two dots down to it, with a die rolling in it */
+.arch-think { display: flex; padding: clamp(5px, 1.4cqw, 8px); border-radius: 9999px; background: var(--canvas); box-shadow: inset 0 0 0 1.5px var(--border-strong); }
+.arch-think::before, .arch-think::after { content: ""; position: absolute; border-radius: 50%; background: var(--canvas); box-shadow: inset 0 0 0 1.5px var(--border-strong); }
+.arch-think::before { right: -6px; bottom: -6px; width: 10px; height: 10px; }
+.arch-think::after { right: -14px; bottom: -14px; width: 6px; height: 6px; }
+.arch-die { width: clamp(14px, 3.2cqw, 24px); height: clamp(14px, 3.2cqw, 24px); overflow: visible; }
+.arch-die-body { fill: var(--canvas); stroke: var(--text); stroke-width: 1.6; }
+.arch-die-pips { fill: var(--text); }
 .arch-zzz { display: flex; gap: 2px; color: var(--text-soft); font-size: 14px; font-weight: 600; font-style: italic; }
 .arch-zzz i { animation: arch-zzz 2.4s ease-in-out infinite; }
 .arch-zzz i:nth-child(2) { font-size: 0.85em; animation-delay: 0.4s; }
@@ -297,7 +305,6 @@ a { color: var(--accent); }
 .arch-node { transition: box-shadow 0.25s; }
 .arch-node.arch-node-on { box-shadow: inset 0 0 0 2.5px var(--signal); }
 .arch-node-ink.arch-node-on { box-shadow: 0 0 0 3px var(--canvas), 0 0 0 5px var(--signal); }
-.arch-infield { display: flex; align-items: center; justify-content: center; color: var(--text-soft); font-size: 13px; line-height: 1.4; text-align: center; text-decoration: underline; text-underline-offset: 2px; }
 
 @media (max-width: 560px) {
   .arch-cover h1, .arch-point h2 { font-size: 24px; }
