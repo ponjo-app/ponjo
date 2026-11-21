@@ -353,11 +353,13 @@ test('on Ponjo\'s runtime: the AI players play a whole game, no secret reaches a
   const leaks = [];
   // What a player does: the wolves kill a villager, the seer checks, the
   // witch passes, everyone speaks and votes at random. Jax always does
-  // something the rules turn away, so the fallback plays for him.
+  // something the rules turn away, so the fallback plays for him. The
+  // wolves never kill Jax: a villager killed on the first night is never
+  // asked anything, and nothing would be turned away.
   const choose = (seat, kind) => {
     const s = game.state;
     const others = s.seats.flatMap((x, i) => (x.alive && i !== seat ? [i] : []));
-    if (kind === 'kill') return { type: 'kill', target: others.find((i) => s.seats[i].role !== 'wolf') };
+    if (kind === 'kill') return { type: 'kill', target: others.find((i) => s.seats[i].role !== 'wolf' && game.players[i] !== 'Jax') };
     if (kind === 'check') return { type: 'check', target: others[0] };
     if (kind === 'potion') return { type: 'pass' };
     if (kind === 'vote') return { type: 'vote', target: others[Math.floor(Math.random() * others.length)] };
