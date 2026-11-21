@@ -1,10 +1,9 @@
 // The werewolf page (site/werewolf.html): a person and AI players round a
 // fire at one game of werewolf. The rules (werewolf-rules.js) own what must
 // be exact; the players decide the rest from the rules and what their seat
-// may see (werewolf-runtime.js). Here, as on the poker page
-// (preview/poker.js): the controller, which on every change looks at the
-// game and starts the runs `plan` says are due, never acting on an event
-// itself; a run, one call of the visitor's model (game-page.js, shared with
+// may see (werewolf-world.js). Ponjo's agent runtime (src/core/runtime.js)
+// runs them on each game as a world, as on the poker page (preview/poker.js).
+// Here: a run, one call of the visitor's model (game-page.js, shared with
 // the poker page, with the log's messages); a narrator, who calls the night
 // a role at a time; and the game drawn from the person's own view alone,
 // with what they know of each player on their seat and their own guesses.
@@ -15,7 +14,8 @@
 import { agentFace, personFace, setBuddies, setOwner } from '../web/faces.js';
 import { icon } from '../web/icons.js';
 import { $, el, message, models, notice, typingMessage } from './game-page.js';
-import { DECIDE, HUMAN, MAX_SPEECH, PERSONAS, ROLE_NAMES, begin, cast, decided, expire, fail, isPerson, land, newGame, plan, prompt, retry, show, turn } from './werewolf-runtime.js';
+import { DECIDE, HUMAN, MAX_SPEECH, PERSONAS, ROLE_NAMES, cast, createWorld, decided, expire, isPerson, land, newGame, show, turn } from './werewolf-world.js';
+import { createRuntime } from '../src/core/runtime.js';
 
 const TURN = 90_000; // ms a turn may take; then everyone still due is taken as doing nothing
 const SVG = 'http://www.w3.org/2000/svg';
@@ -24,26 +24,32 @@ setBuddies(PERSONAS.map(({ id }) => ({ id, name: id })));
 setOwner(HUMAN);
 
 let game = null;
+let world = null; // the game as a world, and Ponjo's runtime on it: new with each game
+let runtime = null;
+let held = false; // the narrator is behind the game: no one speaks in the dark
 const running = new Set(); // players with a run going
+let failed = new Map(); // players whose run failed → why, until Retry or the turn's time is up
 const typing = new Set(); // players typing their speech
 let notes = new Map(); // the person's guess at each seat's role
 let myVote = null; // { day, target }: the person's vote, theirs to see before the vote ends
 // The players' model. Once the visitor picks another, what failed is tried again.
 const ai = models(() => {
-  if (game) for (const [id, n] of Object.entries(game.notes)) if (n.failed) retry(game, id);
+  runtime?.retry();
   changed();
 });
 
 // ---- the controller ----
 
-// Every change: draw it, then look again. A look starts what `plan` says is
-// due and times the turn; that is all it does. While the narrator is behind
-// the game at dawn, the day waits for it: no one speaks in the dark.
+// Every change: draw it, tell the world, and have the runtime look again,
+// for the page may have let the players act (the narrator moved on); time
+// the turn. While the narrator is behind the game at dawn, the day waits
+// for it: no one speaks in the dark (the world's `ready`).
 function changed() {
-  if (!game || hellos.going) return void draw();
-  const held = draw();
-  if (!held || game.state.phase === 'night') for (const due of plan(game, running)) run(due);
-  timeTurn();
+  if (!game) return;
+  held = draw();
+  world.changed();
+  runtime.look('the page drew the game');
+  if (!hellos.going) timeTurn();
 }
 
 // The narrator: at night it calls each role in turn, alive or not, as at a
@@ -102,42 +108,62 @@ const wait = (ms) => new Promise((resolve) => setTimeout(resolve, Math.max(0, ms
 const NIGHT_THINK = 5000; // ms a night action is thought over at most, so it fits in its call
 const typeTime = (id, text) => Math.min(15_000, Math.max(1500, text.length * PACE[id].type));
 
-async function run({ id, kind }) {
-  const here = game;
-  const basis = begin(game, id);
+// A run: one model call on what the player sees, then the player's own time
+// to think (a night action less, to fit in its call). Its proposal goes to
+// the world, which lands a speech once the player is seen typing it.
+async function run({ agent }, { files: basis, prompt: { rules, situation } }) {
+  const at = Date.now();
   const started = performance.now();
-  running.add(id);
-  draw();
-  const { rules, situation } = prompt(game, id);
   try {
     const { calls, text } = await ai.infer()([{ role: 'user', content: rules, cache: true }, { role: 'user', content: situation }], [DECIDE]);
     let args = {};
     try {
       args = JSON.parse(calls.find((c) => c.name === 'decide')?.args ?? '{}');
     } catch {}
-    const proposal = decided({ thinking: text, ...args });
-    const [from, to] = PACE[id].think.map((ms) => (kind === 'kill' || kind === 'check' || kind === 'potion' ? Math.min(ms, NIGHT_THINK) : ms));
+    const night = basis.kind === 'kill' || basis.kind === 'check' || basis.kind === 'potion';
+    const [from, to] = PACE[agent.id].think.map((ms) => (night ? Math.min(ms, NIGHT_THINK) : ms));
     await wait(from + Math.random() * (to - from) - (performance.now() - started));
-    if (here !== game) return;
-    if ((kind === 'speak' || kind === 'last') && proposal.say.trim()) {
-      typing.add(id);
-      draw();
-      await wait(typeTime(id, proposal.say));
-      typing.delete(id);
-    }
-    if (here !== game) return;
-    land(game, id, basis, proposal);
+    return { at, ms: performance.now() - started, outcome: 'ok', made: decided({ thinking: text, ...args }) };
   } catch (error) {
-    if (here !== game) return;
-    typing.delete(id);
-    fail(game, id, basis, String(error.message).split('\n')[0]);
+    return { at, ms: performance.now() - started, outcome: 'failed', body: String(error.message).split('\n')[0] };
   }
-  running.delete(id);
-  changed();
 }
 
-function startGame(size) {
+// A new game is a new world, with Ponjo's runtime on it; the last game's
+// runtime ends its runs, which land nothing. What the runtime says of the
+// players (statuses): who is at work, and whose run failed.
+async function play(here) {
+  runtime?.close();
+  world = createWorld(here, {
+    async typing(id, text) {
+      typing.add(id);
+      draw();
+      await wait(typeTime(id, text));
+      typing.delete(id);
+    },
+    ready: () => !hellos.going && (here.state.phase === 'night' || !held),
+  });
+  const mine = world;
+  runtime = await createRuntime({
+    world, run,
+    breaker: async () => ({ pauseAfter: Infinity, pauseWithin: 10 }), // the game has no watches to pause
+    watching: { read: async () => ({}), note: () => {} },
+    trace: (event) => console.debug('runtime', event.type, event), // for the devtools, until the runtime has a view of its own
+    emit(type, statuses) {
+      if (type !== 'agents' || world !== mine) return;
+      running.clear();
+      for (const s of statuses) if (s.asks.length) running.add(s.id);
+      failed = new Map(statuses.filter((s) => s.failed.length).map((s) => [s.id, s.failed.at(-1).why]));
+      draw();
+    },
+  });
+  await runtime.sync();
+}
+
+async function startGame(size) {
   game = newGame(size);
+  failed = new Map();
+  held = false;
   $('.site-theme').hidden = true; // the game sets light and dark now
   running.clear();
   typing.clear();
@@ -152,6 +178,8 @@ function startGame(size) {
   for (const node of seats) node.remove();
   seats = game.players.map((id, i) => seatNode(id, i, game.players.length));
   $('.ww-ring').append(...seats);
+  hellos = { going: true, said: [] }; // no one acts before the hellos
+  await play(game);
   greet();
 }
 
@@ -346,8 +374,8 @@ function drawRing(v) {
     const dots = $('.ww-dots', node);
     if (dots.childElementCount !== m.dots) dots.replaceChildren(...Array.from({ length: m.dots }, (_, k) => Object.assign(el('i'), { style: `animation-delay: ${votesIn + k * 120}ms` })));
     // only a model that can't be reached is said in words
-    const failed = (v.phase !== 'night' || v.pack?.includes(i) || i === v.seat) && game.notes[id]?.failed;
-    $('.pk-tag', node).textContent = failed ? 'Can\'t reach the model' : '';
+    const failing = (v.phase !== 'night' || v.pack?.includes(i) || i === v.seat) && failed.has(id);
+    $('.pk-tag', node).textContent = failing ? 'Can\'t reach the model' : '';
     $('.pk-tag', node).dataset.kind = 'failed';
   }
   drawTimer(v);
@@ -651,17 +679,13 @@ function drawFeed(v) {
     } else if (e.type === 'over') line(e.winner === 'village' ? 'Every werewolf is dead: the village wins.' : 'The werewolves are as many as the rest: they win.');
   }
   for (const id of typing) rows.push(typingMessage(faceOf(id), id));
-  for (const [id, n] of Object.entries(game.notes)) {
-    if (!n.failed) continue;
+  for (const [id, why] of failed) {
     const named = v.phase !== 'night' || v.pack?.includes(game.players.indexOf(id)); // at night, who failed would say who has a role
-    const row = notice(`${named ? id : 'A player'} could not reach the model: ${n.failed.why}`);
+    const row = notice(`${named ? id : 'A player'} could not reach the model: ${why}`);
     row.dataset.failed = '';
     const again = el('button', 'pj-link-button', 'Retry');
     again.type = 'button';
-    again.addEventListener('click', () => {
-      retry(game, id);
-      changed();
-    });
+    again.addEventListener('click', () => runtime.retry(id));
     row.append(' ', again);
     rows.push(row);
   }

@@ -205,10 +205,12 @@ What the code does differently from the runtime above:
   closes.
 - Every member sees the whole doc and every thread; in project mode the
   agent program may read the project folder.
-- Nothing is refused: the doc world merges.
 
 Code: the loop is `src/core/runtime.js`, which reaches nothing but the world
 and what its host gives it, so it can run in a Worker too; the plan
 `src/core/due.js`. On the doc host, `src/host/buddy-runtime.js` gives it the
 run (`src/host/runner.js`), the logs and the settings; the doc world `src/host/doc-world.js`, its
 asks `asksIn` (`src/core/comments.js`) and its prompt `src/core/prompt.js`.
+Two more worlds, which refuse: the poker table (`preview/poker-world.js`)
+and the werewolf game (`preview/werewolf-world.js`), whose pages run the
+same runtime in the browser.

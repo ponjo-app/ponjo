@@ -21,7 +21,8 @@ const LOOK_AGAIN_MAX_MS = 30_000;
 // A world (in Ponjo: src/host/doc-world.js) says what its members are, what
 // is asked, what each sees and how a change lands; the runtime knows nothing
 // else of it. Its values the runtime only passes on: `files` (what a view
-// holds), `made` (what a run left) and what `propose` answers.
+// holds), `made` (what a run left) and what `propose` answers. Its five
+// calls answer with a promise; `print` and `wakes` at once.
 //
 // members()                  → [Member]
 // asks()                     → [Ask]; rejects with code 'unreadable' when nothing can be answered
