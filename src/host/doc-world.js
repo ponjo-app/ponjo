@@ -3,6 +3,7 @@
 // left behind lands. It reaches the doc only through its door, writing as
 // the buddy, and knows nothing of runs.
 
+import { createHash } from 'node:crypto';
 import { basename } from 'node:path';
 import { asksIn, movedAnchor, newId, parseSidecar, threadsOf } from '../core/comments.js';
 import { merge3 } from '../core/diff.js';
@@ -16,6 +17,10 @@ import { settingsWithId } from '../store/settings.js';
 import { createDocActions } from './doc-actions.js';
 
 const DEPTH_LIMIT = 1000;
+/** How long people's edits pause before a buddy watching runs on them (ms). */
+export const SETTLE_MS = 5000;
+// Who made a change in the door's log, as the runtime names them.
+const KINDS = { person: 'person', buddy: 'agent', outside: 'world' };
 
 /**
  * The world of one open doc. `door` is how it reads the doc and lands a
@@ -67,6 +72,12 @@ export function createDocWorld({ door, subscribe, place, pathInProject, buddies,
   return {
     // How deep agents may wake each other: high, so two buddies can play a long game.
     limits: { depth: DEPTH_LIMIT },
+    settleMs: SETTLE_MS,
+
+    // A view's fingerprint: its doc's text's (its comments wake no watcher).
+    print: (files) => createHash('sha256').update(files.text).digest('base64url'),
+    // What wakes a buddy: lines of the doc, each whole.
+    wakes: (files, lines) => lines.some((l) => files.text.split(/\r?\n/).includes(l)),
 
     actions,
 
@@ -75,13 +86,17 @@ export function createDocWorld({ door, subscribe, place, pathInProject, buddies,
     /**
      * Wait until something changed after `version`, or until `deadline`
      * (performance.now()): { rev (the version now), log (the changes after
-     * `version` the door's log still holds, oldest first: { rev, by: { id,
-     * kind ('person', 'buddy' or 'outside') }, at (performance.now()),
-     * comments (whether only the comments changed) }) }.
+     * `version` the door's log still holds, oldest first, as the runtime
+     * reads them (runtime.js, Change): a buddy's change is an agent's, a
+     * file written outside the app the world's own (it is whole, as the
+     * door took it once it held still); one only to the comments changes
+     * only what is asked; a person's edit leaves the runs only a watch
+     * started stale, but an outside one does not, as a program may write
+     * more often than a run lasts: the run lands merged, and runs again on it }.
      */
     async wait(version, deadline) {
       for (;;) {
-        const since = door.changes(version);
+        const since = door.changes(version).map(({ by, comments, ...change }) => ({ ...change, by: { ...by, kind: KINDS[by.kind] }, asks: comments, stale: by.kind === 'person' && !comments }));
         if (since.length || performance.now() >= deadline) return { rev: door.rev(), log: since };
         await new Promise((resolve) => {
           const done = () => {
@@ -134,7 +149,8 @@ export function createDocWorld({ door, subscribe, place, pathInProject, buddies,
 
     /**
      * Land what a run left behind, as `agent` ({ id, name, for: the people
-     * it ran for, depth: its run's }), on the doc of version `version`: `old` what it was
+     * it ran for, depth: its run's }), on the doc of version `version`,
+     * unless one of those people may no longer ask: `old` what it was
      * given ({ files, asks }), `made` what it made ({ text, comments: {
      * before, after }, groups, actions, output }); the actions on comments
      * it posted are recorded, to be carried out (doc-actions.js). Each comment's edits (its group)
@@ -144,6 +160,8 @@ export function createDocWorld({ door, subscribe, place, pathInProject, buddies,
      * its trace), comments (the ids of those it posted) }.
      */
     async propose(agent, version, old, made) {
+      const here = await members();
+      if (!agent.for.every((id) => here.some((m) => m.id === id && m.mayAsk))) return { comments: [], landed: 'Dropped: whoever asked can no longer edit' };
       const by = { id: agent.id, name: agent.name, kind: 'ai' };
       const { threads } = await threadsNow();
       const open = new Map(threads.filter((t) => !t.resolved).map((t) => [t.id, t]));

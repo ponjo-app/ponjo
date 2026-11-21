@@ -6,7 +6,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { asksIn } from '../src/core/comments.js';
-import { OUTSIDE, SETTLE_MS, plan } from '../src/core/due.js';
+import { WORLD, plan } from '../src/core/due.js';
+import { SETTLE_MS } from '../src/host/doc-world.js';
 import { newSince } from '../src/core/prompt.js';
 
 const ME = 'u_me000001';
@@ -22,7 +23,7 @@ function look(over = {}) {
   const posted = new Map([...s.relayed].map(([id, people]) => [id, { for: people, depth: s.depth }]));
   const lines = new Set(s.text.split(/\r?\n/));
   const woken = new Set([...s.notes].filter(([, n]) => n.wake?.some((l) => lines.has(l))).map(([id]) => id));
-  return plan({ agents: buddies, asks: asksIn(s.threads, s.askers, s.taken, posted), askers: s.askers, notes: s.notes, changedAt: s.changedAt, running: s.running, limit: s.limit, paused: s.paused, prints: s.prints ?? new Map(), woken, now: s.now });
+  return plan({ agents: buddies, asks: asksIn(s.threads, s.askers, s.taken, posted), askers: s.askers, notes: s.notes, changedAt: s.changedAt, running: s.running, limit: s.limit, settleMs: SETTLE_MS, paused: s.paused, prints: s.prints ?? new Map(), woken, now: s.now });
 }
 const started = (result) => result.start.map((t) => t.agent.id);
 const watching = (lookedAt, over = {}) => new Map([['b_ada', note({ watch: { by: ME }, lookedAt, ...over })]]);
@@ -46,12 +47,12 @@ test('a buddy\'s comment posted by a run here asks the buddies it @mentions, a s
   const result = look({ threads: [handed], relayed });
   assert.deepEqual(result.start.map((t) => [t.agent.id, t.asks.map((x) => x.id), t.askers, t.watchOnly]), [['b_ben', ['c_1'], [ME], false]]);
   assert.equal(result.start[0].depth, 1, 'one deeper than the run a person asked');
-  assert.equal(result.why.get('b_ben'), 'due: asked in c_1 by a buddy · depth 1');
+  assert.equal(result.why.get('b_ben'), 'due: asked in c_1 by an agent · depth 1');
   assert.equal(look({ threads: [handed], relayed, depth: 7 }).start[0].depth, 8);
   assert.deepEqual(started(look({ threads: [handed] })), [], 'a buddy\'s comment found in the file asks no one');
   assert.deepEqual(started(look({ threads: [handed], relayed: new Map([['c_2', ['u_gone00001']]]) })), [], 'not once the people it was for may not ask');
   const none = look({ threads: [handed], relayed, depth: 3, limit: 3 });
-  assert.deepEqual([started(none), none.why.get('b_ben')], [[], 'not due: asked in c_1 by a buddy, but at the depth limit (3)'], 'the chain stops at the limit');
+  assert.deepEqual([started(none), none.why.get('b_ben')], [[], 'not due: asked in c_1 by an agent, but at the depth limit (3)'], 'the chain stops at the limit');
   assert.deepEqual([...none.asking], ['b_ben c_1'], 'it still asks');
   const plain = thread('c_1', [said('c_1', ME, '@Ada start', '2026-11-18T10:00:00.000Z', ['b_ada']), said('c_2', 'b_ada', 'Done, and @Ada it is', '2026-11-18T10:00:05.000Z', ['b_ada'])]);
   assert.deepEqual(started(look({ threads: [plain], relayed })), [], 'never itself, and one that names no other asks no one');
@@ -88,9 +89,9 @@ test('a watcher is due once turned on, on people\'s changes once they pause, and
   assert.deepEqual([started(paused), paused.start[0].depth], [['b_ada'], 0], 'their pause: depth 0');
   assert.deepEqual(started(look({ notes: watching(7), changedAt: people, now: 98_000 + SETTLE_MS })), [], 'a run since saw them');
 
-  const outside = look({ notes: watching(5), changedAt: new Map([[OUTSIDE, { rev: 7, at: 99_999 }]]) });
-  assert.deepEqual([started(outside), outside.start[0].depth, outside.wakeAt], [['b_ada'], 0, null], 'a file written outside: at once, depth 0, for it is whole');
-  assert.equal(outside.why.get('b_ada'), 'due: changed by outside the app at rev 7, after its look at rev 5');
+  const outside = look({ notes: watching(5), changedAt: new Map([[WORLD, { rev: 7, at: 99_999 }]]) });
+  assert.deepEqual([started(outside), outside.start[0].depth, outside.wakeAt], [['b_ada'], 0, null], 'the world\'s own change (in a doc, a file written outside): at once, depth 0');
+  assert.equal(outside.why.get('b_ada'), 'due: changed by the world at rev 7, after its look at rev 5');
 
   const buddy = look({ notes: watching(5), changedAt: new Map([['b_ben', { rev: 7, at: 99_000, depth: 4 }]]) });
   assert.deepEqual([started(buddy), buddy.start[0].depth], [['b_ada'], 5], 'another buddy: at once, one deeper than its run');
@@ -100,7 +101,7 @@ test('a watcher is due once turned on, on people\'s changes once they pause, and
   const deep = new Map([['b_ben', { rev: 7, at: 99_000, depth: 1000 }]]);
   assert.deepEqual(started(look({ notes: watching(5), changedAt: deep })), [], 'past the depth limit: they come to rest');
   assert.deepEqual(started(look({ notes: watching(5), changedAt: new Map([...deep, [null, { rev: 8, at: 0 }]]) })).concat(look({ notes: watching(5), changedAt: new Map([...deep, [null, { rev: 8, at: 0 }]]) }).start.map((t) => t.depth)), ['b_ada', 0], 'a person\'s change starts it again at depth 0');
-  assert.deepEqual(look({ notes: watching(5), changedAt: new Map([...deep, [OUTSIDE, { rev: 8, at: 99_999 }]]) }).start.map((t) => t.depth), [0], 'as does an outside one');
+  assert.deepEqual(look({ notes: watching(5), changedAt: new Map([...deep, [WORLD, { rev: 8, at: 99_999 }]]) }).start.map((t) => t.depth), [0], 'as does an outside one');
   assert.deepEqual(started(look({ notes: watching(5), changedAt: new Map([[null, { rev: 8, at: 0 }]]), paused: true })), [], 'watches paused: none');
 });
 
@@ -117,7 +118,7 @@ test('a watcher whose last run named lines to wake it is due only on a change wh
   const people = new Map([[null, { rev: 7, at: 0 }]]);
   const waits = look({ notes: watching(5, { wake: ['Action on: Ada'] }), changedAt: people, text: 'Action on: Ben\n' });
   assert.deepEqual(started(waits), []);
-  assert.equal(waits.why.get('b_ada'), 'not due: changed by people at rev 7, after its look at rev 5, but the doc holds no line that wakes it');
+  assert.equal(waits.why.get('b_ada'), 'not due: changed by people at rev 7, after its look at rev 5, but its view holds nothing that wakes it');
   assert.deepEqual(started(look({ notes: watching(5, { wake: ['Action on: Ada'] }), changedAt: people, text: 'Pot: 10\nAction on: Ada\n' })), ['b_ada'], 'the line, whole');
   assert.deepEqual(started(look({ notes: watching(5, { wake: ['Action on: Ada'] }), changedAt: people, text: 'Action on: Adam\n' })), [], 'not part of a line');
   const ben = look({ notes: watching(5, { wake: ['Action on: Ada'] }), changedAt: new Map([['b_ben', { rev: 7, at: 0 }]]), text: 'Action on: Ben\n' });

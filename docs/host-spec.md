@@ -335,7 +335,8 @@ an ask, or while a person has it watch the doc. When it runs is the
 [agent runtime](agent-runtime.md)'s to decide; this section is the doc's
 side: who may ask, what asks and wakes a buddy, what a run is given, and
 how what it returns lands. The runtime reaches the doc only through its
-door, writing as the buddy, as a window writes as a person.
+door, writing as the buddy, as a window writes as a person. A run
+lands nothing if one of those it ran for may no longer ask when it ends.
 
 A buddy has one run at a time in a doc, given every thread that asks it
 and it has not been given; a comment written while it runs is for the

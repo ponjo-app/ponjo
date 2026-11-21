@@ -35,18 +35,27 @@ flowchart LR
 | Loop | waits until the world changes, a run ends or a deadline passes; reads the world; applies the plan | decides who runs |
 | Plan | a pure function: state → whom to start and stop, when to look again, and why for each agent | reads a file or a clock |
 | Run | one agent, once: its view in, the agent program, a proposal out | changes the world, or starts a run |
-| World | answers the five calls below | knows about runs |
+| World | answers the five calls below, and says how its views compare and settle | knows about runs |
 
 ## The world's five calls
 
 ```
 members()                           who is here: id, name, person or agent, may ask
-asks()                              open asks: id, agent, when, from whom
+asks()                              open asks: id, agent, from whom, when it asked, when it last
+                                    changed; an agent's ask also for whom and how deep
 view(member, { since, asks })       what this member sees: files, a prompt, the version
 wait(version, deadline)             block until something changed after version, or the deadline;
-                                    → the new version and the log since: version, author, time
+                                    → the new version and the log since: version, author (a person,
+                                      an agent or the world itself), time, whether only what is
+                                      asked changed, whether it leaves watch runs stale
 propose(member, version, old, new)  → landed, or refused because …
 ```
+
+And what only the world can say of its views: a view's fingerprint
+(`print`), whether a view holds what a run said wakes it (`wakes`), how
+deep agents may wake each other (`limits`) and how long people's changes
+pause before a watcher runs (`settleMs`). The contract, each value's
+fields: the top of `src/core/runtime.js`.
 
 - `wait` is the only place the runtime waits. It takes no callbacks, so no
   event can be lost: it asks what changed after a version, and the log
@@ -55,6 +64,9 @@ propose(member, version, old, new)  → landed, or refused because …
 - `propose` is the only way a run changes the world. The writer lands it
   under the world's rules (a doc merges; a game refuses a stale move), in
   order with every other change.
+- Who may ask is the world's to say (`mayAsk`), and what an ask is: a
+  comment that @mentions a buddy, a player's turn. The runtime knows no
+  levels; it starts work only for those the world says may ask.
 
 ## How the plan decides
 
@@ -64,13 +76,15 @@ An agent is due when it is not running and either:
   and has not failed. An agent's ask to another agent counts against the
   chain limit and runs for the person who started the chain.
 - **Watching:** a person's watch is on, its view changed since its last
-  run started, and the change is ready: a person's once they pause 5 s, an
-  outside program's at once, another agent's once that agent's run has
-  ended. Its own change never counts. A run may name what it waits for
-  (in Ponjo, lines of the doc); until its next run, only those wake it.
+  run started, and the change is ready: a person's once they pause (the
+  world's `settleMs`), the world's own at once, another agent's once that
+  agent's run has ended. Its own change never counts. A run may name what
+  it waits for (in Ponjo, lines of the doc); until its next run, only
+  those wake it.
 
-A person changing an agent's view while a run only a watch started is on
-ends that run: it saw an old view. An outside program's change does not.
+A change the world calls stale ends the runs only a watch started: they
+saw an old view. In Ponjo a person's edit is stale, a file written outside
+the app is not.
 
 **Limits** keep the board coming to rest. A change by a person or the world
 has depth 0; a run woken by an agent's change has that change's depth plus
@@ -163,8 +177,12 @@ only, never the world's content. In Ponjo: Settings > Agents > Agent log.
 
 ## Security
 
-- Only people start work: an ask from a person who may write, or a watch a
-  person turned on. A request found in a file asks no one.
+What the runtime holds to in every world. Who may ask, and what asks, is
+each world's (in Ponjo: [host spec](host-spec.md#buddies)).
+
+- Work starts only for a member who may ask: their ask, an agent's ask for
+  them, or a watch they turned on. A run is proposed for them, and the
+  world lands it as they may.
 - A run sees only its member's view and changes only through `propose`.
 - Outside any view: whoever runs the host can read its files, and an agent
   program must be kept by its own permissions from opening files outside
