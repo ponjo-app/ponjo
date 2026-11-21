@@ -1,8 +1,11 @@
-// The werewolf page's rules and runtime (preview/werewolf-rules.js, preview/werewolf-runtime.js).
+// The werewolf page's rules and its game as a world (preview/werewolf-rules.js,
+// preview/werewolf-world.js), on Ponjo's runtime (src/core/runtime.js).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { createRuntime } from '../src/core/runtime.js';
 import { MAX_SPEECH, SIZES, act, deal, due, fallback, newGame, turn, view } from '../preview/werewolf-rules.js';
-import { HUMAN, PERSONAS, ROLE_NAMES, begin, decided, expire, land, newGame as newTable, plan, prompt, seatOf } from '../preview/werewolf-runtime.js';
+import { HUMAN, PERSONAS, ROLE_NAMES, begin, createWorld, decided, expire, land, newGame as newTable, prompt, seatOf, show } from '../preview/werewolf-world.js';
+import { dueIn, give, until } from './helpers.js';
 
 // Seats 0 and 5 are the wolves, 1 the seer, 2 the witch, the rest villagers.
 const ROLES = ['wolf', 'seer', 'witch', 'villager', 'villager', 'wolf', 'villager'];
@@ -194,24 +197,25 @@ test('a seat sees its own role, its pack, its own secrets and the public log', (
 
 // ---- the runtime ----
 
-test('plan: everyone due at once, but not the person, a player running, or one whose run failed', () => {
+test('who is asked: everyone due at once, but not the person; one player\'s action asks the others nothing new', async () => {
   const game = newTable(7, { roles: ['villager', 'seer', 'witch', 'wolf', 'villager', 'wolf', 'villager'] }); // wolves in seats 3 and 5
+  const world = createWorld(game);
   assert.deepEqual(game.players, [HUMAN, 'Rosa', 'Jax', 'Wen', 'Otis', 'Priya', 'Bo']);
-  assert.deepEqual(plan(game).map((d) => [d.id, d.kind]), [['Wen', 'kill'], ['Priya', 'kill']]);
-  assert.deepEqual(plan(game, new Set(['Wen'])).map((d) => d.id), ['Priya']);
-  game.notes.Wen.failed = { at: turn(game.state), why: 'offline' };
-  assert.deepEqual(plan(game).map((d) => d.id), ['Priya']);
-  game.notes.Wen.failed = null;
-  game.state = act(game.state, 3, { type: 'kill', target: 4, at: turn(game.state) });
-  game.state = act(game.state, 5, { type: 'kill', target: 4, at: turn(game.state) });
-  assert.deepEqual(plan(game).map((d) => [d.id, d.kind]), [['Rosa', 'check']]);
-  assert.equal(game.state.round, 1);
+  const wolves = await dueIn(world);
+  assert.deepEqual(wolves.map((d) => [d.id, begin(game, d.id).kind]), [['Wen', 'kill'], ['Priya', 'kill']]);
+  const given = new Map();
+  give(given, wolves[0]);
+  assert.deepEqual((await dueIn(world, given)).map((d) => d.id), ['Priya'], 'Wen\'s run was given its turn');
+  land(game, 'Priya', begin(game, 'Priya'), { action: { type: 'kill', target: 4 } });
+  assert.deepEqual(await dueIn(world, given), [], 'Priya\'s kill asks Wen nothing new');
+  land(game, 'Wen', begin(game, 'Wen'), { action: { type: 'kill', target: 4 } });
+  assert.deepEqual((await dueIn(world, given)).map((d) => [d.id, begin(game, d.id).kind]), [['Rosa', 'check']]);
+  assert.deepEqual(await dueIn(createWorld(game, { ready: () => false })), [], 'nothing, while the page holds the players');
   const person = newTable(7, { roles: ['wolf', ...ROLES.slice(1)] });
-  land(person, HUMAN, { at: turn(person.state) }, { action: { type: 'pass' } });
-  assert.deepEqual(plan(person).map((d) => d.id), ['Priya'], 'the person is never planned');
+  assert.deepEqual((await dueIn(createWorld(person))).map((d) => d.id), ['Priya'], 'the person is never asked');
 });
 
-test('the writer turns away a stale proposal, asks again, then plays the fallback', () => {
+test('the writer turns away a stale proposal, asks again, then plays the fallback', async () => {
   const game = newTable(7, { roles: ROLES });
   const basis = begin(game, 'Priya'); // seat 5, a wolf, as is the person
   assert.equal(land(game, 'Priya', basis, decided({ thinking: 'The quiet one.', action: { type: 'kill', target: 4 }, say: 'Seat 4 talks too little.' })).landed, true);
@@ -222,8 +226,12 @@ test('the writer turns away a stale proposal, asks again, then plays the fallbac
   assert.match(land(game, 'Priya', basis, { action: { type: 'kill', target: 3 } }).rejected, /Stale/, 'made on the first pick');
   land(game, HUMAN, { at: turn(game.state) }, { action: { type: 'kill', target: 3 } });
   land(game, 'Priya', begin(game, 'Priya'), { action: { type: 'kill', target: 3 } });
+  const world = createWorld(game);
+  const given = new Map();
+  give(given, (await dueIn(world)).find((d) => d.id === 'Rosa'));
   const rosa = begin(game, 'Rosa');
   assert.match(land(game, 'Rosa', rosa, { action: { type: 'check', target: 1 } }).rejected, /another living player/);
+  assert.deepEqual((await dueIn(world, given)).map((d) => d.id), ['Rosa'], 'asked again');
   assert.match(prompt(game, 'Rosa').situation, /Your last action was turned away: Pick another living player/);
   land(game, 'Rosa', rosa, { action: { type: 'check', target: 1 } });
   assert.equal(game.state.step, 'seer', 'still due');
@@ -322,4 +330,50 @@ test('random games: no role or night secret ever reaches a prompt that may not s
     const wolves = live.filter((x) => x.role === 'wolf').length;
     assert.ok(game.state.winner === 'village' ? wolves === 0 : wolves >= live.length - wolves, `${game.state.winner} won`);
   }
+});
+
+test('on Ponjo\'s runtime: the AI players play a whole game, no secret reaches a prompt that may not see it, and refusals fall back', async () => {
+  const game = newTable(7);
+  const world = createWorld(game);
+  const leaks = [];
+  // What a player does: the wolves kill a villager, the seer checks, the
+  // witch passes, everyone speaks and votes at random. Jax always does
+  // something the rules turn away, so the fallback plays for him.
+  const choose = (seat, kind) => {
+    const s = game.state;
+    const others = s.seats.flatMap((x, i) => (x.alive && i !== seat ? [i] : []));
+    if (kind === 'kill') return { type: 'kill', target: others.find((i) => s.seats[i].role !== 'wolf') };
+    if (kind === 'check') return { type: 'check', target: others[0] };
+    if (kind === 'potion') return { type: 'pass' };
+    if (kind === 'vote') return { type: 'vote', target: others[Math.floor(Math.random() * others.length)] };
+    return { type: 'speak' };
+  };
+  async function run({ agent }, { files: basis, prompt: { rules, situation } }) {
+    const me = seatOf(game, agent.id);
+    for (const secret of secrets(game)) if (!secret.shown && secret.test(me).test(`${rules}\n${situation}`) && !secret.may.includes(me)) leaks.push(`${agent.id}: ${secret.test(me)}`);
+    const action = agent.id === 'Jax' ? { type: 'dance' } : choose(me, basis.kind);
+    return { at: Date.now(), ms: 0, outcome: 'ok', made: { thinking: 'hm', action, say: basis.kind === 'speak' || basis.kind === 'last' || basis.kind === 'kill' ? 'I am a villager.' : '' } };
+  }
+  const runtime = await createRuntime({
+    world, run, breaker: async () => ({ pauseAfter: Infinity, pauseWithin: 10 }),
+    watching: { read: async () => ({}), note: () => {} }, trace: () => {}, emit: () => {},
+  });
+  try {
+    await runtime.sync();
+    await until(() => {
+      if (game.state.phase === 'over') return true;
+      const v = show(game);
+      if (v.due) {
+        land(game, HUMAN, { at: v.due.at }, { action: choose(v.seat, v.due.kind), say: 'I am a villager.' });
+        world.changed();
+      }
+      return false;
+    }, 'the game to end', 60_000);
+    await until(() => runtime.running().length === 0, 'the last runs to end');
+  } finally {
+    await runtime.close();
+  }
+  assert.deepEqual(leaks, []);
+  assert.ok(game.log.some((c) => c.type === 'action' && c.by === 'Jax' && c.forced), 'Jax, turned away three times, is played for by the rules');
+  assert.ok(['village', 'wolves'].includes(game.state.winner));
 });
