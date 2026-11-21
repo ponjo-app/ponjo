@@ -63,6 +63,10 @@
       <symbol id="ww-claw" viewBox="0 0 24 24">
         <path d="M5 3q3 9-1 18M11 2q3 10-1 20M17 3q3 9-1 18" fill="none"/>
       </symbol>
+      <symbol id="ww-muted" viewBox="0 0 24 24">
+        <path d="M4 5h16v11H10l-5 4v-4H4Z" fill="none"/>
+        <path d="M3 3l18 18" fill="none"/>
+      </symbol>
       <symbol id="ww-ballot" viewBox="0 0 24 24">
         <path d="M8 3h8v10H8Z"/>
         <path d="M3 12h18v9H3Z"/>
@@ -113,12 +117,10 @@
     <div class="ww-me">
       <form class="ww-act" hidden>
         <p class="ww-ask"></p>
-        <textarea class="pj-input ww-text" name="text" rows="3" autocomplete="off" aria-label="What you say"></textarea>
         <div class="pk-buttons ww-buttons">
           <button class="pj-secondary" type="button" data-do="abstain">Abstain</button>
           <button class="pj-secondary" type="button" data-do="save">Save</button>
           <button class="pj-secondary" type="button" data-do="pass">Pass</button>
-          <button class="pj-primary" type="submit" data-do="speak">Speak</button>
         </div>
         <p class="pk-error ww-error" hidden></p>
       </form>
@@ -128,6 +130,11 @@
   <aside class="pk-chat" aria-label="The village">
     <div class="pk-chat-head"><h2>The village</h2></div>
     <ol class="pk-feed"></ol>
+    <p class="ww-audience" aria-live="polite"></p>
+    <form class="pk-say ww-chat-box">
+      <textarea class="pj-input" name="text" rows="1" autocomplete="off" aria-label="What you say"></textarea>
+      <button class="pk-send" type="submit" aria-label="Send" title="Send"><svg class="pj-icon" viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button>
+    </form>
     <p class="pk-fine"><span class="pk-model"></span> <button class="pj-link-button" type="button" data-action="key">Use your own key</button></p>
   </aside>
 </main>
