@@ -490,8 +490,8 @@ its CLI's config allow.
 
 For whoever works on an agent: with Settings > Agents > Trace runs on (off
 by default), each run's trace is kept in the config folder's
-\`logs/traces/\`, the newest 200, and read in a doc's Runs (the owner's
-window only). The app records what it sees of any agent: the prompt, the
+\`logs/traces/\`, the newest 200, and read in a doc's runtime panel (the
+owner's window only). The app records what it sees of any agent: the prompt, the
 script, stdout and stderr, how it ended, the copies before and after, and
 what landed. What happens inside the run is the agent's to add: each line
 it appends to \`PONJO_TRACE\` (a JSON value, or text) is kept, in order, as
@@ -695,7 +695,10 @@ how it ended and what landed; the breaker tripping. Only a run's end holds
 the world's content (its view, what it made); the host keeps and shows the
 rest as names, versions and ids. The fields: Event in \`src/core/runtime.js\`.
 In Ponjo the host writes them as the agent log (Settings > Agents > Agent
-log), and each run's end to the runs' log.
+log), and each run's end to the runs' log; it keeps the newest 500, a run's
+end without the doc, and tells them to the owner's windows, whose runtime
+panel (\`web/runtime-panel.js\`) shows them, as the game pages' do with
+\`?debug\`.
 
 ## Security
 
@@ -1269,7 +1272,7 @@ machine's, in memory.
    Settings > Usage sums. A log there past 10 MB keeps its newest half.
    With Trace runs on, it also leaves its trace (the prompt, the agent's
    steps, its output, the copies before and after, what landed) in
-   \`logs/traces/<run>.json\`, the newest 200 kept, for the doc's Runs.
+   \`logs/traces/<run>.json\`, the newest 200 kept, for the doc's runtime panel.
 
 A run that is ended (its asks resolved, its watch unset, its buddy deleted,
 a person typing while only a watch had it run) lands nothing. Runs of
