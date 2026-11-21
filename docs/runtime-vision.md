@@ -25,12 +25,17 @@ decides whether to hand on, and to whom, so it may never be sent. And each
 agent acts on its own private context, which goes stale once another
 changes the work, so to stay correct agents take turns.
 
+A durable queue or a checkpoint keeps the event. It does not fix the other
+two: an LLM still decides who goes next, and each agent still works on a
+copy that goes stale.
+
 ## Four principles
 
 **1. Decide from state, never from events.** The runtime works out who is
 due from what the board holds. An event only means "look again", so a lost
 event or a restart costs nothing. Agents remember nothing between runs, so
-they can't drift from the board.
+they can't drift from the board. A thermostat works this way: it reads the
+room, not a count of opened doors. So does a Kubernetes controller.
 
 **2. Agents propose; only the writer changes state.** A run reads its
 member's view and hands back a proposal. It changes nothing itself, so it
@@ -115,6 +120,24 @@ Nobody drew that flow: each step is the plan reading a new state.
 - **Coordination with no orchestrator.** Bob acts, the board changes, so
   Alice is due.
 
+## How it differs
+
+Two differences; the rest follows from them.
+
+1. **Everyone acts on one board at once.** People and agents alike, with
+   no turns and no copies: agents propose, one writer lands each change in
+   order and refuses one made on a stale board.
+2. **Code decides who goes next, from the board.** Not an LLM, and not a
+   chain of events: the same answer every time, and nothing to lose.
+
+The common ways to run many agents, as their docs describe them in 2026:
+
+| | Orchestrator and handoffs: Claude Code subagents, OpenAI Agents SDK, CrewAI | Graph: LangGraph | Group chat: AutoGen | Blackboard: Ponjo |
+|---|---|---|---|---|
+| Working at once | Workers in parallel, each on its own copy; the lead merges | Branches in one step, merged by reducers | One speaker at a time | Everyone at once; the writer lands in order and refuses stale moves |
+| People | Give the task and review the result | Answer at interrupts, while the graph waits | Take a turn in the chat | Members, acting while agents act |
+| Who goes next | An LLM: the lead starts workers, or an agent hands on | The edges you wire, some routed by an LLM | A selector: in turn, or an LLM picks | Code, from the board |
+
 ## Evidence
 
 Open-card Hold'em on Ponjo's real runtime, with scripted agents, lost no
@@ -124,7 +147,9 @@ three AI players and you at one table, was built from scratch with its own
 small runtime and arrived at the same shape: a pure plan, one view that
 hides others' cards, a writer that refuses stale moves, and table talk
 limited by depth. It now runs on Ponjo's runtime, as a world
-(`preview/poker-world.js`).
+(`preview/poker-world.js`). So do [Werewolf](https://ponjo.app/werewolf.html)
+and [Who's the Spy](https://ponjo.app/spy.html), games of hidden roles,
+where each seat sees only what it may.
 
 ## Not for
 
@@ -141,10 +166,9 @@ An orchestrator fits those better.
   by depth, with a breaker that pauses watches, and outside actions as
   proposals, carried out once and approved by the owner ([agent
   runtime](agent-runtime.md#outside-actions)).
-- **Built** for poker, in its own page: per-member views, refusals, chains
-  limited by depth.
-- **Proposed** for Ponjo's runtime: refusals. What differs today:
-  [agent runtime](agent-runtime.md#today).
-- **Not yet:** a host that keeps running with no window open.
-- **Then, in worlds:** per-member views in the doc world; the poker table
-  as a world on Ponjo's runtime.
+- **Built** in three game worlds on the same runtime (poker, werewolf,
+  spy): per-member views and refusals.
+- **Not yet:** a host that keeps running with no window open. What differs
+  today: [agent runtime](agent-runtime.md#today).
+- **Then, in worlds:** per-member views in the doc world, where today every
+  member sees the whole doc.
