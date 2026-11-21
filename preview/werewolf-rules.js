@@ -19,7 +19,7 @@ const WOLVES = 2; // at any size; one seer, one witch, the rest villagers
 export const MAX_SPEECH = 400; // characters of a speech, last words or a line to the pack
 
 // A fair whole number below n from crypto.getRandomValues, with no modulo bias.
-function cryptoRandom(n) {
+export function cryptoRandom(n) {
   const limit = Math.floor(2 ** 32 / n) * n;
   const word = new Uint32Array(1);
   do crypto.getRandomValues(word); while (word[0] >= limit);

@@ -212,4 +212,6 @@ and what its host gives it, so it can run in a Worker too; the plan
 run (`src/host/runner.js`), the logs and the settings; the doc world `src/host/doc-world.js`, its
 asks `asksIn` (`src/core/comments.js`) and its prompt `src/core/prompt.js`.
 A second world, which refuses: the poker table (`preview/poker-world.js`),
-whose page (`preview/poker.js`) runs the same runtime in the browser.
+whose page (`preview/poker.js`) runs the same runtime in the browser. A
+third, where several agents are asked at once (a vote): the spy table
+(`preview/spy-world.js`, its page `preview/spy.js`).

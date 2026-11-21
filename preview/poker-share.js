@@ -1,8 +1,9 @@
-// The poker table shared with friends through the relay (relay/worker.js,
-// at share.ponjo.app): the host's page holds the table and runs the dealer
-// and the AI players; each friend's page joins its room by a link, sends
-// what its player does and draws what the host sends it. The room is the
-// SHA-256 of a secret only the host's page knows; the link names the room.
+// A game's table shared with friends through the relay (relay/worker.js,
+// at share.ponjo.app), the poker page's and the spy page's: the host's page
+// holds the table and runs the rules and the AI players; each friend's page
+// joins its room by a link, sends what its player does and draws what the
+// host sends it. The room is the SHA-256 of a secret only the host's page
+// knows; the link names the room.
 // A line that drops is made again, after 2 seconds and twice as long each
 // time up to 30; the relay answers `ping` with `pong`, so a page can tell.
 

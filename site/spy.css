@@ -1,0 +1,38 @@
+/* The spy page (site/spy.html): the players round a plain table, your word
+   on a card in the middle, what you may do under it and the table's log
+   beside. Its seats, badges, vote dots and arrows are the werewolf page's
+   (werewolf.css); its plates, log, menus and dialogs the poker page's
+   (poker.css). The table and the sides' tokens are the one place with the
+   game's own colours (the spy's table tokens in app.css, site/design.html). */
+
+.sp-page .ww-ring { background: radial-gradient(closest-side, var(--spy-table) 70%, var(--spy-table-deep)); }
+.sp-page .ww-ring::before { content: none; }
+
+/* your word, dealt face up in the middle */
+.sp-word { position: absolute; left: 50%; top: 50%; translate: -50% -50%; display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 120px; padding: 12px 18px; border-radius: 10px; background: var(--bg); box-shadow: var(--shadow-raised); text-align: center; rotate: -2deg; }
+.sp-word[hidden] { display: none; }
+.sp-word-label { color: var(--text-soft); font-size: 11px; }
+.sp-word-text { font-size: 22px; font-weight: 600; line-height: 1.2; }
+.sp-word[data-over] .sp-word-text { font-size: 15px; font-weight: 500; }
+@media (prefers-reduced-motion: no-preference) {
+  .sp-word[data-dealt] { animation: sp-deal 0.6s cubic-bezier(0.3, 1.4, 0.5, 1); }
+  @keyframes sp-deal { from { opacity: 0; transform: translateY(40px) rotate(12deg) scale(0.7); } }
+}
+
+/* a side, shown once a player is out or the game is over: the campfire's token */
+.ww-token[data-role="spy"] { --role: var(--spy); }
+.ww-token[data-role="civilian"] { --role: var(--civilian); }
+
+.sp-page .ww-seat { cursor: default; }
+.sp-page .ww-seat[data-pickable] { cursor: pointer; }
+.sp-page .ww-seat[data-pickable] .pk-plate { box-shadow: 0 0 0 1px var(--border-strong); }
+.sp-page .ww-me { min-height: 20px; }
+.sp-page .ww-ask { color: var(--text-soft); font-weight: 500; }
+.sp-page .pk-chat-head { gap: 8px; }
+.sp-people { margin: 0; }
+.sp-join { width: 360px; max-width: calc(100vw - 32px); }
+
+@media (max-width: 640px) {
+  .sp-word { min-width: 88px; padding: 8px 12px; }
+  .sp-word-text { font-size: 17px; }
+}
