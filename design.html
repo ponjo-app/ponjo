@@ -6,8 +6,8 @@
   <title>Ponjo Design System</title>
   <!-- A live specimen: the app's own stylesheet and classes, so this page is
        always what the app looks like. Run `npm run build` to view it locally. -->
-  <link rel="stylesheet" href="./dist/web/app.css?v=a0b7aa7">
-  <link rel="stylesheet" href="site.css?v=a0b7aa7">
+  <link rel="stylesheet" href="./dist/web/app.css?v=4838da8">
+  <link rel="stylesheet" href="site.css?v=4838da8">
   <link rel="icon" href="./build/icon.svg" type="image/svg+xml">
 </head>
 <body>
@@ -218,6 +218,8 @@
       <h3 class="pj-setting-group">Result</h3><pre class="pj-trace-text">3	We plan to ship in week one.</pre></details>
     <details class="pj-trace-part"><summary><svg class="pj-icon" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg><span class="pj-trace-title">2. comment with 1 edit</span><span class="pj-trace-meta">1.8 s · 3,300 in, 90 out</span></summary></details>
   </div>
+  <h3>Runtime panel</h3>
+  <p>What the agent runtime does, as Chrome's DevTools shows a page: <code>.pj-runtime</code>, docked on the right edge, 400px, the full height, <code>--bg</code> with a hairline <code>--border</code> on its left; the page moves over to make room, as it does for the folder sidebar. Its head, 44px: Runtime (13px, 600), where it is in <code>--text-soft</code> ("this table", "Launch plan.md"), then icon buttons: Pause (pressed while it stops following: new events wait), Clear and Close. Under it a bar: a <code>.pj-segmented</code> of Looks, Runs and Agents, each with its count in <code>--text-faint</code>, then the Agent filter, a small select on <code>--bg-soft</code>, and on Looks a checkbox, Only looks that started a run, on at first. Rows are the list rows' 28px, the time first in 11px mono <code>--text-faint</code>. Looks, newest first: what set each off, and a <code>.pj-version-tag</code> per run it started; opened, each agent's verdict in a 12px table, the reason in <code>--text-soft</code> and the run's id as a link to it. Runs: the time, the agent, what it was asked, what it came to on a <code>.pj-version-tag</code> (Running in <code>--accent</code> on <code>--accent-soft</code>; Landed <code>--green</code>; Refused and Failed <code>--red</code>; Quiet and Stopped grey), and a timeline, an 8px lane on <code>--bg-soft</code> with the run's bar in the same colour. A run opened splits the panel, as Network does: its facts in <code>--text-soft</code>, then <code>.pj-trace-part</code>s (Asked, Prompt closed, Made, Landed) with <code>.pj-trace-text</code>. Agents: a row each, its face at 24px, what it runs now, a failure in <code>--red</code> with Retry (a <code>.pj-link-button</code>), and whether it watches. Below 760px it goes under the page. In the games it is there only with <code>?debug</code>, as it shows every player's secrets.</p>
   <h3>Lists: current is ink on grey</h3>
   <div class="pj-files ds-files">
     <ul class="pj-files-tree">
@@ -303,6 +305,6 @@
   </div>
 
 </main>
-<script type="module" src="site.js?v=a0b7aa7"></script>
+<script type="module" src="site.js?v=4838da8"></script>
 </body>
 </html>
