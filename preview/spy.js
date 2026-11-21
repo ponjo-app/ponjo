@@ -17,6 +17,7 @@ import { agentFace, personFace, setBuddies, setOwner } from '../web/faces.js';
 import { icon } from '../web/icons.js';
 import { $, arrows, el, load, message, models, notice, store, typingMessage } from './game-page.js';
 import { createRuntime } from '../src/core/runtime.js';
+import { createRuntimePanel } from '../web/runtime-panel.js';
 import { host, join } from './poker-share.js';
 import { DECIDE, HUMAN, MAX_CLUE, PERSONAS, begin, createWorld, decided, due, expire, intros, introduce, isPerson, land, leave, newTable, playing, seatFriend, show, start } from './spy-world.js';
 
@@ -95,18 +96,29 @@ async function run({ agent }, { prompt: { rules, situation } }) {
   const at = Date.now();
   const started = performance.now();
   try {
-    const { calls, text } = await ai.infer()([{ role: 'user', content: rules, cache: true }, { role: 'user', content: situation }], [DECIDE]);
+    const { calls, text, usage } = await ai.infer()([{ role: 'user', content: rules, cache: true }, { role: 'user', content: situation }], [DECIDE]);
     let args = {};
     try {
       args = JSON.parse(calls.find((c) => c.name === 'decide')?.args ?? '{}');
     } catch {}
     const [from, to] = PACE[agent.id] ?? [2000, 4000];
     await wait(from + Math.random() * (to - from) - (performance.now() - started));
-    return { at, ms: performance.now() - started, outcome: 'ok', made: decided({ thinking: text, ...args }) };
+    return { at, ms: performance.now() - started, outcome: 'ok', usage, made: decided({ thinking: text, ...args }) };
   } catch (error) {
     return { at, ms: performance.now() - started, outcome: 'failed', body: String(error.message).split('\n')[0] };
   }
 }
+
+// With ?debug, the host's page shows what the runtime does (the runtime
+// panel): every player's word and thinking, so only on asking. An ask is a
+// turn of the game: its round, phase, a runoff, the speaker (turn, spy-rules.js).
+const panel = !ROOM && new URLSearchParams(location.search).has('debug') && createRuntimePanel({
+  where: 'this table', faceOf: (id) => faceOf(table, id), retry: (id) => runtime.retry(id),
+  askText: (id) => {
+    const [, , round, phase, runoff] = id.split(':');
+    return `Round ${round}, ${phase}${runoff ? ' (runoff)' : ''}`;
+  },
+});
 
 // The table as a world, and on the host's page, Ponjo's runtime on it. What
 // it says of the players (statuses): who is at work, and whose run failed.
@@ -123,9 +135,10 @@ const runtime = ROOM ? null : await createRuntime({
   world, run,
   breaker: async () => ({ pauseAfter: Infinity, pauseWithin: 10 }), // the table has no watches to pause
   watching: { read: async () => ({}), note: () => {} },
-  trace: (event) => console.debug('runtime', event.type, event), // for the devtools, until the runtime has a view of its own
+  trace: (event) => panel?.add(event),
   emit(type, statuses) {
     if (type !== 'agents') return;
+    panel?.agents(statuses);
     running.clear();
     for (const s of statuses) if (s.asks.length) running.add(s.id);
     failed = new Map(statuses.filter((s) => s.failed.length).map((s) => [s.id, s.failed.at(-1).why]));
