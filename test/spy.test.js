@@ -53,6 +53,17 @@ test('clues go round in seat order, never saying the word; then everyone votes a
   assert.ok(!view(g, 2).log.some((e) => e.type === 'vote'));
 });
 
+test('the first clue is from a seat dealt at random, and each round starts one seat on', () => {
+  const firsts = new Set(Array.from({ length: 200 }, () => deal(6).first));
+  assert.deepEqual([...firsts].sort(), [0, 1, 2, 3, 4, 5], 'any seat may start');
+  let g = newGame({ words: WORDS, roles: ['civilian', 'civilian', 'civilian', 'civilian', 'spy'], first: 3 });
+  assert.equal(g.speaker, 3);
+  assert.deepEqual(g.order, [3, 4, 0, 1, 2]);
+  assert.equal(g.log[0].from, 3);
+  g = round(g, { 0: 1, 1: 0, 2: 1, 3: 1, 4: 1 });
+  assert.deepEqual(g.order, [4, 0, 2, 3], 'round 2 from seat 4, without the player out');
+});
+
 test('the most votes is out, their side shown; every spy out and the civilians win', () => {
   let g = game('csccc');
   g = round(g, { 0: 1, 1: 0, 2: 1, 3: 1, 4: 0 });
@@ -211,7 +222,7 @@ test('friends join by name and play from the next game; a friend who leaves is t
   for (let k = 2; k < MAX_PEOPLE; k++) seatFriend(table, `f${k}`, `F${k}`);
   assert.equal(seatFriend(table, 'f9', 'Late'), false, 'full');
   for (let k = 2; k < MAX_PEOPLE; k++) leave(table, `f${k}`);
-  start(table, 5);
+  start(table, 5, { dealt: { ...deal(5), first: 0 } }); // the host's clue first
   begin(table);
   assert.deepEqual(table.players.slice(0, 2), [HUMAN, 'fann']);
   assert.equal(table.players.length, 5);
@@ -287,4 +298,16 @@ test('on Ponjo\'s runtime: the AI players play a game to its end, refusals fall 
   assert.deepEqual(leaks, []);
   assert.ok(table.game.winner);
   assert.ok(table.log.some((c) => c.type === 'action' && c.by === 'Max' && c.forced), 'Max, turned away three times, says nothing');
+});
+
+test('a friend whose page reloads is back in their seat: their turns are theirs again', () => {
+  const table = newTable();
+  seatFriend(table, 'fann', 'Ann');
+  start(table, 5, { dealt: { ...deal(5), first: 0 } }); // the host's clue first
+  begin(table);
+  leave(table, 'fann'); // the page went
+  assert.equal(seatFriend(table, 'fann', table.names.fann), true, 'and came back');
+  land(table, HUMAN, at(table), { say: 'Mornings' });
+  assert.equal(table.game.speaker, 1, 'her clue is hers to give, not taken as none');
+  assert.equal(land(table, 'fann', at(table), { say: 'Every day' }).landed, true);
 });

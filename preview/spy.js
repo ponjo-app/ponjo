@@ -18,7 +18,7 @@ import { icon } from '../web/icons.js';
 import { $, arrows, el, load, message, models, notice, store, typingMessage } from './game-page.js';
 import { createRuntime } from '../src/core/runtime.js';
 import { createRuntimePanel } from '../web/runtime-panel.js';
-import { host, join } from './poker-share.js';
+import { RECONNECT_MS, guestId, host, join } from './poker-share.js';
 import { DECIDE, HUMAN, MAX_CLUE, PERSONAS, begin, createWorld, decided, due, expire, intros, introduce, isPerson, land, leave, newTable, playing, seatFriend, show, start } from './spy-world.js';
 
 const TURN = 90_000; // ms a turn may take; then everyone still due is taken as doing nothing
@@ -30,7 +30,7 @@ setBuddies(PERSONAS.map(({ id }) => ({ id, name: id })));
 setOwner(HUMAN);
 
 const ROOM = new URLSearchParams(location.hash.slice(1)).get('join'); // a friend's page: the room of the table it joins
-const me = ROOM ? `f${[...crypto.getRandomValues(new Uint8Array(4))].map((b) => b.toString(16).padStart(2, '0')).join('')}` : HUMAN; // who this page plays as
+const me = ROOM ? guestId(ROOM) : HUMAN; // who this page plays as
 const table = newTable(); // the host's; a friend's page draws what the host sends (`remote`)
 let remote = null; // a friend's page: the host's last state
 const running = new Set(); // players with a run going
@@ -112,13 +112,13 @@ async function run({ agent }, { prompt: { rules, situation } }) {
 // With ?debug, the host's page shows what the runtime does (the runtime
 // panel): every player's word and thinking, so only on asking. An ask is a
 // turn of the game: its round, phase, a runoff, the speaker (turn, spy-rules.js).
-const panel = !ROOM && new URLSearchParams(location.search).has('debug') && createRuntimePanel({
+const panel = !ROOM && new URLSearchParams(location.search).has('debug') ? createRuntimePanel({
   where: 'this table', faceOf: (id) => faceOf(table, id), retry: (id) => runtime.retry(id),
   askText: (id) => {
     const [, , round, phase, runoff] = id.split(':');
     return `Round ${round}, ${phase}${runoff ? ' (runoff)' : ''}`;
   },
-});
+}) : null;
 
 // The table as a world, and on the host's page, Ponjo's runtime on it. What
 // it says of the players (statuses): who is at work, and whose run failed.
@@ -448,7 +448,7 @@ function drawFeed(t, v) {
       continue;
     }
     last = null;
-    if (e.type === 'round') rows.push(notice(e.round === 1 ? 'Round 1. Everyone has their word: one clue each, in seat order.' : `Round ${e.round}.`));
+    if (e.type === 'round') rows.push(notice(`${e.round === 1 ? 'Round 1. Everyone has their word: one clue each, in seat order' : `Round ${e.round}`}, from ${name(e.from)}.`));
     else if (e.type === 'clue') rows.push(notice(`${Name(e.seat)} gave no clue.`));
     else if (e.type === 'vote') {
       const votes = Object.entries(e.votes).map(([s, x]) => `${Name(Number(s))} → ${x === null ? 'no vote' : name(x)}`);
@@ -608,17 +608,25 @@ function closeInvite() {
   if (!starting.hidden) openStart();
   changed();
 }
+// A friend's page opens. One that was at the table (its page reloaded) is
+// back in its seat, by the name it had.
 function joined(peer, hello) {
   if (!/^f[0-9a-f]{8}$/.test(String(hello?.id))) return room.turnAway(peer, 'Not a player');
   peers.set(peer, hello.id);
+  if (table.names[hello.id]) seatFriend(table, hello.id, table.names[hello.id]);
+  if (!starting.hidden) openStart();
   changed();
 }
+// A friend's page goes: they leave the table unless a page of theirs is back within RECONNECT_MS (a reload).
 function left(peer) {
   const id = peers.get(peer);
   peers.delete(peer);
-  if (id) leave(table, id);
-  if (!starting.hidden) openStart();
-  changed();
+  setTimeout(() => {
+    if (!id || [...peers.values()].includes(id)) return;
+    leave(table, id);
+    if (!starting.hidden) openStart();
+    changed();
+  }, RECONNECT_MS);
 }
 // What a friend's page sends: to sit at the table, or what its player does.
 function apply(peer, message) {
@@ -656,6 +664,7 @@ const guest = ROOM && join(ROOM, { id: me }, {
     }
     if (message.type !== 'state') return;
     remote = message;
+    if (!joining.hidden && message.table.people.includes(me)) closeJoin(); // back at the table after a reload
     for (const [set, ids] of [[running, message.running], [typing, message.typing]]) set.clear() || ids.forEach((id) => set.add(id));
     failed = new Map(message.failed);
     clock = { ends: message.clock && Date.now() + message.clock };
@@ -667,13 +676,16 @@ const guest = ROOM && join(ROOM, { id: me }, {
   },
 });
 const joining = $('.sp-join');
+function closeJoin() {
+  joining.hidden = true;
+  document.body.classList.remove('pk-buying-in');
+}
 joining.addEventListener('submit', (event) => {
   event.preventDefault();
   const name = joining.elements.name.value.trim().slice(0, 20) || 'Friend';
   store(name, NAME);
   guest.send({ type: 'sit', name });
-  joining.hidden = true;
-  document.body.classList.remove('pk-buying-in');
+  closeJoin();
 });
 
 // ---- wiring ----
@@ -689,10 +701,7 @@ document.addEventListener('click', (event) => {
   else if (action === 'copy') {
     inviting.elements.link.select();
     navigator.clipboard?.writeText(inviting.elements.link.value).catch(() => {});
-  } else if (action === 'watch') {
-    joining.hidden = true;
-    document.body.classList.remove('pk-buying-in');
-  }
+  } else if (action === 'watch') closeJoin();
 });
 $('.pk-thinking').addEventListener('click', (event) => {
   if (event.target === event.currentTarget) event.currentTarget.close(); // a click on the backdrop

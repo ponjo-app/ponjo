@@ -133,13 +133,13 @@ async function run({ agent }, { files: basis, prompt: { rules, situation } }) {
 // With ?debug, the page shows what the runtime does (the runtime panel):
 // every player's role and thinking, so only on asking. An ask is a turn of
 // the game, its day, phase and step (turn, werewolf-rules.js).
-const panel = new URLSearchParams(location.search).has('debug') && createRuntimePanel({
+const panel = new URLSearchParams(location.search).has('debug') ? createRuntimePanel({
   where: 'this game', faceOf, retry: (id) => runtime.retry(id),
   askText: (id) => {
     const [, day, phase, step] = id.split(':');
     return `${phase === 'night' ? 'Night' : 'Day'} ${day}${step ? `, ${step}` : ''}`;
   },
-});
+}) : null;
 
 // A new game is a new world, with Ponjo's runtime on it; the last game's
 // runtime ends its runs, which land nothing. What the runtime says of the

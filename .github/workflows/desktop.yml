@@ -238,7 +238,7 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
   infer:
-    # The preview's buddies' model and the poker page's (infer.ponjo.app,
+    # The preview's buddies' model and the game pages' (infer.ponjo.app,
     # the hackathon env in relay/wrangler.toml), with the Token Factory key
     # and the Anthropic key. Nothing of the
     # nightly's: it waits only for the unit tests (test/infer.test.js among

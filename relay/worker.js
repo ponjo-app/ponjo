@@ -2,8 +2,8 @@
 // Sharing): a Cloudflare Worker that serves the page (dist/web/team.html,
 // as static assets; relay/wrangler.toml) and joins the owner's doc host to
 // each teammate's page, with one Durable Object per room. It stores nothing.
-// The poker page's host shares its table with friends' pages through the
-// same rooms (preview/poker-share.js).
+// The game pages' hosts (poker, Who's the Spy) share their tables with
+// friends' pages through the same rooms (preview/poker-share.js).
 //
 // Both connect with a WebSocket to /rooms/<room>, the room being the hex
 // SHA-256 of a secret only the host knows, the host adding `?host`. No
@@ -34,9 +34,10 @@
 // its answer comes back as is. Only the messages and tools are taken from
 // the page, with `tool_choice: auto` as every provider of the Ponjo agent
 // sends it (docs/ponjo-agent.md). POST /infer/anthropic/messages is the
-// poker page's players' (site/poker.html): an Anthropic Messages request as
-// INFER.anthropic sends it goes on to ANTHROPIC_ENDPOINT with the
-// ANTHROPIC_API_KEY and ANTHROPIC_MODEL, the same way. An address asks
+// game pages' AI players' (site/poker.html, werewolf.html, spy.html,
+// preview/game-page.js): an Anthropic Messages request as INFER.anthropic
+// sends it goes on to ANTHROPIC_ENDPOINT with the ANTHROPIC_API_KEY and
+// ANTHROPIC_MODEL, the same way. An address asks
 // at most 60 times a minute (INFER), on both.
 
 /* global WebSocketPair, WebSocketRequestResponsePair */
@@ -185,7 +186,7 @@ const chat = ({ messages, tools }, env) => fetch(`${env.ENDPOINT}/chat/completio
   body: JSON.stringify({ model: env.MODEL, max_tokens: MAX_TOKENS, messages, tools, tool_choice: 'auto' }),
 });
 
-// A poker player's step thinks little: it must answer in a few seconds.
+// A game player's step thinks little: it must answer in a few seconds.
 const anthropic = ({ messages, tools }, env) => fetch(`${env.ANTHROPIC_ENDPOINT}/messages`, {
   method: 'POST',
   headers: { 'content-type': 'application/json', 'x-api-key': env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },

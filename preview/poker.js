@@ -20,7 +20,7 @@ import { handName, legal } from './poker-dealer.js';
 import { DECIDE, HUMAN, MAX_SEATS, PERSONAS, STACK, addPlayer, createWorld, force, freeSeats, intros, introduce, isPerson, lineup, react, removePlayer, deal, land, leave, myChips, newTable, say, seatFriend, topUp } from './poker-world.js';
 import { createRuntime } from '../src/core/runtime.js';
 import { createRuntimePanel } from '../web/runtime-panel.js';
-import { host, join } from './poker-share.js';
+import { RECONNECT_MS, guestId, host, join } from './poker-share.js';
 
 const WALLET = 'ponjo-poker-bankroll';
 const BANKROLL = 1000; // play dollars a new player starts with, and starts again with
@@ -35,7 +35,7 @@ setBuddies(PERSONAS.map(({ id }) => ({ id, name: id })));
 setOwner(HUMAN);
 
 const ROOM = new URLSearchParams(location.hash.slice(1)).get('join'); // a friend's page: the room of the table it joins
-const me = ROOM ? `f${[...crypto.getRandomValues(new Uint8Array(4))].map((b) => b.toString(16).padStart(2, '0')).join('')}` : HUMAN; // who this page plays as
+const me = ROOM ? guestId(ROOM) : HUMAN; // who this page plays as
 let table = newTable(0); // the person sits down with a buy-in; a friend's page, the table as the host sends it
 const running = new Set(); // players with a run going
 const typing = new Set(); // players typing a line, shown in the chat
@@ -49,6 +49,9 @@ const session = { bought: 0, hands: 0, biggest: 0, cashed: 0 };
 const chipsOfMine = () => (turnedAway ? 0 : myChips(table, me));
 const saveWallet = () => store({ ...wallet, onTable: chipsOfMine() }, WALLET);
 let turnedAway = false; // a friend's page the host asked to leave: its chips are back in its bankroll
+// A friend's page, reloaded: the chips it had on the table, put back in the
+// bankroll above, go back on the table if the host still has it seated.
+let reclaim = ROOM ? load(WALLET)?.onTable ?? 0 : 0;
 // The players' model. Once the visitor picks another, what failed is tried again.
 const ai = models(() => {
   runtime?.retry();
@@ -130,10 +133,10 @@ async function run({ agent }, { files: basis, prompt: { rules, situation } }) {
 // With ?debug, the host's page shows what the runtime does (the runtime
 // panel): every player's cards and thinking, so only on asking.
 const ASKS = { turn: (hand) => `Turn, hand ${hand}`, line: (n) => `Chat line ${n}`, react: (hand) => `After hand ${hand}` };
-const panel = !ROOM && new URLSearchParams(location.search).has('debug') && createRuntimePanel({
+const panel = !ROOM && new URLSearchParams(location.search).has('debug') ? createRuntimePanel({
   where: 'this table', faceOf, retry: (id) => runtime.retry(id),
   askText: (id) => ASKS[id.split(':')[0]]?.(id.split(':')[1]) ?? id,
-});
+}) : null;
 
 // The table as a world, and on the host's page, Ponjo's runtime on it. What
 // it says of the players (statuses): who is at work, and whose run failed.
@@ -866,20 +869,30 @@ function copyLink() {
 }
 function joined(peer, hello) {
   if (!/^f[0-9a-f]{8}$/.test(String(hello?.id))) return room.turnAway(peer, 'Not a player');
+  if (sentAway.has(hello.id)) return room.turnAway(peer, 'The host asked you to leave the table.');
   peers.set(peer, { id: hello.id, log: 0, chat: 0 });
   gone.delete(hello.id);
   changed();
 }
+// A friend's page goes: unless a page of theirs is back within RECONNECT_MS (a reload), they are gone, and leave once the hand is over.
 function left(peer) {
   const id = peers.get(peer)?.id;
   peers.delete(peer);
-  if (id && lineup(table).some((p) => p.id === id)) gone.add(id);
-  changed();
+  setTimeout(() => {
+    if (!id || !lineup(table).some((p) => p.id === id) || [...peers.values()].some((p) => p.id === id)) return;
+    gone.add(id);
+    changed();
+  }, RECONNECT_MS);
 }
+// The host asks a friend to leave: they are gone at once, and their page may not come back.
+const sentAway = new Set();
 function turnAway(id) {
   const peer = peerOf(id);
   if (peer !== undefined) room.turnAway(peer, 'The host asked you to leave the table.');
-  left(peer);
+  peers.delete(peer);
+  sentAway.add(id);
+  if (lineup(table).some((p) => p.id === id)) gone.add(id);
+  changed();
 }
 
 // Each friend's page gets the table as its player may see it: its own
@@ -915,6 +928,8 @@ const guest = ROOM && join(ROOM, { id: me }, {
     for (const [set, ids] of [[running, message.running], [typing, message.typing]]) set.clear() || ids.forEach((id) => set.add(id));
     failed = new Map(message.failed);
     clock = { ends: message.clock && Date.now() + message.clock };
+    if (reclaim && seatedNow(me)) wallet.bankroll -= reclaim;
+    reclaim = 0;
     saveWallet();
     draw();
   },

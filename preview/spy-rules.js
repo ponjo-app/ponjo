@@ -8,10 +8,11 @@
 // A seat is a number from 0. Every player gets a word: the civilians one,
 // the spies (one, or two at seven or eight) another, close to it. No one is
 // told which they are. A round: each living player gives a clue to their
-// word, once, in seat order; then everyone alive votes at once, and the
-// player with the most votes is out, their side shown. A tie at the top: the
-// tied give one more clue each, and everyone votes again, between them only;
-// a second tie, and no one is out. The civilians win once every spy is out;
+// word, once, in seat order, from a seat dealt at random in the first round
+// and one seat on in each round after; then everyone alive votes at once,
+// and the player with the most votes is out, their side shown. A tie at the
+// top: the tied give one more clue each, and everyone votes again, between
+// them only; a second tie, and no one is out. The civilians win once every spy is out;
 // the spies, once they are as many as the civilians, or one is among the
 // last three.
 
@@ -34,8 +35,9 @@ export const PAIRS = [
 /**
  * The words and sides for a table of `size`: a pair at random, which word
  * is the spies' at random, and the sides shuffled (Fisher–Yates on
- * `random(n)`, a fair whole number below n). Returns { words: { civilian,
- * spy }, roles }.
+ * `random(n)`, a fair whole number below n), and the seat that gives the
+ * first clue at random: the first to speak has heard no one. Returns
+ * { words: { civilian, spy }, roles, first }.
  */
 export function deal(size, random = cryptoRandom) {
   if (!SIZES.includes(size)) throw new Error(`A game has ${SIZES.join(', ')} seats.`);
@@ -46,15 +48,16 @@ export function deal(size, random = cryptoRandom) {
     const j = random(i + 1);
     [roles[i], roles[j]] = [roles[j], roles[i]];
   }
-  return { words: { civilian, spy }, roles };
+  return { words: { civilian, spy }, roles, first: random(size) };
 }
 
 /**
  * A new game, at the first round's clues. The log is everything that
  * happened; all of it is public, the votes once a vote ends.
  */
-export function newGame({ words, roles }) {
+export function newGame({ words, roles, first = 0 }) {
   const game = {
+    first,
     seats: roles.map((role) => ({ role, word: words[role], alive: true })),
     words: { ...words }, round: 0, phase: 'clue', runoff: null, order: [], speaker: null, votes: {}, acted: [],
     log: [], winner: null,
@@ -144,14 +147,15 @@ function end(g) {
   else Object.assign(g, { phase: 'vote', speaker: null, votes: {} });
 }
 
-// A round's clues go round from the seat after the last round's first, or the first seat.
+// A round's clues go round from the seat after the last round's first (the
+// dealt `first` in round 1), or the next living one.
 function startRound(g) {
   g.round++;
   const n = g.seats.length;
-  const from = (g.round - 1) % n;
+  const from = (g.first + g.round - 1) % n;
   g.order = [...Array(n).keys()].map((k) => (from + k) % n).filter((i) => alive(g, i));
   Object.assign(g, { phase: 'clue', runoff: null, speaker: g.order[0], votes: {} });
-  note(g, { type: 'round' });
+  note(g, { type: 'round', from: g.speaker });
 }
 
 // The vote: the one with the most votes is out. A tie: a runoff between the
