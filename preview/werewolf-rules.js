@@ -26,10 +26,15 @@ function cryptoRandom(n) {
   return word[0] % n;
 }
 
+// The roles at a table of `size`, unshuffled: what the start page lists.
+export function cast(size) {
+  if (!SIZES.includes(size)) throw new Error(`A game has ${SIZES.join(', ')} seats.`);
+  return [...Array(WOLVES).fill('wolf'), 'seer', 'witch', ...Array(size - WOLVES - 2).fill('villager')];
+}
+
 // The roles for a table of `size`, shuffled: Fisher–Yates on `random(n)`, a fair whole number below n.
 export function deal(size, random = cryptoRandom) {
-  if (!SIZES.includes(size)) throw new Error(`A game has ${SIZES.join(', ')} seats.`);
-  const roles = [...Array(WOLVES).fill('wolf'), 'seer', 'witch', ...Array(size - WOLVES - 2).fill('villager')];
+  const roles = cast(size);
   for (let i = roles.length - 1; i > 0; i--) {
     const j = random(i + 1);
     [roles[i], roles[j]] = [roles[j], roles[i]];

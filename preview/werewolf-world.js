@@ -12,7 +12,7 @@
 // the players run is the runtime's; the page (preview/werewolf.js) runs the
 // model and draws the game.
 
-import { MAX_SPEECH, act, deal, due, fallback, newGame as start, turn, view } from './werewolf-rules.js';
+import { MAX_SPEECH, act, cast, deal, due, fallback, newGame as start, turn, view } from './werewolf-rules.js';
 
 export const HUMAN = 'you';
 const MAX_TRIES = 3; // proposals turned away on one turn before the world's fallback plays for the player
@@ -378,4 +378,4 @@ export function prompt(game, id) {
 
 // What the page draws: the person's own view, and each seat's name.
 export const show = (game) => view(game.state, seatOf(game, HUMAN));
-export { MAX_SPEECH, turn };
+export { MAX_SPEECH, cast, turn };
