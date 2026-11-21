@@ -346,6 +346,34 @@ test('a discussion: a line wakes whom it names, a reply to a reply no one; one a
   assert.match(land(table, HUMAN, { at: '1:talk::' }, { say: 'Late' }).rejected, /Stale/);
 });
 
+test('outside a game the table chats: before it, the people; once it is over, the AI players of the game answer', async () => {
+  const table = newTable();
+  seatFriend(table, 'fann', 'Ann');
+  assert.equal(land(table, 'fann', { at: '' }, { say: 'Hi! Ready?' }).landed, true, 'before any game, a friend chats');
+  assert.equal(land(table, 'fbob', { at: '' }, { say: 'Me too' }).rejected, 'You are not at the table.');
+  assert.deepEqual(await dueNow(table), [], 'no AI player is at the table yet');
+  assert.deepEqual(table.lines.map((l) => [l.by, l.game, l.after]), [['fann', 1, false]], 'it goes with the next game');
+  start(table, 5, { ids: ['Ivy', 'Max', 'Juno'] });
+  assert.match(land(table, HUMAN, { at: '' }, { say: 'Hello' }).rejected, /hello/, 'not while everyone says hello');
+  table.game = { ...table.game, phase: 'over', winner: 'spies' };
+  table.greeting = false;
+  land(table, HUMAN, { at: '' }, { say: 'Max, were you the spy?' });
+  const [max] = await dueNow(table);
+  assert.deepEqual([max.id, (await dueNow(table)).length], ['Max', 1], 'named, Max is asked');
+  assert.match(prompt(table, 'Max', [table.lines.at(-1)]).situation, /The game is over[\s\S]*the host said "Max, were you the spy\?"/);
+  land(table, 'Max', { at: '', about: table.lines.at(-1).id }, { say: 'Ivy, tell them it was not me.', for: [HUMAN] });
+  const given = new Map();
+  for (const d of await dueNow(table)) give(given, d);
+  land(table, 'Ivy', { at: '', about: table.lines.at(-1).id }, { say: 'Max, it was you.', for: [HUMAN] });
+  assert.deepEqual(await dueNow(table, given), [], 'a reply to a reply wakes no one');
+  land(table, 'fann', { at: '' }, { say: 'Good game, everyone!' });
+  const all = await dueNow(table, given);
+  assert.equal(all.length, 3, 'a line to everyone asks every AI player');
+  for (const d of all) land(table, d.id, { at: '', about: table.lines.at(-1).id }, { say: `${d.id}: thanks!` });
+  assert.equal(table.lines.filter((l) => l.about === table.lines.find((x) => x.text === 'Good game, everyone!').id).length, 1, 'one answer lands');
+  assert.ok(table.lines.filter((l) => l.kind === 'chat' && l.after).every((l) => l.game === table.gameNo));
+});
+
 test('a friend whose page reloads is back in their seat: their turns are theirs again', () => {
   const table = newTable();
   seatFriend(table, 'fann', 'Ann');
