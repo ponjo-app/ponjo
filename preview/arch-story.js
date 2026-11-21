@@ -172,7 +172,7 @@ function pose(member, { arms = 'stand', legs = 'stand', look = null, right = fal
   member.figure.classList.toggle('arch-right', right);
 }
 
-// A doc drawn as lines, not words: a title and grey bars.
+// A board or a page drawn as lines, not words: a title and grey bars.
 function paper(title, widths) {
   const node = el('div', 'arch-paper');
   node.append(el('b', '', title), ...widths.map(bar));
@@ -282,8 +282,8 @@ function cover(scene) {
   pet.classList.add('dl-pet');
   pet.type = 'button';
   pet.dataset.follow = '';
-  const title = el('h1', '', 'Blackboard Multi-agent System');
-  const lead = el('p', '', 'Agents that work beside you, not after you.');
+  const title = el('h1', '', 'Work with agents like teammates, not tools');
+  const lead = el('p', '', 'People and agents work on one board, at the same time. The board, not an LLM, decides who acts next.');
   scene.stage.classList.add('arch-cover');
   art.append(pet);
   scene.stage.append(art, title, lead);
@@ -327,10 +327,10 @@ function point(claim, instead) {
   return page;
 }
 
-// Who watches the doc wears glasses (faces.js): the buddies on the blackboard.
+// Who watches the board wears glasses (faces.js): the buddies on the blackboard.
 const watching = (on) => setBuddies(['Clippy', 'Otto', 'Pip'].map((name) => ({ id: name, name, watching: on })));
 
-// A bar of a doc, now `name`'s edit, in its colour.
+// A bar of a board, now `name`'s edit, in its colour.
 function paint(node, name) {
   node.style.setProperty('--buddy', buddyColor(name));
   node.classList.add('arch-mine');
@@ -406,7 +406,7 @@ async function run(scene, s, member, points, ms, { walk = false, arms = null, lo
   if (stop && !walk) scene.move(figure, [{ rotate: `${lean}deg`, scale: '1.06 0.94' }, { rotate: '0deg', scale: '1 1' }], 360, SPRING).catch(() => {});
 }
 
-// Delegate, with two agents, each in a room of its own: a copy of the doc
+// Delegate, with two agents, each in a room of its own: a copy of the board
 // goes to each desk, each agent rewrites lines unseen by the other, then both
 // run theirs back to you at once, and crash into each other on the way.
 async function delegate(scene) {
@@ -423,7 +423,7 @@ async function delegate(scene) {
   const me = actor('You', 'idle');
   s.place(me.node, you);
   desk(home);
-  s.place(paper('Doc', [80, 60, 70]), home, SIZE);
+  s.place(paper('Board', [80, 60, 70]), home, SIZE);
   const buddies = {};
   const door = {};
   const seat = {};
@@ -510,15 +510,21 @@ async function delegate(scene) {
   await scene.wait(1800);
 }
 
-// The blackboard: one board, and everyone in front of it. The buddies watch
-// it; all three walk up and write on it at once, each with a pen raised and
-// each line in its writer's colour, then step back.
+// One board: Clippy, You and Otto write on it at once. Your typing lands as
+// you type; an agent's line is a proposal, dashed, made on the version it
+// saw, until the writer lands it. Each landing moves the board on a version.
+// Clippy's, made on v1, lands first; Otto's, also made on v1, comes in when
+// the board is at v3, so it is refused: Otto looks again, proposes on v3,
+// and it lands.
 async function blackboard(scene) {
   watching(true);
   const s = sketch(scene.stage);
   const up = s.upright;
-  const board = s.place(paper('Doc', [85, 60]), [s.W / 2, up ? 150 : 120], up ? [360, 220] : [520, 180]);
+  const board = s.place(paper('Board', [85, 60]), [s.W / 2, up ? 150 : 120], up ? [360, 220] : [520, 180]);
   board.classList.add('arch-board');
+  let version = 1;
+  const stamp = el('span', 'arch-version', 'v1');
+  board.firstChild.append(stamp);
   const back = up ? s.H - 70 : s.H - 60; // where they stand, then where they write
   const close = up ? 330 : 285;
   const gap = up ? 120 : 170;
@@ -528,6 +534,36 @@ async function blackboard(scene) {
     who[name].x = x;
     s.place(who[name].node, [x, back]);
   }
+  const say = (name, words) => {
+    who[name].tag.textContent = words;
+  };
+  // `name` writes a line `width` wide; an agent's is a proposal on this version
+  const write = async (name, width, ms) => {
+    const row = el('div', 'arch-line');
+    const line = bar(width);
+    paint(line, name);
+    row.append(line);
+    if (name !== 'You') {
+      line.classList.add('arch-proposed');
+      row.append(el('span', 'arch-on', `on v${version}`));
+    }
+    board.append(row);
+    who[name].face.dataset.presence = 'working';
+    pose(who[name], { arms: 'write' });
+    if (!still) who[name].parts['arms-write'].animate([{ rotate: '-6deg' }, { rotate: '8deg' }, { rotate: '-6deg' }], { duration: 300, iterations: Math.round(ms / 300) });
+    await scene.move(line, [{ width: '0%' }, { width: `${width}%` }], ms, 'ease-in-out');
+    who[name].face.dataset.presence = 'idle';
+    pose(who[name], {});
+    return row;
+  };
+  // the writer lands it: solid, and the board one version on
+  const land = (row) => {
+    row.querySelector('.arch-proposed')?.classList.remove('arch-proposed');
+    row.querySelector('.arch-on')?.remove();
+    version += 1;
+    stamp.textContent = `v${version}`;
+    return scene.move(stamp, [{ scale: '1.5' }, { scale: '1' }], 360, SPRING);
+  };
 
   await scene.wait(800);
   const walk = (from, to) => Promise.all(Object.values(who).map(async (member, i) => {
@@ -535,20 +571,35 @@ async function blackboard(scene) {
     await run(scene, s, member, [[member.x, from], [member.x, to]], 900, { walk: true });
   }));
   await walk(back, close);
-  const lines = [['You', 55], ['Clippy', 75], ['Otto', 45]].map(async ([name, width], i) => {
-    const line = bar(width);
-    paint(line, name);
-    await scene.wait(i * 300);
-    board.append(line);
-    who[name].face.dataset.presence = 'working';
-    pose(who[name], { arms: 'write' });
-    if (!still) who[name].parts['arms-write'].animate([{ rotate: '-6deg' }, { rotate: '8deg' }, { rotate: '-6deg' }], { duration: 300, iterations: 6 });
-    await scene.move(line, [{ width: '0%' }, { width: `${width}%` }], 1800, 'ease-in-out');
-    who[name].face.dataset.presence = 'idle';
-    pose(who[name], {});
-  });
-  await Promise.all(lines);
-  await scene.wait(600);
+  const clippy = write('Clippy', 75, 1400).then(land);
+  await scene.wait(100);
+  const otto = write('Otto', 50, 2600);
+  await scene.wait(100);
+  await Promise.all([clippy, write('You', 55, 1800).then(land)]);
+
+  // Otto's, made on v1, comes in at v3: refused
+  const stale = await otto;
+  stale.classList.add('arch-refused');
+  stale.querySelector('.arch-on').textContent = 'on v1 ✕';
+  say('Otto', `Refused: board is at v${version}`);
+  pose(who.Otto, { look: 'shocked' });
+  await Promise.all([
+    hop(scene, who.Otto, 12, 480),
+    scene.move(stale, [{ translate: '0' }, { translate: '-6px' }, { translate: '6px' }, { translate: '-4px' }, { translate: '0' }], 420, 'ease-in-out'),
+  ]);
+  await scene.wait(1300);
+  await scene.fade(stale, 0, 300);
+  stale.remove();
+  pose(who.Otto, {});
+  say('Otto', 'Looking again…');
+  await scene.wait(1100);
+  say('Otto', '');
+  await land(await write('Otto', 50, 1200));
+  say('Otto', 'Landed');
+  await scene.wait(1100);
+  say('Otto', '');
+
+  await scene.wait(400);
   await walk(close, back);
   pose(who.You, {});
   await scene.wait(2200);
@@ -1026,7 +1077,7 @@ function architecture(scene) {
       up: { people: [95, 55], writer: [305, 55], board: [305, 185], runtime: [305, 315], run: [95, 315], program: [95, 455] },
     },
     arrows: [
-      ['people', 'writer', 'edit'],
+      ['people', 'writer', 'change'],
       ['writer', 'board', 'lands, in order'],
       ['board', 'runtime', 'reads'],
       ['runtime', 'run', 'starts'],
@@ -1041,17 +1092,196 @@ function architecture(scene) {
 }
 architecture.once = true;
 
-// Every difference, side by side: [what, event-triggered, blackboard].
+// One runtime, many worlds: three boards, an editor's page, a poker table
+// and a werewolf village, and one runtime as an eye under them, a wire to
+// each. It looks at each in turn and calls an agent there: on the page Clippy
+// writes a line, at the table Otto's card turns up, in the village, asleep
+// at night, Pip wakes.
+async function worlds(scene) {
+  const s = sketch(scene.stage);
+  const up = s.upright;
+  const size = up ? [106, 104] : [200, 124];
+  const spots = up ? [[70, 100], [200, 100], [330, 100]] : [[140, 100], [380, 100], [620, 100]];
+  const middle = up ? [200, 360] : [380, 320];
+  const page = paper('Editor', [80, 55]);
+  const table = paper('Poker', []);
+  const cards = el('div', 'arch-cards');
+  for (const name of ['Clippy', 'Otto', 'Pip']) {
+    const card = el('i', 'arch-card');
+    card.style.setProperty('--buddy', buddyColor(name));
+    cards.append(card);
+  }
+  table.append(cards);
+  const village = paper('Werewolf', []);
+  const folk = el('div', 'arch-village');
+  const sleepers = ['Clippy', 'Otto', 'Pip'].map((name) => face(name, { presence: 'away' }));
+  folk.append(...sleepers);
+  village.append(folk);
+  const boards = [page, table, village];
+  const wires = boards.map((board, i) => {
+    s.place(board, spots[i], size).classList.add('arch-board');
+    const [x, y] = [spots[i][0], spots[i][1] + size[1] / 2 + 8];
+    return s.ink(`M${f(middle[0])} ${f(middle[1] - 40)} C${f(middle[0])} ${f(middle[1] - 110)} ${f(x)} ${f(y + 70)} ${f(x)} ${f(y)}`, 'arch-ink arch-wire');
+  });
+  const { node, pupil, lid } = eye();
+  s.place(node, middle, [92, 92]);
+  s.place(el('span', 'arch-label', 'One runtime'), [middle[0], middle[1] + 52]);
+  lid.style.scale = '1 0';
+  const look = (to) => {
+    const [dx, dy] = [to[0] - middle[0], to[1] - middle[1]];
+    const k = 12 / Math.max(1, Math.hypot(dx, dy));
+    const translate = `${f(dx * k)}px ${f(dy * k)}px`;
+    return scene.move(pupil, [{ translate: pupil.style.translate || '0 0' }, { translate }], 320, 'ease-in-out').then(() => { pupil.style.translate = translate; });
+  };
+  const call = async (i) => {
+    await look(spots[i]);
+    const pulse = s.ink(wires[i].getAttribute('d'), 'arch-ink arch-pulse');
+    await scene.draw(pulse, 500);
+    pulse.remove();
+  };
+
+  await scene.wait(700);
+  // the editor: Clippy writes a line
+  await call(0);
+  const line = bar(70);
+  paint(line, 'Clippy');
+  page.append(line);
+  await scene.move(line, [{ width: '0%' }, { width: '70%' }], 900, 'ease-in-out');
+  await scene.wait(500);
+  // poker: Otto's card turns up
+  await call(1);
+  const card = cards.children[1];
+  await scene.move(card, [{ scale: '1 1' }, { scale: '0 1' }], 180, 'ease-in');
+  card.classList.add('arch-up');
+  await scene.move(card, [{ scale: '0 1' }, { scale: '1 1' }], 220, 'ease-out');
+  await scene.wait(500);
+  // werewolf: at night all asleep, Pip wakes
+  await call(2);
+  sleepers[2].dataset.presence = 'working';
+  await scene.move(sleepers[2], [{ translate: '0 0' }, { translate: '0 -6px' }, { translate: '0 0' }], 420, SPRING);
+  await scene.wait(900);
+  sleepers[2].dataset.presence = 'away';
+  await look(middle);
+  await scene.wait(1800);
+}
+
+// The world's five calls, as code, beside a poker table: the runtime makes
+// each in turn, its line lit and its answer after it, and the table shows
+// it. A dealer's line wakes it; Otto is asked; Otto's view has his own cards
+// up and the others' down; his call, made on v42, lands; Clippy's raise,
+// made on v42 too, comes in at v43 and is refused.
+const CALLS = [
+  ['members', '()'],
+  ['asks', '()'],
+  ['view', '(member)'],
+  ['wait', '(version)'],
+  ['propose', '(member, version, change)'],
+];
+async function calls(scene) {
+  const s = sketch(scene.stage);
+  const up = s.upright;
+  const card = s.place(el('div', 'arch-code'), up ? [200, 116] : [210, 200], up ? [380, 224] : [400, 230]);
+  const rows = Object.fromEntries(CALLS.map(([name, args]) => {
+    const row = el('div', 'arch-call');
+    const answer = el('span', 'arch-answer');
+    row.append(el('b', '', name), el('span', '', args), answer);
+    card.append(row);
+    return [name, { row, answer }];
+  }));
+  const source = el('a', 'arch-source', 'src/core/runtime.js');
+  source.href = 'https://github.com/ponjo-app/ponjo/blob/main/src/core/runtime.js';
+  card.append(source);
+
+  const table = s.place(paper('Poker', []), up ? [200, 384] : [580, 200], up ? [300, 176] : [300, 190]);
+  table.classList.add('arch-board');
+  let version = 41;
+  const stamp = el('span', 'arch-version', 'v41');
+  table.firstChild.append(stamp);
+  const dealer = el('span', 'arch-on', '');
+  const seats = el('div', 'arch-seats');
+  const hands = {};
+  for (const name of ['Clippy', 'Otto', 'Pip']) {
+    const seat = el('div', 'arch-seat');
+    const hand = el('div', 'arch-cards');
+    for (let i = 0; i < 2; i++) {
+      const c = el('i', 'arch-card');
+      c.style.setProperty('--buddy', buddyColor(name));
+      hand.append(c);
+    }
+    seat.append(face(name), hand);
+    seats.append(seat);
+    hands[name] = seat;
+  }
+  const pot = el('div', 'arch-pot');
+  pot.append(el('span', 'arch-on', 'Pot'));
+  table.append(dealer, seats, pot);
+
+  const call = async (name, answer, ms = 1100) => {
+    for (const { row } of Object.values(rows)) row.classList.remove('arch-call-on');
+    rows[name].row.classList.add('arch-call-on');
+    rows[name].answer.textContent = `→ ${answer}`;
+    await scene.fade(rows[name].answer, 1, 200);
+    await scene.wait(ms);
+  };
+  const bump = () => {
+    version += 1;
+    stamp.textContent = `v${version}`;
+    return scene.move(stamp, [{ scale: '1.5' }, { scale: '1' }], 360, SPRING);
+  };
+  const chip = (name) => {
+    const c = el('i', 'arch-chip arch-proposed');
+    c.style.setProperty('--buddy', buddyColor(name));
+    pot.append(c);
+    return scene.move(c, [{ scale: '0' }, { scale: '1' }], 260, SPRING).then(() => c);
+  };
+
+  await scene.wait(600);
+  // the dealer writes; the runtime, waiting on v41, wakes
+  dealer.textContent = 'Action on Otto';
+  await bump();
+  await call('wait', 'v42');
+  await call('members', 'Clippy, Otto, Pip');
+  await call('asks', 'Otto');
+  // Otto sees his own cards, and the others' face down
+  await call('view', 'Otto’s view', 200);
+  for (const [name, seat] of Object.entries(hands)) seat.classList.toggle('arch-hidden', name !== 'Otto');
+  for (const c of hands.Otto.querySelectorAll('.arch-card')) {
+    await scene.move(c, [{ scale: '1 1' }, { scale: '0 1' }], 160, 'ease-in');
+    c.classList.add('arch-up');
+    await scene.move(c, [{ scale: '0 1' }, { scale: '1 1' }], 200, 'ease-out');
+  }
+  await scene.wait(1100);
+  for (const seat of Object.values(hands)) seat.classList.remove('arch-hidden');
+  // Otto calls, on v42: it lands
+  const otto = await chip('Otto');
+  await call('propose', 'landed', 200);
+  otto.classList.remove('arch-proposed');
+  dealer.textContent = 'Action on Pip';
+  await bump();
+  await scene.wait(1200);
+  // Clippy's raise, also made on v42: refused at v43
+  const clippy = await chip('Clippy');
+  await call('propose', 'refused', 200);
+  clippy.classList.add('arch-refused');
+  await scene.move(clippy, [{ translate: '0' }, { translate: '-4px' }, { translate: '4px' }, { translate: '0' }], 360, 'ease-in-out');
+  await scene.wait(1000);
+  await scene.fade(clippy, 0, 300);
+  clippy.remove();
+  await scene.wait(1800);
+}
+
+// The common ways to run many agents, as docs/runtime-vision.md compares
+// them: [the way, who uses it], then a row per difference.
+const WAYS = [
+  ['Orchestrator and handoffs', 'Claude Code subagents, OpenAI Agents SDK, CrewAI'],
+  ['Graph', 'LangGraph'],
+  ['Group chat', 'AutoGen'],
+  ['Blackboard', 'Ponjo’s runtime'],
+];
 const DIFFERENCES = [
-  ['Where agents work', 'Apart, each in a session of its own', 'Beside you, on one board'],
-  ['The truth', 'Messages in flight and each agent’s memory: a split brain', 'One board; agents remember nothing between runs'],
-  ['Who changes it', 'Each agent, on its own copy', 'Only the writer, in order; agents propose'],
-  ['Working in parallel', 'Copies go stale, so to stay correct agents take turns', 'The default: at worst a proposal is refused and retried, and the next look still settles the board'],
-  ['What wakes an agent', 'A message for it', 'The runtime, reading the board: whoever is due'],
-  ['A lost message, a restart', 'The work is lost', 'Nothing lost: the board still says what is due'],
-  ['Who goes next', 'Whoever sends the next event: often an LLM, which may forget or pick wrong', 'Code, from the board: the same answer every time'],
-  ['When it stops', 'When the events run out, or never', 'When what people asked for is met; chains are capped, fights go to a person'],
-  ['Fits', 'Fixed flows that split into independent tasks', 'Shared work that people and agents improve together'],
+  ['1 · At once', 'Each on its own copy', 'Branches, merged after', 'One speaks at a time', 'All on one board'],
+  ['1 · People', 'Hand off, then review', 'Answer when it pauses', 'Take a turn', 'Act beside agents'],
+  ['2 · Who acts next', 'An LLM', 'Edges you wire', 'A selector, often an LLM', 'Code, from the board'],
 ];
 
 function approachMark(role) {
@@ -1062,14 +1292,17 @@ function approachMark(role) {
   return mark;
 }
 
-// The differences as a table, in the design system's (.pj-usage-table), a row at a time.
+// The ways side by side, in the design system's table (.pj-usage-table), a row at a time.
 async function summary(scene) {
   scene.stage.classList.add('arch-summary');
   const table = el('table', 'pj-usage-table arch-compare');
   const head = el('tr');
-  head.append(...['', 'Event-triggered', 'Blackboard'].map((words) => el('th', '', words)));
-  head.cells[1].prepend(approachMark('problem'));
-  head.cells[2].prepend(approachMark('solution'));
+  head.append(el('th'), ...WAYS.map(([way, who]) => {
+    const cell = el('th', '', way);
+    cell.append(el('span', 'arch-who', who));
+    return cell;
+  }));
+  head.lastChild.prepend(approachMark('solution'));
   const rows = DIFFERENCES.map((cells) => {
     const row = el('tr');
     row.append(...cells.map((words) => el('td', '', words)));
@@ -1091,9 +1324,9 @@ summary.once = true;
 async function outcome(scene) {
   scene.stage.classList.add('arch-outcome');
   const GETS = [
-    ['Always on, with no jobs.', 'Agents act whenever the board changes, whoever changed it. When nothing changes, nothing runs.'],
-    ['Parallel work on one board, with no branches.', 'Many agents and people edit at once; nothing to merge back.'],
-    ['Coordination with no orchestrator.', 'One agent’s change is the next one’s cue.'],
+    ['Parallel work on one board,', 'with no branches.'],
+    ['Coordination', 'with no orchestrator.'],
+    ['Always on,', 'with no jobs.'],
   ];
   const list = el('ul', 'arch-gets');
   const items = GETS.map(([what, why]) => {
@@ -1114,10 +1347,14 @@ async function outcome(scene) {
     tile.append(el('b', '', value), el('span', '', what));
     stats.append(tile);
   }
-  const foot = el('p', 'arch-note', 'Open-card Hold’em on Ponjo’s runtime, with scripted agents. The ');
-  const link = el('a', '', 'poker page');
+  const foot = el('p', 'arch-note', 'Hold’em on this runtime, with scripted agents. Play: ');
+  const link = el('a', '', 'Poker');
   link.href = 'poker.html';
-  foot.append(link, ', built apart with a small runtime of its own, came to the same shape: a pure plan, a view per player, a writer that refuses stale moves.');
+  const werewolf = el('a', '', 'Werewolf');
+  werewolf.href = 'werewolf.html';
+  const spy = el('a', '', 'Who’s the Spy');
+  spy.href = 'spy.html';
+  foot.append(link, ', ', werewolf, ', ', spy, '.');
   const body = el('div', 'arch-outcome-body');
   body.append(list, stats, foot);
   stats.style.opacity = foot.style.opacity = '0';
@@ -1135,18 +1372,20 @@ outcome.once = true;
 // [the part it is in, its title, the idea in a line, the scene]
 const CHAPTERS = [
   ['', '', '', cover],
-  ['Where agents work', '', '', point('Agents work beside you, in front of a blackboard,', 'instead of apart from you, in an isolated room.')],
-  ['Where agents work', 'Delegate', 'Each agent works on its own copy. Run two at once and one builds on a stale copy, so to stay correct they take turns: wait, review, redo.', delegate, 'problem'],
-  ['Where agents work', 'Blackboard', 'Everyone works on one board at once. At worst a stale proposal is refused and tried again on the new board.', blackboard, 'solution'],
-  ['What makes an agent run', '', '', point('Agent orchestration is a state reconciliation problem,', 'instead of an event triggering problem.')],
-  ['What makes an agent run', 'Handed on by an agent', 'Each agent must decide to hand on, and that is an LLM’s call: sometimes it forgets, or picks the wrong one. Nothing was lost. It was never sent.', handoff, 'problem'],
-  ['What makes an agent run', 'Seen on the board', 'An agent only does its own work. The change is the signal: code reads the board and finds who is due, the same every time.', seen, 'solution'],
-  ['What makes an agent run', 'Triggered by events', 'Pip is asleep when the baton comes. Miss one handoff, and the race stops.', events, 'problem'],
-  ['What makes an agent run', 'Reconciled from state', 'The runtime watches the board and calls only whoever is due, again until it is done. Nobody wires who goes next, and a missed call or a restart costs nothing: the board still shows who is due.', state, 'solution'],
-  ['Architecture', 'Event-triggered, the common way', 'State lives in messages in flight and in each agent’s memory. Lose a message and the work is lost, and someone has to wire who triggers whom.', eventsArchitecture, 'problem'],
-  ['Architecture', 'Blackboard', 'One board, one writer. People and agents propose changes, the writer lands them in order, and the runtime reads the board to start whoever is due.', architecture, 'solution'],
-  ['Summary', 'Two ways to run many agents', '', summary],
-  ['Outcome', 'What you get', 'What emerges when the board is the only state, and the runtime decides from it.', outcome],
+  ['Difference 1 of 2', '', '', point('People and agents work on one board, at the same time,', 'instead of each on its own copy, taking turns.')],
+  ['1 · One board, at the same time', 'Each on its own copy', 'Copies go stale, so agents take turns.', delegate, 'problem'],
+  ['1 · One board, at the same time', 'One board', 'Agents propose; one writer lands each change in order. Here, a stale one is refused.', blackboard, 'solution'],
+  ['Difference 2 of 2', '', '', point('The board decides who acts next,', 'instead of an LLM handing on, or a chain of events.')],
+  ['2 · Who acts next', 'Handed on by an LLM', 'An LLM decides who goes next. When it forgets, the work stops.', handoff, 'problem'],
+  ['2 · Who acts next', 'Seen on the board', 'Code reads the board and finds who is due.', seen, 'solution'],
+  ['2 · Who acts next', 'Triggered by events', 'Miss one event, and the race stops.', events, 'problem'],
+  ['2 · Who acts next', 'Reconciled from state', 'A missed call, a restart: the board still shows who is due.', state, 'solution'],
+  ['How it is built', 'Event-triggered, the common way', 'The state is in messages and agents’ memories. Lose one, lose the work.', eventsArchitecture, 'problem'],
+  ['How it is built', 'Blackboard', 'The board is the only state. The runtime reads it and starts whoever is due.', architecture, 'solution'],
+  ['How it is built', 'One runtime, many worlds', 'A world answers five calls: members, asks, view, wait, propose.', worlds],
+  ['How it is built', 'The world’s five calls', 'Answer these, and the runtime runs agents in your app.', calls],
+  ['Compared', 'The common ways to run many agents', '', summary],
+  ['Outcome', 'What you get', '', outcome],
 ];
 
 // ---- the story: a chapter at a time, with Back, Next and a dot for each ----
