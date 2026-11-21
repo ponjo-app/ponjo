@@ -6,8 +6,8 @@
 <title>Agents Like Teammates</title>
 <meta name="description" content="How Ponjo runs agents: people and agents work on one board at the same time, and the board, not an LLM, decides who acts next.">
 <link rel="icon" href="./build/icon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="./dist/web/app.css?v=589764b">
-<link rel="stylesheet" href="site.css?v=589764b">
+<link rel="stylesheet" href="./dist/web/app.css?v=a9b6b3b">
+<link rel="stylesheet" href="site.css?v=a9b6b3b">
 </head>
 <body>
 <header class="site-header">
@@ -39,23 +39,10 @@
   <button class="pj-icon-btn site-theme" type="button" aria-label="Switch theme" title="Switch theme"><svg class="pj-icon site-moon" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"/></svg><svg class="pj-icon site-sun" viewBox="0 0 24 24"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg></button>
 </header>
 <!-- The blackboard agent runtime (docs/runtime-vision.md) as a story in
-     chapters, played by preview/arch-story.js. The doc is the truth; change
-     this page with it. -->
-<main class="arch-slides">
-<div class="arch-story">
-  <header class="arch-head">
-    <p class="arch-kicker" data-kicker></p>
-    <h2 class="arch-heading" data-heading></h2>
-  </header>
-  <div class="arch-stage" data-stage></div>
-  <p class="arch-say" data-say aria-live="polite"></p>
-  <nav class="arch-nav" aria-label="Chapters">
-    <button class="pj-secondary" type="button" data-back>Back</button>
-    <span class="arch-dots" data-dots></span>
-    <button class="pj-secondary" type="button" data-next>Next</button>
-  </nav>
-</div>
-</main>
+     chapters down the page, played by preview/arch-story.js. The doc is the
+     truth; change this page with it. -->
+<nav class="arch-parts" data-parts aria-label="Parts"></nav>
+<main class="arch-slides"></main>
 <template id="cover-art">
   <div class="arch-slate">
     <svg viewBox="0 0 360 164" role="img" aria-label="The runtime reads the shared board and calls an agent to act on it.">
@@ -72,7 +59,7 @@
     </svg>
   </div>
 </template>
-<script type="module" src="preview/arch-story.js?v=589764b"></script>
-<script type="module" src="site.js?v=589764b"></script>
+<script type="module" src="preview/arch-story.js?v=a9b6b3b"></script>
+<script type="module" src="site.js?v=a9b6b3b"></script>
 </body>
 </html>
