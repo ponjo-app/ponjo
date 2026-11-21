@@ -1,12 +1,13 @@
-/* The spy page (site/spy.html): the players round a plain table, your word
-   on a card in the middle, what you may do under it and the table's log
-   beside. Its seats, badges, vote dots and arrows are the werewolf page's
-   (werewolf.css); its plates, log, menus and dialogs the poker page's
-   (poker.css). The table and the sides' tokens are the one place with the
-   game's own colours (the spy's table tokens in app.css, site/design.html). */
+/* The spy page (site/spy.html): the players round your word, dealt on a
+   card in the middle of the game area; what you may do under it, and the
+   table's log beside. Its seats, badges, vote dots and arrows are the
+   werewolf page's (werewolf.css), as is its ground across the game area;
+   its plates, log, menus and dialogs the poker page's (poker.css). The game
+   area and the sides' tokens are the one place with the game's own colours
+   (the spy's table tokens in app.css, site/design.html). */
 
-.sp-page .ww-ring { background: radial-gradient(closest-side, var(--spy-table) 70%, var(--spy-table-deep)); }
-.sp-page .ww-ring::before { content: none; }
+.sp-page .ww-room { background: radial-gradient(ellipse at 50% 45%, var(--spy-table) 40%, var(--spy-table-deep)); }
+.sp-page .ww-room::before { content: none; }
 
 /* your word, dealt face up in the middle */
 .sp-word { position: absolute; left: 50%; top: 50%; translate: -50% -50%; display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 120px; padding: 12px 18px; border-radius: 10px; background: var(--bg); box-shadow: var(--shadow-raised); text-align: center; rotate: -2deg; }
