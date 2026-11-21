@@ -33,7 +33,9 @@ const LOOK_AGAIN_MAX_MS = 30_000;
 //                              wait(Infinity, 0) answers at once with the version now
 // propose(agent, version, old, made) → what landed, for the host to write; `agent`
 //                              is the Member and { for (the members it ran for), depth },
-//                              `old` { files, asks } what its run was given
+//                              `old` { files, asks } what its run was given. It may land
+//                              nothing (a refusal): what follows is the world's change,
+//                              an ask made again carrying the run's `for` and `depth`
 // print(files)               → a view's fingerprint: a watcher whose view's is as it
 //                              was when its last run started is not due
 // wakes(files, wake)         → whether a view holds what a run said wakes it (`wake`)
@@ -50,6 +52,16 @@ const LOOK_AGAIN_MAX_MS = 30_000;
 // Change  { rev, by: { id, kind ('person', 'agent' or 'world') }, at
 //         (performance.now()), asks (it changed only what is asked), stale (runs
 //         only a watch started saw the world as it was: they end) }
+//
+// What the runtime tells its host it did (trace), an Event, by `type`:
+// look          { why (what set it off, '' when asked to), verdicts: [{ agent, name,
+//               reason (the plan's, in words), run (the id of the run it started, or
+//               null) }] }; with no agent to judge, one verdict with agent ''
+// look.failed   { error, againMs (when it looks again) }
+// run.end       { run, task, view, result, answered (what propose answered) }: the
+//               only event with the world's content; what of it is kept or shown
+//               is the host's to decide
+// watches.paused { runs, within (minutes) }: the breaker tripped
 
 /**
  * The agents of one world (above). What only the host can do:
@@ -59,13 +71,12 @@ const LOOK_AGAIN_MAX_MS = 30_000;
  *   and rejects if it could not start.
  * - `breaker()`: { pauseAfter, pauseWithin } as they are now.
  * - `watching`: { read() (who watches, as last noted: id → { by }), note(noted) }.
- * - `log(...lines)`: the agent log; `ended({ id, task, view, result,
- *   answered })`: a run ended, what it was given and what landed, for the
- *   host to write.
+ * - `trace(event)`: what the runtime did and why, as it happens (Event,
+ *   below), for the host to write or show; resolves once it is taken.
  * - `emit(type, payload)`: what the host passes on as it changes: `agents`
  *   (statuses()) and `watches` (watches()).
  */
-export async function createRuntime({ world, run, breaker, watching, log, ended, emit }) {
+export async function createRuntime({ world, run, breaker, watching, trace, emit }) {
   // What this machine notes of each agent (plan): { seen, lookedAt, print
   // (its view's fingerprint as its last watch run started, or null), since
   // (the files of its last watch run's view, or null), wake (what that
@@ -129,7 +140,7 @@ export async function createRuntime({ world, run, breaker, watching, log, ended,
           lookAgainMs = LOOK_AGAIN_MS;
         } catch (error) {
           console.error('Could not look for asks:', error);
-          log(`look failed: ${error.message}; again in ${lookAgainMs / 1000} s`);
+          trace({ type: 'look.failed', error: error.message, againMs: lookAgainMs });
           wake(performance.now() + lookAgainMs, 'a look that failed');
           lookAgainMs = Math.min(lookAgainMs * 2, LOOK_AGAIN_MAX_MS);
         }
@@ -161,13 +172,11 @@ export async function createRuntime({ world, run, breaker, watching, log, ended,
     let gone = false;
     for (const [id, note] of notes) for (const key of note.failed.keys()) if (key !== 'watch' && !p.asking.has(`${id} ${key}`)) gone = note.failed.delete(key);
     if (gone) broadcastAgents();
-    const verdicts = new Map(p.why ?? [['', problem ? `nothing starts: ${problem}` : 'nothing starts: no agent here']]);
     const names = new Map([...runs].map(([id, r]) => [id, r.task.agent.name]).concat(here.map((b) => [b.id, b.name])));
+    const verdicts = new Map([...(p.why ?? [['', problem ? `nothing starts: ${problem}` : 'nothing starts: no agent here']])].map(([id, reason]) => [id, { agent: id, name: names.get(id) ?? '', reason, run: null }]));
     for (const id of p.stop) end(runs.get(id));
-    for (const task of p.start) if (!stopped) verdicts.set(task.agent.id, `${verdicts.get(task.agent.id)} · started ${startRun(task)}`);
-    const rows = [...verdicts].map(([id, reason]) => [names.get(id) ?? '', reason]);
-    const width = Math.max(...rows.map(([name]) => name.length));
-    log(`look · ${why || 'asked to'}`, ...rows.map(([name, reason]) => `${name.padEnd(width)}  ${reason}`));
+    for (const task of p.start) if (!stopped) verdicts.get(task.agent.id).run = startRun(task);
+    trace({ type: 'look', why, verdicts: [...verdicts.values()] });
     trip(await breaker());
     if (p.wakeAt !== null) wake(p.wakeAt, 'what a look waited for: people to pause');
   }
@@ -230,7 +239,7 @@ export async function createRuntime({ world, run, breaker, watching, log, ended,
     try {
       if (result.outcome !== 'stopped') answered = await finish(r, view, result);
     } finally {
-      await ended({ id: r.id, task, view, result, answered });
+      await trace({ type: 'run.end', run: r.id, task, view, result, answered });
     }
   }
 
@@ -278,7 +287,7 @@ export async function createRuntime({ world, run, breaker, watching, log, ended,
     started = started.filter((at) => at > performance.now() - pauseWithin * 60_000);
     if (paused || started.length < pauseAfter) return;
     paused = true;
-    log(`watches paused: ${started.length} runs in ${pauseWithin} min`);
+    trace({ type: 'watches.paused', runs: started.length, within: pauseWithin });
     emit('watches', { paused });
   }
 

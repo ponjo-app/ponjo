@@ -17,6 +17,17 @@ import { execute, killTree, testAgent } from './runner.js';
 // A time as the agent log writes it, on this machine's clock: 2026-11-18 21:40:12.203.
 const stamp = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${d.toTimeString().slice(0, 8)}.${String(d.getMilliseconds()).padStart(3, '0')}`;
 
+// The agent log's lines for each event the runtime traces but a run's end
+// (runtime.js, Event): names, revs and ids, never the world's content.
+const LINES = {
+  look({ why, verdicts }) {
+    const width = Math.max(...verdicts.map((v) => v.name.length));
+    return [`look · ${why || 'asked to'}`, ...verdicts.map((v) => `${v.name.padEnd(width)}  ${v.reason}${v.run ? ` · started ${v.run}` : ''}`)];
+  },
+  'look.failed': ({ error, againMs }) => [`look failed: ${error}; again in ${againMs / 1000} s`],
+  'watches.paused': ({ runs, within }) => [`watches paused: ${runs} runs in ${within} min`],
+};
+
 // The runtime's statuses as the windows read them: a buddy at work, the
 // threads it was given, and the threads where its last run failed.
 const forWindows = (statuses) => statuses.map(({ asks, failed, ...s }) => ({ ...s, state: asks.length ? 'running' : 'ready', threadIds: asks, failed: failed.map(({ ask, ...f }) => ({ thread: ask, ...f })) }));
@@ -47,8 +58,9 @@ export async function createBuddyRuntime({ world, docPath, settingsDir, secrets,
   }
 
   const runtime = await createRuntime({
-    world, log: tell,
+    world,
     emit: (type, payload) => emit(type, type === 'agents' ? forWindows(payload) : payload),
+    trace: (event) => (event.type === 'run.end' ? ended(event) : tell(...LINES[event.type](event))),
     breaker: async () => (await readSettings(settingsDir)).settings,
     watching: {
       read: () => readWatching(docPath(), settingsDir),
@@ -66,14 +78,15 @@ export async function createBuddyRuntime({ world, docPath, settingsDir, secrets,
       });
       return { ...result, made: { text: result.edited, comments: result.comments, groups: result.groups, actions: result.actions, output: result.stdout } };
     },
-    // A run's end in the agent log, and its line and trace in the runs' log.
-    async ended({ id, task, view, result, answered }) {
-      const trace = { script: result.script, prompt: result.prompt, steps: result.steps ?? [], stdout: result.stdout ?? '', stderr: result.stderr ?? '', base: view?.files.text ?? null, edited: result.edited ?? null, comments: result.comments ?? null, landed: answered?.landed ?? 'Ended without an answer' };
-      const why = result.outcome === 'ok' || result.outcome === 'stopped' ? '' : `: ${String(result.body ?? '').split('\n')[0].slice(0, 200)}`;
-      tell(`run ${id} of ${task.agent.name} ended: ${result.outcome}${why} in ${(result.ms / 1000).toFixed(1)} s · ${trace.landed}, ${answered?.comments?.length ?? 0} comments`);
-      await logRun(settingsDir, { doc: docPath(), run: id, buddy: task.agent.name, threads: task.asks.map((a) => a.id), ...(task.watch ? { watched: true } : {}), comments: answered?.comments ?? [], at: new Date(result.at).toISOString(), ms: result.ms, outcome: result.outcome, code: result.code, ...(result.usage ? { usage: result.usage } : {}) }, trace);
-    },
   });
+
+  // A run's end in the agent log, and its line and trace in the runs' log.
+  async function ended({ run: id, task, view, result, answered }) {
+    const trace = { script: result.script, prompt: result.prompt, steps: result.steps ?? [], stdout: result.stdout ?? '', stderr: result.stderr ?? '', base: view?.files.text ?? null, edited: result.edited ?? null, comments: result.comments ?? null, landed: answered?.landed ?? 'Ended without an answer' };
+    const why = result.outcome === 'ok' || result.outcome === 'stopped' ? '' : `: ${String(result.body ?? '').split('\n')[0].slice(0, 200)}`;
+    tell(`run ${id} of ${task.agent.name} ended: ${result.outcome}${why} in ${(result.ms / 1000).toFixed(1)} s · ${trace.landed}, ${answered?.comments?.length ?? 0} comments`);
+    await logRun(settingsDir, { doc: docPath(), run: id, buddy: task.agent.name, threads: task.asks.map((a) => a.id), ...(task.watch ? { watched: true } : {}), comments: answered?.comments ?? [], at: new Date(result.at).toISOString(), ms: result.ms, outcome: result.outcome, code: result.code, ...(result.usage ? { usage: result.usage } : {}) }, trace);
+  }
 
   return {
     look: runtime.look,
