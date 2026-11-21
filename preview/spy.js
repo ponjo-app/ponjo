@@ -435,7 +435,7 @@ function drawFeed(t, v) {
       continue;
     }
     last = null;
-    if (e.type === 'round') rows.push(notice(e.round === 1 ? 'Round 1. Everyone has their word: one clue each, in seat order.' : `Round ${e.round}.`));
+    if (e.type === 'round') rows.push(notice(`${e.round === 1 ? 'Round 1. Everyone has their word: one clue each, in seat order' : `Round ${e.round}`}, from ${name(e.from)}.`));
     else if (e.type === 'clue') rows.push(notice(`${Name(e.seat)} gave no clue.`));
     else if (e.type === 'vote') {
       const votes = Object.entries(e.votes).map(([s, x]) => `${Name(Number(s))} → ${x === null ? 'no vote' : name(x)}`);
