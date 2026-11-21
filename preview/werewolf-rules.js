@@ -281,12 +281,13 @@ function win(g) {
  * seer; whom the wolves attacked and its potions, for the witch; who is
  * alive, which role the night is at (a narrator calls each, alive or not),
  * whose turn it is in the day, who has voted (not for whom, till the vote
- * ends), and the public log. Once the game is over, everything.
+ * ends), and the public log. Once the game is over, everything. A seat
+ * not in the game (-1: someone watching) sees only what everyone does.
  * The only way a player's prompt, or a page, sees the game.
  */
 export function view(game, seat) {
   const over = game.phase === 'over';
-  const me = game.seats[seat];
+  const me = game.seats[seat] ?? { role: null, alive: false };
   const pack = me.role === 'wolf' ? wolves(game) : [];
   const mine = due(game).find((d) => d.seat === seat);
   return {

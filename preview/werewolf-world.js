@@ -96,22 +96,25 @@ export const PERSONAS = [
 ];
 
 /**
- * A new game at a table of `size`: the person in seat 0, then AI players,
- * `ids` or the first of PERSONAS. `roles` are each seat's; dealt at random
- * if left out. Notes, per AI player: its thinking, and how its last
- * proposal went; `asked`, per AI player, the turn it was last asked for and
- * when (an Ask's time, runtime.js).
+ * A new game at a table of `size`: the `people` first (the host, then the
+ * friends they invited, in the order they joined; `names`, theirs), then AI
+ * players, `ids` or the first of PERSONAS, to fill the seats. `roles` are
+ * each seat's; dealt at random if left out. Notes, per AI player: its
+ * thinking, and how its last proposal went; `asked`, per AI player, the
+ * turn it was last asked for and when (an Ask's time, runtime.js).
  */
-export function newGame(size = 7, { ids = PERSONAS.slice(0, size - 1).map((p) => p.id), roles = deal(size) } = {}) {
-  const players = [HUMAN, ...ids];
+export function newGame(size = 7, { people = [HUMAN], names = {}, ids = PERSONAS.map((p) => p.id), roles = deal(size) } = {}) {
+  const seated = people.slice(0, size);
+  const ais = ids.slice(0, size - seated.length);
   const game = {
-    rev: 0, log: [], players, state: start(roles), asked: {},
-    notes: Object.fromEntries(ids.map((id) => [id, { tries: 0, triesAt: '', rejected: '', thoughts: [] }])),
+    rev: 0, log: [], players: [...seated, ...ais], names, state: start(roles), asked: {},
+    notes: Object.fromEntries(ais.map((id) => [id, { tries: 0, triesAt: '', rejected: '', thoughts: [] }])),
   };
   ask(game);
   return game;
 }
-export const isPerson = (id) => id === HUMAN;
+export const isPerson = (id) => !PERSONAS.some((p) => p.id === id);
+const personName = (game, id) => game.names[id] ?? (id === HUMAN ? 'the host' : 'a friend');
 export const seatOf = (game, id) => game.players.indexOf(id);
 
 // A time for an ask, each later than the last (the runtime tells asks apart by them).
@@ -182,12 +185,14 @@ export function land(game, id, basis, { thinking = '', action = null, say = '' }
   return { landed: false, rejected: out.error };
 }
 
-// The turn's time is up: everyone still due is taken as doing nothing (the rules' `fallback`).
-export function expire(game) {
-  const late = due(game.state).map((d) => game.players[d.seat]);
-  if (!late.length) return;
-  game.state = fallback(game.state);
-  commit(game, { type: 'expired', late });
+// The turn's time is up, or the players `ids` are gone: everyone still due
+// (of them) is taken as doing nothing (the rules' `fallback`). Returns whether anyone was.
+export function expire(game, ids = game.players) {
+  const seats = due(game.state).map((d) => d.seat).filter((seat) => ids.includes(game.players[seat]));
+  if (!seats.length) return false;
+  game.state = fallback(game.state, seats);
+  commit(game, { type: 'expired', late: seats.map((seat) => game.players[seat]) });
+  return true;
 }
 
 // ---- the game as a world ----
@@ -217,9 +222,9 @@ export function createWorld(game, { typing = async () => {}, ready = () => true 
     wakes: () => false,
 
     async members() {
-      return game.players.map((id) => (isPerson(id) ? { id, name: 'the person', kind: 'person', mayAsk: true } : { id, name: id, kind: 'agent', mayAsk: false }));
+      return game.players.map((id) => (isPerson(id) ? { id, name: personName(game, id), kind: 'person', mayAsk: true } : { id, name: id, kind: 'agent', mayAsk: false }));
     },
-    // Each AI player the rules ask for an action, from the person whose game it is.
+    // Each AI player the rules ask for an action, from the host, whose game it is.
     async asks() {
       if (!ready()) return [];
       return due(game.state).flatMap(({ seat }) => {
@@ -262,7 +267,7 @@ export function createWorld(game, { typing = async () => {}, ready = () => true 
 
 export const ROLE_NAMES = { wolf: 'werewolf', seer: 'seer', witch: 'witch', villager: 'villager' };
 
-export const RULES = `You are a player in a game of werewolf (狼人杀) with a person and other AI players. Each player has a secret role:
+export const RULES = `You are a player in a game of werewolf (狼人杀) with people and other AI players. Each player has a secret role:
 - Werewolves (2): each night they pick one player to kill, together. They know each other. They win once they are as many as everyone else alive.
 - Seer (1): each night, checks one player and learns whether they are a werewolf.
 - Witch (1): has two potions, each usable once a game: a save, which brings back the wolves' victim of that night (never herself), and a poison, which kills a player she picks. At most one potion a night. She is told whom the wolves attacked only while she still has the save.
@@ -274,11 +279,11 @@ A night: the werewolves pick their kill (if they disagree, they pick once more, 
 Anyone may lie about their role, and werewolves usually do. A game master runs the game and checks every action: one that is not legal, or comes after the game moved on, is turned away and you are asked again.
 
 You are woken when you have something to do. Each time, answer with one call to the decide tool:
-- thinking: your private reasoning in one to three short sentences. No one sees it until the game is over; then the person may read it.
+- thinking: your private reasoning in one to three short sentences. No one sees it until the game is over; then the people may read it.
 - action: what you do now, always. { "type": one of kill, check, save, poison, pass, speak, vote, abstain, "target": a seat number, for kill, check, poison and vote }.
 - say: on a speech or last words, what you say to everyone: about as long as your character's speeches, never over ${MAX_SPEECH} characters, in your own voice, as spoken at a table. With a werewolf's kill, an optional line only the other werewolves hear. Left out otherwise.
 
-Play to win for your side, as yourself. Talk only in your own voice: never take up another player's catchphrases. The person is "the person" (seat 1): speak to them as "you". Be quick.`;
+Play to win for your side, as yourself. Talk only in your own voice: never take up another player's catchphrases. The players marked "a person" are people, not AI players: speak to each by name, or as "you" when you answer them. Be quick.`;
 
 // The tool the model answers with, as INFER (agents/ponjo-core.mjs) takes tools.
 export const DECIDE = {
@@ -310,7 +315,7 @@ export function decided(args) {
 }
 
 // A seat as a player is shown it: "seat 3, Wen", with its role when that player may know it.
-const seatName = (game, v, i) => `seat ${i + 1}, ${i === v.seat ? 'you' : isPerson(game.players[i]) ? 'the person' : game.players[i]}${v.seats[i].role ? ` (${ROLE_NAMES[v.seats[i].role]})` : ''}`;
+const seatName = (game, v, i) => `seat ${i + 1}, ${i === v.seat ? 'you' : isPerson(game.players[i]) ? `${personName(game, game.players[i])}, a person` : game.players[i]}${v.seats[i].role ? ` (${ROLE_NAMES[v.seats[i].role]})` : ''}`;
 
 // One entry of the log, in words, for the player whose view `v` it is in.
 function entryText(game, v, e) {
@@ -376,6 +381,6 @@ export function prompt(game, id) {
   return { rules, situation: parts.join('\n\n') };
 }
 
-// What the page draws: the person's own view, and each seat's name.
-export const show = (game) => view(game.state, seatOf(game, HUMAN));
+// What a page draws: person `id`'s own view; someone not in the game (watching) sees what everyone does.
+export const show = (game, id = HUMAN) => view(game.state, seatOf(game, id));
 export { MAX_SPEECH, cast, turn };

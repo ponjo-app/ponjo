@@ -1,5 +1,5 @@
 // A game's table shared with friends through the relay (relay/worker.js,
-// at share.ponjo.app), the poker page's and the spy page's: the host's page
+// at share.ponjo.app), the poker, spy and werewolf pages': the host's page
 // holds the table and runs the rules and the AI players; each friend's page
 // joins its room by a link, sends what its player does and draws what the
 // host sends it. The room is the SHA-256 of a secret only the host's page

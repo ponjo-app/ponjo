@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Werewolf with AI players · Ponjo</title>
-<meta name="description" content="Play werewolf with AI players who each keep their own secrets, speak in their own voices and vote for themselves. With your own API key, or Ponjo's.">
+<meta name="description" content="Play werewolf with friends and AI players who each keep their own secrets, speak in their own voices and vote for themselves. With your own API key, or Ponjo's.">
 <link rel="icon" href="../build/icon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="../dist/web/app.css">
 <link rel="stylesheet" href="site.css">
@@ -142,7 +142,7 @@
 
 <form class="pj-join ww-start" hidden>
   <h1 class="pk-setup-title">Werewolf</h1>
-  <p class="pj-join-text">You and AI players, each with a secret role. Two werewolves kill one player a night; the seer checks one; the witch has a potion that saves and one that kills. By day everyone speaks in turn, then votes one player out. The village wins when the wolves are dead; the wolves, when they are as many as everyone else.</p>
+  <p class="pj-join-text">You, any friends you invite, and AI players, each with a secret role. Two werewolves kill one player a night; the seer checks one; the witch has a potion that saves and one that kills. By day everyone speaks in turn, then votes one player out. The village wins when the wolves are dead; the wolves, when they are as many as everyone else.</p>
   <div class="pk-field">Players
     <div class="pj-segmented" role="radiogroup" aria-label="Players">
       <button type="button" role="radio" aria-checked="false" data-size="6">6</button>
@@ -153,8 +153,32 @@
   <div class="pk-field">Roles
     <ul class="ww-cast" aria-label="Roles"></ul>
   </div>
+  <p class="pj-join-text ww-people"></p>
   <div class="pk-setup-buttons">
+    <button class="pj-secondary" type="button" data-action="invite">Invite friends</button>
     <button class="pj-primary" type="submit">Start</button>
+  </div>
+</form>
+
+<form class="pj-join ww-join" hidden>
+  <h1 class="pk-setup-title">Join the game</h1>
+  <p class="pj-join-text">A friend invited you to werewolf. You play from the next game they start.</p>
+  <label class="pk-field">Your name<input class="pj-input" name="name" maxlength="20" autocomplete="nickname" required></label>
+  <div class="pk-setup-buttons">
+    <button class="pj-secondary" type="button" data-action="watch">Just watch</button>
+    <button class="pj-primary" type="submit">Join</button>
+  </div>
+</form>
+
+<form class="pj-join pk-invite" hidden>
+  <h1 class="pk-setup-title">Invite friends</h1>
+  <p class="pj-join-text">Friends who open this link join the game, and play from the next one you start. The game stays open while this page does.</p>
+  <label class="pk-field">Your name, as friends see it<input class="pj-input" name="name" maxlength="20" autocomplete="nickname" placeholder="Host"></label>
+  <div class="pk-field">Link
+    <div class="pk-link"><input class="pj-input" name="link" readonly placeholder="Opening the game…" aria-label="Link"><button class="pj-secondary" type="button" data-action="copy">Copy</button></div>
+  </div>
+  <div class="pk-setup-buttons">
+    <button class="pj-primary" type="button" data-action="invite-done">Done</button>
   </div>
 </form>
 
