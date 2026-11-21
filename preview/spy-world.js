@@ -2,7 +2,8 @@
 // (src/core/runtime.js, the contract; docs/agent-runtime.md), as the poker
 // table is (poker-world.js): one table everyone shares, with a change log;
 // who is asked (each AI player the rules say is due: the one whose clue it
-// is, or everyone in a vote, at once); `prompt`, what a player is shown,
+// is, or everyone in a vote, at once; in a discussion, everyone once as it
+// begins, then whoever a line is to); `prompt`, what a player is shown,
 // built from its seat's `view` alone; and `land`, the one writer, which
 // lands proposals in order and turns away a stale or illegal one, asking
 // the player again, and after MAX_TRIES playing the rules' fallback. When
@@ -12,12 +13,13 @@
 // The people are the host (HUMAN), whose page holds the table, and any
 // friends who joined it by a link; the AI players fill the seats left.
 
-import { MAX_CLUE, deal, due, fallback, act, newGame, spiesFor, turn, view } from './spy-rules.js';
+import { MAX_CLUE, MAX_LINES, act, deal, due, endTalk, fallback, linesLeft, newGame, spiesFor, turn, view } from './spy-rules.js';
 
 export const HUMAN = 'you';
 export const MAX_PEOPLE = 8;
 const MAX_TRIES = 3; // proposals turned away on one turn before the rules' fallback plays for the player
 const THOUGHTS_SHOWN = 8; // a player's own latest thinking its prompt has
+const DEPTH = 2; // a line this deep in replies wakes no one: nobody replies to a reply forever
 
 // Each AI player: who they are (`blurb`, shown on the page), how they talk
 // and how they clue, what they do when they think they are the spy, and the
@@ -86,11 +88,13 @@ export const isPerson = (id) => !PERSONAS.some((p) => p.id === id);
  * A new table: the host alone, before a game. `people` are the host and
  * the friends at the table, in the order they joined; `names` the friends'
  * names (the host's, once they give one). `game` is the rules' game once
- * one starts, with `players`, its seats' ids. Notes, per AI player: its
- * thinking, and how its last proposal went.
+ * one starts, with `players`, its seats' ids. `lines`, the game's lines in
+ * its discussions, with whom each is to (`to`, the players it names) and
+ * how deep in replies it is (`depth`). Notes, per AI player: its thinking,
+ * and how its last proposal went.
  */
 export function newTable() {
-  return { rev: 0, log: [], people: [HUMAN], names: {}, players: [], game: null, gameNo: 0, greeting: false, hellos: [], notes: {}, turnAt: '', turnKey: '', askedAt: {} };
+  return { rev: 0, log: [], people: [HUMAN], names: {}, players: [], game: null, gameNo: 0, greeting: false, hellos: [], lines: [], notes: {}, turnAt: '', turnKey: '', askedAt: {} };
 }
 
 // A time for an ask, each later than the last (the runtime tells asks apart by them).
@@ -106,6 +110,8 @@ function commit(table, change) {
 }
 
 const nameOf = (table, id) => (isPerson(id) ? table.names[id] ?? (id === HUMAN ? 'the host' : 'a friend') : id);
+// The players a line names, by the names they go by at the table.
+const named = (table, text) => table.players.filter((id) => (!isPerson(id) || table.names[id]) && new RegExp(`\\b${nameOf(table, id).replace(/\W/g, '\\$&')}\\b`, 'i').test(text));
 const seatOf = (table, id) => table.players.indexOf(id);
 export const playing = (table) => Boolean(table.game) && table.game.phase !== 'over' && !table.greeting; // the game is on, past the hellos
 
@@ -139,7 +145,7 @@ export function start(table, size, { ids, dealt = deal(size) } = {}) {
   table.players = players;
   table.game = newGame(dealt);
   table.gameNo++;
-  Object.assign(table, { greeting: true, hellos: [], askedAt: {} });
+  Object.assign(table, { greeting: true, hellos: [], lines: [], askedAt: {} });
   table.notes = Object.fromEntries(players.filter((id) => !isPerson(id)).map((id) => [id, { tries: 0, triesAt: '', rejected: '', thoughts: [] }]));
   commit(table, { type: 'start', size, spies: spiesFor(size) });
 }
@@ -157,30 +163,39 @@ export function begin(table) {
 
 /**
  * The writer: lands `id`'s proposal { thinking, action, say }, made on
- * `basis` ({ at }, the moment its run saw), or turns it away. `say` is the
- * clue on a clue's turn. The rules turn away an action that is illegal, or
- * made on a moment the game has left; turned away, an AI player is asked
- * again on the game as it is, told why, up to MAX_TRIES, and then the rules'
- * fallback plays for it. Returns { landed, rejected }.
+ * `basis` ({ at, about }, the moment its run saw, and the line it answers),
+ * or turns it away. `say` is the clue on a clue's turn, or a line in a
+ * discussion, where saying nothing is staying quiet; a line answering one a
+ * person said to the whole table lands only if no other AI player has
+ * answered it yet, so the table settles. The rules turn away an action that
+ * is illegal, or made on a moment the game has left; turned away, an AI
+ * player is asked again on the game as it is, told why, up to MAX_TRIES,
+ * and then the rules' fallback plays for it (in a discussion: it says
+ * nothing). Returns { landed, rejected }.
  */
-export function land(table, id, basis, { thinking = '', action = null, say = '' }) {
+export function land(table, id, basis, { thinking = '', action = null, say = '', for: those }) {
   if (!playing(table)) return { landed: false, rejected: 'No game is on.' };
   const seat = seatOf(table, id);
   const n = table.notes[id];
-  const mine = due(table.game).find((d) => d.seat === seat);
-  const proposed = { ...(action ?? (mine?.kind === 'clue' ? { type: 'clue' } : {})), at: basis.at };
-  if (proposed.type === 'clue' && typeof say === 'string' && say.trim()) proposed.text = say;
+  const talk = table.game.phase === 'talk';
+  const mine = talk ? { kind: 'talk' } : due(table.game).find((d) => d.seat === seat);
+  const text = typeof say === 'string' ? say.trim() : '';
+  const proposed = { ...(action ?? (mine?.kind === 'clue' ? { type: 'clue' } : talk ? { type: 'say' } : {})), at: basis.at };
+  if (proposed.type === 'clue' || proposed.type === 'say') proposed.text = text;
   if (n && thinking) n.thoughts.push({ round: table.game.round, kind: mine?.kind ?? null, text: String(thinking), action: action && { ...action } });
+  const about = basis.about ? table.lines[basis.about - 1] : null;
+  if (proposed.type === 'say' && (!text || (about && isPerson(about.by) && !about.to.length && table.lines.some((l) => l.about === about.id && !isPerson(l.by))))) return { landed: false, rejected: null }; // quiet, or answered already
   const out = act(table.game, seat, proposed);
   if (!out.error) {
     table.game = out;
     if (n) n.rejected = '';
+    if (proposed.type === 'say') table.lines.push({ id: table.lines.length + 1, by: id, text, to: named(table, text).filter((x) => x !== id), depth: about ? about.depth + 1 : isPerson(id) ? 0 : 1, about: about?.id ?? null, at: stamp(), ...(those ? { for: those } : {}) });
     commit(table, { type: 'action', by: id, kind: mine.kind });
     return { landed: true, rejected: null };
   }
   if (n) {
     const at = turn(table.game);
-    const still = due(table.game).some((d) => d.seat === seat);
+    const still = talk ? linesLeft(table.game, seat) > 0 && table.game.phase === 'talk' : due(table.game).some((d) => d.seat === seat);
     n.tries = n.triesAt === at ? n.tries + 1 : 1;
     n.triesAt = at;
     n.rejected = still ? `Your last action was turned away: ${out.error}` : '';
@@ -188,11 +203,19 @@ export function land(table, id, basis, { thinking = '', action = null, say = '' 
   }
   commit(table, { type: 'rejected', by: id, why: out.error });
   if (n?.rejected && n.tries >= MAX_TRIES) {
-    table.game = fallback(table.game, [seat]);
     n.rejected = '';
+    if (talk) delete table.askedAt[id]; // it says nothing more unless a line wakes it
+    else table.game = fallback(table.game, [seat]);
     commit(table, { type: 'action', by: id, kind: mine.kind, forced: true });
   }
   return { landed: false, rejected: out.error };
+}
+
+// The discussion is over, its time up or the host starting the vote: everyone votes.
+export function callVote(table) {
+  if (table.game?.phase !== 'talk') return;
+  table.game = endTalk(table.game);
+  commit(table, { type: 'vote-called' });
 }
 
 // Players' turns taken as doing nothing (the rules' `fallback`): `ids`, or
@@ -206,18 +229,32 @@ export function expire(table, ids = due(table.game).map((d) => table.players[d.s
 
 // ---- the table as a world ----
 
-// What the table asks of each AI player now (an Ask, runtime.js), each from
-// the host: its turn, once the turn began or its last proposal was turned away.
+// What the table asks of each AI player now (an Ask, runtime.js): its turn,
+// once the turn began or its last proposal was turned away, from the host;
+// in a discussion, while it has lines left, a word as it begins, from the
+// host, and each line that concerns it, from whoever said it.
 function asksOf(table) {
   if (!playing(table)) return [];
   const key = `${table.gameNo}:${turn(table.game)}`;
-  return due(table.game).flatMap(({ seat }) => {
-    const id = table.players[seat];
-    if (isPerson(id)) return [];
-    const at = [table.turnAt, table.askedAt[id] ?? ''].sort().at(-1);
-    return [{ id: `turn:${key}`, agent: id, from: HUMAN, at, until: at }];
+  const latest = (id) => [table.turnAt, table.askedAt[id] ?? ''].sort().at(-1);
+  if (table.game.phase !== 'talk') {
+    return due(table.game).flatMap(({ seat }) => {
+      const id = table.players[seat];
+      return isPerson(id) ? [] : [{ id: `turn:${key}`, agent: id, from: HUMAN, at: latest(id), until: latest(id) }];
+    });
+  }
+  return table.players.flatMap((id, seat) => {
+    if (isPerson(id) || !linesLeft(table.game, seat)) return [];
+    const lines = table.lines.filter((l) => l.at > table.turnAt && concerns(l, id)).map((l) => {
+      const by = isPerson(l.by) ? { from: l.by } : { from: l.by, for: l.for, depth: l.depth - 1 }; // an AI player's line asks for whom its run was
+      return { id: `line:${table.gameNo}:${l.id}`, agent: id, ...by, at: l.at, until: l.at };
+    });
+    return [{ id: `talk:${key}`, agent: id, from: HUMAN, at: latest(id), until: latest(id) }, ...lines];
   });
 }
+
+// A line concerns a player when it names them, or a person says it to the whole table.
+const concerns = (line, id) => line.by !== id && line.depth < DEPTH && (line.to.includes(id) || (isPerson(line.by) && !line.to.length));
 
 /**
  * The table as Ponjo's runtime reaches it: the five calls and what they
@@ -234,7 +271,7 @@ export function createWorld(table, { typing = async () => {} } = {}) {
   const kindOf = (by) => (!by ? 'world' : isPerson(by) ? 'person' : 'agent');
   return {
     changed,
-    limits: { depth: 0 }, // players never ask each other: the rules ask
+    limits: { depth: DEPTH }, // how deep players answer each other in a discussion: the table's rule holds first
     settleMs: 0,
     print: () => '',
     wakes: () => false,
@@ -246,10 +283,12 @@ export function createWorld(table, { typing = async () => {} } = {}) {
     async asks() {
       return asksOf(table());
     },
-    // What `agent` sees: `files` the moment its run is made on, `prompt` { rules, situation }.
-    async view(agent) {
+    // What `agent` sees for `asks`: `files` the moment its run is made on
+    // and the latest line it answers, `prompt` { rules, situation }.
+    async view(agent, { asks = [] } = {}) {
       const t = table();
-      return { rev: t.rev, files: { at: turn(t.game) }, prompt: prompt(t, agent.id) };
+      const lines = asks.filter((a) => a.id.startsWith('line:')).map((a) => t.lines[Number(a.id.split(':').at(-1)) - 1]);
+      return { rev: t.rev, files: { at: turn(t.game), about: lines.at(-1)?.id ?? null }, prompt: prompt(t, agent.id, lines) };
     },
     async wait(version, deadline) {
       for (;;) {
@@ -266,14 +305,14 @@ export function createWorld(table, { typing = async () => {} } = {}) {
       }
     },
     // A run's proposal ({ thinking, action, say }), landed against the
-    // moment it was made on: a clue once the player is seen typing it.
-    // Resolves to { landed, rejected }.
+    // moment it was made on: a clue or a line once the player is seen
+    // typing it. Resolves to { landed, rejected }.
     async propose(agent, version, old, made) {
       if (!made) return { landed: false, rejected: null };
       const t = table();
-      const clue = due(t.game).some((d) => d.kind === 'clue' && t.players[d.seat] === agent.id);
-      if (clue && typeof made.say === 'string' && made.say.trim() && old.files.at === turn(t.game)) await typing(agent.id, made.say);
-      const out = land(table(), agent.id, old.files, made);
+      const speaks = t.game.phase === 'talk' || due(t.game).some((d) => d.kind === 'clue' && t.players[d.seat] === agent.id);
+      if (speaks && typeof made.say === 'string' && made.say.trim() && old.files.at === turn(t.game)) await typing(agent.id, made.say);
+      const out = land(table(), agent.id, old.files, { ...made, for: agent.for });
       changed();
       return out;
     },
@@ -286,21 +325,21 @@ const RULES = `You are a player in a game of Who's the Spy (谁是卧底) with p
 
 Every player was given a secret word. Most players, the civilians, share one word; the spies (one at a table of five or six, two at seven or eight) were given a different word, close to it (say "coffee" and "tea"). No one is told which side they are on: you know only your own word, and must work out from the others' clues whether yours is the civilians' word or the spies'.
 
-A round: each living player gives one clue to their word, in turn: a short description, true of their word, that never says the word itself. Then everyone alive votes at once for the player they think is a spy. The player with the most votes is out, and their side is shown. On a tie at the top, the tied players give one more clue each, and everyone votes again, between them only; a second tie, and no one is out. Then the next round. The civilians win once every spy is out. The spies win once they are as many as the civilians, or a spy is among the last three players.
+A round: each living player gives one clue to their word, in turn: a short description, true of their word, that never says the word itself. Then a short discussion: anyone alive may talk, at most ${MAX_LINES} lines each, never saying their word: accuse, defend yourself, question someone, or stay quiet. Then everyone alive votes at once for the player they think is a spy. The player with the most votes is out, and their side is shown. On a tie at the top, the tied players give one more clue each, and everyone votes again, between them only; a second tie, and no one is out. Then the next round. The civilians win once every spy is out. The spies win once they are as many as the civilians, or a spy is among the last three players.
 
 So: a clue that is too plain helps the spies guess the civilians' word; one that is too vague looks like a spy's. If the others' clues fit a different word than yours, you are likely a spy: blend in, give clues that fit their word too, and vote with them. A game master checks every action: one that is not legal, or comes after the game moved on, is turned away and you are asked again.
 
 You are woken when you have something to do. Each time, answer with one call to the decide tool:
 - thinking: your private reasoning in one to three short sentences: which word the others seem to have, which side you think you are on, and whom you suspect. No one sees it until the game is over.
-- action: what you do now, always. { "type": "clue" } with your clue in say, or { "type": "vote", "target": a seat number }.
-- say: on your clue, the clue itself, in your own voice: one sentence, under 15 words, never your word or its plural. Left out when you vote.
+- action: what you do now, always. { "type": "clue" } with your clue in say, { "type": "say" } with a line in the discussion, or { "type": "vote", "target": a seat number }.
+- say: your clue or your line, in your own voice: one sentence, under 20 words, never your word or its plural. In the discussion, leave it empty to stay quiet: speak only when you have something worth saying, and at most one of you usually answers a line said to the whole table. A reply needs no reply. Left out when you vote.
 
 Play to win for your side, as yourself. Talk only in your own voice. Be quick.`;
 
 // The tool the model answers with, as INFER (agents/ponjo-core.mjs) takes tools.
 export const DECIDE = {
   name: 'decide',
-  description: 'Your private thinking, what you do now, and your clue.',
+  description: 'Your private thinking, what you do now, and your clue or line.',
   parameters: {
     type: 'object',
     properties: {
@@ -308,12 +347,12 @@ export const DECIDE = {
       action: {
         type: 'object',
         properties: {
-          type: { type: 'string', enum: ['clue', 'vote'] },
+          type: { type: 'string', enum: ['clue', 'say', 'vote'] },
           target: { type: 'integer', description: 'For vote: a seat number.' },
         },
         required: ['type'],
       },
-      say: { type: 'string', description: 'Your clue, on your turn to give one.' },
+      say: { type: 'string', description: 'Your clue on your turn, or your line in the discussion (empty to stay quiet).' },
     },
     required: ['thinking', 'action'],
   },
@@ -331,10 +370,11 @@ const SIDE = { civilian: 'a civilian', spy: 'a spy' };
 /**
  * What player `id` is shown now: the rules and its own style, then the
  * game as its seat's `view` has it, and nothing else, so another player's
- * word or side can reach it only once the rules show it.
+ * word or side can reach it only once the rules show it. `lines`: the lines
+ * in a discussion that woke it, to answer if it will.
  * Returns { rules, situation }; the rules stay the same run to run, so they cache.
  */
-export function prompt(table, id) {
+export function prompt(table, id, lines = []) {
   const seat = seatOf(table, id);
   const v = view(table.game, seat);
   const persona = PERSONAS.find((p) => p.id === id);
@@ -351,6 +391,8 @@ export function prompt(table, id) {
   for (const e of v.log) {
     if (e.type === 'round') rounds.push(`Round ${e.round}:`);
     else if (e.type === 'clue') rounds.push(`- ${who(e.seat)}${e.silent ? ' gave no clue.' : `: "${e.text}"`}`);
+    else if (e.type === 'talk') rounds.push('The discussion:');
+    else if (e.type === 'line') rounds.push(`  - ${who(e.seat)} says: "${e.text}"`);
     else if (e.type === 'vote') {
       const votes = Object.entries(e.votes).map(([s, t]) => `${who(Number(s))} → ${t === null ? 'no vote' : who(t)}`);
       rounds.push(`- The vote${e.second ? ' between the tied' : ''}: ${votes.join('; ')}. ${e.out !== null ? `${who(e.out)} is out: ${SIDE[e.role]}.` : e.runoff ? `A tie between ${e.runoff.map(who).join('; ')}: one more clue each, then a vote between them.` : 'No one is out.'}`);
@@ -360,9 +402,12 @@ export function prompt(table, id) {
   const mine = table.notes[id].thoughts.slice(-THOUGHTS_SHOWN);
   if (mine.length) parts.push(['Your own earlier thinking:', ...mine.map((t) => `- Round ${t.round}: ${t.text}`)].join('\n'));
   if (v.due) {
+    const woke = lines.map((l) => `${l.by === id ? 'you' : nameOf(table, l.by)} said "${l.text}"${l.to.length ? '' : ' to everyone'}`).join(', and ');
     const ask = v.due.kind === 'clue'
       ? `It is your turn to give a clue${v.runoff ? ' (you are in a tie: this clue may decide the vote)' : ''}: action clue, with it in say.`
-      : `Vote for the player you think is a spy: action vote, with the target's seat number, one of ${v.due.targets.map((i) => i + 1).join(', ')}.`;
+      : v.due.kind === 'talk'
+        ? `It is the discussion before the vote; you have ${v.due.left} line${v.due.left === 1 ? '' : 's'} left. ${woke ? `${woke}: answer if you will. ` : ''}Action say, with your line in say, or an empty say to stay quiet.`
+        : `Vote for the player you think is a spy: action vote, with the target's seat number, one of ${v.due.targets.map((i) => i + 1).join(', ')}.`;
     parts.push(`Now: ${ask}${table.notes[id].rejected ? `\n${table.notes[id].rejected}` : ''}`);
   }
   return { rules, situation: parts.join('\n\n') };
@@ -370,4 +415,4 @@ export function prompt(table, id) {
 
 // What a page draws: `id`'s view of the game (a watcher's, if it has no seat).
 export const show = (table, id) => table.game && view(table.game, table.players.includes(id) ? seatOf(table, id) : null);
-export { MAX_CLUE, due };
+export { MAX_CLUE, MAX_LINES, due };

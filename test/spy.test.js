@@ -4,8 +4,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { plan } from '../src/core/due.js';
 import { createRuntime } from '../src/core/runtime.js';
-import { PAIRS, SIZES, act, deal, due, fallback, newGame, says, spiesFor, targets, turn, view } from '../preview/spy-rules.js';
-import { HUMAN, MAX_PEOPLE, begin, createWorld, decided, expire, intros, introduce, land, leave, newTable, prompt, seatFriend, show, start } from '../preview/spy-world.js';
+import { MAX_LINES, PAIRS, SIZES, act, deal, due, endTalk, fallback, linesLeft, newGame, says, spiesFor, targets, turn, view } from '../preview/spy-rules.js';
+import { HUMAN, MAX_PEOPLE, begin, callVote, createWorld, decided, expire, intros, introduce, land, leave, newTable, prompt, seatFriend, show, start } from '../preview/spy-world.js';
 import { until } from './helpers.js';
 
 const WORDS = { civilian: 'coffee', spy: 'tea' };
@@ -13,9 +13,10 @@ const WORDS = { civilian: 'coffee', spy: 'tea' };
 const game = (roles) => newGame({ words: WORDS, roles: [...roles].map((r) => (r === 's' ? 'spy' : 'civilian')) });
 const clue = (g, seat, text = `clue ${seat}`) => act(g, seat, { type: 'clue', text, at: turn(g) });
 const vote = (g, seat, target) => act(g, seat, { type: 'vote', target, at: turn(g) });
-// Every clue of the round given; then everyone votes as `votes` says (seat → target).
+// Every clue of the round given, the discussion over; then everyone votes as `votes` says (seat → target).
 function round(g, votes) {
   while (g.phase === 'clue') g = clue(g, g.speaker);
+  g = endTalk(g);
   for (const [seat, target] of Object.entries(votes)) g = vote(g, Number(seat), target);
   return g;
 }
@@ -44,6 +45,8 @@ test('clues go round in seat order, never saying the word; then everyone votes a
   g = clue(g, 1, 'Bitter and dark');
   assert.match(act(g, 2, { type: 'clue', text: 'hot', at: stale }).error, /Stale/);
   for (const seat of [2, 3, 4]) g = clue(g, seat);
+  assert.equal(g.phase, 'talk', 'the clues in, a discussion');
+  g = endTalk(g);
   assert.equal(g.phase, 'vote');
   assert.deepEqual(due(g).map((d) => d.kind), Array(5).fill('vote'));
   assert.match(vote(g, 1, 1).error, /another living player/);
@@ -126,7 +129,8 @@ test('the fallback: a speaker says nothing, a voter abstains', () => {
   assert.equal(g.log.at(-1).silent, true);
   assert.equal(g.speaker, 1);
   while (g.phase === 'clue') g = clue(g, g.speaker);
-  g = vote(g, 0, 1);
+  assert.deepEqual(fallback(g).log, g.log, 'in a discussion no one is due');
+  g = vote(endTalk(g), 0, 1);
   g = fallback(g);
   assert.equal(g.log.findLast((e) => e.type === 'vote').out, 1, 'one vote, four abstentions');
 });
@@ -176,7 +180,11 @@ test('the one whose clue it is is due; in a vote, every AI player at once; a per
   give(given, first);
   assert.deepEqual(await dueNow(table, given), [], 'what a run was given asks no more');
   while (table.game.phase === 'clue') land(table, table.players[table.game.speaker], at(table), { say: 'Hot' });
-  assert.deepEqual((await dueNow(table, given)).map((d) => d.id).sort(), table.players.slice(1).sort());
+  const talk = await dueNow(table, given);
+  assert.deepEqual(talk.map((d) => d.id).sort(), table.players.slice(1).sort(), 'the discussion: everyone is asked a word');
+  for (const d of talk) give(given, d);
+  callVote(table);
+  assert.deepEqual((await dueNow(table, given)).map((d) => d.id).sort(), table.players.slice(1).sort(), 'the vote: everyone at once');
 });
 
 test('a clue turned away is asked again, told why; after three, the player says nothing', async () => {
@@ -255,16 +263,18 @@ test('on Ponjo\'s runtime: the AI players play a game to its end, refusals fall 
   const leaks = [];
   let runs = 0;
   // A model: Max always says his word, which the rules turn away; the
-  // others clue and vote for the next living seat after their own.
+  // others clue and vote for the next living seat after their own. In a
+  // discussion Ivy asks Max a question, and the others stay quiet.
   async function run({ agent }, { files, prompt: { situation } }) {
     runs++;
     const t = table.game;
     const seat = table.players.indexOf(agent.id);
     const other = t.seats[seat].word === WORDS.spy ? WORDS.civilian : WORDS.spy;
     if (new RegExp(`\\b${other}\\b`).test(situation)) leaks.push(`${agent.id} saw ${other}`);
-    const d = due(t).find((x) => x.seat === seat);
+    const d = due(t).find((x) => x.seat === seat) ?? (linesLeft(t, seat) ? { kind: 'talk' } : null);
     if (!d || files.at !== turn(t)) return { at: Date.now(), ms: 0, outcome: 'ok', made: null };
-    const made = d.kind === 'clue'
+    const made = d.kind === 'talk' ? { thinking: 'hm', action: { type: 'say' }, say: agent.id === 'Max' ? `My ${t.seats[seat].word} is fine` : agent.id === 'Ivy' ? 'Max, explain your clue.' : '' }
+      : d.kind === 'clue'
       ? { thinking: 'hm', action: { type: 'clue' }, say: agent.id === 'Max' ? `It is ${t.seats[seat].word}` : 'You know it when you see it' }
       : { thinking: 'hm', action: { type: 'vote', target: targets(t, seat)[0] } };
     return { at: Date.now(), ms: 0, outcome: 'ok', made };
@@ -281,6 +291,11 @@ test('on Ponjo\'s runtime: the AI players play a game to its end, refusals fall 
     await until(() => {
       const g = table.game;
       if (g.phase === 'over') return true;
+      if (g.phase === 'talk' && !runtime.running().length) { // the discussion has come to rest: the host starts the vote
+        callVote(table);
+        world.changed();
+        return false;
+      }
       const mine = due(g).find((d) => d.seat === 0);
       if (mine) {
         land(table, HUMAN, at(table), mine.kind === 'clue' ? { say: 'Mornings' } : { action: { type: 'vote', target: targets(g, 0)[0] } });
@@ -298,6 +313,37 @@ test('on Ponjo\'s runtime: the AI players play a game to its end, refusals fall 
   assert.deepEqual(leaks, []);
   assert.ok(table.game.winner);
   assert.ok(table.log.some((c) => c.type === 'action' && c.by === 'Max' && c.forced), 'Max, turned away three times, says nothing');
+});
+
+test('a discussion: a line wakes whom it names, a reply to a reply no one; one answer to a line to everyone; never the word, three lines each', async () => {
+  const table = tableOf('ccsccc', ['Ivy', 'Max', 'Juno', 'Sam', 'Lou']);
+  while (table.game.phase === 'clue') land(table, table.players[table.game.speaker], at(table), { say: 'Hot' });
+  const given = new Map();
+  for (const d of await dueNow(table, given)) give(given, d); // everyone's word as it began
+  assert.deepEqual(await dueNow(table, given), []);
+  const ask = (d) => ({ at: turn(table.game), about: d.asks.map((a) => Number(a.id.split(':').at(-1))).at(-1) ?? null });
+  land(table, 'Ivy', at(table), { say: 'Max, your clue was odd.', for: [HUMAN] });
+  const [max] = await dueNow(table, given);
+  assert.equal(max.id, 'Max', 'named, Max is asked');
+  give(given, max);
+  land(table, 'Max', ask(max), { say: 'Ivy, it was fine.', for: [HUMAN] });
+  assert.equal(table.lines.at(-1).depth, 2);
+  assert.deepEqual(await dueNow(table, given), [], 'a reply to a reply wakes no one');
+  land(table, HUMAN, at(table), { say: 'Who is the spy, everyone?' });
+  const all = await dueNow(table, given);
+  assert.equal(all.length, 5, 'a line to everyone asks every AI player');
+  for (const d of all) land(table, d.id, ask(d), { say: `${d.id} thinks it is Sam.` });
+  assert.equal(table.lines.filter((l) => l.about === 3).length, 1, 'one answer lands');
+  assert.match(land(table, 'Sam', at(table), { say: 'Hot drinks are hot' }).rejected ?? '', /^$/, 'a line without the word lands');
+  const word = table.game.seats[1].word;
+  assert.match(land(table, 'Ivy', at(table), { say: `I love ${word}` }).rejected, /says your word/);
+  land(table, HUMAN, at(table), { say: 'One' });
+  land(table, HUMAN, at(table), { say: 'Two' });
+  assert.match(land(table, HUMAN, at(table), { say: 'Three' }).rejected, new RegExp(`${MAX_LINES} lines`));
+  assert.equal(land(table, 'Lou', at(table), { say: '' }).landed, false, 'an empty line is staying quiet');
+  callVote(table);
+  assert.equal(table.game.phase, 'vote');
+  assert.match(land(table, HUMAN, { at: '1:talk::' }, { say: 'Late' }).rejected, /Stale/);
 });
 
 test('a friend whose page reloads is back in their seat: their turns are theirs again', () => {
