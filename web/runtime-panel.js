@@ -15,23 +15,27 @@ const count = new Intl.NumberFormat();
 const el = (tag, className = '', text = '') => Object.assign(document.createElement(tag), { className, textContent: text });
 
 // What a run came to, from its end: running, landed, quiet (it made
-// nothing), refused (the world's answer says why), failed or stopped.
+// nothing: `made` null), refused (the world's answer says why), failed or
+// stopped. An end without `made` (the doc host keeps it out) landed.
 function cameTo(end) {
   if (!end) return 'running';
   if (end.result.outcome === 'failed' || end.result.outcome === 'stopped') return end.result.outcome;
   if (end.answered?.rejected) return 'refused';
-  return end.result.made ? 'landed' : 'quiet';
+  return end.result.made === null ? 'quiet' : 'landed';
 }
 
 /**
  * The panel, appended to the page and open. `where` names what it watches;
- * `faceOf(id)` is an agent's face; `askText(id)` an ask in words, as its
+ * `faceOf(id, name)` is an agent's face; `askText(id)` an ask in words, as its
  * world names them; `retry(id)` runs an agent's failed asks again;
- * `onClose()` once it is closed. Returns { add(event, at) (an event the
- * runtime traced, at `at`, ms since the epoch), agents(statuses) (as the
- * runtime's `agents` emit has them), close() }.
+ * `detail(run)`, if given, resolves to what the host keeps of a run (a
+ * trace), as nodes, or null, shown in place of the event's; `onClose()`
+ * once it is closed. Returns { add(event, at) (an event the runtime traced,
+ * at `at`, ms since the epoch: a run's end with no look before it is a run
+ * from before), agents(statuses) (as the runtime's `agents` emit has them),
+ * show(run) (opens a run), close() }.
  */
-export function createRuntimePanel({ where, faceOf, askText = (id) => id, retry, onClose = () => {} }) {
+export function createRuntimePanel({ where, faceOf, askText = (id) => id, retry, detail, onClose = () => {} }) {
   const events = []; // [{ at, ...event }]
   let statuses = [];
   let tab = 'looks';
@@ -40,6 +44,7 @@ export function createRuntimePanel({ where, faceOf, askText = (id) => id, retry,
   let pending = false;
   const openLooks = new Set(); // looks opened, by when
   const openParts = new Map(); // a run's parts opened or closed, by title
+  const details = new Map(); // run → what `detail` resolved to (nodes, or null), or 'loading'
 
   const root = el('aside', 'pj-runtime');
   root.setAttribute('aria-label', 'Runtime');
@@ -120,10 +125,14 @@ export function createRuntimePanel({ where, faceOf, askText = (id) => id, retry,
     });
   }
 
-  // The runs the looks started, each with when it started and its end, if it ended.
+  // The runs, oldest first, each with when it started and its end, if it
+  // ended: those the looks started, and runs from before, known by their end.
   function runsOf() {
     const ends = new Map(events.filter((e) => e.type === 'run.end').map((e) => [e.run, e]));
-    return events.filter((e) => e.type === 'look').flatMap((look) => look.verdicts.filter((v) => v.run).map((v) => ({ id: v.run, agent: v.name, start: look.at, end: ends.get(v.run) })));
+    const started = events.filter((e) => e.type === 'look').flatMap((look) => look.verdicts.filter((v) => v.run).map((v) => ({ id: v.run, agent: v.name, start: look.at, end: ends.get(v.run) })));
+    const known = new Set(started.map((r) => r.id));
+    const before = [...ends.values()].filter((e) => !known.has(e.run)).map((e) => ({ id: e.run, agent: e.task.agent.name, start: e.at - (e.result.ms ?? 0), end: e }));
+    return [...before, ...started].sort((a, b) => a.start - b.start);
   }
 
   function draw() {
@@ -273,9 +282,21 @@ export function createRuntimePanel({ where, faceOf, askText = (id) => id, retry,
     }
     const usage = e.result.usage ? ` · ${count.format(e.result.usage.input_tokens ?? 0)} in, ${count.format(e.result.usage.output_tokens ?? 0)} out` : '';
     box.append(el('p', 'pj-runtime-facts', `Started at ${time.format(r.start)}, took ${((e.result.ms ?? 0) / 1000).toFixed(1)} s${usage}${e.task.depth ? ` · depth ${e.task.depth}` : ''}`));
-    const asked = e.task.asks.map((a) => el('div', 'pj-runtime-line', `${askText(a.id)} · from ${a.from} · at ${time.format(Date.parse(a.at))}`));
+    const asked = e.task.asks.map((a) => el('div', 'pj-runtime-line', [askText(a.id), a.from && `from ${a.from}`, a.at && `at ${time.format(Date.parse(a.at))}`].filter(Boolean).join(' · ')));
     box.append(part('Asked', String(e.task.asks.length || 'a watch'), true, ...(asked.length ? asked : [el('div', 'pj-runtime-line', 'Its watch: the world changed.')])));
-    if (e.view?.prompt) box.append(part('Prompt', 'what it saw', false, ...texts(e.view.prompt)));
+    if (detail) {
+      const kept = details.get(r.id);
+      if (kept === undefined) {
+        details.set(r.id, 'loading');
+        detail(r.id).catch(() => null).then((nodes) => {
+          details.set(r.id, nodes);
+          draw();
+        });
+      }
+      if (kept === undefined || kept === 'loading') box.append(el('p', 'pj-runtime-facts', 'Loading its trace…'));
+      else if (kept) box.append(...kept);
+      if (kept !== null) return box;
+    }    if (e.view?.prompt) box.append(part('Prompt', 'what it saw', false, ...texts(e.view.prompt)));
     if (kind === 'failed') box.append(part('Error', '', true, el('pre', 'pj-trace-text', e.result.body ?? '')));
     if (e.result.made) box.append(part('Made', '', true, ...texts(e.result.made, ['thinking'])));
     else if (kind === 'quiet') box.append(part('Made', 'nothing', false, el('div', 'pj-runtime-line', 'It made nothing: no model was called.')));
@@ -310,7 +331,7 @@ export function createRuntimePanel({ where, faceOf, askText = (id) => id, retry,
         again.addEventListener('click', () => retry(s.id));
         end.append(again);
       }
-      row.append(faceOf(s.id), mid, end);
+      row.append(faceOf(s.id, s.name), mid, end);
       return row;
     });
   }
@@ -325,6 +346,11 @@ export function createRuntimePanel({ where, faceOf, askText = (id) => id, retry,
     agents(list) {
       statuses = list;
       later();
+    },
+    show(run) {
+      tab = 'runs';
+      selected = run;
+      draw();
     },
     close: () => close.click(),
   };

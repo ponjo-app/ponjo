@@ -20,7 +20,7 @@ import { handName, legal } from './poker-dealer.js';
 import { DECIDE, HUMAN, MAX_SEATS, PERSONAS, STACK, addPlayer, createWorld, force, freeSeats, intros, introduce, isPerson, lineup, react, removePlayer, deal, land, leave, myChips, newTable, say, seatFriend, topUp } from './poker-world.js';
 import { createRuntime } from '../src/core/runtime.js';
 import { createRuntimePanel } from '../web/runtime-panel.js';
-import { guestId, host, join } from './poker-share.js';
+import { RECONNECT_MS, guestId, host, join } from './poker-share.js';
 
 const WALLET = 'ponjo-poker-bankroll';
 const BANKROLL = 1000; // play dollars a new player starts with, and starts again with
@@ -133,10 +133,10 @@ async function run({ agent }, { files: basis, prompt: { rules, situation } }) {
 // With ?debug, the host's page shows what the runtime does (the runtime
 // panel): every player's cards and thinking, so only on asking.
 const ASKS = { turn: (hand) => `Turn, hand ${hand}`, line: (n) => `Chat line ${n}`, react: (hand) => `After hand ${hand}` };
-const panel = !ROOM && new URLSearchParams(location.search).has('debug') && createRuntimePanel({
+const panel = !ROOM && new URLSearchParams(location.search).has('debug') ? createRuntimePanel({
   where: 'this table', faceOf, retry: (id) => runtime.retry(id),
   askText: (id) => ASKS[id.split(':')[0]]?.(id.split(':')[1]) ?? id,
-});
+}) : null;
 
 // The table as a world, and on the host's page, Ponjo's runtime on it. What
 // it says of the players (statuses): who is at work, and whose run failed.
@@ -869,21 +869,30 @@ function copyLink() {
 }
 function joined(peer, hello) {
   if (!/^f[0-9a-f]{8}$/.test(String(hello?.id))) return room.turnAway(peer, 'Not a player');
+  if (sentAway.has(hello.id)) return room.turnAway(peer, 'The host asked you to leave the table.');
   peers.set(peer, { id: hello.id, log: 0, chat: 0 });
   gone.delete(hello.id);
   changed();
 }
-// A friend's page goes: they leave once the hand is over, unless they come back (a reload) or another of their pages is here.
+// A friend's page goes: unless a page of theirs is back within RECONNECT_MS (a reload), they are gone, and leave once the hand is over.
 function left(peer) {
   const id = peers.get(peer)?.id;
   peers.delete(peer);
-  if (id && lineup(table).some((p) => p.id === id) && ![...peers.values()].some((p) => p.id === id)) gone.add(id);
-  changed();
+  setTimeout(() => {
+    if (!id || !lineup(table).some((p) => p.id === id) || [...peers.values()].some((p) => p.id === id)) return;
+    gone.add(id);
+    changed();
+  }, RECONNECT_MS);
 }
+// The host asks a friend to leave: they are gone at once, and their page may not come back.
+const sentAway = new Set();
 function turnAway(id) {
   const peer = peerOf(id);
   if (peer !== undefined) room.turnAway(peer, 'The host asked you to leave the table.');
-  left(peer);
+  peers.delete(peer);
+  sentAway.add(id);
+  if (lineup(table).some((p) => p.id === id)) gone.add(id);
+  changed();
 }
 
 // Each friend's page gets the table as its player may see it: its own

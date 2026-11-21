@@ -59,6 +59,9 @@ function line(url, { open, heard, ended }) {
   };
 }
 
+// How long a friend whose page went has to come back (a reload) before the host takes them as gone.
+export const RECONNECT_MS = 15_000;
+
 /**
  * Who a friend's page plays as in `room`: kept for this tab, so a friend
  * who reloads the page is back as the same player, in their seat; another

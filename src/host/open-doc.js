@@ -112,6 +112,8 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
         return changeBuddies(() => removeBuddy(dirOf(found.where), found.name));
       },
       testAgent: () => runtime.testAgent(),
+      // What the buddies' runtime did lately, for the runtime panel: only the owner's, as runs' traces are.
+      runtime: () => ({ events: runtime.recent() }),
     },
   };
 
