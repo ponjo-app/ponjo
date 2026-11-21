@@ -1049,7 +1049,7 @@ const DIFFERENCES = [
   ['Working in parallel', 'Copies go stale, so to stay correct agents take turns', 'The default: at worst a proposal is refused and retried, and the next look still settles the board'],
   ['What wakes an agent', 'A message for it', 'The runtime, reading the board: whoever is due'],
   ['A lost message, a restart', 'The work is lost', 'Nothing lost: the board still says what is due'],
-  ['Who goes next', 'An orchestrator wires it', 'Nobody: the board shows it'],
+  ['Who goes next', 'Whoever sends the next event: often an LLM, which may forget or pick wrong', 'Code, from the board: the same answer every time'],
   ['When it stops', 'When the events run out, or never', 'When what people asked for is met; chains are capped, fights go to a person'],
   ['Fits', 'Fixed flows that split into independent tasks', 'Shared work that people and agents improve together'],
 ];
