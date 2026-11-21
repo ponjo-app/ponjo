@@ -213,8 +213,8 @@ its CLI's config allow.
 
 For whoever works on an agent: with Settings > Agents > Trace runs on (off
 by default), each run's trace is kept in the config folder's
-`logs/traces/`, the newest 200, and read in a doc's Runs (the owner's
-window only). The app records what it sees of any agent: the prompt, the
+`logs/traces/`, the newest 200, and read in a doc's runtime panel (the
+owner's window only). The app records what it sees of any agent: the prompt, the
 script, stdout and stderr, how it ended, the copies before and after, and
 what landed. What happens inside the run is the agent's to add: each line
 it appends to `PONJO_TRACE` (a JSON value, or text) is kept, in order, as

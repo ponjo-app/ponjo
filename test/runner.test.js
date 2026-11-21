@@ -216,9 +216,10 @@ async function withRuntime(read, fn) {
     subscribe: (listener) => listeners.push(listener), place: () => ({ docPath, folder: null, room: null }), pathInProject: async () => 'doc.md',
     buddies: async () => [{ id: 'b_x', name: 'X', about: '' }], me: async () => ({ id: 'u_me000001', name: 'me' }), settingsDir,
   });
-  const runtime = await createBuddyRuntime({ world, docPath: () => docPath, settingsDir, secrets: () => ({}), emit: () => {} });
+  const emitted = [];
+  const runtime = await createBuddyRuntime({ world, docPath: () => docPath, settingsDir, secrets: () => ({}), emit: (type, data) => emitted.push({ type, data }) });
   try {
-    await fn({ runtime, landed, settingsDir, change });
+    await fn({ runtime, landed, settingsDir, change, emitted });
   } finally {
     await runtime.close();
   }
@@ -240,6 +241,25 @@ test('a run whose agent cannot start fails once: it is not run again until asked
     const [, run] = log.match(/started (r_\w+)/);
     assert.match(log, new RegExp(`  run ${run} of X ended: failed: .*no such agent.* · Failed, 0 comments\n`));
     assert.match(log, new RegExp(`look · run ${run} of X ended\n  X  not due: no ask, not watching\n`), 'given that ask, it is not asked again');
+  });
+});
+
+test('the doc host keeps what its runtime did, and tells the windows: a run\'s end once its trace is written, without the doc', async () => {
+  await withRuntime((ask) => [ask], async ({ runtime, settingsDir, emitted }) => {
+    await rm(join(settingsDir, 'agents', 'fake'));
+    await rm(join(settingsDir, 'agents', 'fake.cmd'));
+    await runtime.look();
+    await until(() => runtime.recent().some((e) => e.type === 'run.end'), 'the run to end');
+    const recent = runtime.recent();
+    const look = recent.find((e) => e.type === 'look' && e.verdicts.some((v) => v.run));
+    const end = recent.find((e) => e.type === 'run.end');
+    assert.equal(end.run, look.verdicts.find((v) => v.run).run, 'the run the look started');
+    assert.equal(end.result.outcome, 'failed');
+    assert.deepEqual(end.task.asks.map((a) => a.id), ['c_asked0001']);
+    assert.ok(!('view' in end) && !('made' in end.result), 'no doc, no prompt, nothing it made: those are its trace\'s');
+    assert.ok(recent.every((e) => Number.isFinite(e.at)), 'each when it came');
+    assert.ok((await runLog(settingsDir)).some((r) => r.run === end.run), 'its line was written before it was told');
+    assert.deepEqual(emitted.filter((e) => e.type === 'runtime').map((e) => e.data), recent, 'each told to the windows as it came');
   });
 });
 

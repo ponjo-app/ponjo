@@ -65,6 +65,8 @@ export const api = {
   testAgent: () => call('testAgent'),
   /** This doc's runs that left a trace, newest first: [{ run, buddy, thread, reply, at, ms, outcome, code }]. */
   runs: async () => (await call('runs')).runs,
+  /** What the doc's runtime did lately, as the runtime panel shows it (src/host/buddy-runtime.js): [event], oldest first. */
+  runtime: async () => (await call('runtime')).events,
   /** Run `run`'s trace (src/host/runner.js): { script, prompt, steps, stdout, stderr, base, edited, comments, landed, ... }. */
   trace: async (run) => (await call('trace', { run })).trace,
   /** A new buddy, the project's: { agents }. */

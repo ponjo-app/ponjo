@@ -182,7 +182,10 @@ how it ended and what landed; the breaker tripping. Only a run's end holds
 the world's content (its view, what it made); the host keeps and shows the
 rest as names, versions and ids. The fields: Event in `src/core/runtime.js`.
 In Ponjo the host writes them as the agent log (Settings > Agents > Agent
-log), and each run's end to the runs' log.
+log), and each run's end to the runs' log; it keeps the newest 500, a run's
+end without the doc, and tells them to the owner's windows, whose runtime
+panel (`web/runtime-panel.js`) shows them, as the game pages' do with
+`?debug`.
 
 ## Security
 
