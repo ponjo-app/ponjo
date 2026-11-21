@@ -8,11 +8,13 @@
 // rules' fallback. Unlike poker, players are often asked at once (the
 // wolves at night, everyone in a vote): the writer collects their actions,
 // and the rules end the phase once all are in, or `expire` once its time is
-// up. A day's speech is a player's action on its turn, not side chat. When
-// the players run is the runtime's; the page (preview/werewolf.js) runs the
-// model and draws the game.
+// up. A day's speech is a player's action on its turn, not side chat. Once
+// the game is over, the table chats about it (table-talk.js): the AI players
+// answer the lines that concern them. When the players run is the
+// runtime's; the page (preview/werewolf.js) runs the model and draws the game.
 
 import { MAX_SPEECH, act, cast, deal, due, fallback, newGame as start, turn, view } from './werewolf-rules.js';
+import { DEPTH, MAX_LINE, asks, linesOf, named, say, stamp } from './table-talk.js';
 
 export const HUMAN = 'you';
 const MAX_TRIES = 3; // proposals turned away on one turn before the world's fallback plays for the player
@@ -101,13 +103,16 @@ export const PERSONAS = [
  * players, `ids` or the first of PERSONAS, to fill the seats. `roles` are
  * each seat's; dealt at random if left out. Notes, per AI player: its
  * thinking, and how its last proposal went; `asked`, per AI player, the
- * turn it was last asked for and when (an Ask's time, runtime.js).
+ * turn it was last asked for and when (an Ask's time, runtime.js). `lines`
+ * is the table's chat (table-talk.js), which the page keeps from game to
+ * game, each line marked with the `game` (number `no`) it goes with and
+ * whether it was said `after` it.
  */
-export function newGame(size = 7, { people = [HUMAN], names = {}, ids = PERSONAS.map((p) => p.id), roles = deal(size) } = {}) {
+export function newGame(size = 7, { people = [HUMAN], names = {}, ids = PERSONAS.map((p) => p.id), roles = deal(size), lines = [], no = 1 } = {}) {
   const seated = people.slice(0, size);
   const ais = ids.slice(0, size - seated.length);
   const game = {
-    rev: 0, log: [], players: [...seated, ...ais], names, state: start(roles), asked: {},
+    rev: 0, log: [], players: [...seated, ...ais], names, state: start(roles), asked: {}, lines, no,
     notes: Object.fromEntries(ais.map((id) => [id, { tries: 0, triesAt: '', rejected: '', thoughts: [] }])),
   };
   ask(game);
@@ -117,9 +122,6 @@ export const isPerson = (id) => !PERSONAS.some((p) => p.id === id);
 const personName = (game, id) => game.names[id] ?? (id === HUMAN ? 'the host' : 'a friend');
 export const seatOf = (game, id) => game.players.indexOf(id);
 
-// A time for an ask, each later than the last (the runtime tells asks apart by them).
-let last = 0;
-const stamp = () => new Date((last = Math.max(Date.now(), last + 1))).toISOString();
 
 // Each AI player the rules ask for a turn it was not asked for yet is asked
 // from now: another player's action in the same turn asks it nothing new.
@@ -151,9 +153,12 @@ export function begin(game, id) {
  * rules turn away an action that is illegal, or made on a moment the game
  * has left; turned away, an AI player is asked again on the game as it is,
  * told why, up to MAX_TRIES, and then the rules' fallback plays for it.
+ * Once the game is over, `say` is a line in the chat (`chat`).
  * Returns { landed, rejected }.
  */
-export function land(game, id, basis, { thinking = '', action = null, say = '' }) {
+export function land(game, id, basis, { thinking = '', action = null, say: line = '', for: those }) {
+  if (game.state.phase === 'over') return chat(game, id, basis, { thinking, say: line, for: those });
+  const say = line;
   const seat = seatOf(game, id);
   const n = game.notes[id];
   const mine = due(game.state).find((d) => d.seat === seat);
@@ -185,6 +190,20 @@ export function land(game, id, basis, { thinking = '', action = null, say = '' }
   return { landed: false, rejected: out.error };
 }
 
+// A line in the chat after the game, by a player of it: an AI player's empty one is staying quiet.
+function chat(game, id, basis, { thinking = '', say: line = '', for: those }) {
+  const text = typeof line === 'string' ? line.trim().slice(0, MAX_LINE) : '';
+  const n = game.notes[id];
+  if (n && thinking) n.thoughts.push({ day: game.state.day, phase: 'over', kind: 'chat', text: String(thinking), action: null });
+  if (!game.players.includes(id)) return { landed: false, rejected: 'You were not in this game.' };
+  if (!text) return { landed: false, rejected: isPerson(id) ? 'Say something.' : null };
+  const about = basis.about ? game.lines[basis.about - 1] : null;
+  const to = named(game.players, (p) => (!isPerson(p) ? p : game.names[p] ?? ''), text);
+  if (!say(game.lines, { by: id, text, to, about, for: those, isPerson, kind: 'chat', game: game.no, after: true })) return { landed: false, rejected: null }; // answered already
+  commit(game, { type: 'chat', by: id });
+  return { landed: true, rejected: null };
+}
+
 // The turn's time is up, or the players `ids` are gone: everyone still due
 // (of them) is taken as doing nothing (the rules' `fallback`). Returns whether anyone was.
 export function expire(game, ids = game.players) {
@@ -214,8 +233,8 @@ export function createWorld(game, { typing = async () => {}, ready = () => true 
   };
   return {
     changed,
-    // No player asks another: every ask is the rules'.
-    limits: { depth: 1 },
+    // In the game every ask is the rules'; after it, players answer each other in the chat, as deep as table-talk.js lets them.
+    limits: { depth: DEPTH },
     // The game has no watches.
     settleMs: 0,
     print: () => '',
@@ -224,8 +243,13 @@ export function createWorld(game, { typing = async () => {}, ready = () => true 
     async members() {
       return game.players.map((id) => (isPerson(id) ? { id, name: personName(game, id), kind: 'person', mayAsk: true } : { id, name: id, kind: 'agent', mayAsk: false }));
     },
-    // Each AI player the rules ask for an action, from the host, whose game it is.
+    // Each AI player the rules ask for an action, from the host, whose game
+    // it is; once the game is over, each line in the chat that concerns it.
     async asks() {
+      if (game.state.phase === 'over') {
+        const after = game.lines.filter((l) => l.kind === 'chat' && l.after && l.game === game.no);
+        return game.players.filter((id) => !isPerson(id)).flatMap((id) => asks(after, id, isPerson, `chat:${game.no}`));
+      }
       if (!ready()) return [];
       return due(game.state).flatMap(({ seat }) => {
         const id = game.players[seat];
@@ -234,9 +258,11 @@ export function createWorld(game, { typing = async () => {}, ready = () => true 
         return [{ id: `turn:${at}`, agent: id, from: HUMAN, at: when, until: when }];
       });
     },
-    // What `agent` sees: `files` is what its run is made on (begin), `prompt` { rules, situation }.
-    async view(agent) {
-      return { rev: game.rev, files: begin(game, agent.id), prompt: prompt(game, agent.id) };
+    // What `agent` sees for its asks: `files` is what its run is made on
+    // (begin) and the line it answers, `prompt` { rules, situation }.
+    async view(agent, { asks: asked = [] } = {}) {
+      const lines = linesOf(game.lines, asked, `chat:${game.no}`);
+      return { rev: game.rev, files: { ...begin(game, agent.id), about: lines.at(-1)?.id ?? null }, prompt: prompt(game, agent.id, lines) };
     },
     async wait(version, deadline) {
       for (;;) {
@@ -255,8 +281,8 @@ export function createWorld(game, { typing = async () => {}, ready = () => true 
     // model's answer), landed against what it was made on: a speech once
     // the player is seen typing it. Resolves to { landed, rejected }.
     async propose(agent, version, old, made) {
-      if ((old.files.kind === 'speak' || old.files.kind === 'last') && made.say.trim()) await typing(agent.id, made.say);
-      const out = land(game, agent.id, old.files, made);
+      if ((old.files.kind === 'speak' || old.files.kind === 'last' || game.state.phase === 'over') && made.say.trim()) await typing(agent.id, made.say);
+      const out = land(game, agent.id, old.files, { ...made, for: agent.for });
       changed();
       return out;
     },
@@ -354,9 +380,10 @@ const ASK = {
  * What player `id` is shown now: the rules and its own style, then the
  * game as its seat's `view` has it, and nothing else, so another player's
  * role or a night's secrets can reach it only if that seat may know them.
+ * `lines`: the lines in the chat after the game that woke it.
  * Returns { rules, situation }; the rules stay the same run to run, so they cache.
  */
-export function prompt(game, id) {
+export function prompt(game, id, lines = []) {
   const seat = seatOf(game, id);
   const v = view(game.state, seat);
   const persona = PERSONAS.find((p) => p.id === id);
@@ -374,6 +401,13 @@ export function prompt(game, id) {
   parts.push(['What has happened, as you saw it:', ...v.log.map((e) => `- ${entryText(game, v, e)}`)].join('\n'));
   const mine = game.notes[id].thoughts.slice(-THOUGHTS_SHOWN);
   if (mine.length) parts.push(['Your own earlier thinking:', ...mine.map((t) => `- ${t.phase === 'night' ? 'Night' : 'Day'} ${t.day}: ${t.text}`)].join('\n'));
+  if (v.phase === 'over') {
+    const who = (p) => (p === id ? 'you' : isPerson(p) ? personName(game, p) : p);
+    const after = game.lines.filter((l) => l.kind === 'chat' && l.after && l.game === game.no);
+    parts.push(`The game is over: every role is shown above.${after.length ? `\n${['The chat since:', ...after.map((l) => `- ${who(l.by)}: "${l.text}"`)].join('\n')}` : ''}`);
+    const woke = lines.map((l) => `${who(l.by)} said "${l.text}"${l.to.length ? '' : ' to everyone'}`).join(', and ');
+    parts.push(`Now: ${woke}. Answer if you will, as yourself, about the game just played: action speak, with one short line in say, or an empty say to stay quiet.`);
+  }
   if (v.due) {
     const extra = v.due.kind === 'potion' ? ` You may: ${[v.due.save && 'save', v.due.poison && 'poison', 'pass'].filter(Boolean).join(', ')}.` : v.due.kind === 'kill' && v.due.round === 2 ? ' The pack disagreed: pick once more.' : '';
     parts.push(`Now: ${ASK[v.due.kind]}${extra}${game.notes[id].rejected ? `\n${game.notes[id].rejected}` : ''}`);

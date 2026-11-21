@@ -177,7 +177,9 @@ function startGame(size) {
 
 // ---- what this page draws: the table as it is here, and its own seat's view ----
 
-const empty = { people: [], names: {}, players: [], hellos: [], greeting: false, gameNo: 0, notes: {} };
+const empty = { people: [], names: {}, players: [], hellos: [], greeting: false, gameNo: 0, notes: {}, lines: [] };
+// This page's player may chat: outside a game (none yet, or it is over), once at the table.
+const chatting = (t, v) => !t.greeting && (!v || v.phase === 'over') && t.people.includes(me);
 const picture = () => (ROOM ? (remote ? { t: remote.table, v: remote.view } : { t: empty, v: null }) : { t: table, v: show(table, HUMAN) });
 const label = (t, id) => (id === me ? 'You' : isPerson(id) ? t.names[id] ?? (id === HUMAN ? 'Host' : 'Friend') : id);
 const cap = (text) => text[0].toUpperCase() + text.slice(1);
@@ -337,7 +339,8 @@ function drawCenter(t, v) {
     if (fresh && !still && words) sub.animate([{ opacity: 0, transform: 'translateY(6px)' }, { opacity: 1, transform: 'none' }], { duration: 400, easing: 'ease-out' });
   }
   $('.sp-vote-now').hidden = Boolean(ROOM) || v?.phase !== 'talk';
-  $('.ww-over').hidden = !over;
+  $('.ww-over').hidden = !over && (Boolean(v) || Boolean(ROOM)); // before any game, the host's way to start one
+  $('[data-action="thinking"]').hidden = !over;
   $('[data-action="new"]').hidden = Boolean(ROOM);
 }
 
@@ -376,7 +379,8 @@ function drawMe(t, v) {
 const chat = $('.ww-chat-box');
 const box = chat.elements.text;
 function drawChat(t, v) {
-  const mine = !t.greeting && ['clue', 'talk'].includes(v?.due?.kind);
+  const talking = !t.greeting && ['clue', 'talk'].includes(v?.due?.kind);
+  const mine = talking || chatting(t, v);
   if (chatAt !== (v?.due?.at ?? '')) {
     chatAt = v?.due?.at ?? '';
     box.value = '';
@@ -385,13 +389,13 @@ function drawChat(t, v) {
   chat.dataset.audience = mine ? 'all' : 'muted';
   box.disabled = !mine;
   box.maxLength = MAX_CLUE;
-  box.placeholder = !mine ? '' : v.due.kind === 'talk' ? 'Say something to the table…' : 'Your clue, without your word…';
+  box.placeholder = !mine ? '' : !talking ? 'Chat with the table…' : v.due.kind === 'talk' ? 'Say something to the table…' : 'Your clue, without your word…';
   $('[type=submit]', chat).disabled = !mine || !box.value.trim();
   const speaker = v && v.speaker !== null && v.speaker !== v.seat ? label(t, t.players[v.speaker]) : null;
-  const why = mine ? [icon('users'), v.due.kind === 'talk' ? `Everyone hears you · ${v.due.left} line${v.due.left === 1 ? '' : 's'} left.` : 'Everyone hears your clue.']
-    : [symbol('ww-muted'), !v ? 'No game yet.'
+  const why = mine ? [icon('users'), !talking ? 'Everyone at the table hears you.' : v.due.kind === 'talk' ? `Everyone hears you · ${v.due.left} line${v.due.left === 1 ? '' : 's'} left.` : 'Everyone hears your clue.']
+    : [symbol('ww-muted'), !v ? 'Join the table to chat.'
       : t.greeting ? 'Muted while everyone says hello.'
-        : v.phase === 'over' ? 'The game is over.'
+        : v.phase === 'over' ? 'Join the table to chat.'
           : v.seat === null ? 'Watching: you play from the next game.'
             : !v.alive ? 'You are out: the out don\'t clue.'
               : v.phase === 'vote' ? 'Muted while everyone votes.'
@@ -406,7 +410,7 @@ function drawChat(t, v) {
 }
 chat.addEventListener('submit', (event) => {
   event.preventDefault();
-  if (chat.dataset.audience === 'all') perform({ type: picture().v.due.kind === 'talk' ? 'say' : 'clue' });
+  if (chat.dataset.audience === 'all') perform({ type: picture().v?.due?.kind === 'clue' ? 'clue' : 'say' });
 });
 box.addEventListener('input', () => draw());
 box.addEventListener('keydown', (event) => {
@@ -419,16 +423,17 @@ box.addEventListener('keydown', (event) => {
 // What this page's player does: landed here through the writer, as an AI
 // player's proposal, or on a friend's page sent to the host, which lands it.
 function perform(action) {
-  const { v } = picture();
-  if (!v?.due) return;
+  const { t, v } = picture();
+  if (!v?.due && !chatting(t, v)) return;
+  const at = v?.due?.at ?? ''; // a line in the chat is for no moment of a game
   const say = action.type === 'vote' ? '' : box.value;
   if (action.type === 'vote') myVote = { at: v.log.length, target: action.target };
-  if (action.type === 'say') box.value = ''; // a discussion's turn stays the same: the box is cleared here
+  if (action.type === 'say') box.value = ''; // a discussion's turn stays the same, and the chat has none: the box is cleared here
   if (ROOM) {
-    guest.send({ type: 'act', action: { ...action, at: v.due.at }, say });
+    guest.send({ type: 'act', action: { ...action, at }, say });
     return draw();
   }
-  const { rejected } = land(table, HUMAN, { at: v.due.at }, { action, say });
+  const { rejected } = land(table, HUMAN, { at }, { action, say });
   if (rejected && action.type === 'say') box.value = say;
   refused(rejected);
   changed();
@@ -452,6 +457,15 @@ function drawFeed(t, v) {
     const side = v?.seats[t.players.indexOf(id)]?.role;
     rows.push(message({ face: id !== me && faceOf(t, id), name: [label(t, id), ...(side ? [token(side)] : [])], text, note, mine: id === me, more }));
   };
+  // the chat: before this game (or the next, before any), and after it
+  const chatted = (after) => t.lines.filter((l) => l.kind === 'chat' && l.after === after && l.game === (v || after ? t.gameNo : t.gameNo + 1));
+  const chatLines = (list) => {
+    for (const l of list) {
+      say(l.by, l.text, last === l.by);
+      last = l.by;
+    }
+  };
+  chatLines(chatted(false));
   for (const h of t.hellos) {
     say(h.id, h.text, last === h.id);
     last = h.id;
@@ -477,6 +491,7 @@ function drawFeed(t, v) {
       rows.push(notice(`${e.winner === 'civilians' ? 'Every spy is out: the civilians win.' : 'The spies made it: they win.'} The civilians' word was "${e.words.civilian}"; the spies', "${e.words.spy}".`));
     }
   }
+  if (v) chatLines(chatted(true));
   for (const id of typing) rows.push(typingMessage(faceOf(t, id), id));
   for (const [id, why] of failed) {
     const row = notice(`${id} could not reach the model: ${why}`);
@@ -666,8 +681,9 @@ function share() {
   const over = table.game?.phase === 'over';
   for (const [peer, id] of peers) {
     const { people, names, players, hellos, greeting, gameNo } = table;
+    const lines = table.lines.filter((l) => l.kind === 'chat'); // the discussions' are in the game's log
     const notes = over ? table.notes : {};
-    room.send(peer, { type: 'state', table: { people, names, players, hellos, greeting, gameNo, notes }, view: show(table, id), running: [...running], typing: [...typing], failed: [...failed], clock: clock.ends ? clock.ends - Date.now() : 0 });
+    room.send(peer, { type: 'state', table: { people, names, players, hellos, greeting, gameNo, notes, lines }, view: show(table, id), running: [...running], typing: [...typing], failed: [...failed], clock: clock.ends ? clock.ends - Date.now() : 0 });
   }
 }
 
@@ -710,6 +726,11 @@ joining.addEventListener('submit', (event) => {
 document.addEventListener('click', (event) => {
   const action = event.target.closest('[data-action]')?.dataset.action;
   if (action === 'new') openStart();
+  else if (action === 'later') { // chat first: the start is under New game
+    starting.hidden = true;
+    document.body.classList.remove('pk-buying-in');
+    draw();
+  }
   else if (action === 'vote-now' && !ROOM) {
     callVote(table);
     changed();
