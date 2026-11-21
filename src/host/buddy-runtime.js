@@ -17,6 +17,18 @@ import { execute, killTree, testAgent } from './runner.js';
 // A time as the agent log writes it, on this machine's clock: 2026-11-18 21:40:12.203.
 const stamp = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${d.toTimeString().slice(0, 8)}.${String(d.getMilliseconds()).padStart(3, '0')}`;
 
+// What the doc host keeps of what its runtime did, for the owner's runtime
+// panel (web/runtime-panel.js): the newest events, each when it came, a
+// run's end without the world's content (its view, what it made): what
+// it was given and did is its trace's.
+const RECENT = 500;
+const kept = (event) => (event.type !== 'run.end' ? event : {
+  type: event.type, run: event.run,
+  task: { agent: { id: event.task.agent.id, name: event.task.agent.name }, asks: event.task.asks.map(({ id, from, at }) => ({ id, from, at })), depth: event.task.depth },
+  result: { at: event.result.at, ms: event.result.ms, outcome: event.result.outcome, code: event.result.code, usage: event.result.usage, body: event.result.body },
+  answered: event.answered && { landed: event.answered.landed, comments: event.answered.comments },
+});
+
 // The agent log's lines for each event the runtime traces but a run's end
 // (runtime.js, Event): names, revs and ids, never the world's content.
 const LINES = {
@@ -57,10 +69,24 @@ export async function createBuddyRuntime({ world, docPath, settingsDir, secrets,
     logged = logged.then(() => logLoop(settingsDir, `${text}\n`));
   }
 
+  // The runtime's newest events, each told to the owner's windows (`runtime`)
+  // as it comes: a run's end once its trace is written, for the panel to read.
+  const recent = [];
+  function keep(event) {
+    const shown = { at: Date.now(), ...kept(event) };
+    recent.push(shown);
+    if (recent.length > RECENT) recent.shift();
+    emit('runtime', shown);
+  }
+
   const runtime = await createRuntime({
     world,
     emit: (type, payload) => emit(type, type === 'agents' ? forWindows(payload) : payload),
-    trace: (event) => (event.type === 'run.end' ? ended(event) : tell(...LINES[event.type](event))),
+    async trace(event) {
+      if (event.type === 'run.end') await ended(event);
+      else tell(...LINES[event.type](event));
+      keep(event);
+    },
     breaker: async () => (await readSettings(settingsDir)).settings,
     watching: {
       read: () => readWatching(docPath(), settingsDir),
@@ -94,6 +120,8 @@ export async function createBuddyRuntime({ world, docPath, settingsDir, secrets,
     /** The agent, its settings or its secrets changed: the failed asks run again. */
     agentChanged: () => runtime.retry(),
     statuses: () => forWindows(runtime.statuses()),
+    /** What the runtime did lately (keep): its newest events, oldest first. */
+    recent: () => [...recent],
     watches: runtime.watches,
     running: runtime.running,
     testAgent: async () => {

@@ -12,7 +12,8 @@
 // its seat's view; a friend's page, opened at `#join=<room>`, only draws and
 // sends what its player does. A friend who joins mid-game watches, seeing
 // what everyone sees, and plays from the next game; one who leaves
-// mid-game has each of their turns taken as doing nothing.
+// mid-game, and is not back within RECONNECT_MS (a reload), has each of
+// their turns taken as doing nothing.
 // preview/build.js bundles it into dist/preview, as the site serves it.
 
 /* global document, location, matchMedia, HTMLDialogElement, innerWidth, innerHeight, addEventListener */
@@ -20,7 +21,7 @@
 import { agentFace, personFace, setBuddies, setOwner } from '../web/faces.js';
 import { icon } from '../web/icons.js';
 import { $, arrows, el, load, message, models, notice, store, typingMessage } from './game-page.js';
-import { host, join } from './poker-share.js';
+import { RECONNECT_MS, guestId, host, join } from './poker-share.js';
 import { DECIDE, HUMAN, MAX_SPEECH, PERSONAS, ROLE_NAMES, cast, createWorld, decided, expire, isPerson, land, newGame, show, turn } from './werewolf-world.js';
 import { createRuntime } from '../src/core/runtime.js';
 import { createRuntimePanel } from '../web/runtime-panel.js';
@@ -30,7 +31,7 @@ const SVG = 'http://www.w3.org/2000/svg';
 const NAME = 'ponjo-poker-name'; // the visitor's name at a friend's table, as the poker page keeps it
 const MAX_PEOPLE = 8; // at the table, as at the largest game
 const ROOM = new URLSearchParams(location.hash.slice(1)).get('join'); // a friend's page: the room of the game it joins
-const me = ROOM ? `f${[...crypto.getRandomValues(new Uint8Array(4))].map((b) => b.toString(16).padStart(2, '0')).join('')}` : HUMAN; // who this page plays as
+const me = ROOM ? guestId(ROOM) : HUMAN; // who this page plays as
 
 setBuddies(PERSONAS.map(({ id }) => ({ id, name: id })));
 setOwner(HUMAN);
@@ -155,13 +156,13 @@ async function run({ agent }, { files: basis, prompt: { rules, situation } }) {
 // With ?debug, the page shows what the runtime does (the runtime panel):
 // every player's role and thinking, so only on asking. An ask is a turn of
 // the game, its day, phase and step (turn, werewolf-rules.js).
-const panel = !ROOM && new URLSearchParams(location.search).has('debug') && createRuntimePanel({
+const panel = !ROOM && new URLSearchParams(location.search).has('debug') ? createRuntimePanel({
   where: 'this game', faceOf, retry: (id) => runtime.retry(id),
   askText: (id) => {
     const [, day, phase, step] = id.split(':');
     return `${phase === 'night' ? 'Night' : 'Day'} ${day}${step ? `, ${step}` : ''}`;
   },
-}) || null; // null without ?debug: `false?.add()` would throw
+}) : null;
 
 // A new game is a new world, with Ponjo's runtime on it; the last game's
 // runtime ends its runs, which land nothing. What the runtime says of the
@@ -838,17 +839,25 @@ function closeInvite() {
   if (!starting.hidden) openStart();
   changed();
 }
+// A friend's page opens. One that was at the table (its page reloaded) is
+// back in its seat, by the name it had.
 function joined(peer, hello) {
   if (!/^f[0-9a-f]{8}$/.test(String(hello?.id))) return room.turnAway(peer, 'Not a player');
   peers.set(peer, hello.id);
+  if (names[hello.id] && !people.includes(hello.id)) people.push(hello.id);
+  if (!starting.hidden) openStart();
   changed();
 }
+// A friend's page goes: they leave the table unless a page of theirs is back within RECONNECT_MS (a reload).
 function left(peer) {
   const id = peers.get(peer);
   peers.delete(peer);
-  people = people.filter((p) => p !== id);
-  if (!starting.hidden) openStart();
-  changed();
+  setTimeout(() => {
+    if (!id || [...peers.values()].includes(id)) return;
+    people = people.filter((p) => p !== id);
+    if (!starting.hidden) openStart();
+    changed();
+  }, RECONNECT_MS);
 }
 // What a friend's page sends: to sit at the table, or what its player does.
 function apply(peer, message) {
@@ -875,7 +884,7 @@ function share(behind = held) {
   if (!room) return;
   const over = game?.state.phase === 'over';
   for (const [peer, id] of peers) {
-    room.send(peer, { type: 'state', gameNo, players, names, view: game && show(game, id), hellos, call, held: behind, notes: over ? game.notes : {}, running: [...running], typing: [...typing], failed: [...failed], clock: clock.ends ? clock.ends - Date.now() : 0, clockAt: clock.at });
+    room.send(peer, { type: 'state', gameNo, people, players, names, view: game && show(game, id), hellos, call, held: behind, notes: over ? game.notes : {}, running: [...running], typing: [...typing], failed: [...failed], clock: clock.ends ? clock.ends - Date.now() : 0, clockAt: clock.at });
   }
 }
 
@@ -891,6 +900,7 @@ const guest = ROOM && join(ROOM, { id: me }, {
     const fresh = message.gameNo !== remote?.gameNo;
     remote = message;
     names = message.names;
+    if (!joining.hidden && message.people.includes(me)) closeJoin(); // back at the table after a reload
     if (fresh && message.view) seatUp(message.players);
     hellos = message.hellos;
     for (const [set, ids] of [[running, message.running], [typing, message.typing]]) set.clear() || ids.forEach((id) => set.add(id));
@@ -904,13 +914,16 @@ const guest = ROOM && join(ROOM, { id: me }, {
   },
 });
 const joining = $('.ww-join');
+function closeJoin() {
+  joining.hidden = true;
+  document.body.classList.remove('pk-buying-in');
+}
 joining.addEventListener('submit', (event) => {
   event.preventDefault();
   const name = joining.elements.name.value.trim().slice(0, 20) || 'Friend';
   store(name, NAME);
   guest.send({ type: 'sit', name });
-  joining.hidden = true;
-  document.body.classList.remove('pk-buying-in');
+  closeJoin();
 });
 
 // ---- wiring ----
@@ -926,10 +939,7 @@ document.addEventListener('click', (event) => {
   else if (action === 'copy') {
     inviting.elements.link.select();
     navigator.clipboard?.writeText(inviting.elements.link.value).catch(() => {});
-  } else if (action === 'watch') {
-    joining.hidden = true;
-    document.body.classList.remove('pk-buying-in');
-  }
+  } else if (action === 'watch') closeJoin();
 });
 $('.pk-thinking').addEventListener('click', (event) => {
   if (event.target === event.currentTarget) event.currentTarget.close(); // a click on the backdrop

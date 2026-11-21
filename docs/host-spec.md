@@ -432,7 +432,7 @@ machine's, in memory.
    Settings > Usage sums. A log there past 10 MB keeps its newest half.
    With Trace runs on, it also leaves its trace (the prompt, the agent's
    steps, its output, the copies before and after, what landed) in
-   `logs/traces/<run>.json`, the newest 200 kept, for the doc's Runs.
+   `logs/traces/<run>.json`, the newest 200 kept, for the doc's runtime panel.
 
 A run that is ended (its asks resolved, its watch unset, its buddy deleted,
 a person typing while only a watch had it run) lands nothing. Runs of
