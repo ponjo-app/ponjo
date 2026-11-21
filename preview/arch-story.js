@@ -1,10 +1,10 @@
 // The architecture page (site/architecture.html): the blackboard agent
-// runtime (docs/runtime-vision.md) as a few chapters, each a looping
-// animation with one line under it on the idea it shows. Back and Next go
-// from chapter to chapter. With reduced motion a chapter shows its last
-// frame and holds still. preview/build.js bundles it into dist/preview.
+// runtime (docs/runtime-vision.md) as chapters down the page, a screen each,
+// each a looping animation with one line under it on the idea it shows; it
+// plays while on screen. With reduced motion a chapter shows its last frame
+// and holds still. preview/build.js bundles it into dist/preview.
 
-/* global document, window */
+/* global document, window, IntersectionObserver */
 
 import { INK, agentFace, buddyColor, personFace, setBuddies, setOwner, setPeople } from '../web/faces.js';
 
@@ -18,12 +18,6 @@ setPeople(['You']);
 
 const el = (tag, className = '', text = '') => Object.assign(document.createElement(tag), { className, textContent: text });
 const f = (n) => n.toFixed(1);
-
-function button(text, className = 'pj-secondary') {
-  const node = el('button', className, text);
-  node.type = 'button';
-  return node;
-}
 
 // A face in the wrapper that says its state (life.js): 'idle', 'working' or 'away'.
 function face(name, { person = false, presence = 'idle', tag = 'span' } = {}) {
@@ -193,17 +187,18 @@ const NS = 'http://www.w3.org/2000/svg';
 // and scaled to fill it (refit whenever the window changes): an SVG for the
 // lines, `ink` to draw one, and `place` to put a node at a point, `size`
 // across. Sizes are the stage's own, not as a slide's scale shows them.
-let fitting = null;
+const fitters = new Map(); // a stage's sketch → refit it to the stage
 function sketch(stage) {
   const fit = ([w, h]) => Math.min(stage.clientWidth / w, stage.clientHeight / h);
   const [W, H] = fit([400, 520]) > fit([760, 420]) * 1.15 ? [400, 520] : [760, 420];
   const box = el('div', 'arch-sketch');
   box.style.width = `${W}px`;
   box.style.height = `${H}px`;
-  fitting = () => {
+  const refit = () => {
     box.style.scale = String(fit([W, H]));
   };
-  fitting();
+  fitters.set(stage, refit);
+  refit();
   const svg = document.createElementNS(NS, 'svg');
   svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
   box.append(svg);
@@ -227,10 +222,12 @@ function sketch(stage) {
 }
 
 // One showing of one chapter, until the reader leaves it: waits and moves
-// that throw STOPPED once it is over, and take no time with reduced motion.
+// that throw STOPPED once it is over, and take no time with reduced motion
+// or when `quiet`, which draws the chapter's last frame at once.
 class Scene {
-  constructor(stage) {
+  constructor(stage, quiet = false) {
     this.stage = stage;
+    this.quiet = quiet || still;
     this.stopped = false;
     this.timers = new Set();
   }
@@ -241,7 +238,7 @@ class Scene {
 
   wait(ms) {
     this.check();
-    if (still) return Promise.resolve();
+    if (this.quiet) return Promise.resolve();
     return new Promise((resolve) => {
       const timer = setTimeout(() => {
         this.timers.delete(timer);
@@ -254,7 +251,7 @@ class Scene {
   // `node` moves by `keyframes`, and stays there.
   move(node, keyframes, ms, easing = 'cubic-bezier(0.4, 0, 0.2, 1)') {
     this.check();
-    return node.animate(keyframes, { duration: still ? 0 : ms, easing, fill: 'forwards' }).finished.then(() => this.check());
+    return node.animate(keyframes, { duration: this.quiet ? 0 : ms, easing, fill: 'forwards' }).finished.then(() => this.check());
   }
 
   fade(node, to, ms = 300) {
@@ -1004,7 +1001,7 @@ async function diagram(scene, { boxes, at, arrows, loop, ink = [] }) {
     const label = s.place(el('span', across ? 'arch-label arch-label-over' : 'arch-label', words), mid);
     await Promise.all([scene.fade(label, 1, 200), reveal(b)]);
   }
-  if (still) return;
+  if (scene.quiet) return;
 
   // Trace each handoff along its wire, including the return trip.
   for (;;) {
@@ -1388,73 +1385,88 @@ const CHAPTERS = [
   ['Outcome', 'What you get', '', outcome],
 ];
 
-// ---- the story: a chapter at a time, with Back, Next and a dot for each ----
+// ---- the story: the chapters down the page, each a screen ----
 
-const stage = document.querySelector('[data-stage]');
-const caption = document.querySelector('[data-say]');
-const kicker = document.querySelector('[data-kicker]');
-const heading = document.querySelector('[data-heading]');
-const back = document.querySelector('[data-back]');
-const next = document.querySelector('[data-next]');
-const dots = CHAPTERS.map(([name], i) => {
-  const dot = button('', 'arch-dot');
-  dot.setAttribute('aria-label', [name, CHAPTERS[i][1]].filter(Boolean).join(': ') || 'Start');
-  dot.addEventListener('click', () => open(i));
-  return dot;
-});
-document.querySelector('[data-dots]').append(...dots);
-
-let current = 0;
-let scene = null;
-
-// Chapter `i`: its scene played over and over, fresh each time, until the reader leaves.
-async function open(i) {
-  scene?.stop();
-  current = i;
-  const [part, name, idea, play, role] = CHAPTERS[i];
-  kicker.textContent = part;
-  heading.textContent = name;
+// Each chapter is a section, its last frame drawn until it is on screen; on
+// screen, its scene plays, over and over, fresh each time, until it leaves.
+// A bar under the header names the parts and lights the one in view.
+const slug = (words) => words.toLowerCase().replace(/[’']/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+const main = document.querySelector('.arch-slides');
+const partsBar = document.querySelector('[data-parts]');
+const parts = new Map(); // the part's name in the bar → its link
+const chapters = CHAPTERS.map(([part, name, idea, play, role], i) => {
+  const section = el('section', 'arch-frame');
+  section.id = i ? slug(name || part) : 'start';
+  const story = el('div', 'arch-story');
+  const head = el('header', 'arch-head');
+  const heading = el('h2', 'arch-heading', name);
   if (role) heading.prepend(approachMark(role));
-  caption.textContent = idea;
-  dots.forEach((dot, j) => dot.toggleAttribute('aria-current', i === j));
-  back.disabled = i === 0;
-  next.textContent = i === 0 ? 'Start' : i === CHAPTERS.length - 1 ? 'Start over' : 'Next';
-  const run = (scene = new Scene(stage));
+  head.append(el('p', 'arch-kicker', part), heading);
+  const stage = el('div', 'arch-stage');
+  story.append(head, stage, el('p', 'arch-say', idea));
+  section.append(story);
+  main.append(section);
+  const label = part.replace(/^Difference (\d) of 2$/, '$1').replace(/^(\d) · .*/, '$1');
+  const title = { 1: '1 · One board', 2: '2 · Who acts next' }[label] ?? part;
+  if (i && !parts.has(title)) {
+    const link = el('a', '', title);
+    link.href = `#${section.id}`;
+    parts.set(title, link);
+    partsBar.append(link);
+  }
+  return { section, stage, play, title: i ? title : null, scene: null };
+});
+
+// Chapter `c`, played over and over (or drawn still, `quiet`) until stopped.
+async function show(c, quiet) {
+  c.scene?.stop();
+  const scene = (c.scene = new Scene(c.stage, quiet));
   try {
     do {
-      fitting = null;
-      stage.replaceChildren();
-      stage.className = 'arch-stage';
-      await play(run);
-    } while (!still && !play.once);
+      fitters.delete(c.stage);
+      c.stage.replaceChildren();
+      c.stage.className = 'arch-stage';
+      await c.play(scene);
+    } while (!scene.quiet && !c.play.once);
   } catch (error) {
     if (error !== STOPPED) throw error;
   }
 }
 
-// On a screen wider than tall, the story is a slide, 1280×720, scaled to the
-// window (site.css); otherwise it runs down the page as it is.
-const deck = document.querySelector('.arch-story');
+// The chapter mostly in view plays; one that leaves goes back to its last frame.
+let playing = null;
+const watcher = new IntersectionObserver((entries) => {
+  for (const { target, intersectionRatio } of entries) {
+    const c = chapters.find((chapter) => chapter.section === target);
+    if (intersectionRatio >= 0.6 && playing !== c) {
+      if (playing) show(playing, true);
+      playing = c;
+      show(c, false);
+      for (const [title, link] of parts) link.toggleAttribute('aria-current', title === c.title);
+      const lit = parts.get(c.title);
+      if (lit) partsBar.scrollTo({ left: lit.offsetLeft - (partsBar.clientWidth - lit.offsetWidth) / 2, behavior: 'smooth' });
+    } else if (intersectionRatio < 0.6 && playing === c) {
+      playing = null;
+      show(c, true);
+    }
+  }
+}, { threshold: [0, 0.6] });
+for (const c of chapters) watcher.observe(c.section);
+
+// A slide is 1280×720, scaled to the screen left under the header and the
+// bar (site.css); on a screen taller than wide, it runs down the page as it is.
 const portrait = window.matchMedia('(max-aspect-ratio: 6/5), (max-width: 720px)');
-function fitDeck() {
-  const header = document.querySelector('.site-header').offsetHeight;
-  deck.style.setProperty('--header-height', `${header}px`);
-  deck.style.setProperty('--fit', portrait.matches ? 1 : Math.min((window.innerWidth - 32) / 1280, (window.innerHeight - header - 16) / 720));
-  fitting?.();
+function fit() {
+  const top = document.querySelector('.site-header').offsetHeight + partsBar.offsetHeight;
+  document.documentElement.style.setProperty('--header-height', `${top - partsBar.offsetHeight}px`);
+  document.documentElement.style.setProperty('--top', `${top}px`);
+  main.style.setProperty('--fit', portrait.matches ? 1 : Math.min((window.innerWidth - 32) / 1280, (window.innerHeight - top - 16) / 720));
+  for (const refit of fitters.values()) refit();
 }
-window.addEventListener('resize', fitDeck);
+window.addEventListener('resize', fit);
 motionPreference.addEventListener('change', () => {
   still = motionPreference.matches;
-  open(current);
+  for (const c of chapters) show(c, c !== playing);
 });
-fitDeck();
-
-back.addEventListener('click', () => open(current - 1));
-next.addEventListener('click', () => open((current + 1) % CHAPTERS.length));
-document.addEventListener('keydown', (e) => {
-  if (e.metaKey || e.ctrlKey || e.altKey) return;
-  if (e.key === 'ArrowRight') next.click();
-  if (e.key === 'ArrowLeft' && current > 0) open(current - 1);
-});
-
-open(0);
+fit();
+for (const c of chapters) show(c, true);

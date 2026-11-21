@@ -112,10 +112,17 @@ a { color: var(--accent); }
 
 /* ---- architecture page: a story in chapters, a scene each (preview/arch-story.js) ---- */
 
-/* a slide: 1280×720, scaled to the window by --fit (arch-story.js), its title, the scene and
-   what it shows as one, no frame; on a screen taller than wide, the page instead, as tall as the window */
-.arch-slides { display: grid; grid-template: minmax(0, 1fr) / minmax(0, 1fr); place-items: center; height: calc(100dvh - 53px); overflow: hidden; }
-.arch-story { box-sizing: border-box; display: flex; flex-direction: column; gap: 16px; width: 1280px; height: 720px; padding: 40px 64px 28px; scale: var(--fit, 1); }
+/* the chapters down the page, a screen each under the header and the bar of parts (the one
+   in view lit), the page snapping to a screen's top once near it; a slide is 1280×720, scaled
+   by --fit (arch-story.js), its title, the scene and what it shows as one, no frame; on a screen
+   taller than wide, the page instead, as tall as the screen */
+:root:has(.arch-slides) { scroll-snap-type: y proximity; }
+.arch-parts { position: sticky; top: var(--header-height, 53px); z-index: 9; display: flex; justify-content: center; gap: 2px; padding: 6px 16px; overflow-x: auto; scrollbar-width: none; background: var(--canvas); border-bottom: 1px solid var(--border); }
+.arch-parts a { display: flex; flex: none; align-items: center; height: 28px; padding: 0 8px; border-radius: 6px; color: var(--text-faint); font-size: 13px; font-weight: 500; text-decoration: none; white-space: nowrap; }
+.arch-parts a:hover { background: var(--hover); color: var(--text-soft); }
+.arch-parts a[aria-current] { background: var(--active); color: var(--text); }
+.arch-frame { display: grid; grid-template: minmax(0, 1fr) / minmax(0, 1fr); place-items: center; height: calc(100dvh - var(--top, 94px)); overflow: hidden; scroll-snap-align: start; scroll-margin-top: var(--top, 94px); }
+.arch-story { box-sizing: border-box; display: flex; flex-direction: column; gap: 16px; width: 1280px; height: 720px; padding: 32px 64px; scale: var(--fit, 1); }
 .arch-head { display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center; }
 .arch-head:has(:empty + :empty) { display: none; }
 .arch-mark { display: inline-block; margin-inline-end: .4em; font-size: .85em; font-weight: 600; }
@@ -126,14 +133,10 @@ a { color: var(--accent); }
 .arch-heading:empty { display: none; }
 .arch-stage { position: relative; flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 24px; overflow: hidden; }
 .arch-say { min-height: 3em; max-width: 880px; margin: 0 auto; color: var(--text-soft); font-size: 24px; line-height: 1.45; text-align: center; text-wrap: balance; }
-.arch-nav { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
-.arch-nav > button { min-width: 88px; height: 32px; }
-.arch-dots { display: flex; }
-.arch-dot { width: 20px; height: 20px; padding: 6px; border: 0; border-radius: 50%; background: var(--border-strong) content-box; }
-.arch-dot[aria-current] { background-color: var(--text); }
 @media (max-aspect-ratio: 6/5), (max-width: 720px) {
-  .arch-slides { display: block; height: auto; overflow: visible; }
-  .arch-story { width: auto; height: calc(100dvh - var(--header-height, 53px)); min-height: 560px; padding: 16px; gap: 12px; scale: none; }
+  .arch-frame { display: block; height: auto; }
+  .arch-story { width: auto; height: calc(100dvh - var(--top, 94px)); min-height: 560px; padding: 16px; gap: 12px; scale: none; }
+  .arch-parts { justify-content: flex-start; }
   .arch-kicker { font-size: 13px; }
   .arch-heading { font-size: 24px; }
   .arch-say { min-height: 4.5em; font-size: 16px; line-height: 1.5; }
@@ -338,10 +341,6 @@ a { color: var(--accent); }
 
 @media (max-width: 560px) {
   .arch-cover h1, .arch-point h2 { font-size: 24px; }
-  .arch-nav { gap: 8px; }
-  .arch-nav > button { min-width: 0; padding-inline: 10px; }
-  .arch-dots { flex-wrap: wrap; justify-content: center; }
-  .arch-dot { width: 16px; height: 16px; padding: 5px; }
   .arch-compare :is(th, td) { padding: 6px; font-size: 12px; }
   .arch-stat { padding: 12px; }
   .arch-stat b { font-size: 20px; }
