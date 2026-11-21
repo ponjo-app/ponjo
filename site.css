@@ -325,21 +325,22 @@ a { color: var(--accent); }
 .arch-label-over { background: none; }
 /* the comparison: the design system's table, its cells words that wrap, who uses each way under its name, the blackboard column in ink */
 .arch-stage.arch-summary { justify-content: safe center; overflow-y: auto; }
-.arch-compare { max-width: 960px; }
-.arch-compare :is(th, td) { padding: 8px 12px; text-align: left; vertical-align: top; white-space: normal; line-height: 1.45; }
-.arch-compare td:first-child { max-width: none; width: 16%; overflow: visible; }
-.arch-who { display: block; margin-top: 2px; color: var(--text-faint); font-size: 12px; font-weight: 400; }
+.arch-compare { max-width: 960px; font-size: 24px; }
+.arch-compare :is(th, td) { padding: 16px 24px; text-align: left; vertical-align: top; white-space: normal; line-height: 1.4; }
+.arch-compare th { color: var(--text); font-size: 24px; font-weight: 600; }
+.arch-compare td:first-child { max-width: none; width: 26%; overflow: visible; color: var(--text-soft); font-size: 18px; }
+.arch-who { display: block; margin-top: 4px; color: var(--text-faint); font-size: 16px; font-weight: 400; }
 .arch-compare td:last-child { color: var(--text); }
 /* the outcome: what you get, then the numbers as tiles */
 .arch-stage.arch-outcome { justify-content: safe center; overflow-y: auto; }
-.arch-outcome-body { display: flex; flex-direction: column; gap: 24px; width: 100%; max-width: 720px; }
-.arch-gets { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0; list-style: none; color: var(--text-soft); font-size: 16px; line-height: 1.5; }
+.arch-outcome-body { display: flex; flex-direction: column; gap: 32px; width: 100%; max-width: 880px; }
+.arch-gets { display: flex; flex-direction: column; gap: 12px; margin: 0; padding: 0; list-style: none; color: var(--text-soft); font-size: 28px; line-height: 1.4; }
 .arch-gets b { color: var(--text); font-weight: 600; }
 .arch-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
-.arch-stat { display: flex; flex-direction: column; gap: 4px; padding: 16px; border-radius: 10px; background: var(--bg-soft); }
-.arch-stat b { font-size: 24px; font-weight: 600; font-variant-numeric: tabular-nums; }
-.arch-stat span { color: var(--text-soft); font-size: 12px; }
-.arch-note { margin: 0; color: var(--text-faint); font-size: 12px; line-height: 1.5; }
+.arch-stat { display: flex; flex-direction: column; gap: 6px; padding: 20px 24px; border-radius: 10px; background: var(--bg-soft); }
+.arch-stat b { font-size: 44px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.arch-stat span { color: var(--text-soft); font-size: 18px; }
+.arch-note { margin: 0; color: var(--text-faint); font-size: 18px; line-height: 1.5; }
 /* the loop going round: a dot in ink, and the box it reaches, ringed for a moment */
 .arch-story { --signal: color-mix(in srgb, var(--mint) 52%, var(--text)); }
 .arch-ink.arch-flow, .arch-ink.arch-pulse { stroke: var(--signal); stroke-width: 2.5; }
@@ -349,7 +350,11 @@ a { color: var(--accent); }
 
 @media (max-width: 560px) {
   .arch-cover h1, .arch-point h2 { font-size: 24px; }
-  .arch-compare :is(th, td) { padding: 6px; font-size: 12px; }
+  .arch-compare :is(th, td) { padding: 10px 8px; font-size: 15px; }
+  .arch-compare td:first-child { font-size: 13px; }
+  .arch-who { font-size: 12px; }
+  .arch-gets { font-size: 18px; }
   .arch-stat { padding: 12px; }
-  .arch-stat b { font-size: 20px; }
+  .arch-stat b { font-size: 24px; }
+  .arch-stat span, .arch-note { font-size: 13px; }
 }
