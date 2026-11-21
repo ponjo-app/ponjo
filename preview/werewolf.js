@@ -18,6 +18,7 @@ import { $, el, message, models, notice, typingMessage } from './game-page.js';
 import { DECIDE, HUMAN, MAX_SPEECH, PERSONAS, ROLE_NAMES, begin, decided, expire, fail, isPerson, land, newGame, plan, prompt, retry, show, turn } from './werewolf-runtime.js';
 
 const TURN = 90_000; // ms a turn may take; then everyone still due is taken as doing nothing
+const SVG = 'http://www.w3.org/2000/svg';
 
 setBuddies(PERSONAS.map(({ id }) => ({ id, name: id })));
 setOwner(HUMAN);
@@ -49,7 +50,7 @@ function changed() {
 // real table, and each call lasts at least its time, so how long it takes
 // says nothing of who acted in it. It follows the game a call at a time.
 const CALLS = ['dusk', 'wolves', 'seer', 'witch'];
-const CALL_MS = [2500, 4000, 4000, 4000];
+const CALL_MS = [3000, 8000, 8000, 8000]; // long enough for a player's thinking (at night at most NIGHT_THINK) and the model's answer
 const CALL_TEXT = {
   dusk: 'Night falls. Everyone, close your eyes.',
   wolves: 'Werewolves, open your eyes and pick a kill.',
@@ -82,14 +83,24 @@ function timeTurn() {
     changed();
   }, TURN) };
 }
-setInterval(() => game && drawClock(), 1000);
 
 // One run of a player: one model call, and its proposal to the writer. A
 // model answers faster than a person can follow, so a player takes at least
 // its own time to think, and a speech comes after it is seen typing it.
-const PACE = { Rosa: [1600, 3000], Jax: [600, 1400], Wen: [1800, 3400], Otis: [1200, 2600], Priya: [900, 1800], Bo: [1400, 2800], Nell: [1600, 3200] }; // ms, from and to
+// Each player's pace, as a person's at a table: `think`, ms from and to
+// before they act; `type`, ms a character as they type a speech.
+const PACE = {
+  Rosa: { think: [3500, 6500], type: 75 },
+  Jax: { think: [1500, 3000], type: 45 },
+  Wen: { think: [4500, 8000], type: 90 },
+  Otis: { think: [3000, 6000], type: 60 },
+  Priya: { think: [2500, 4500], type: 55 },
+  Bo: { think: [3000, 5500], type: 85 },
+  Nell: { think: [4000, 7500], type: 80 },
+};
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, Math.max(0, ms)));
-const typeTime = (text) => Math.min(4000, Math.max(800, text.length * 30));
+const NIGHT_THINK = 5000; // ms a night action is thought over at most, so it fits in its call
+const typeTime = (id, text) => Math.min(15_000, Math.max(1500, text.length * PACE[id].type));
 
 async function run({ id, kind }) {
   const here = game;
@@ -105,13 +116,13 @@ async function run({ id, kind }) {
       args = JSON.parse(calls.find((c) => c.name === 'decide')?.args ?? '{}');
     } catch {}
     const proposal = decided({ thinking: text, ...args });
-    const [from, to] = PACE[id];
+    const [from, to] = PACE[id].think.map((ms) => (kind === 'kill' || kind === 'check' || kind === 'potion' ? Math.min(ms, NIGHT_THINK) : ms));
     await wait(from + Math.random() * (to - from) - (performance.now() - started));
     if (here !== game) return;
     if ((kind === 'speak' || kind === 'last') && proposal.say.trim()) {
       typing.add(id);
       draw();
-      await wait(typeTime(proposal.say));
+      await wait(typeTime(id, proposal.say));
       typing.delete(id);
     }
     if (here !== game) return;
@@ -137,6 +148,7 @@ function startGame(size) {
   call = { day: 0, at: 0, since: 0 };
   formAt = '';
   shown = null;
+  arrowsFor = '';
   for (const node of seats) node.remove();
   seats = game.players.map((id, i) => seatNode(id, i, game.players.length));
   $('.ww-ring').append(...seats);
@@ -146,7 +158,7 @@ function startGame(size) {
 // Before the first night, the players say hello round the fire, each in
 // seat order, a line every second or so: lines written for them, so no
 // model is asked. Then night falls.
-const HELLO_MS = 1400;
+const HELLO_MS = 2200;
 let hellos = { going: false, said: [] };
 function greet() {
   const here = game;
@@ -173,23 +185,35 @@ const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const label = (id) => (isPerson(id) ? 'You' : id);
 const cap = (text) => text[0].toUpperCase() + text.slice(1);
 const roleName = (role) => cap(ROLE_NAMES[role]);
-function roleLabel(role) {
-  const label = el('span', 'ww-role-label');
-  const mark = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+const WORD = { wolf: 'Wolf', seer: 'Seer', witch: 'Witch', villager: 'Villager', good: 'Good' }; // a role on its token; good: the seer found them no wolf
+// One of the page's symbols (site/werewolf.html): a role's, the claw or the ballot.
+function symbol(name) {
+  const mark = document.createElementNS(SVG, 'svg');
   mark.classList.add('ww-role-mark');
   mark.setAttribute('viewBox', '0 0 24 24');
   mark.setAttribute('aria-hidden', 'true');
-  const use = document.createElementNS(mark.namespaceURI, 'use');
-  use.setAttribute('href', `#ww-${role}`);
+  const use = document.createElementNS(SVG, 'use');
+  use.setAttribute('href', `#ww-${name}`);
   mark.append(use);
-  label.append(mark, roleName(role));
-  return label;
+  return mark;
+}
+// A role token: a disc in the role's colour with its symbol, then its word;
+// a guess has its disc dashed and empty, and a question mark.
+function token(role, guess = false) {
+  const node = el('span', 'ww-token');
+  node.dataset.role = role;
+  if (guess) node.dataset.guess = '';
+  const disc = el('span', 'ww-token-disc');
+  disc.append(role === 'good' ? icon('check') : symbol(role));
+  node.append(disc, `${WORD[role]}${guess ? '?' : ''}`);
+  return node;
 }
 function faceOf(id) {
   const avatar = el('span', `pj-avatar${isPerson(id) ? '' : ' pj-avatar-agent'}`);
   avatar.append(isPerson(id) ? personFace('You', id) : agentFace(id));
   return avatar;
 }
+// A seat: the face, with its badges round it and, for the person, the ring that drains on their turn; the plate, a name and vote dots.
 function seatNode(id, i, n) {
   const node = el('button', 'ww-seat');
   node.type = 'button';
@@ -197,18 +221,32 @@ function seatNode(id, i, n) {
   node.style.setProperty('--a', `${90 + (360 * i) / n}deg`); // you at the bottom, the rest round in seat order
   const face = el('span', 'pj-agent-face');
   face.dataset.presence = 'idle';
-  face.append(faceOf(id));
+  const mark = (className, at) => {
+    const node = Object.assign(el('span', className), { hidden: true });
+    node.dataset.at = at;
+    return node;
+  };
+  face.append(faceOf(id), mark('ww-badge', 'status'), Object.assign(el('span', 'ww-claw'), { hidden: true }));
+  if (isPerson(id)) {
+    const ring = document.createElementNS(SVG, 'svg');
+    ring.classList.add('ww-timer');
+    ring.setAttribute('viewBox', '0 0 40 40');
+    ring.innerHTML = '<circle cx="20" cy="20" r="18" pathLength="100"/>';
+    face.append(ring);
+  }
   const plate = el('div', 'pk-plate');
   const name = el('span', 'pk-name');
   name.append(Object.assign(el('span', 'pk-position', String(i + 1)), { title: `Seat ${i + 1}` }), label(id));
-  plate.append(name, el('span', 'pk-tag'), el('span', 'ww-chips'));
-  node.append(face, plate, el('span', 'ww-say'));
+  const roles = el('span', 'ww-idents');
+  roles.append(mark('ww-ident', 'fact'), mark('ww-ident', 'note'));
+  plate.append(name, roles, el('span', 'ww-dots'), el('span', 'pk-tag'));
+  node.append(face, plate);
   return node;
 }
 
 // What the person may do to seat `i` now, if anything: { verb, type }.
 function actionOn(v, i) {
-  if (!v.due || !v.seats[i].alive || (v.phase === 'night' && !called(KIND_CALL[v.due.kind]))) return null;
+  if (!myTurn(v) || !v.seats[i].alive) return null;
   const k = v.due.kind;
   if (k === 'kill' && !v.pack.includes(i)) return { verb: 'Kill', type: 'kill' };
   if (i === v.seat) return null;
@@ -217,61 +255,53 @@ function actionOn(v, i) {
   if (k === 'potion' && v.due.poison) return { verb: 'Poison', type: 'poison' };
   return null;
 }
+// The person may act now: it is their turn, and at night the narrator has called them.
+const myTurn = (v) => Boolean(v.due) && (v.phase !== 'night' || called(KIND_CALL[v.due.kind]));
 
 // The last vote, while it shows: from its result until the next vote begins.
 const lastVote = (v) => (v.phase === 'vote' ? null : v.log.findLast((e) => e.type === 'vote'));
-// How each dead player died, as everyone saw it.
-function deaths(v) {
-  const out = new Map();
-  for (const e of v.log) {
-    if (e.type === 'dawn') for (const i of e.deaths) out.set(i, `Died, night ${e.day}`);
-    if (e.type === 'vote' && e.out !== null) out.set(e.out, `Voted out, day ${e.day}`);
-  }
-  return out;
-}
 
-// What a seat shows under its name: what it is doing or did, as far as the person may know.
-function tag(v, i, died) {
+/**
+ * What the person knows of seat `i`, as marks on its face, and in words for
+ * its tooltip: `fact` (its role, or the seer's check), `note` (the person's
+ * guess, dashed), `status` (voted, or how it died: a ballot or the moon),
+ * `claw` (the night's victim, to the pack and the witch), `dots` (its votes).
+ * Each mark is [key, node, kind, words].
+ */
+function marks(v, i) {
   const id = game.players[i];
-  const s = v.seats[i];
-  const awake = v.phase !== 'night' || (v.pack?.includes(i) && call.at === 1) || i === v.seat; // at night, others' runs would say who has a role
-  if (!s.alive && !(v.phase === 'last' && v.speaker === i)) return [died.get(i) ?? 'Dead', 'dead'];
-  if (v.phase === 'over') return ['', ''];
-  if (awake && game.notes[id]?.failed) return ['Can\'t reach the model', 'failed'];
-  if (v.speaker === i) return [typing.has(id) ? 'Speaking…' : i === v.seat ? 'Your turn' : v.phase === 'last' ? 'Last words…' : 'Thinking…', 'wait'];
-  if (v.phase === 'vote') return v.voted.includes(i) ? ['Voted', ''] : ['Voting…', 'wait'];
-  if (v.phase === 'night' && v.pack?.includes(i) && call.at === 1) {
-    const pick = v.log.findLast((e) => e.type === 'pick' && e.day === v.day && e.seat === i);
-    return pick ? [`Kill: ${label(game.players[pick.target])}`, ''] : ['Choosing…', 'wait'];
+  const out = { ...identity(v, i), status: null, claw: null, dots: 0, words: [] };
+  for (const e of v.log) {
+    if (e.type === 'dawn' && e.deaths.includes(i)) out.status = [`died:${e.day}`, () => icon('moon'), 'dead', `Died, night ${e.day}`];
+    if (e.type === 'vote' && e.out === i) out.status = [`out:${e.day}`, () => symbol('ballot'), 'dead', `Voted out, day ${e.day}`];
+    if (e.type === 'save' && e.target === i && v.seats[i].alive) out.status = [`saved:${e.day}`, () => symbol('witch'), '', `You saved them, night ${e.day}`];
   }
+  if (v.phase === 'vote' && v.voted.includes(i)) out.status = ['voted', () => symbol('ballot'), 'voted', 'Has voted'];
+  const tonight = (type) => v.phase === 'night' && v.log.some((e) => e.type === type && e.day === v.day && e.target === i);
+  if ((tonight('kill') && v.pack) || (tonight('attacked') && called('witch'))) out.claw = v.pack ? 'The pack\'s kill tonight' : 'Attacked tonight';
   const vote = lastVote(v);
-  if (vote && i in vote.votes) return [vote.votes[i] === null ? 'Abstained' : `Voted ${label(game.players[vote.votes[i]])}`, 'fold'];
-  return ['', ''];
+  if (vote) {
+    out.dots = Object.values(vote.votes).filter((t) => t === i).length;
+    if (i in vote.votes) out.words.push(vote.votes[i] === null ? 'Abstained' : `Voted ${label(game.players[vote.votes[i]])}`);
+    if (out.dots) out.words.push(`${out.dots} vote${out.dots > 1 ? 's' : ''}`);
+  }
+  out.words.unshift(...[out.fact, out.status, out.note].filter(Boolean).map((m) => m[3]), ...(out.claw ? [out.claw] : []));
+  if (!isPerson(id)) out.words.push(PERSONAS.find((p) => p.id === id).blurb);
+  return out;
 }
 
-// What the person knows of seat `i`, as chips on its plate: [text, kind].
-// Facts first (its role, the seer's check, the witch's night, the pack's
-// pick, its votes), then the person's own guess, dashed.
-function chips(v, i) {
-  const out = [];
+// What the person knows of seat `i`'s role, as tokens, each [key, node, kind,
+// words]: `fact` (its role, if they know it, or the seer's check), `note`
+// (their own guess). On its seat, and by its name in the chat.
+function identity(v, i) {
   const role = v.seats[i].role;
-  if (role) out.push([roleLabel(role), role === 'wolf' ? 'wolf' : '']);
-  else {
-    const check = v.log.findLast((e) => e.type === 'check' && e.target === i);
-    if (check) out.push([check.wolf ? roleLabel('wolf') : 'Good', check.wolf ? 'wolf' : '']);
-  }
-  const tonight = (type) => v.phase === 'night' && v.log.some((e) => e.type === type && e.day === v.day && e.target === i);
-  if (tonight('attacked') && called('witch')) out.push(['Attacked tonight', '']);
-  if (tonight('kill') && v.pack) out.push(['The pack\'s kill', 'wolf']);
-  for (const e of v.log) {
-    if (e.type === 'save' && e.target === i) out.push([`Saved, night ${e.day}`, '']);
-    if (e.type === 'poison' && e.target === i) out.push([`Poisoned, night ${e.day}`, '']);
-  }
-  const vote = lastVote(v);
-  const votes = vote ? Object.values(vote.votes).filter((t) => t === i).length : 0;
-  if (votes) out.push([`${votes} vote${votes > 1 ? 's' : ''}`, '']);
-  if (notes.has(i) && v.phase !== 'over') out.push([[roleLabel(notes.get(i)), '?'], 'note']);
-  return out;
+  const check = !role && v.log.findLast((e) => e.type === 'check' && e.target === i);
+  const guess = v.phase === 'over' ? null : notes.get(i);
+  return {
+    fact: role ? [`role:${role}`, () => token(role), '', roleName(role)]
+      : check ? [`check:${check.wolf}`, () => token(check.wolf ? 'wolf' : 'good'), '', check.wolf ? 'The seer found a werewolf' : 'The seer found them good'] : null,
+    note: guess ? [`note:${guess}`, () => token(guess, true), '', `Your guess: ${roleName(guess)}`] : null,
+  };
 }
 
 // A face's eyes: shut at night unless the narrator called its role and the person may know it; shut for good once dead.
@@ -287,135 +317,209 @@ function presence(v, i) {
   return running.has(id) || v.speaker === i || (i === v.seat && v.due) ? 'working' : 'idle';
 }
 
+// A badge on a face: changed, it flips in; gone, it goes.
+function badge(node, mark) {
+  const key = mark?.[0] ?? '';
+  if (node.dataset.key === key) return;
+  node.dataset.key = key;
+  node.hidden = !mark;
+  if (!mark) return;
+  node.replaceChildren(...[mark[1]()].flat());
+  if (mark[2]) node.dataset.kind = mark[2];
+  else delete node.dataset.kind;
+  if (!still) node.animate([{ transform: 'rotateY(90deg) scale(0.4)', opacity: 0 }, { transform: 'none', opacity: 1 }], { duration: 420, easing: 'cubic-bezier(0.3, 1.5, 0.5, 1)' });
+}
+
 function drawRing(v) {
-  const died = deaths(v);
-  const said = v.phase === 'gather' ? hellos.said.at(-1) : v.log.findLast((e) => (e.type === 'speech' || e.type === 'last') && e.day === v.day && !e.silent);
   for (const [i, node] of seats.entries()) {
     const id = game.players[i];
+    const m = marks(v, i);
     node.toggleAttribute('data-dead', !v.seats[i].alive);
     node.toggleAttribute('data-turn', v.speaker === i);
     node.toggleAttribute('data-pickable', Boolean(actionOn(v, i)));
+    node.title = [i === v.seat ? 'You' : id, ...m.words].join(' · ');
     $('.pj-agent-face', node).dataset.presence = presence(v, i);
-    const [text, kind] = tag(v, i, died);
-    const tagNode = $('.pk-tag', node);
-    if (tagNode.textContent !== text) {
-      Object.assign(tagNode, { textContent: text }).dataset.kind = kind;
-      if (!still) tagNode.animate([{ opacity: 0, transform: 'scale(0.8)' }, { opacity: 1, transform: 'none' }], { duration: 250, easing: 'ease-out' });
-    }
-    $('.ww-chips', node).replaceChildren(...chips(v, i).map(([t, k]) => {
-      const chip = el('span', 'ww-chip');
-      chip.append(...[t].flat());
-      if (k) chip.dataset.kind = k;
-      return chip;
-    }));
-    // what was said last, in a bubble toward the fire, while the day lasts
-    const bubble = $('.ww-say', node);
-    const isTyping = typing.has(id) && v.speaker === i;
-    bubble.classList.toggle('pk-typing', isTyping);
-    if (isTyping) bubble.replaceChildren(el('i'), el('i'), el('i'));
-    else bubble.textContent = said?.seat === i && v.phase !== 'vote' && v.phase !== 'night' ? said.text : '';
-    bubble.title = bubble.textContent;
+    for (const at of ['fact', 'note', 'status']) badge($(`[data-at="${at}"]`, node), m[at]);
+    $('.ww-claw', node).hidden = !m.claw;
+    if (!$('.ww-claw', node).firstChild) $('.ww-claw', node).append(symbol('claw'));
+    // votes as dots, each popping in after its arrow lands
+    const dots = $('.ww-dots', node);
+    if (dots.childElementCount !== m.dots) dots.replaceChildren(...Array.from({ length: m.dots }, (_, k) => Object.assign(el('i'), { style: `animation-delay: ${votesIn + k * 120}ms` })));
+    // only a model that can't be reached is said in words
+    const failed = (v.phase !== 'night' || v.pack?.includes(i) || i === v.seat) && game.notes[id]?.failed;
+    $('.pk-tag', node).textContent = failed ? 'Can\'t reach the model' : '';
+    $('.pk-tag', node).dataset.kind = 'failed';
   }
+  drawTimer(v);
 }
 
-// Who voted for whom: an arrow from each voter's face to their pick's, from
-// the vote's result until the next vote; during a vote, only the person's own.
+// Your turn: a ring round your face that drains as your time runs out.
+function drawTimer(v) {
+  const ring = $('.ww-timer', seats[v.seat]);
+  const on = myTurn(v) && clock.ends > 0;
+  ring.classList.toggle('ww-timer-on', on);
+  if (!on || ring.dataset.at === clock.at) return;
+  ring.dataset.at = clock.at;
+  const circle = ring.firstChild;
+  circle.style.animation = 'none';
+  void circle.getBoundingClientRect();
+  circle.style.animation = `ww-drain ${TURN}ms linear ${clock.ends - TURN - Date.now()}ms forwards`;
+}
+
+// Arrows from face to face: who voted for whom, from the vote's result until
+// the next vote, drawn in one by one when the result comes; during a vote,
+// only the person's own; at night, to a wolf, the pack's picks.
+let votesIn = 0; // ms until the last arrow of a new result lands, for the dots
+let arrowsFor = ''; // the result whose arrows were drawn in
 function drawVotes(v) {
   const svg = $('.ww-votes');
-  for (const line of svg.querySelectorAll('line')) line.remove();
   const vote = lastVote(v);
-  const pairs = vote ? Object.entries(vote.votes).filter(([, t]) => t !== null).map(([s, t]) => [Number(s), t, false]) : [];
-  if (v.phase === 'vote' && myVote?.day === v.day && myVote.target !== null) pairs.push([v.seat, myVote.target, true]);
-  if (!pairs.length) return;
+  const pairs = vote ? Object.entries(vote.votes).filter(([, t]) => t !== null).map(([s, t]) => [Number(s), t, '']) : [];
+  if (v.phase === 'vote' && myVote?.day === v.day && myVote.target !== null) pairs.push([v.seat, myVote.target, 'mine']);
+  if (v.phase === 'night' && v.pack && call.at === CALLS.indexOf('wolves')) {
+    const picks = new Map(v.log.filter((e) => e.type === 'pick' && e.day === v.day).map((e) => [e.seat, e.target]));
+    for (const [s, t] of picks) pairs.push([s, t, 'pack']);
+  }
+  const fresh = vote && arrowsFor !== `${vote.day}` && v.phase !== 'gather';
+  if (vote) arrowsFor = `${vote.day}`;
   const box = svg.getBoundingClientRect();
+  const drawn = JSON.stringify([pairs, box.width, box.height]); // the same arrows stay, so one drawing in is not cut short
+  if (svg.dataset.drawn === drawn) return;
+  svg.dataset.drawn = drawn;
+  for (const line of svg.querySelectorAll('line')) line.remove();
+  votesIn = 0;
+  if (!pairs.length) return;
   const at = (i) => {
-    const r = $('.pj-agent-face', seats[i]).getBoundingClientRect();
+    const r = $('.pj-avatar', seats[i]).getBoundingClientRect();
     return [r.left + r.width / 2 - box.left, r.top + r.height / 2 - box.top];
   };
-  for (const [from, to, mine] of pairs) {
+  const gap = $('.pj-avatar', seats[0]).offsetWidth / 2 + 6;
+  pairs.forEach(([from, to, kind], k) => {
     const [x1, y1] = at(from);
     const [x2, y2] = at(to);
     const len = Math.hypot(x2 - x1, y2 - y1) || 1;
     const [ux, uy] = [(x2 - x1) / len, (y2 - y1) / len];
-    const gap = $('.pj-agent-face', seats[0]).offsetWidth / 2 + 6;
     const side = from < to ? 3 : -3; // two who voted for each other: side by side
-    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    const line = document.createElementNS(SVG, 'line');
     const set = { x1: x1 + ux * gap - uy * side, y1: y1 + uy * gap + ux * side, x2: x2 - ux * gap - uy * side, y2: y2 - uy * gap + ux * side, 'marker-end': 'url(#ww-head)' };
-    for (const [k, value] of Object.entries(set)) line.setAttribute(k, value);
-    if (mine) line.dataset.mine = '';
+    for (const [key, value] of Object.entries(set)) line.setAttribute(key, value);
+    if (kind) line.dataset.kind = kind;
     svg.append(line);
-  }
+    if (fresh && !still) {
+      const length = len - 2 * gap;
+      line.animate([{ strokeDasharray: length, strokeDashoffset: length, opacity: 1 }, { strokeDasharray: length, strokeDashoffset: 0, opacity: 1 }], { duration: 420, delay: k * 260, easing: 'ease-out', fill: 'backwards' });
+    }
+  });
+  votesIn = fresh && !still ? pairs.length * 260 + 300 : 0;
 }
 addEventListener('resize', () => game && draw());
 
+// Over the clearing: the sun or the moon and the day, and one line that
+// changes with the moment: the narrator's call, the vote, last words.
 function drawCenter(v) {
-  const name = (i) => (i === v.seat ? 'You' : game.players[i]);
-  const alive = v.seats.filter((s) => s.alive).length;
-  $('.ww-board').dataset.time = v.phase === 'night' ? 'night' : 'day';
-  document.documentElement.dataset.theme = v.phase === 'night' ? 'dark' : 'light'; // the game's clock is the page's theme
-  $('.ww-phase').textContent = v.phase === 'gather' ? 'Round the fire' : v.phase === 'over' ? (v.winner === 'village' ? 'The village wins' : 'The werewolves win')
-    : `${v.phase === 'night' ? 'Night' : 'Day'} ${v.day}${v.phase === 'vote' ? ' · Vote' : v.phase === 'last' ? ' · Last words' : ''}`;
-  const dawn = v.log.findLast((e) => e.type === 'dawn');
-  const firstWord = v.phase === 'day' && !v.log.some((e) => e.type === 'speech' && e.day === v.day);
-  $('.ww-sub').textContent = v.phase === 'gather' ? 'Everyone says hello before night falls.' : v.phase === 'over' ? `${(v.role === 'wolf') === (v.winner === 'wolves') ? 'You won' : 'You lost'}. Every role is shown.`
-    : v.phase === 'night' ? CALL_TEXT[CALLS[Math.min(call.at, CALLS.length - 1)]]
-      : v.phase === 'vote' ? `${v.voted.length} of ${alive} have voted.`
-        : `${firstWord && dawn?.day === v.day ? `The sun rises. ${dawn.deaths.length ? `${dawn.deaths.map(name).join(' and ')} died in the night.` : 'No one died.'} ` : ''}${v.speaker === v.seat ? (v.phase === 'last' ? 'Your last words.' : 'Your turn to speak.') : `${name(v.speaker)} ${v.phase === 'last' ? 'gives last words' : 'is speaking'}.`}`;
+  const night = v.phase === 'night';
+  $('.ww-board').dataset.time = night ? 'night' : 'day';
+  document.documentElement.dataset.theme = night ? 'dark' : 'light'; // the game's clock is the page's theme
+  const time = $('.ww-time');
+  if (time.dataset.icon !== (night ? 'moon' : 'sun')) time.replaceChildren(icon(night ? 'moon' : 'sun'));
+  time.dataset.icon = night ? 'moon' : 'sun';
+  $('.ww-phase-text').textContent = v.phase === 'gather' ? 'Round the fire' : v.phase === 'over' ? (v.winner === 'village' ? 'The village wins' : 'The werewolves win') : `${night ? 'Night' : 'Day'} ${v.day}`;
+  const call_ = CALLS[Math.min(call.at, CALLS.length - 1)];
+  const [key, mark, words] = v.phase === 'gather' ? ['gather', null, 'Everyone says hello']
+    : v.phase === 'over' ? ['over', null, (v.role === 'wolf') === (v.winner === 'wolves') ? 'You won' : 'You lost']
+      : night ? [`call:${call_}`, call_ === 'dusk' ? null : symbol(call_ === 'wolves' ? 'wolf' : call_), CALL_TEXT[call_]]
+        : v.phase === 'vote' ? ['vote', symbol('ballot'), 'Vote']
+          : v.phase === 'last' ? ['last', null, 'Last words'] : ['day', null, ''];
+  const sub = $('.ww-sub');
+  if (sub.dataset.key !== key) {
+    sub.dataset.key = key;
+    sub.replaceChildren(...[mark, words].filter(Boolean));
+    if (!still && words) sub.animate([{ opacity: 0, transform: 'translateY(6px)' }, { opacity: 1, transform: 'none' }], { duration: 400, easing: 'ease-out' });
+  }
   $('.ww-over').hidden = v.phase !== 'over';
 }
 
-// ---- you: your role, and what you may do ----
+// ---- you: what you may do now ----
 
 let formAt = ''; // the turn the form was set up for
 const form = $('.ww-act');
 function drawMe(v) {
-  const others = v.pack?.filter((i) => i !== v.seat).map((i) => game.players[i]) ?? [];
-  const line = $('.ww-role');
-  line.replaceChildren('Your role: ', roleLabel(v.role), '.');
-  if (others.length) line.append(` Your pack: ${others.join(' and ')}.`);
-  if (v.potions && v.role === 'witch') line.append(` Save ${v.potions.save ? 'unused' : 'used'}, poison ${v.potions.poison ? 'unused' : 'used'}.`);
-  if (!v.alive && v.phase !== 'over' && v.phase !== 'last') line.append(' You are dead: the game plays on.');
-  line.append(el('span', 'ww-hint', v.phase === 'over' ? '' : ' Click a player to note what you think they are.'));
-  form.hidden = !v.due || (v.phase === 'night' && !called(KIND_CALL[v.due.kind]));
+  $('.ww-hint').hidden = notes.size > 0 || v.phase === 'over';
+  form.hidden = !myTurn(v);
   if (form.hidden) return;
   if (formAt !== v.due.at) {
     formAt = v.due.at;
-    form.elements.text.value = '';
     $('.ww-error').hidden = true;
   }
   const kind = v.due.kind;
   const attacked = v.log.findLast((e) => e.type === 'attacked' && e.day === v.day);
+  const victim = attacked && (attacked.target === v.seat ? 'You were' : `${game.players[attacked.target]} was`);
   $('.ww-ask').textContent = {
-    kill: () => (v.due.round === 2 ? 'The pack disagreed: click a player to pick once more.' : 'Click a player for the pack to kill tonight.'),
-    check: () => 'Click a player to check.',
-    potion: () => `${attacked ? `The wolves attacked ${attacked.target === v.seat ? 'you' : game.players[attacked.target]} tonight.` : v.potions.save ? 'The wolves attacked no one tonight.' : 'You no longer learn whom the wolves attack.'}${v.due.poison ? ' Click a player to poison, or not.' : ''}`,
-    speak: () => 'Your turn to speak.',
-    last: () => 'You were voted out. Your last words?',
-    vote: () => 'Click a player to vote them out, or abstain.',
+    kill: () => (v.due.round === 2 ? 'The pack disagreed: pick again.' : 'Pick tonight\'s kill.'),
+    check: () => 'Pick a player to check.',
+    potion: () => (attacked ? `${victim} attacked tonight.` : 'Use a potion?'),
+    speak: () => 'Your turn to speak: say it in the chat.',
+    last: () => 'Your last words: say them in the chat.',
+    vote: () => 'Pick a player to vote out.',
   }[kind]();
-  const text = form.elements.text;
-  const speaking = kind === 'speak' || kind === 'last';
-  text.hidden = !speaking && kind !== 'kill';
-  text.maxLength = MAX_SPEECH;
-  text.placeholder = kind === 'kill' ? 'A line only the pack hears (optional), then click a player' : 'Say it to the village';
-  $('[data-do="speak"]', form).hidden = !speaking;
-  $('[data-do="speak"]', form).disabled = !text.value.trim();
   $('[data-do="abstain"]', form).hidden = kind !== 'vote';
   $('[data-do="save"]', form).hidden = kind !== 'potion' || !v.due.save;
   if (attacked) $('[data-do="save"]', form).textContent = `Save ${label(game.players[attacked.target])}`;
   $('[data-do="pass"]', form).hidden = kind !== 'potion';
-  drawClock();
-}
-function drawClock() {
-  $('.ww-clock').textContent = !form.hidden && clock.ends ? `${Math.max(0, Math.ceil((clock.ends - Date.now()) / 1000))}s left` : '';
 }
 
-// What the person does, through the writer, as an AI player's proposal.
+// The chat box: what you say, and over it, who will hear you, or that you
+// are muted and why. On your turn to speak, everyone; with your kill, only
+// the pack, the line going with your pick; else no one.
+const chat = $('.ww-chat-box');
+const box = chat.elements.text;
+let chatAt = ''; // the turn the box was set up for
+function drawChat(v) {
+  const kind = myTurn(v) ? v.due.kind : null;
+  const audience = kind === 'speak' || kind === 'last' ? 'all' : kind === 'kill' ? 'pack' : 'muted';
+  if (chatAt !== (v.due?.at ?? '')) {
+    chatAt = v.due?.at ?? '';
+    box.value = '';
+  }
+  chat.dataset.audience = audience;
+  box.disabled = audience === 'muted';
+  box.maxLength = MAX_SPEECH;
+  box.placeholder = { all: kind === 'last' ? 'Your last words…' : 'Speak to the village…', pack: 'A line to the pack, sent with your pick', muted: '' }[audience];
+  $('[type=submit]', chat).disabled = audience !== 'all' || !box.value.trim();
+  const speaker = v.speaker === null ? null : v.speaker === v.seat ? 'You' : game.players[v.speaker];
+  const why = audience === 'all' ? [icon('users'), 'Everyone hears you.']
+    : audience === 'pack' ? [token('wolf'), 'Only the pack hears you.']
+      : [symbol('muted'), !v.alive && !['over', 'last'].includes(v.phase) ? 'You are out: the dead don\'t speak.'
+        : v.phase === 'over' ? 'The game is over.'
+          : v.phase === 'gather' ? 'Muted while everyone says hello.'
+            : v.phase === 'night' ? 'Muted: it is night, and everyone\'s eyes are shut.'
+              : v.phase === 'vote' ? 'Muted while everyone votes.'
+                : speaker ? `Muted: ${speaker} ${speaker === 'You' ? 'have' : 'has'} the floor. You speak in turn.` : 'Muted.'];
+  const line = $('.ww-audience');
+  if (line.dataset.key !== `${audience}:${why.at(-1)}`) {
+    line.dataset.key = `${audience}:${why.at(-1)}`;
+    line.dataset.audience = audience;
+    line.replaceChildren(...why);
+  }
+}
+chat.addEventListener('submit', (event) => {
+  event.preventDefault();
+  if (chat.dataset.audience === 'all') perform('speak');
+});
+box.addEventListener('input', () => drawChat(show(game)));
+box.addEventListener('keydown', (event) => {
+  if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
+    event.preventDefault();
+    chat.requestSubmit();
+  }
+});
+
+// What the person does, through the writer, as an AI player's proposal: what they said goes with it.
 function perform(type, target) {
   const v = show(game);
   if (!v.due) return;
   const action = { type, ...(target !== undefined ? { target } : {}) };
-  const { rejected } = land(game, HUMAN, { at: v.due.at }, { action, say: form.elements.text.value });
+  const { rejected } = land(game, HUMAN, { at: v.due.at }, { action, say: box.value });
   const error = $('.ww-error');
   error.textContent = rejected ?? '';
   error.hidden = !rejected;
@@ -425,20 +529,10 @@ function perform(type, target) {
   }
   changed();
 }
-form.addEventListener('submit', (event) => {
-  event.preventDefault();
-  perform('speak');
-});
+form.addEventListener('submit', (event) => event.preventDefault());
 form.addEventListener('click', (event) => {
-  const type = event.target.closest('[data-do]:not([type=submit])')?.dataset.do;
+  const type = event.target.closest('[data-do]')?.dataset.do;
   if (type) perform(type);
-});
-form.elements.text.addEventListener('input', () => drawMe(show(game)));
-form.elements.text.addEventListener('keydown', (event) => {
-  if (event.key === 'Enter' && !event.shiftKey && !event.isComposing && !$('[data-do="speak"]', form).hidden) {
-    event.preventDefault();
-    form.requestSubmit();
-  }
 });
 
 // ---- a player's menu: what you may do to them, and your guess at what they are ----
@@ -463,7 +557,7 @@ function openMenu(node) {
   const v = shown;
   const id = game.players[i];
   const act = actionOn(v, i);
-  const guess = (role) => item([roleLabel(role), '?'], () => {
+  const guess = (role) => item(token(role, true), () => {
     notes.set(i, role);
     draw();
   }, notes.get(i) === role);
@@ -515,18 +609,23 @@ function drawFeed(v) {
   const names = (list) => list.map(Name).join(' and ');
   const rows = [];
   let last = null; // who said the row before, to run their bubbles together
-  const say = (i, text, note) => {
+  const known = (i) => Object.values(identity(v, i)).filter(Boolean).map((m) => m[1]());
+  const say = (i, text, note, pack = false) => {
     const id = game.players[i];
-    rows.push(message({ face: !isPerson(id) && faceOf(id), name: id, text, note, mine: isPerson(id), more: last === i }));
-    last = i;
+    const row = message({ face: !isPerson(id) && faceOf(id), name: [id, ...known(i)], text, note: pack ? el('span', 'ww-only', 'only the pack') : note, mine: isPerson(id), more: last === i && !pack });
+    if (pack) row.dataset.audience = 'pack';
+    rows.push(row);
+    last = pack ? null : i;
   };
-  const line = (text, secret, ...suffix) => {
+  // a line only some saw: its role's token, and who saw it while the game is on
+  const line = (text, secret, ...more) => {
     const row = notice(text);
+    row.append(...more);
     if (secret) {
       row.dataset.secret = '';
-      row.prepend(roleLabel(secret), ': ');
+      row.prepend(token(secret), ' ');
+      if (v.phase !== 'over') row.append(el('span', 'ww-only', secret === 'wolf' ? 'only the pack' : 'only you'));
     }
-    row.append(...suffix);
     rows.push(row);
     last = null;
   };
@@ -536,9 +635,9 @@ function drawFeed(v) {
     if (e.type === 'night') line(`Night ${e.day} falls. Everyone closes their eyes.`);
     else if (e.type === 'pick') {
       line(`${Name(e.seat)} ${e.seat === v.seat ? 'want' : 'wants'} to kill ${name(e.target)}${e.round === 2 ? ' (second pick)' : ''}.`, secret);
-      if (e.text) say(e.seat, e.text, 'to the pack');
+      if (e.text) say(e.seat, e.text, '', true);
     } else if (e.type === 'kill') line(e.target === null ? 'The pack kills no one.' : `The pack kills ${name(e.target)}.`, secret);
-    else if (e.type === 'check') line(`${Name(e.seat)} checked ${name(e.target)}: ${e.wolf ? '' : 'not '}`, secret, roleLabel('wolf'), '.');
+    else if (e.type === 'check') line(`${Name(e.seat)} checked ${name(e.target)}: `, secret, token(e.wolf ? 'wolf' : 'good'));
     else if (e.type === 'attacked') line(`The wolves attacked ${name(e.target)}.`, secret);
     else if (e.type === 'save') line(`${Name(e.seat)} saved ${name(e.target)}.`, secret);
     else if (e.type === 'poison') line(`${Name(e.seat)} poisoned ${name(e.target)}.`, secret);
@@ -577,17 +676,18 @@ function draw() {
   if (!game) return false;
   if (hellos.going) {
     const v = { ...show(game), phase: 'gather', due: null, log: [] };
-    for (const part of [drawRing, drawCenter, drawMe, drawFeed, drawVotes]) part(v);
+    for (const part of [drawVotes, drawRing, drawCenter, drawMe, drawChat, drawFeed]) part(v);
     return true;
   }
   const held = pace();
   const v = held && game.state.phase !== 'night' && shown ? { ...shown, due: null } : show(game);
   shown = v;
+  drawVotes(v);
   drawRing(v);
   drawCenter(v);
   drawMe(v);
+  drawChat(v);
   drawFeed(v);
-  drawVotes(v);
   return held;
 }
 
@@ -603,7 +703,7 @@ function showThinking() {
     part.open = true;
     const summary = el('summary');
     const meta = el('span', 'pj-trace-meta');
-    meta.append(roleLabel(roles[seat]), game.state.seats[seat].alive ? ', alive' : ', dead');
+    meta.append(token(roles[seat]), game.state.seats[seat].alive ? ' alive' : ' dead');
     summary.append(icon('chevron'), faceOf(id), el('span', 'pj-trace-title', id), meta);
     part.append(summary);
     const thoughts = game.notes[id].thoughts;

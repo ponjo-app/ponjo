@@ -131,6 +131,7 @@ export function models(onUse) {
  * A message: the page's own player's on the right (`mine`); others' on the
  * left with their `face` and, first in a run of theirs (not `more`), their
  * `name`. A `note` after the name says to whom or what it is ("last words").
+ * A name or a note is text, or nodes (a page's own marks beside the words).
  */
 export function message({ face, name, text, note = '', mine = false, more = false }) {
   const item = el('li', 'pk-msg');
@@ -139,8 +140,13 @@ export function message({ face, name, text, note = '', mine = false, more = fals
   if (mine) item.dataset.mine = '';
   else item.append(face);
   if (!more && (!mine || note)) {
-    const head = el('span', 'pk-msg-name', mine ? '' : name);
-    if (note) head.append(el('small', '', note));
+    const head = el('span', 'pk-msg-name');
+    if (!mine) head.append(...[name].flat());
+    if (note) {
+      const small = el('small');
+      small.append(...[note].flat());
+      head.append(small);
+    }
     col.append(head);
   }
   col.append(el('div', 'pk-msg-text', text));
