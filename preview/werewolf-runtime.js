@@ -1,5 +1,4 @@
-// The werewolf page's runtime (site/werewolf.html), the way the poker page's
-// runs (preview/poker-runtime.js) and Ponjo's buddies do
+// The werewolf page's runtime (site/werewolf.html), the way Ponjo's buddies run
 // (docs/agent-runtime.md): one game everyone shares, with a change log;
 // `plan`, which looks at the game and says which players are due, never
 // acting on an event itself; `prompt`, what a player is shown, built from

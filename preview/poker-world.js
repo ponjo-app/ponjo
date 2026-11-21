@@ -1,10 +1,11 @@
-// The poker page's runtime (site/poker.html), the way Ponjo's buddies run
-// (docs/agent-runtime.md), small: one table everyone shares, with a change
-// log; `plan`, which looks at the table and says which players are due, never
-// acting on an event itself; `prompt`, what a player is shown; and `land`,
-// the one writer, which lands proposals in order and turns away a stale or
-// illegal action. Pure but for `table`, which `land` and `say` change; the
-// page (preview/poker.js) runs the model and draws the table.
+// The poker table (site/poker.html) as a world for Ponjo's agent runtime
+// (src/core/runtime.js, the contract; docs/agent-runtime.md): one table
+// everyone shares, with a change log; who is asked (a player's turn, a line
+// to it, a word after a big hand); `prompt`, what a player is shown; and
+// `land`, the one writer, which lands proposals in order and turns away a
+// stale or illegal action, asking the player again, and after MAX_TRIES
+// playing the dealer's fallback. When the players run is the runtime's;
+// the page (preview/poker.js) runs the model and draws the table.
 
 import { act, describeLegal, startHand, view } from './poker-dealer.js';
 
@@ -80,7 +81,7 @@ const FIRST = ['Gary', 'Duke', 'Penny']; // the players at a new table, in seats
 export function newTable(buyIn = STACK, ids = FIRST) {
   const players = [{ id: HUMAN, stack: buyIn }, ...ids.map((id) => ({ id, stack: STACK }))];
   const slots = Object.fromEntries([[HUMAN, 0], ...ids.map((id, k) => [id, ids.length === 3 ? 2 * k + 1 : k + 1])]);
-  return { rev: 0, log: [], players, slots, names: {}, hand: null, handNo: 0, button: -1, topUp: {}, joining: [], leaving: [], chat: [], notes: Object.fromEntries(PERSONAS.map(({ id }) => [id, note()])) };
+  return { rev: 0, log: [], players, slots, names: {}, hand: null, handNo: 0, button: -1, topUp: {}, joining: [], leaving: [], chat: [], turnAt: null, notes: Object.fromEntries(PERSONAS.map(({ id }) => [id, note()])) };
 }
 export const isPerson = (id) => !PERSONAS.some((p) => p.id === id);
 
@@ -135,12 +136,18 @@ export function removePlayer(table, id) {
   say(table, id, PERSONAS.find((p) => p.id === id).bye, { depth: DEPTH });
   return true;
 }
-const note = () => ({ chatSeen: 0, reactSeen: 0, tries: 0, triesKey: '', rejected: '', failed: null, thoughts: [] });
+const note = () => ({ tries: 0, triesKey: '', rejected: '', thoughts: [] });
 
-// Every change lands here: a revision, a line in the log.
+// A time for an ask, each later than the last (the runtime tells asks apart by them).
+let last = 0;
+const stamp = () => new Date((last = Math.max(Date.now(), last + 1))).toISOString();
+
+// Every change lands here: a revision, a line in the log. A deal or an
+// action starts a turn, asked from then (`turnAt`).
 function commit(table, change) {
   table.rev++;
   table.log.push({ rev: table.rev, ...change });
+  if (change.type === 'deal' || change.type === 'action') table.turnAt = stamp();
 }
 
 const seatOf = (table, id) => table.players.findIndex((p) => p.id === id);
@@ -217,22 +224,34 @@ export function deal(table, deck) {
 // A big hand, which every player may react to once: an all-in, or a pot of 15 big blinds.
 export const isBig = (hand) => hand?.street === 'done' && (hand.actions.some((a) => a.allIn) || hand.seats.reduce((sum, s) => sum + s.total, 0) >= 15 * hand.bb);
 
-/**
- * Who is due now, and why: [{ id, turn, lines, react }]. `turn`: it is its
- * turn; `lines`: the chat lines that concern it since its last look; `react`:
- * a big hand just ended. `running` is the ids with a run going, never due.
- */
-export function plan(table, running = new Set()) {
+// What the table asks of AI player `id` now (an Ask, runtime.js), each from
+// the person whose table it is, or from whoever said a line: its turn, once
+// dealt or once its last action was turned away; each chat line that
+// concerns it; and, after a big hand, a word.
+function asksOf(table, id) {
   const hand = table.hand;
-  return table.players.flatMap(({ id }) => {
-    if (isPerson(id) || running.has(id)) return [];
-    const n = table.notes[id];
-    const seat = seatOf(table, id);
-    const turn = hand?.street !== 'done' && hand?.toAct === seat && n.failed?.key !== turnKey(hand);
-    const lines = table.chat.slice(n.chatSeen).filter((line) => concerns(line, id));
-    const react = isBig(hand) && n.reactSeen !== hand.id && !n.failed && after(hand).includes(seat);
-    return turn || lines.length || react ? [{ id, turn, lines, react }] : [];
-  });
+  const seat = seatOf(table, id);
+  const asks = [];
+  const at = (when) => ({ at: when, until: when });
+  if (hand && hand.street !== 'done' && hand.toAct === seat) asks.push({ id: `turn:${turnKey(hand)}`, agent: id, from: HUMAN, ...at(table.turnAt) });
+  for (const line of table.chat) {
+    if (!concerns(line, id)) continue;
+    const by = isPerson(line.by) ? { from: line.by } : { from: line.by, for: line.for, depth: line.depth - 1 }; // an AI player's line asks for whom its run was
+    asks.push({ id: `line:${line.id}`, agent: id, ...by, ...at(line.at) });
+  }
+  if (isBig(hand) && after(hand).includes(seat)) asks.push({ id: `react:${hand.id}`, agent: id, from: HUMAN, ...at(table.turnAt) });
+  return asks;
+}
+
+// What a run of `id` is for, from the asks it was given: { turn, lines (the
+// chat lines that concern it), react }.
+function dueOf(table, asks) {
+  const hand = table.hand;
+  return {
+    turn: asks.some((a) => hand && hand.street !== 'done' && a.id === `turn:${turnKey(hand)}`),
+    lines: asks.filter((a) => a.id.startsWith('line:')).map((a) => table.chat[Number(a.id.slice(5)) - 1]),
+    react: asks.some((a) => a.id.startsWith('react:')),
+  };
 }
 
 // Who has a word after a big hand: two AI players, the winner first, then those still in at the end.
@@ -247,26 +266,13 @@ function concerns(line, id) {
   return line.to.includes(id) || (isPerson(line.by) && !line.to.length);
 }
 
-// A run begins: what it was given counts as seen, as a buddy's run marks the comments it was given.
-// `talk`: whether it may say something this time. Always when the person
-// spoke to it or after a big hand; else as often as its character talks (`roll` < talk).
+// What a run of `id` for `due` is made on, which its proposal lands against
+// (`land`): the hand and turn it saw, what it answers, and `talk`, whether
+// it may say something this time. Always when the person spoke to it or
+// after a big hand; else as often as its character talks (`roll` < talk).
 export function begin(table, id, due, roll = Math.random()) {
-  const n = table.notes[id];
-  n.chatSeen = table.chat.length;
-  if (due.react) n.reactSeen = table.hand.id;
-  n.failed = null;
   const talk = due.react || due.lines.some((l) => isPerson(l.by)) || roll < PERSONAS.find((p) => p.id === id).talk;
   return { hand: table.hand?.id ?? 0, n: table.hand?.n ?? 0, street: table.hand?.street ?? '', turn: due.turn, about: due.lines.at(-1)?.id ?? null, react: due.react, talk };
-}
-
-// A run failed (the model could not be reached): nothing lands; it waits for Retry.
-export function fail(table, id, basis, why) {
-  table.notes[id].failed = { key: basis.turn ? `${basis.hand}:${basis.n}` : 'chat', why };
-  commit(table, { type: 'failed', by: id, why });
-}
-export function retry(table, id) {
-  table.notes[id].failed = null;
-  commit(table, { type: 'retry', by: id });
 }
 
 // The players at the table say hello when the person first sits down, each
@@ -285,11 +291,12 @@ export function react(table, by, emoji) {
   return true;
 }
 
-// A line of chat, by the person, a player or the dealer.
-export function say(table, by, text, { depth = 0, about = null } = {}) {
+// A line of chat, by the person, a player or the dealer; an AI player's
+// run says it `for` the people the run was for.
+export function say(table, by, text, { depth = 0, about = null, for: those } = {}) {
   const body = String(text).trim().slice(0, MAX_SAY);
   if (!body) return null;
-  const line = { id: table.chat.length + 1, by, text: body, to: by === 'dealer' ? [] : names(table, body).filter((n) => n !== by), depth, about, hand: table.hand?.id ?? 0 };
+  const line = { id: table.chat.length + 1, by, text: body, to: by === 'dealer' ? [] : names(table, body).filter((n) => n !== by), depth, about, hand: table.hand?.id ?? 0, at: stamp(), ...(those ? { for: those } : {}) };
   table.chat.push(line);
   commit(table, { type: 'chat', by, line: line.id });
   return line;
@@ -334,6 +341,7 @@ export function land(table, id, basis, proposal) {
     n.tries = n.triesKey === key ? n.tries + 1 : 1;
     n.triesKey = key;
     n.rejected = still ? `Your last action was turned away: ${rejected}` : '';
+    if (still) table.turnAt = stamp(); // asked again
     if (still && n.tries >= MAX_TRIES) {
       force(table, id);
       n.rejected = '';
@@ -346,7 +354,7 @@ export function land(table, id, basis, proposal) {
   if (typeof text === 'string' && text.trim() && basis.talk !== false) {
     const about = basis.about ? table.chat[basis.about - 1] : null;
     const answered = about && isPerson(about.by) && !about.to.includes(id) && table.chat.some((l) => l.about === about.id && !isPerson(l.by));
-    if (!answered) say(table, id, text, { depth: about ? about.depth + 1 : 1, about: about?.id ?? null });
+    if (!answered) say(table, id, text, { depth: about ? about.depth + 1 : 1, about: about?.id ?? null, for: proposal.for });
   }
   return { landed, rejected };
 }
@@ -359,6 +367,78 @@ export function force(table, id) {
   if (before?.street === 'done' || before?.toAct !== seat) return;
   table.hand = act(before, seat, { type: 'check' }).hand ?? act(before, seat, { type: 'fold' }).hand;
   commit(table, { type: 'action', by: id, hand: before.id, action: table.hand.actions[before.actions.length], forced: true });
+}
+
+// ---- the table as a world ----
+
+/**
+ * The table as Ponjo's runtime reaches it: the five calls and what they
+ * need (runtime.js, the contract). `table()` is the table as it is now;
+ * `typing(id, text)` resolves once the page has shown AI player `id`
+ * typing `text` for as long as that takes, so a run's line comes after its
+ * action, as a person's would. The page calls `changed()` after each change
+ * it makes itself; the waits then read the table's log.
+ */
+export function createWorld(table, { typing = async () => {} } = {}) {
+  const waiting = new Set();
+  const changed = () => {
+    for (const done of waiting) done();
+  };
+  const kindOf = (by) => (!by || by === 'dealer' ? 'world' : isPerson(by) ? 'person' : 'agent');
+  return {
+    changed,
+    // How deep players answer each other: the table's rule (DEPTH) holds first.
+    limits: { depth: DEPTH },
+    // The table has no watches.
+    settleMs: 0,
+    print: () => '',
+    wakes: () => false,
+
+    async members() {
+      const t = table();
+      return lineup(t).map(({ id }) => (isPerson(id) ? { id, name: nameOf(t, id), kind: 'person', mayAsk: true } : { id, name: id, kind: 'agent', mayAsk: false }));
+    },
+    async asks() {
+      const t = table();
+      return t.players.filter((p) => !isPerson(p.id)).flatMap((p) => asksOf(t, p.id));
+    },
+    // What `agent` sees for `asks`: `files` is what its run is made on (begin),
+    // `prompt` { rules, situation }.
+    async view(agent, { asks = [] }) {
+      const t = table();
+      const due = dueOf(t, asks);
+      const basis = begin(t, agent.id, due);
+      return { rev: t.rev, files: basis, prompt: prompt(t, agent.id, due, basis.talk) };
+    },
+    async wait(version, deadline) {
+      for (;;) {
+        const t = table();
+        const since = t.log.filter((c) => c.rev > version);
+        if (since.length || performance.now() >= deadline) return { rev: t.rev, log: since.map((c) => ({ rev: c.rev, by: { id: c.by ?? null, kind: kindOf(c.by) }, at: performance.now(), asks: true, stale: false })) };
+        await new Promise((resolve) => {
+          const done = () => {
+            waiting.delete(done);
+            resolve();
+          };
+          waiting.add(done);
+        });
+      }
+    },
+    // A run's proposal ({ thinking, action, react, say }, or null: nothing
+    // to say), landed against what it was made on: the action, then once
+    // the player is seen typing it, its line. Resolves to { landed, rejected }.
+    async propose(agent, version, old, made) {
+      if (!made) return { landed: false, rejected: null };
+      const out = land(table(), agent.id, old.files, { thinking: made.thinking, action: made.action, react: made.react });
+      changed();
+      if (typeof made.say === 'string' && made.say.trim() && old.files.talk) {
+        await typing(agent.id, made.say);
+        land(table(), agent.id, old.files, { say: made.say, for: agent.for });
+        changed();
+      }
+      return out;
+    },
+  };
 }
 
 // ---- what a player is shown ----
