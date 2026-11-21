@@ -618,10 +618,14 @@ actions](#outside-actions)).
 
 ## Refused and failed
 
-- **Refused:** the world turned the proposal away because the board moved
-  on. The asks stay open, the agent is told why, and it decides again on the
-  new view, up to 3 times. Then the world's fallback applies: a doc waits
-  for a person; a game plays a default move.
+- **Refused:** the world turned the proposal away (the board moved on, or
+  the move is not allowed), and nothing landed. The refusal is the world's
+  own change, and what comes of it is the world's: it says why in the
+  agent's next view and asks again, or plays its fallback (a game, a
+  default move after 3 refusals). An ask made again because of a run's
+  proposal carries that run's depth, so a world that keeps refusing comes
+  to rest at its depth limit. The runtime has no notion of a refusal: the
+  ask again is newer than the one the run was given, so the agent is due.
 - **Failed:** the program exited with an error, timed out or could not
   start. Nothing lands. It is shown with Retry and never run again on its
   own: an agent is slow and costs money.
@@ -683,10 +687,15 @@ runs going and the limits. A restart clears it: open asks run again.
 
 ## Agent log
 
-Each look writes what woke it, then each agent's verdict and why (asked in
-which ask, whose change, still typing, at the limit, already running); each
-run's end writes how it ended and what landed. Names, versions and ids
-only, never the world's content. In Ponjo: Settings > Agents > Agent log.
+The runtime tells its host what it does as events (\`trace\`), one format
+for every world: each look, what set it off and each agent's verdict and
+why (asked in which ask, whose change, still typing, at the limit, already
+running), and which runs it started; a look that failed; each run's end,
+how it ended and what landed; the breaker tripping. Only a run's end holds
+the world's content (its view, what it made); the host keeps and shows the
+rest as names, versions and ids. The fields: Event in \`src/core/runtime.js\`.
+In Ponjo the host writes them as the agent log (Settings > Agents > Agent
+log), and each run's end to the runs' log.
 
 ## Security
 
