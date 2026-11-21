@@ -246,14 +246,15 @@ function outline(points) {
 //         shut   ‿ ‿  resting, asleep, and the middle of a blink
 //         happy  ^ ^  pleased
 //         wince  > <  it went wrong
+//         dead   ✕ ✕  a player out of a game (the werewolf page)
 //   mouth one curve from corner to corner: up is a smile, down a frown;
 //         open, a second curve under it, filled; round, its top lifts into an o.
 //
 // An open eye never half-closes: lids are open or shut, as in a cartoon, so
 // a face never looks sly or bored. Eyes change shape behind a blink (life.js).
 //
-//   shape  open, happy or wince (an open eye with lid 0 is shut)
-//   lid    0 shut … 1 open; a happy or wince eye pops in with it
+//   shape  open, happy, wince or dead (an open eye with lid 0 is shut)
+//   lid    0 shut … 1 open; a happy, wince or dead eye pops in with it
 //   size   how big the open eyes are: 1 as drawn, more wide and eager, with a second glint
 //   ex, ey where the eyes look
 //   curve  -1 frown … 1 smile;  open 0 … 1;  round 0 … 1;  width;  mx  the mouth to a side
@@ -353,6 +354,10 @@ function eyeOf(g, x, y, side) {
       // ^ : pops up from flat as `lid` opens
       const h = 9 * clamp(lid, 0.1, 1.2);
       line.setAttribute('d', `M${f(cx - 5)} ${f(cy + 2)}Q${f(cx)} ${f(cy + 2 - h)} ${f(cx + 5)} ${f(cy + 2)}`);
+    } else if (e.shape === 'dead') {
+      // ✕: two strokes crossing, growing from a dot as `lid` opens
+      const r = 4.2 * clamp(lid, 0.1, 1.2);
+      line.setAttribute('d', `M${f(cx - r)} ${f(cy - r)}L${f(cx + r)} ${f(cy + r)}M${f(cx + r)} ${f(cy - r)}L${f(cx - r)} ${f(cy + r)}`);
     } else if (e.shape === 'wince') {
       // > < pointing in, squeezed tight
       const h = 4.6 * clamp(lid, 0.15, 1.2);
