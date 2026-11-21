@@ -60,6 +60,14 @@
         <path d="M9 2h6v4h-1v3q7 4 7 8 0 5-9 5t-9-5q0-4 7-8V6H9Z"/>
         <path d="M5 16q4-3 8-1t6 0q2 5-7 5-7 0-7-4Z" fill="var(--text)" stroke="none"/>
       </symbol>
+      <symbol id="ww-claw" viewBox="0 0 24 24">
+        <path d="M5 3q3 9-1 18M11 2q3 10-1 20M17 3q3 9-1 18" fill="none"/>
+      </symbol>
+      <symbol id="ww-ballot" viewBox="0 0 24 24">
+        <path d="M8 3h8v10H8Z"/>
+        <path d="M3 12h18v9H3Z"/>
+        <path d="M7 15h10" fill="none"/>
+      </symbol>
     </defs></svg>
   <section class="ww-room" aria-label="The game">
     <div class="ww-board">
@@ -94,7 +102,7 @@
         </div>
       </div>
       <div class="ww-center">
-        <p class="ww-phase" aria-live="polite"></p>
+        <p class="ww-phase" aria-live="polite"><span class="ww-time"></span><span class="ww-phase-text"></span></p>
         <p class="ww-sub"></p>
         <div class="pk-between ww-over" hidden>
           <button class="pj-primary" type="button" data-action="new">New game</button>
@@ -103,7 +111,6 @@
       </div>
     </div>
     <div class="ww-me">
-      <p class="ww-role"></p>
       <form class="ww-act" hidden>
         <p class="ww-ask"></p>
         <textarea class="pj-input ww-text" name="text" rows="3" autocomplete="off" aria-label="What you say"></textarea>
@@ -114,8 +121,8 @@
           <button class="pj-primary" type="submit" data-do="speak">Speak</button>
         </div>
         <p class="pk-error ww-error" hidden></p>
-        <p class="ww-clock"></p>
       </form>
+      <p class="ww-hint">Click a player to note what you think they are.</p>
     </div>
   </section>
   <aside class="pk-chat" aria-label="The village">
