@@ -247,6 +247,12 @@ a { color: var(--accent); }
 .arch-board b { color: var(--chalk); font-size: 13px; }
 .arch-board .arch-bar { height: 8px; }
 .arch-board .arch-bar:not(.arch-mine) { background: var(--chalk); opacity: 0.5; }
+/* the board's version; a line in a row with, while it is a proposal, dashed, the version it was made on; refused, in red */
+.arch-version { display: inline-block; margin-left: 8px; font-weight: 400; opacity: 0.75; }
+.arch-line { display: flex; align-items: center; gap: 8px; }
+.arch-board .arch-bar.arch-proposed { background: color-mix(in srgb, var(--buddy) 30%, transparent); outline: 1.5px dashed var(--buddy); outline-offset: 1px; }
+.arch-on { color: var(--chalk); font-size: 11px; opacity: 0.75; white-space: nowrap; }
+.arch-line.arch-refused .arch-bar { background: color-mix(in srgb, var(--red) 60%, transparent); outline-color: var(--red); }
 
 /* a scene as a diagram: boxes and arrows in an SVG, members over it at the same points (sketch in arch-story.js) */
 .arch-sketch { position: absolute; top: 50%; left: 50%; translate: -50% -50%; container-type: inline-size; }

@@ -510,15 +510,21 @@ async function delegate(scene) {
   await scene.wait(1800);
 }
 
-// The blackboard: one board, and everyone in front of it. The buddies watch
-// it; all three walk up and write on it at once, each with a pen raised and
-// each line in its writer's colour, then step back.
+// One board: Clippy, You and Otto write on it at once. Your typing lands as
+// you type; an agent's line is a proposal, dashed, made on the version it
+// saw, until the writer lands it. Each landing moves the board on a version.
+// Clippy's, made on v1, lands first; Otto's, also made on v1, comes in when
+// the board is at v3, so it is refused: Otto looks again, proposes on v3,
+// and it lands.
 async function blackboard(scene) {
   watching(true);
   const s = sketch(scene.stage);
   const up = s.upright;
   const board = s.place(paper('Doc', [85, 60]), [s.W / 2, up ? 150 : 120], up ? [360, 220] : [520, 180]);
   board.classList.add('arch-board');
+  let version = 1;
+  const stamp = el('span', 'arch-version', 'v1');
+  board.firstChild.append(stamp);
   const back = up ? s.H - 70 : s.H - 60; // where they stand, then where they write
   const close = up ? 330 : 285;
   const gap = up ? 120 : 170;
@@ -528,6 +534,36 @@ async function blackboard(scene) {
     who[name].x = x;
     s.place(who[name].node, [x, back]);
   }
+  const say = (name, words) => {
+    who[name].tag.textContent = words;
+  };
+  // `name` writes a line `width` wide; an agent's is a proposal on this version
+  const write = async (name, width, ms) => {
+    const row = el('div', 'arch-line');
+    const line = bar(width);
+    paint(line, name);
+    row.append(line);
+    if (name !== 'You') {
+      line.classList.add('arch-proposed');
+      row.append(el('span', 'arch-on', `on v${version}`));
+    }
+    board.append(row);
+    who[name].face.dataset.presence = 'working';
+    pose(who[name], { arms: 'write' });
+    if (!still) who[name].parts['arms-write'].animate([{ rotate: '-6deg' }, { rotate: '8deg' }, { rotate: '-6deg' }], { duration: 300, iterations: Math.round(ms / 300) });
+    await scene.move(line, [{ width: '0%' }, { width: `${width}%` }], ms, 'ease-in-out');
+    who[name].face.dataset.presence = 'idle';
+    pose(who[name], {});
+    return row;
+  };
+  // the writer lands it: solid, and the board one version on
+  const land = (row) => {
+    row.querySelector('.arch-proposed')?.classList.remove('arch-proposed');
+    row.querySelector('.arch-on')?.remove();
+    version += 1;
+    stamp.textContent = `v${version}`;
+    return scene.move(stamp, [{ scale: '1.5' }, { scale: '1' }], 360, SPRING);
+  };
 
   await scene.wait(800);
   const walk = (from, to) => Promise.all(Object.values(who).map(async (member, i) => {
@@ -535,20 +571,35 @@ async function blackboard(scene) {
     await run(scene, s, member, [[member.x, from], [member.x, to]], 900, { walk: true });
   }));
   await walk(back, close);
-  const lines = [['You', 55], ['Clippy', 75], ['Otto', 45]].map(async ([name, width], i) => {
-    const line = bar(width);
-    paint(line, name);
-    await scene.wait(i * 300);
-    board.append(line);
-    who[name].face.dataset.presence = 'working';
-    pose(who[name], { arms: 'write' });
-    if (!still) who[name].parts['arms-write'].animate([{ rotate: '-6deg' }, { rotate: '8deg' }, { rotate: '-6deg' }], { duration: 300, iterations: 6 });
-    await scene.move(line, [{ width: '0%' }, { width: `${width}%` }], 1800, 'ease-in-out');
-    who[name].face.dataset.presence = 'idle';
-    pose(who[name], {});
-  });
-  await Promise.all(lines);
-  await scene.wait(600);
+  const clippy = write('Clippy', 75, 1400).then(land);
+  await scene.wait(100);
+  const otto = write('Otto', 50, 2600);
+  await scene.wait(100);
+  await Promise.all([clippy, write('You', 55, 1800).then(land)]);
+
+  // Otto's, made on v1, comes in at v3: refused
+  const stale = await otto;
+  stale.classList.add('arch-refused');
+  stale.querySelector('.arch-on').textContent = 'on v1 ✕';
+  say('Otto', `Refused: board is at v${version}`);
+  pose(who.Otto, { look: 'shocked' });
+  await Promise.all([
+    hop(scene, who.Otto, 12, 480),
+    scene.move(stale, [{ translate: '0' }, { translate: '-6px' }, { translate: '6px' }, { translate: '-4px' }, { translate: '0' }], 420, 'ease-in-out'),
+  ]);
+  await scene.wait(1300);
+  await scene.fade(stale, 0, 300);
+  stale.remove();
+  pose(who.Otto, {});
+  say('Otto', 'Looking again…');
+  await scene.wait(1100);
+  say('Otto', '');
+  await land(await write('Otto', 50, 1200));
+  say('Otto', 'Landed');
+  await scene.wait(1100);
+  say('Otto', '');
+
+  await scene.wait(400);
   await walk(close, back);
   pose(who.You, {});
   await scene.wait(2200);
