@@ -1,7 +1,8 @@
-// What the game pages (site/poker.html, site/werewolf.html) share: the
-// model their AI players run on, with the card for the visitor's own key;
-// and the log's messages, as a chat app shows them. Their markup and
-// styles are poker.css's .pk-setup and .pk-feed.
+// What the game pages (site/poker.html, site/werewolf.html, site/spy.html)
+// share: the model their AI players run on, with the card for the
+// visitor's own key; the log's messages, as a chat app shows them; and the
+// votes round a table, as arrows. Their markup and styles are poker.css's
+// .pk-setup and .pk-feed, and werewolf.css's .ww-votes.
 
 /* global document */
 
@@ -166,3 +167,44 @@ export function typingMessage(face, name) {
 
 // A line from the game itself, not a player: a dealer's, a game master's.
 export const notice = (text) => el('li', 'pk-dealer', text);
+
+// ---- the votes ----
+
+const SVG = 'http://www.w3.org/2000/svg';
+
+/**
+ * Arrows in `svg` from face to face, who voted for whom: `pairs` [from, to,
+ * kind] by seat, `faceOf(seat)` the face's node; drawn in one by one when
+ * `animate`. The same arrows stay as they are, so one drawing in is not cut
+ * short. Returns ms until the last lands, or null when nothing changed.
+ */
+export function arrows(svg, pairs, faceOf, animate) {
+  const box = svg.getBoundingClientRect();
+  const drawn = JSON.stringify([pairs, box.width, box.height]);
+  if (svg.dataset.drawn === drawn) return null;
+  svg.dataset.drawn = drawn;
+  for (const line of svg.querySelectorAll('line')) line.remove();
+  if (!pairs.length) return 0;
+  const at = (i) => {
+    const r = faceOf(i).getBoundingClientRect();
+    return [r.left + r.width / 2 - box.left, r.top + r.height / 2 - box.top];
+  };
+  const gap = faceOf(pairs[0][0]).offsetWidth / 2 + 6;
+  pairs.forEach(([from, to, kind], k) => {
+    const [x1, y1] = at(from);
+    const [x2, y2] = at(to);
+    const len = Math.hypot(x2 - x1, y2 - y1) || 1;
+    const [ux, uy] = [(x2 - x1) / len, (y2 - y1) / len];
+    const side = from < to ? 3 : -3; // two who voted for each other: side by side
+    const line = document.createElementNS(SVG, 'line');
+    const set = { x1: x1 + ux * gap - uy * side, y1: y1 + uy * gap + ux * side, x2: x2 - ux * gap - uy * side, y2: y2 - uy * gap + ux * side, 'marker-end': 'url(#ww-head)' };
+    for (const [key, value] of Object.entries(set)) line.setAttribute(key, value);
+    if (kind) line.dataset.kind = kind;
+    svg.append(line);
+    if (animate) {
+      const length = len - 2 * gap;
+      line.animate([{ strokeDasharray: length, strokeDashoffset: length, opacity: 1 }, { strokeDasharray: length, strokeDashoffset: 0, opacity: 1 }], { duration: 420, delay: k * 260, easing: 'ease-out', fill: 'backwards' });
+    }
+  });
+  return animate ? pairs.length * 260 + 300 : 0;
+}

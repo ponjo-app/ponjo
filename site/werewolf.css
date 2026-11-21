@@ -1,19 +1,25 @@
 /* The werewolf page (site/werewolf.html): the players sit round a fire in a
    clearing, with what you may do under it and the village's log beside.
    The game's clock is the page's theme, light by day and dark by night
-   (werewolf.js sets it). The clearing is the one place with the game's own
-   colours (the campfire tokens in app.css, site/design.html); its plates,
-   tags, log, menus and dialogs are the poker page's (poker.css). */
+   (werewolf.js sets it). The clearing, the whole game area from the page's
+   edge to the log, is the one place with the game's own colours (the
+   campfire tokens in app.css, site/design.html); its plates, tags, log,
+   menus and dialogs are the poker page's (poker.css), the log on paper. */
 
 body, .pk-chat, .pk-plate { transition: background-color 1.2s, color 1.2s; }
 
 .ww-room { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+
+/* the game area: the ground edge to edge, from the page's side to the log, which stays paper */
+.ww-page { max-width: none; gap: 0; padding: 0; }
+.ww-page .ww-room { position: relative; isolation: isolate; padding: 24px 16px; background: radial-gradient(ellipse at 50% 45%, var(--camp-day) 40%, var(--camp-day-deep)); }
+.ww-page .ww-room::before { content: ""; position: absolute; inset: 0; z-index: -1; background: radial-gradient(ellipse at 50% 45%, var(--camp-night) 40%, var(--camp-night-deep)); opacity: 0; transition: opacity 1.2s; }
+.ww-page .ww-room:has(.ww-board[data-time="night"])::before { opacity: 1; }
+.ww-page .pk-chat { top: 53px; height: calc(100vh - 53px); background: var(--canvas); }
 .ww-board { position: relative; display: flex; flex-direction: column; width: min(100%, 620px, calc(100vh - 420px)); min-width: 380px; margin: 8px auto 72px; }
 
-/* the clearing: day ground, night laid over it as the narrator calls night */
-.ww-ring { position: relative; aspect-ratio: 1; border-radius: 50%; background: radial-gradient(closest-side, var(--camp-day) 70%, var(--camp-day-deep)); }
-.ww-ring::before { content: ""; position: absolute; inset: 0; border-radius: 50%; background: radial-gradient(closest-side, var(--camp-night) 70%, var(--camp-night-deep)); opacity: 0; transition: opacity 1.2s; }
-.ww-board[data-time="night"] .ww-ring::before { opacity: 1; }
+/* the players' circle round the fire */
+.ww-ring { position: relative; aspect-ratio: 1; }
 
 /* the fire: burning at night, its light wide; out by day, a wisp of smoke over its logs */
 .ww-fire { position: absolute; left: 50%; top: 50%; width: 88px; height: 88px; translate: -50% -50%; pointer-events: none; }
@@ -133,7 +139,11 @@ body, .pk-chat, .pk-plate { transition: background-color 1.2s, color 1.2s; }
   .ww-flame, .ww-flame-core, .ww-smoke, .ww-claw .ww-role-mark, .ww-dots i, .ww-badge, .ww-ident { animation: none; }
   .ww-seat .pj-avatar { transition: none; }
 }
+@media (max-width: 960px) {
+  .ww-page .pk-chat { height: 50vh; border-left: 0; border-top: 1px solid var(--border); }
+}
 @media (max-width: 640px) {
+  .ww-page .ww-room { padding: 16px 12px; }
   .ww-board { width: calc(100% - 72px); min-width: 0; }
   .ww-ring { aspect-ratio: 3 / 4; } /* an oval, so the seats have room above and below each other */
   .ww-center { margin-bottom: 56px; }
