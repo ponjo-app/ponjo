@@ -3,7 +3,8 @@
 // preview/doc-stub.js), the start window (desktop/start.html,
 // the app played by preview/start-stub.js); Folder mode's project is
 // preview/demo; the architecture page's story (preview/arch-story.js); the
-// poker table (preview/poker.js); and the werewolf game (preview/werewolf.js).
+// poker table (preview/poker.js); the werewolf game (preview/werewolf.js); and
+// the spy table (preview/spy.js).
 // Run after `npm run build`:
 // node preview/build.js
 import { build } from 'esbuild';
@@ -58,6 +59,7 @@ await stub('doc-stub.js', 'esm', { DEMO: JSON.stringify(DEMO) });
 await stub('arch-story.js', 'esm'); // site/architecture.html's story
 await stub('poker.js', 'esm'); // site/poker.html's table
 await stub('werewolf.js', 'esm'); // site/werewolf.html's game
+await stub('spy.js', 'esm'); // site/spy.html's table
 
 const start = (await readFile(join(root, 'desktop', 'start.html'), 'utf8'))
   .replaceAll('../dist/web/', '')

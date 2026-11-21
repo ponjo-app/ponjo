@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Who's the Spy with AI players · Ponjo</title>
+<meta name="description" content="Play Who's the Spy with AI players and friends: everyone gets a secret word, one or two get a different one, and no one knows which they have. With your own API key, or Ponjo's.">
+<link rel="icon" href="../build/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../dist/web/app.css">
+<link rel="stylesheet" href="site.css">
+<link rel="stylesheet" href="poker.css">
+<link rel="stylesheet" href="werewolf.css">
+<link rel="stylesheet" href="spy.css">
+</head>
+<body>
+<header class="site-header">
+  <a class="site-brand" href="index.html">Ponjo</a>
+  <nav class="site-nav" aria-label="Pages">
+    <a href="index.html">Download</a>
+    <a href="introduction.html">Introduction</a>
+    <details class="site-drop" name="site-menu">
+      <summary>Development<svg class="pj-icon" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></summary>
+      <div class="pj-block-menu site-menu">
+        <a href="architecture.html">Architecture</a>
+        <a href="design.html">Design system</a>
+        <a href="avatars.html">Avatar design</a>
+      </div>
+    </details>
+    <details class="site-drop" name="site-menu">
+      <summary aria-current="true">Preview<svg class="pj-icon" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></summary>
+      <div class="pj-block-menu site-menu">
+        <a href="../dist/preview/">Doc mode</a>
+        <a href="../dist/preview/?folder">Folder mode</a>
+        <a href="poker.html">Poker</a>
+        <a href="werewolf.html">Werewolf</a>
+        <a href="spy.html" aria-current="page">Who's the Spy</a>
+      </div>
+    </details>
+  </nav>
+  <span class="pj-spacer"></span>
+  <a class="pj-icon-btn" href="https://github.com/ponjo-app/ponjo" aria-label="GitHub" title="GitHub"><svg class="pj-icon" viewBox="0 0 24 24"><path fill="currentColor" stroke="none" d="M12 2C6.48 2 2 6.58 2 12.23c0 4.52 2.87 8.35 6.84 9.7.5.1.68-.22.68-.49l-.01-1.7c-2.78.62-3.37-1.38-3.37-1.38-.46-1.18-1.11-1.5-1.11-1.5-.91-.64.07-.62.07-.62 1 .07 1.53 1.06 1.53 1.06.9 1.57 2.35 1.12 2.92.86.09-.67.35-1.12.64-1.38-2.22-.26-4.56-1.14-4.56-5.07 0-1.12.39-2.04 1.03-2.76-.1-.26-.45-1.3.1-2.71 0 0 .84-.28 2.75 1.05A9.36 9.36 0 0 1 12 6.98c.85 0 1.71.12 2.51.34 1.91-1.33 2.75-1.05 2.75-1.05.55 1.41.2 2.45.1 2.71.64.72 1.03 1.64 1.03 2.76 0 3.94-2.34 4.81-4.57 5.06.36.32.68.94.68 1.9l-.01 2.81c0 .27.18.6.69.49A10.1 10.1 0 0 0 22 12.23C22 6.58 17.52 2 12 2z"/></svg></a>
+  <button class="pj-icon-btn site-theme" type="button" aria-label="Switch theme" title="Switch theme"><svg class="pj-icon site-moon" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"/></svg><svg class="pj-icon site-sun" viewBox="0 0 24 24"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg></button>
+</header>
+<main class="pk-page ww-page sp-page">
+  <svg class="ww-role-symbols" aria-hidden="true" focusable="false"><defs>
+      <symbol id="sp-spy" viewBox="0 0 24 24">
+        <path d="M7 9 8.5 3.5Q12 5 15.5 3.5L17 9Z"/>
+        <path d="M2 10q10 3 20 0" fill="none"/>
+        <circle cx="8" cy="16" r="3"/><circle cx="16" cy="16" r="3"/>
+        <path d="M11 16h2" fill="none"/>
+      </symbol>
+      <symbol id="sp-civilian" viewBox="0 0 24 24">
+        <circle cx="12" cy="8" r="4"/>
+        <path d="M4 21q0-7 8-7t8 7Z"/>
+      </symbol>
+      <symbol id="ww-ballot" viewBox="0 0 24 24">
+        <path d="M8 3h8v10H8Z"/>
+        <path d="M3 12h18v9H3Z"/>
+        <path d="M7 15h10" fill="none"/>
+      </symbol>
+      <symbol id="ww-muted" viewBox="0 0 24 24">
+        <path d="M4 5h16v11H10l-5 4v-4H4Z" fill="none"/>
+        <path d="M3 3l18 18" fill="none"/>
+      </symbol>
+    </defs></svg>
+  <section class="ww-room" aria-label="The game">
+    <div class="ww-board">
+      <div class="ww-ring">
+        <svg class="ww-votes" aria-hidden="true"><defs><marker id="ww-head" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0 10 5 0 10z" fill="currentColor"/></marker></defs></svg>
+        <div class="sp-word" aria-live="polite"><span class="sp-word-label"></span><b class="sp-word-text"></b></div>
+      </div>
+      <div class="ww-center">
+        <p class="ww-phase" aria-live="polite"><span class="ww-phase-text"></span></p>
+        <p class="ww-sub"></p>
+        <div class="pk-between ww-over" hidden>
+          <button class="pj-primary" type="button" data-action="new">New game</button>
+          <button class="pj-secondary" type="button" data-action="thinking">Show their thinking</button>
+        </div>
+      </div>
+    </div>
+    <div class="ww-me">
+      <p class="ww-ask"></p>
+      <p class="pk-error ww-error" hidden></p>
+    </div>
+  </section>
+  <aside class="pk-chat" aria-label="The table">
+    <div class="pk-chat-head"><h2>The table</h2><span class="pj-spacer"></span><button class="pj-link-button" type="button" data-action="invite">Invite friends</button></div>
+    <ol class="pk-feed"></ol>
+    <p class="ww-audience" aria-live="polite"></p>
+    <form class="pk-say ww-chat-box">
+      <textarea class="pj-input" name="text" rows="1" autocomplete="off" aria-label="Your clue"></textarea>
+      <button class="pk-send" type="submit" aria-label="Send" title="Send"><svg class="pj-icon" viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button>
+    </form>
+    <p class="pk-fine"><span class="pk-model"></span> <button class="pj-link-button" type="button" data-action="key">Use your own key</button></p>
+  </aside>
+</main>
+
+<form class="pj-join ww-start" hidden>
+  <h1 class="pk-setup-title">Who's the Spy</h1>
+  <p class="pj-join-text">Everyone gets a secret word. Most share one; the spies, one at five or six players and two at seven or eight, get another, close to it. No one knows which they have. Each round, everyone describes their word in one clue, never saying it, then all vote out the player they think is a spy. The civilians win when the spies are out; the spies, when they make it to the last three.</p>
+  <div class="pk-field">Players
+    <div class="pj-segmented" role="radiogroup" aria-label="Players">
+      <button type="button" role="radio" aria-checked="false" data-size="5">5</button>
+      <button type="button" role="radio" aria-checked="true" data-size="6">6</button>
+      <button type="button" role="radio" aria-checked="false" data-size="7">7</button>
+      <button type="button" role="radio" aria-checked="false" data-size="8">8</button>
+    </div>
+  </div>
+  <p class="pj-join-text sp-people"></p>
+  <div class="pk-setup-buttons">
+    <button class="pj-secondary" type="button" data-action="invite">Invite friends</button>
+    <button class="pj-primary" type="submit">Start</button>
+  </div>
+</form>
+
+<form class="pj-join sp-join" hidden>
+  <h1 class="pk-setup-title">Join the table</h1>
+  <p class="pj-join-text sp-join-text">A friend invited you to Who's the Spy. You play from the next game they start.</p>
+  <label class="pk-field">Your name<input class="pj-input" name="name" maxlength="20" autocomplete="nickname" required></label>
+  <div class="pk-setup-buttons">
+    <button class="pj-secondary" type="button" data-action="watch">Just watch</button>
+    <button class="pj-primary" type="submit">Join</button>
+  </div>
+</form>
+
+<form class="pj-join pk-invite" hidden>
+  <h1 class="pk-setup-title">Invite friends</h1>
+  <p class="pj-join-text">Friends who open this link join the table, and play from the next game. The table stays open while this page does.</p>
+  <label class="pk-field">Your name, as friends see it<input class="pj-input" name="name" maxlength="20" autocomplete="nickname" placeholder="Host"></label>
+  <div class="pk-field">Link
+    <div class="pk-link"><input class="pj-input" name="link" readonly placeholder="Opening the table…" aria-label="Link"><button class="pj-secondary" type="button" data-action="copy">Copy</button></div>
+  </div>
+  <div class="pk-setup-buttons">
+    <button class="pj-primary" type="button" data-action="invite-done">Done</button>
+  </div>
+</form>
+
+<form class="pj-join pk-setup" hidden>
+  <h1 class="pk-setup-title">Use your own key</h1>
+  <p class="pj-join-text">The AI players run on Claude Haiku 5.5, on Ponjo. With your own key, they run on the model you pick.</p>
+  <div class="pj-segmented" role="radiogroup" aria-label="Provider">
+    <button type="button" role="radio" aria-checked="true" data-provider="anthropic">Anthropic</button>
+    <button type="button" role="radio" aria-checked="false" data-provider="openai">OpenAI-compatible</button>
+  </div>
+  <label class="pk-field" data-for="openai">Base URL<input class="pj-input" name="endpoint" placeholder="https://api.openai.com/v1" autocomplete="off"></label>
+  <label class="pk-field">API key<input class="pj-input" name="key" type="password" autocomplete="off" required></label>
+  <div class="pk-field" data-for="anthropic">Model
+    <div class="pj-segmented" role="radiogroup" aria-label="Model">
+      <button type="button" role="radio" aria-checked="true" data-model="claude-haiku-5-5">Haiku 5.5</button>
+      <button type="button" role="radio" aria-checked="false" data-model="claude-sonnet-5-5">Sonnet 5.5</button>
+      <button type="button" role="radio" aria-checked="false" data-model="claude-opus-5-5">Opus 5.5</button>
+    </div>
+  </div>
+  <label class="pk-field" data-for="openai">Model<input class="pj-input" name="model" placeholder="gpt-5-mini" autocomplete="off"></label>
+  <p class="pj-join-text">Your key stays in this browser and goes only to <span data-host>api.anthropic.com</span>, never to a Ponjo server. Each AI player's turn is one call billed to your key.</p>
+  <p class="pk-error" hidden></p>
+  <div class="pk-setup-buttons">
+    <button class="pj-secondary" type="button" data-action="cancel">Cancel</button>
+    <button class="pj-primary" type="submit">Use my key</button>
+  </div>
+</form>
+
+<dialog class="pk-thinking" aria-label="Their thinking">
+  <div class="pk-thinking-head"><h2></h2><button class="pj-icon-btn" type="button" data-action="close" aria-label="Close"><svg class="pj-icon" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
+  <div class="pj-trace pk-thinking-body"></div>
+</dialog>
+
+<script type="module" src="../dist/preview/spy.js"></script>
+<script type="module" src="site.js"></script>
+</body>
+</html>

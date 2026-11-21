@@ -13,7 +13,7 @@
 
 import { agentFace, personFace, setBuddies, setOwner } from '../web/faces.js';
 import { icon } from '../web/icons.js';
-import { $, el, message, models, notice, typingMessage } from './game-page.js';
+import { $, arrows, el, message, models, notice, typingMessage } from './game-page.js';
 import { DECIDE, HUMAN, MAX_SPEECH, PERSONAS, ROLE_NAMES, cast, createWorld, decided, expire, isPerson, land, newGame, show, turn } from './werewolf-world.js';
 import { createRuntime } from '../src/core/runtime.js';
 import { createRuntimePanel } from '../web/runtime-panel.js';
@@ -413,7 +413,6 @@ function drawTimer(v) {
 let votesIn = 0; // ms until the last arrow of a new result lands, for the dots
 let arrowsFor = ''; // the result whose arrows were drawn in
 function drawVotes(v) {
-  const svg = $('.ww-votes');
   const vote = lastVote(v);
   const pairs = vote ? Object.entries(vote.votes).filter(([, t]) => t !== null).map(([s, t]) => [Number(s), t, '']) : [];
   if (v.phase === 'vote' && myVote?.day === v.day && myVote.target !== null) pairs.push([v.seat, myVote.target, 'mine']);
@@ -423,35 +422,8 @@ function drawVotes(v) {
   }
   const fresh = vote && arrowsFor !== `${vote.day}` && v.phase !== 'gather';
   if (vote) arrowsFor = `${vote.day}`;
-  const box = svg.getBoundingClientRect();
-  const drawn = JSON.stringify([pairs, box.width, box.height]); // the same arrows stay, so one drawing in is not cut short
-  if (svg.dataset.drawn === drawn) return;
-  svg.dataset.drawn = drawn;
-  for (const line of svg.querySelectorAll('line')) line.remove();
-  votesIn = 0;
-  if (!pairs.length) return;
-  const at = (i) => {
-    const r = $('.pj-avatar', seats[i]).getBoundingClientRect();
-    return [r.left + r.width / 2 - box.left, r.top + r.height / 2 - box.top];
-  };
-  const gap = $('.pj-avatar', seats[0]).offsetWidth / 2 + 6;
-  pairs.forEach(([from, to, kind], k) => {
-    const [x1, y1] = at(from);
-    const [x2, y2] = at(to);
-    const len = Math.hypot(x2 - x1, y2 - y1) || 1;
-    const [ux, uy] = [(x2 - x1) / len, (y2 - y1) / len];
-    const side = from < to ? 3 : -3; // two who voted for each other: side by side
-    const line = document.createElementNS(SVG, 'line');
-    const set = { x1: x1 + ux * gap - uy * side, y1: y1 + uy * gap + ux * side, x2: x2 - ux * gap - uy * side, y2: y2 - uy * gap + ux * side, 'marker-end': 'url(#ww-head)' };
-    for (const [key, value] of Object.entries(set)) line.setAttribute(key, value);
-    if (kind) line.dataset.kind = kind;
-    svg.append(line);
-    if (fresh && !still) {
-      const length = len - 2 * gap;
-      line.animate([{ strokeDasharray: length, strokeDashoffset: length, opacity: 1 }, { strokeDasharray: length, strokeDashoffset: 0, opacity: 1 }], { duration: 420, delay: k * 260, easing: 'ease-out', fill: 'backwards' });
-    }
-  });
-  votesIn = fresh && !still ? pairs.length * 260 + 300 : 0;
+  const ms = arrows($('.ww-votes'), pairs, (i) => $('.pj-avatar', seats[i]), fresh && !still);
+  if (ms !== null) votesIn = ms;
 }
 addEventListener('resize', () => game && draw());
 
