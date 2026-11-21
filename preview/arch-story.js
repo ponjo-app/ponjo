@@ -11,7 +11,6 @@ import { INK, agentFace, buddyColor, personFace, setBuddies, setOwner, setPeople
 const motionPreference = window.matchMedia('(prefers-reduced-motion: reduce)');
 let still = motionPreference.matches;
 const STOPPED = Symbol('stopped');
-const OPENHANDS = 'https://github.com/OpenHands/extensions/blob/cfd1d0f873c0d97e0a1c30093b34c6364a1141c0/skills/github-repo-monitor/scripts/main.py#L1012-L1042';
 
 setBuddies(['Clippy', 'Otto', 'Pip'].map((name) => ({ id: name, name })));
 setOwner('You');
@@ -615,13 +614,61 @@ function race(scene) {
   const [zx, zy] = at(RUNNERS.Pip);
   const zzz = s.place(el('span', 'arch-zzz'), [zx + 34, zy - 66]);
   zzz.append(...'zzz'.split('').map((z) => el('i', '', z)));
-  const t = { s, up, at, arc, who, zzz, middle: [cx, cy] };
+  const t = { s, at, arc, who, zzz };
   // `name` runs its leg round the track, and is pleased with itself
   t.runs = async (name, { arms = null, to = LEGS[name][1] } = {}) => {
     await run(scene, s, who[name], arc(LEGS[name][0], to), 1300 + (to - LEGS[name][0]) * 4, { arms, look: 'run' });
     pose(who[name], { arms: arms ?? 'stand', right: true });
   };
   return t;
+}
+
+// A die's face `n` as one path of dots, in its 24×24 box.
+const PIPS = [[], [[0, 0]], [[-5, -5], [5, 5]], [[-5, -5], [0, 0], [5, 5]], [[-5, -5], [5, -5], [-5, 5], [5, 5]],
+  [[-5, -5], [5, -5], [0, 0], [-5, 5], [5, 5]], [[-5, -5], [5, -5], [-5, 0], [5, 0], [-5, 5], [5, 5]]];
+const pips = (n) => PIPS[n].map(([x, y]) => `M${x - 2.2} ${y}a2.2 2.2 0 1 0 4.4 0a2.2 2.2 0 1 0 -4.4 0`).join('');
+
+// Handed on by an agent: Pip is awake and ready this time. Clippy runs its
+// leg with the baton and stops where it should hand on; whether it does is
+// an LLM's call, a die rolled in its head. It says it is done and turns
+// away, baton in hand: nothing dropped, nothing sent, and Pip waits on.
+async function handoff(scene) {
+  watching(false);
+  const t = race(scene);
+  const { who } = t;
+  who.Pip.face.dataset.presence = 'idle';
+  t.zzz.remove();
+  who.Pip.tag.textContent = 'Ready!';
+  pose(who.Clippy, { arms: 'baton' });
+
+  await scene.wait(800);
+  const stop = 245;
+  await t.runs('Clippy', { arms: 'baton', to: stop });
+  // it stops to decide: a die rolls in a thought over its head
+  const [hx, hy] = t.at(stop);
+  const thought = t.s.place(el('span', 'arch-think'), [hx - 34, hy - 70]);
+  const die = svg('-12 -12 24 24', 'arch-die');
+  const face = path(pips(5), 'arch-die-pips');
+  die.append(path('M-9 -11h18a2 2 0 0 1 2 2v18a2 2 0 0 1 -2 2h-18a2 2 0 0 1 -2 -2v-18a2 2 0 0 1 2 -2Z', 'arch-die-body'), face);
+  thought.append(die);
+  thought.style.opacity = '0';
+  await scene.fade(thought, 1, 200);
+  const roll = scene.move(die, [{ rotate: '0deg' }, { rotate: '720deg' }], 1400, 'cubic-bezier(0.2, 0.6, 0.3, 1)');
+  for (const n of [2, 6, 3, 4, 2, 5, 6, 3]) {
+    face.setAttribute('d', pips(n));
+    await scene.wait(160);
+  }
+  face.setAttribute('d', pips(1));
+  await roll;
+  await scene.wait(700);
+  await scene.fade(thought, 0, 200);
+  // it came up no: Clippy is done, it thinks, and turns away with the baton
+  who.Clippy.tag.textContent = 'Done!';
+  pose(who.Clippy, { arms: 'baton' });
+  await scene.wait(1400);
+  who.Pip.tag.textContent = 'Waiting…';
+  await hop(scene, who.Pip, 6, 360);
+  await scene.wait(2600);
 }
 
 // Triggered by events: each runner runs when the one before hands it the
@@ -632,10 +679,6 @@ async function events(scene) {
   const t = race(scene);
   const { who } = t;
   pose(who.Clippy, { arms: 'baton' });
-  // in the middle of the track, where it is empty: that this happens for real
-  const link = el('a', 'arch-infield', 'Even OpenHands drops requests when a poll fails.');
-  link.href = OPENHANDS;
-  t.s.place(link, t.middle, t.up ? [180, 60] : [260, 40]);
   // Otto waits for the handoff and reacts when the baton lands.
   who.Otto.tag.textContent = 'Waiting…';
 
@@ -693,13 +736,13 @@ function eye() {
   return { node, pupil, lid };
 }
 
-// Reconciled from state: the runtime is an eye that watches the board, and
-// a wire runs from it to each one's headset. A change on the board opens
-// it; it reads the board, finds who is due and calls only them, in their
-// headset, again while they sleep on; done, they sleep again. Clippy's edit
-// leaves Otto's line due, so Otto is next: nobody wires that. Pip, with
-// nothing due, sleeps all through.
-async function state(scene) {
+// The runtime's room: a board with a line for each of Clippy, Otto and Pip;
+// the runtime as an eye under it, its lid half shut while nothing changes;
+// a wire from it to each one's headset; all three asleep. A change on the
+// board opens the eye (`due`); it reads the board and calls whoever is due
+// down their wire (`call`); they wake, do their line and sleep again
+// (`wake`); with nothing due, its lid falls (`rest`).
+function room(scene) {
   watching(false);
   const s = sketch(scene.stage);
   const up = s.upright;
@@ -730,6 +773,8 @@ async function state(scene) {
   }
   const { node, pupil, lid } = eye();
   s.place(node, middle, [92, 92]);
+  const restarting = s.place(el('span', 'arch-label', 'Restarting…'), [middle[0], middle[1] - 62]);
+  restarting.style.opacity = '0';
   const who = {};
   const zzz = {};
   for (const [name, at] of Object.entries(seats)) {
@@ -767,8 +812,8 @@ async function state(scene) {
     waves.style.display = 'none';
     pulse.remove();
   };
-  // `name` wakes with a start, does its line, and sleeps again
-  const wake = async (name) => {
+  // `name` wakes with a start, does its line, says `said` if anything, and sleeps again
+  const wake = async (name, said = '') => {
     zzz[name].style.opacity = '0';
     who[name].face.dataset.presence = 'idle';
     pose(who[name], { look: 'shocked' });
@@ -780,8 +825,24 @@ async function state(scene) {
     const edit = lines[name].querySelector('.arch-bar');
     edit.style.transformOrigin = 'left';
     await scene.move(edit, [{ scale: '0 1' }, { scale: '1 1' }], 650, 'ease-in-out');
+    if (said) {
+      who[name].tag.textContent = said;
+      await scene.wait(1100);
+      who[name].tag.textContent = '';
+    }
     who[name].face.dataset.presence = 'away';
     zzz[name].style.opacity = '';
+  };
+  // the runtime restarts: its eye shuts, a while, and opens with nothing remembered
+  const restart = async () => {
+    await look(middle, 200);
+    await scene.move(lid, [{ scale: lid.style.scale }, { scale: '1 1' }], 360, 'ease-in');
+    lid.style.scale = '1 1';
+    await scene.fade(restarting, 1, 200);
+    await scene.wait(1100);
+    await scene.fade(restarting, 0, 200);
+    await scene.move(lid, [{ scale: '1 1' }, { scale: '1 0' }], 360, 'ease-out');
+    lid.style.scale = '1 0';
   };
   const due = async (name) => {
     lines[name].classList.remove('arch-quiet', 'arch-edited');
@@ -789,24 +850,55 @@ async function state(scene) {
     await read();
     lines[name].classList.add('arch-found');
   };
+  const rest = async () => {
+    await read();
+    await look(middle, 300);
+    await scene.move(lid, [{ scale: '1 0' }, half], 700, 'ease-in-out');
+    lid.style.scale = '1 0.55';
+  };
+  return { who, due, call, wake, restart, read, rest };
+}
 
+// Seen on the board: Clippy does its line, says it is done and sleeps,
+// telling no one, as forgetful as in the handoff before. Its change is the
+// signal: the eye sees Otto's line come due, and calls Otto.
+async function seen(scene) {
+  const { due, call, wake, rest } = room(scene);
+  await scene.wait(900);
+  await due('Clippy');
+  await call('Clippy');
+  await wake('Clippy', 'Done!');
+  await due('Otto');
+  await call('Otto');
+  await wake('Otto');
+  await rest();
+  await scene.wait(2400);
+}
+
+// Reconciled from state: Clippy's edit leaves Otto's line due, so Otto is
+// next: nobody wires that. Otto sleeps through the call, and the runtime
+// restarts: its eye shuts, it forgets all it knew, and on opening reads the
+// board afresh. Otto's line is still lit, so it calls Otto again. Pip, with
+// nothing due, sleeps all through.
+async function state(scene) {
+  const { due, call, wake, restart, read, rest } = room(scene);
   await scene.wait(900);
   // someone asks Clippy on the board: the eye opens, reads, and calls Clippy
   await due('Clippy');
   await call('Clippy');
   await wake('Clippy');
   // Clippy's edit leaves Otto's line due: the eye sees it, and calls Otto,
-  // who sleeps through the first call, so it calls again
+  // who sleeps through the call; the runtime restarts, reads the board
+  // afresh, finds Otto's line still lit, and calls again
   await due('Otto');
   await call('Otto');
   await scene.wait(700);
+  await restart();
+  await read();
   await call('Otto', true);
   await wake('Otto');
   // nothing due: it reads the board once more, and its lid falls
-  await read();
-  await look(middle, 300);
-  await scene.move(lid, [{ scale: '1 0' }, half], 700, 'ease-in-out');
-  lid.style.scale = '1 0.55';
+  await rest();
   await scene.wait(2400);
 }
 
@@ -954,10 +1046,10 @@ const DIFFERENCES = [
   ['Where agents work', 'Apart, each in a session of its own', 'Beside you, on one board'],
   ['The truth', 'Messages in flight and each agent’s memory: a split brain', 'One board; agents remember nothing between runs'],
   ['Who changes it', 'Each agent, on its own copy', 'Only the writer, in order; agents propose'],
-  ['Conflicts', 'Merged by hand, afterwards', 'A stale proposal is refused, re-read and proposed again'],
+  ['Working in parallel', 'Copies go stale, so to stay correct agents take turns', 'The default: at worst a proposal is refused and retried, and the next look still settles the board'],
   ['What wakes an agent', 'A message for it', 'The runtime, reading the board: whoever is due'],
   ['A lost message, a restart', 'The work is lost', 'Nothing lost: the board still says what is due'],
-  ['Who goes next', 'An orchestrator wires it', 'Nobody: the board shows it'],
+  ['Who goes next', 'Whoever sends the next event: often an LLM, which may forget or pick wrong', 'Code, from the board: the same answer every time'],
   ['When it stops', 'When the events run out, or never', 'When what people asked for is met; chains are capped, fights go to a person'],
   ['Fits', 'Fixed flows that split into independent tasks', 'Shared work that people and agents improve together'],
 ];
@@ -1044,11 +1136,13 @@ outcome.once = true;
 const CHAPTERS = [
   ['', '', '', cover],
   ['Where agents work', '', '', point('Agents work beside you, in front of a blackboard,', 'instead of apart from you, in an isolated room.')],
-  ['Where agents work', 'Delegate', 'Each agent works alone on its own copy. The copies clash, and you merge them by hand.', delegate, 'problem'],
-  ['Where agents work', 'Blackboard', 'Everyone works on one board and sees every change. Nothing to hand off, nothing to merge.', blackboard, 'solution'],
+  ['Where agents work', 'Delegate', 'Each agent works on its own copy. Run two at once and one builds on a stale copy, so to stay correct they take turns: wait, review, redo.', delegate, 'problem'],
+  ['Where agents work', 'Blackboard', 'Everyone works on one board at once. At worst a stale proposal is refused and tried again on the new board.', blackboard, 'solution'],
   ['What makes an agent run', '', '', point('Agent orchestration is a state reconciliation problem,', 'instead of an event triggering problem.')],
-  ['What makes an agent run', 'Triggered by events', 'Each agent runs when the one before hands it on. Miss one handoff, and the race stops.', events, 'problem'],
-  ['What makes an agent run', 'Reconciled from state', 'The runtime watches the board and calls only whoever is due, again until it is done. The rest sleep on; nobody wires who goes next, and a missed call costs nothing.', state, 'solution'],
+  ['What makes an agent run', 'Handed on by an agent', 'Each agent must decide to hand on, and that is an LLM’s call: sometimes it forgets, or picks the wrong one. Nothing was lost. It was never sent.', handoff, 'problem'],
+  ['What makes an agent run', 'Seen on the board', 'An agent only does its own work. The change is the signal: code reads the board and finds who is due, the same every time.', seen, 'solution'],
+  ['What makes an agent run', 'Triggered by events', 'Pip is asleep when the baton comes. Miss one handoff, and the race stops.', events, 'problem'],
+  ['What makes an agent run', 'Reconciled from state', 'The runtime watches the board and calls only whoever is due, again until it is done. Nobody wires who goes next, and a missed call or a restart costs nothing: the board still shows who is due.', state, 'solution'],
   ['Architecture', 'Event-triggered, the common way', 'State lives in messages in flight and in each agent’s memory. Lose a message and the work is lost, and someone has to wire who triggers whom.', eventsArchitecture, 'problem'],
   ['Architecture', 'Blackboard', 'One board, one writer. People and agents propose changes, the writer lands them in order, and the runtime reads the board to start whoever is due.', architecture, 'solution'],
   ['Summary', 'Two ways to run many agents', '', summary],
