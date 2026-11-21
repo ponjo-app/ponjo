@@ -1165,6 +1165,111 @@ async function worlds(scene) {
   await scene.wait(1800);
 }
 
+// The world's five calls, as code, beside a poker table: the runtime makes
+// each in turn, its line lit and its answer after it, and the table shows
+// it. A dealer's line wakes it; Otto is asked; Otto's view has his own cards
+// up and the others' down; his call, made on v42, lands; Clippy's raise,
+// made on v42 too, comes in at v43 and is refused.
+const CALLS = [
+  ['members', '()'],
+  ['asks', '()'],
+  ['view', '(member)'],
+  ['wait', '(version)'],
+  ['propose', '(member, version, change)'],
+];
+async function calls(scene) {
+  const s = sketch(scene.stage);
+  const up = s.upright;
+  const card = s.place(el('div', 'arch-code'), up ? [200, 116] : [210, 200], up ? [380, 224] : [400, 230]);
+  const rows = Object.fromEntries(CALLS.map(([name, args]) => {
+    const row = el('div', 'arch-call');
+    const answer = el('span', 'arch-answer');
+    row.append(el('b', '', name), el('span', '', args), answer);
+    card.append(row);
+    return [name, { row, answer }];
+  }));
+  const source = el('a', 'arch-source', 'src/core/runtime.js');
+  source.href = 'https://github.com/ponjo-app/ponjo/blob/main/src/core/runtime.js';
+  card.append(source);
+
+  const table = s.place(paper('Poker', []), up ? [200, 384] : [580, 200], up ? [300, 176] : [300, 190]);
+  table.classList.add('arch-board');
+  let version = 41;
+  const stamp = el('span', 'arch-version', 'v41');
+  table.firstChild.append(stamp);
+  const dealer = el('span', 'arch-on', '');
+  const seats = el('div', 'arch-seats');
+  const hands = {};
+  for (const name of ['Clippy', 'Otto', 'Pip']) {
+    const seat = el('div', 'arch-seat');
+    const hand = el('div', 'arch-cards');
+    for (let i = 0; i < 2; i++) {
+      const c = el('i', 'arch-card');
+      c.style.setProperty('--buddy', buddyColor(name));
+      hand.append(c);
+    }
+    seat.append(face(name), hand);
+    seats.append(seat);
+    hands[name] = seat;
+  }
+  const pot = el('div', 'arch-pot');
+  pot.append(el('span', 'arch-on', 'Pot'));
+  table.append(dealer, seats, pot);
+
+  const call = async (name, answer, ms = 1100) => {
+    for (const { row } of Object.values(rows)) row.classList.remove('arch-call-on');
+    rows[name].row.classList.add('arch-call-on');
+    rows[name].answer.textContent = `→ ${answer}`;
+    await scene.fade(rows[name].answer, 1, 200);
+    await scene.wait(ms);
+  };
+  const bump = () => {
+    version += 1;
+    stamp.textContent = `v${version}`;
+    return scene.move(stamp, [{ scale: '1.5' }, { scale: '1' }], 360, SPRING);
+  };
+  const chip = (name) => {
+    const c = el('i', 'arch-chip arch-proposed');
+    c.style.setProperty('--buddy', buddyColor(name));
+    pot.append(c);
+    return scene.move(c, [{ scale: '0' }, { scale: '1' }], 260, SPRING).then(() => c);
+  };
+
+  await scene.wait(600);
+  // the dealer writes; the runtime, waiting on v41, wakes
+  dealer.textContent = 'Action on Otto';
+  await bump();
+  await call('wait', 'v42');
+  await call('members', 'Clippy, Otto, Pip');
+  await call('asks', 'Otto');
+  // Otto sees his own cards, and the others' face down
+  await call('view', 'Otto’s view', 200);
+  for (const [name, seat] of Object.entries(hands)) seat.classList.toggle('arch-hidden', name !== 'Otto');
+  for (const c of hands.Otto.querySelectorAll('.arch-card')) {
+    await scene.move(c, [{ scale: '1 1' }, { scale: '0 1' }], 160, 'ease-in');
+    c.classList.add('arch-up');
+    await scene.move(c, [{ scale: '0 1' }, { scale: '1 1' }], 200, 'ease-out');
+  }
+  await scene.wait(1100);
+  for (const seat of Object.values(hands)) seat.classList.remove('arch-hidden');
+  // Otto calls, on v42: it lands
+  const otto = await chip('Otto');
+  await call('propose', 'landed', 200);
+  otto.classList.remove('arch-proposed');
+  dealer.textContent = 'Action on Pip';
+  await bump();
+  await scene.wait(1200);
+  // Clippy's raise, also made on v42: refused at v43
+  const clippy = await chip('Clippy');
+  await call('propose', 'refused', 200);
+  clippy.classList.add('arch-refused');
+  await scene.move(clippy, [{ translate: '0' }, { translate: '-4px' }, { translate: '4px' }, { translate: '0' }], 360, 'ease-in-out');
+  await scene.wait(1000);
+  await scene.fade(clippy, 0, 300);
+  clippy.remove();
+  await scene.wait(1800);
+}
+
 // The common ways to run many agents, as docs/runtime-vision.md compares
 // them: [the way, who uses it], then a row per difference.
 const WAYS = [
@@ -1278,6 +1383,7 @@ const CHAPTERS = [
   ['How it is built', 'Event-triggered, the common way', 'The state is in messages and agents’ memories. Lose one, lose the work.', eventsArchitecture, 'problem'],
   ['How it is built', 'Blackboard', 'The board is the only state. The runtime reads it and starts whoever is due.', architecture, 'solution'],
   ['How it is built', 'One runtime, many worlds', 'A world answers five calls: members, asks, view, wait, propose.', worlds],
+  ['How it is built', 'The world’s five calls', 'Answer these, and the runtime runs agents in your app.', calls],
   ['Compared', 'The common ways to run many agents', '', summary],
   ['Outcome', 'What you get', '', outcome],
 ];
