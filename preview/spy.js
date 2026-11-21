@@ -17,7 +17,7 @@ import { agentFace, personFace, setBuddies, setOwner } from '../web/faces.js';
 import { icon } from '../web/icons.js';
 import { $, arrows, el, load, message, models, notice, store, typingMessage } from './game-page.js';
 import { createRuntime } from '../src/core/runtime.js';
-import { host, join } from './poker-share.js';
+import { guestId, host, join } from './poker-share.js';
 import { DECIDE, HUMAN, MAX_CLUE, PERSONAS, begin, createWorld, decided, due, expire, intros, introduce, isPerson, land, leave, newTable, playing, seatFriend, show, start } from './spy-world.js';
 
 const TURN = 90_000; // ms a turn may take; then everyone still due is taken as doing nothing
@@ -29,7 +29,7 @@ setBuddies(PERSONAS.map(({ id }) => ({ id, name: id })));
 setOwner(HUMAN);
 
 const ROOM = new URLSearchParams(location.hash.slice(1)).get('join'); // a friend's page: the room of the table it joins
-const me = ROOM ? `f${[...crypto.getRandomValues(new Uint8Array(4))].map((b) => b.toString(16).padStart(2, '0')).join('')}` : HUMAN; // who this page plays as
+const me = ROOM ? guestId(ROOM) : HUMAN; // who this page plays as
 const table = newTable(); // the host's; a friend's page draws what the host sends (`remote`)
 let remote = null; // a friend's page: the host's last state
 const running = new Set(); // players with a run going
@@ -595,15 +595,20 @@ function closeInvite() {
   if (!starting.hidden) openStart();
   changed();
 }
+// A friend's page opens. One that was at the table (its page reloaded) is
+// back in its seat, by the name it had.
 function joined(peer, hello) {
   if (!/^f[0-9a-f]{8}$/.test(String(hello?.id))) return room.turnAway(peer, 'Not a player');
   peers.set(peer, hello.id);
+  if (table.names[hello.id]) seatFriend(table, hello.id, table.names[hello.id]);
+  if (!starting.hidden) openStart();
   changed();
 }
+// A friend's page goes: they leave the table, unless another of their pages is here (a reload's new page came first).
 function left(peer) {
   const id = peers.get(peer);
   peers.delete(peer);
-  if (id) leave(table, id);
+  if (id && ![...peers.values()].includes(id)) leave(table, id);
   if (!starting.hidden) openStart();
   changed();
 }
@@ -643,6 +648,7 @@ const guest = ROOM && join(ROOM, { id: me }, {
     }
     if (message.type !== 'state') return;
     remote = message;
+    if (!joining.hidden && message.table.people.includes(me)) closeJoin(); // back at the table after a reload
     for (const [set, ids] of [[running, message.running], [typing, message.typing]]) set.clear() || ids.forEach((id) => set.add(id));
     failed = new Map(message.failed);
     clock = { ends: message.clock && Date.now() + message.clock };
@@ -654,13 +660,16 @@ const guest = ROOM && join(ROOM, { id: me }, {
   },
 });
 const joining = $('.sp-join');
+function closeJoin() {
+  joining.hidden = true;
+  document.body.classList.remove('pk-buying-in');
+}
 joining.addEventListener('submit', (event) => {
   event.preventDefault();
   const name = joining.elements.name.value.trim().slice(0, 20) || 'Friend';
   store(name, NAME);
   guest.send({ type: 'sit', name });
-  joining.hidden = true;
-  document.body.classList.remove('pk-buying-in');
+  closeJoin();
 });
 
 // ---- wiring ----
@@ -676,10 +685,7 @@ document.addEventListener('click', (event) => {
   else if (action === 'copy') {
     inviting.elements.link.select();
     navigator.clipboard?.writeText(inviting.elements.link.value).catch(() => {});
-  } else if (action === 'watch') {
-    joining.hidden = true;
-    document.body.classList.remove('pk-buying-in');
-  }
+  } else if (action === 'watch') closeJoin();
 });
 $('.pk-thinking').addEventListener('click', (event) => {
   if (event.target === event.currentTarget) event.currentTarget.close(); // a click on the backdrop

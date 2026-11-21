@@ -20,7 +20,7 @@ import { handName, legal } from './poker-dealer.js';
 import { DECIDE, HUMAN, MAX_SEATS, PERSONAS, STACK, addPlayer, createWorld, force, freeSeats, intros, introduce, isPerson, lineup, react, removePlayer, deal, land, leave, myChips, newTable, say, seatFriend, topUp } from './poker-world.js';
 import { createRuntime } from '../src/core/runtime.js';
 import { createRuntimePanel } from '../web/runtime-panel.js';
-import { host, join } from './poker-share.js';
+import { guestId, host, join } from './poker-share.js';
 
 const WALLET = 'ponjo-poker-bankroll';
 const BANKROLL = 1000; // play dollars a new player starts with, and starts again with
@@ -35,7 +35,7 @@ setBuddies(PERSONAS.map(({ id }) => ({ id, name: id })));
 setOwner(HUMAN);
 
 const ROOM = new URLSearchParams(location.hash.slice(1)).get('join'); // a friend's page: the room of the table it joins
-const me = ROOM ? `f${[...crypto.getRandomValues(new Uint8Array(4))].map((b) => b.toString(16).padStart(2, '0')).join('')}` : HUMAN; // who this page plays as
+const me = ROOM ? guestId(ROOM) : HUMAN; // who this page plays as
 let table = newTable(0); // the person sits down with a buy-in; a friend's page, the table as the host sends it
 const running = new Set(); // players with a run going
 const typing = new Set(); // players typing a line, shown in the chat
@@ -49,6 +49,9 @@ const session = { bought: 0, hands: 0, biggest: 0, cashed: 0 };
 const chipsOfMine = () => (turnedAway ? 0 : myChips(table, me));
 const saveWallet = () => store({ ...wallet, onTable: chipsOfMine() }, WALLET);
 let turnedAway = false; // a friend's page the host asked to leave: its chips are back in its bankroll
+// A friend's page, reloaded: the chips it had on the table, put back in the
+// bankroll above, go back on the table if the host still has it seated.
+let reclaim = ROOM ? load(WALLET)?.onTable ?? 0 : 0;
 // The players' model. Once the visitor picks another, what failed is tried again.
 const ai = models(() => {
   runtime?.retry();
@@ -870,10 +873,11 @@ function joined(peer, hello) {
   gone.delete(hello.id);
   changed();
 }
+// A friend's page goes: they leave once the hand is over, unless they come back (a reload) or another of their pages is here.
 function left(peer) {
   const id = peers.get(peer)?.id;
   peers.delete(peer);
-  if (id && lineup(table).some((p) => p.id === id)) gone.add(id);
+  if (id && lineup(table).some((p) => p.id === id) && ![...peers.values()].some((p) => p.id === id)) gone.add(id);
   changed();
 }
 function turnAway(id) {
@@ -915,6 +919,8 @@ const guest = ROOM && join(ROOM, { id: me }, {
     for (const [set, ids] of [[running, message.running], [typing, message.typing]]) set.clear() || ids.forEach((id) => set.add(id));
     failed = new Map(message.failed);
     clock = { ends: message.clock && Date.now() + message.clock };
+    if (reclaim && seatedNow(me)) wallet.bankroll -= reclaim;
+    reclaim = 0;
     saveWallet();
     draw();
   },

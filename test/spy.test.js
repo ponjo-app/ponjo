@@ -288,3 +288,15 @@ test('on Ponjo\'s runtime: the AI players play a game to its end, refusals fall 
   assert.ok(table.game.winner);
   assert.ok(table.log.some((c) => c.type === 'action' && c.by === 'Max' && c.forced), 'Max, turned away three times, says nothing');
 });
+
+test('a friend whose page reloads is back in their seat: their turns are theirs again', () => {
+  const table = newTable();
+  seatFriend(table, 'fann', 'Ann');
+  start(table, 5);
+  begin(table);
+  leave(table, 'fann'); // the page went
+  assert.equal(seatFriend(table, 'fann', table.names.fann), true, 'and came back');
+  land(table, HUMAN, at(table), { say: 'Mornings' });
+  assert.equal(table.game.speaker, 1, 'her clue is hers to give, not taken as none');
+  assert.equal(land(table, 'fann', at(table), { say: 'Every day' }).landed, true);
+});

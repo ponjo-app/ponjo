@@ -60,6 +60,21 @@ function line(url, { open, heard, ended }) {
 }
 
 /**
+ * Who a friend's page plays as in `room`: kept for this tab, so a friend
+ * who reloads the page is back as the same player, in their seat; another
+ * tab is another friend. Where the tab keeps nothing, a new one each time.
+ */
+export function guestId(room) {
+  const key = `ponjo-guest:${room}`;
+  const made = `f${hex(crypto.getRandomValues(new Uint8Array(4)))}`;
+  try {
+    return sessionStorage.getItem(key) ?? (sessionStorage.setItem(key, made), made);
+  } catch {
+    return made;
+  }
+}
+
+/**
  * Hosts a room. `joined(peer, hello)` when a friend's page opens with its
  * first message; `heard(peer, message)` for each message after it, parsed;
  * `left(peer)` when it goes. Returns { link, send(peer, message), turnAway(peer, reason) }.
