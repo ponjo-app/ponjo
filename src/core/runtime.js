@@ -35,8 +35,9 @@ const LOOK_AGAIN_MAX_MS = 30_000;
 // propose(agent, version, old, made) → what landed, for the host to write; `agent`
 //                              is the Member and { for (the members it ran for), depth },
 //                              `old` { files, asks } what its run was given. It may land
-//                              nothing (a refusal): what follows is the world's change,
-//                              an ask made again carrying the run's `for` and `depth`
+//                              nothing (a refusal), its answer then having `rejected`, why:
+//                              what follows is the world's change, an ask made again
+//                              carrying the run's `for` and `depth`
 // print(files)               → a view's fingerprint: a watcher whose view's is as it
 //                              was when its last run started is not due
 // wakes(files, wake)         → whether a view holds what a run said wakes it (`wake`)

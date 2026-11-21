@@ -9,13 +9,14 @@
 // with what they know of each player on their seat and their own guesses.
 // preview/build.js bundles it into dist/preview, as the site serves it.
 
-/* global document, matchMedia, HTMLDialogElement, innerWidth, innerHeight, addEventListener */
+/* global document, location, matchMedia, HTMLDialogElement, innerWidth, innerHeight, addEventListener */
 
 import { agentFace, personFace, setBuddies, setOwner } from '../web/faces.js';
 import { icon } from '../web/icons.js';
 import { $, el, message, models, notice, typingMessage } from './game-page.js';
 import { DECIDE, HUMAN, MAX_SPEECH, PERSONAS, ROLE_NAMES, cast, createWorld, decided, expire, isPerson, land, newGame, show, turn } from './werewolf-world.js';
 import { createRuntime } from '../src/core/runtime.js';
+import { createRuntimePanel } from '../web/runtime-panel.js';
 
 const TURN = 90_000; // ms a turn may take; then everyone still due is taken as doing nothing
 const SVG = 'http://www.w3.org/2000/svg';
@@ -115,7 +116,7 @@ async function run({ agent }, { files: basis, prompt: { rules, situation } }) {
   const at = Date.now();
   const started = performance.now();
   try {
-    const { calls, text } = await ai.infer()([{ role: 'user', content: rules, cache: true }, { role: 'user', content: situation }], [DECIDE]);
+    const { calls, text, usage } = await ai.infer()([{ role: 'user', content: rules, cache: true }, { role: 'user', content: situation }], [DECIDE]);
     let args = {};
     try {
       args = JSON.parse(calls.find((c) => c.name === 'decide')?.args ?? '{}');
@@ -123,11 +124,22 @@ async function run({ agent }, { files: basis, prompt: { rules, situation } }) {
     const night = basis.kind === 'kill' || basis.kind === 'check' || basis.kind === 'potion';
     const [from, to] = PACE[agent.id].think.map((ms) => (night ? Math.min(ms, NIGHT_THINK) : ms));
     await wait(from + Math.random() * (to - from) - (performance.now() - started));
-    return { at, ms: performance.now() - started, outcome: 'ok', made: decided({ thinking: text, ...args }) };
+    return { at, ms: performance.now() - started, outcome: 'ok', usage, made: decided({ thinking: text, ...args }) };
   } catch (error) {
     return { at, ms: performance.now() - started, outcome: 'failed', body: String(error.message).split('\n')[0] };
   }
 }
+
+// With ?debug, the page shows what the runtime does (the runtime panel):
+// every player's role and thinking, so only on asking. An ask is a turn of
+// the game, its day, phase and step (turn, werewolf-rules.js).
+const panel = new URLSearchParams(location.search).has('debug') && createRuntimePanel({
+  where: 'this game', faceOf, retry: (id) => runtime.retry(id),
+  askText: (id) => {
+    const [, day, phase, step] = id.split(':');
+    return `${phase === 'night' ? 'Night' : 'Day'} ${day}${step ? `, ${step}` : ''}`;
+  },
+});
 
 // A new game is a new world, with Ponjo's runtime on it; the last game's
 // runtime ends its runs, which land nothing. What the runtime says of the
@@ -148,9 +160,10 @@ async function play(here) {
     world, run,
     breaker: async () => ({ pauseAfter: Infinity, pauseWithin: 10 }), // the game has no watches to pause
     watching: { read: async () => ({}), note: () => {} },
-    trace: (event) => console.debug('runtime', event.type, event), // for the devtools, until the runtime has a view of its own
+    trace: (event) => world === mine && panel?.add(event),
     emit(type, statuses) {
       if (type !== 'agents' || world !== mine) return;
+      panel?.agents(statuses);
       running.clear();
       for (const s of statuses) if (s.asks.length) running.add(s.id);
       failed = new Map(statuses.filter((s) => s.failed.length).map((s) => [s.id, s.failed.at(-1).why]));

@@ -953,6 +953,64 @@ label.pj-setting { cursor: pointer; }
   *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }
 
+/* ---- runtime panel: what the agent runtime does, docked on the right (web/runtime-panel.js) ---- */
+
+:root { --runtime-w: 400px; }
+:root[data-runtime] body { padding-right: var(--runtime-w); }
+.pj-runtime { position: fixed; z-index: 9; top: 0; bottom: 0; right: 0; width: var(--runtime-w); display: flex; flex-direction: column; background: var(--bg); border-left: 1px solid var(--border); font-size: 13px; color: var(--text); text-align: left; }
+.pj-runtime-head { display: flex; align-items: center; gap: 8px; height: 44px; padding: 0 8px 0 16px; flex: none; border-bottom: 1px solid var(--border); }
+.pj-runtime-title { font-weight: 600; }
+.pj-runtime-where { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--text-soft); }
+.pj-runtime-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 16px; flex: none; border-bottom: 1px solid var(--border); font-size: 12px; color: var(--text-soft); }
+.pj-runtime-bar select { height: 24px; border: 0; border-radius: 6px; background: var(--bg-soft); color: var(--text); font: 12px var(--ui-font); padding: 0 6px; }
+.pj-runtime-count { color: var(--text-faint); font-variant-numeric: tabular-nums; }
+.pj-runtime-bar label { display: inline-flex; align-items: center; gap: 6px; }
+.pj-runtime-body { flex: 1; min-height: 0; overflow-y: auto; }
+.pj-runtime-body[data-split] { display: flex; flex-direction: column; overflow: hidden; }
+.pj-runtime-list { flex: 1; min-height: 96px; overflow-y: auto; }
+.pj-runtime-empty { padding: 32px 16px; color: var(--text-faint); text-align: center; }
+.pj-runtime-time { font: 11px var(--mono); color: var(--text-faint); font-variant-numeric: tabular-nums; }
+.pj-runtime-look { border-bottom: 1px solid var(--border); }
+.pj-runtime-look > summary { display: grid; grid-template-columns: 60px minmax(0, 1fr) auto; gap: 8px; align-items: center; min-height: 28px; padding: 4px 16px; cursor: pointer; list-style: none; }
+.pj-runtime-look > summary::-webkit-details-marker { display: none; }
+.pj-runtime-look > summary:hover { background: var(--hover); }
+.pj-runtime-why { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pj-runtime-started { display: flex; gap: 4px; }
+.pj-runtime-verdicts { margin: 0 16px 8px 84px; width: calc(100% - 100px); border-collapse: collapse; font-size: 12px; }
+.pj-runtime-verdicts td { padding: 2px 8px 2px 0; vertical-align: top; border-top: 1px solid var(--border); }
+.pj-runtime-verdicts td:first-child { white-space: nowrap; font-weight: 500; }
+.pj-runtime-verdicts td:last-child { color: var(--text-soft); overflow-wrap: anywhere; }
+.pj-runtime-link { border: 0; background: none; padding: 0; color: var(--accent); font: 11px var(--mono); text-decoration: underline; text-underline-offset: 2px; }
+.pj-runtime-head-row, .pj-runtime-run { display: grid; grid-template-columns: 60px 48px minmax(0, 1fr) 60px 56px; gap: 8px; align-items: center; padding: 0 16px; }
+.pj-runtime-head-row { position: sticky; top: 0; z-index: 1; min-height: 28px; background: var(--bg); border-bottom: 1px solid var(--border); font-size: 11px; color: var(--text-faint); }
+.pj-runtime-run { width: 100%; min-height: 28px; border: 0; background: none; font-size: 12px; text-align: left; }
+.pj-runtime-run:hover { background: var(--hover); }
+.pj-runtime-run[aria-current="true"] { background: var(--active); }
+.pj-runtime-run > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pj-runtime-asked { color: var(--text-soft); }
+.pj-version-tag[data-kind="running"] { background: var(--accent-soft); color: var(--accent); }
+.pj-version-tag[data-kind="landed"] { color: var(--green); }
+.pj-version-tag[data-kind="refused"], .pj-version-tag[data-kind="failed"] { color: var(--red); }
+.pj-runtime-lane { position: relative; height: 8px; border-radius: 4px; background: var(--bg-soft); overflow: hidden; }
+.pj-runtime-lane i { position: absolute; top: 0; bottom: 0; min-width: 2px; border-radius: 4px; background: var(--text-faint); }
+.pj-runtime-lane i[data-kind="running"] { background: var(--accent); }
+.pj-runtime-lane i[data-kind="landed"] { background: var(--green); }
+.pj-runtime-lane i[data-kind="refused"], .pj-runtime-lane i[data-kind="failed"] { background: var(--red); }
+.pj-runtime-detail { flex: none; max-height: 62%; overflow-y: auto; padding: 8px 16px 24px; border-top: 1px solid var(--border-strong); }
+.pj-runtime-detail-head { display: flex; align-items: center; gap: 8px; }
+.pj-runtime-detail-title { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; margin: 4px 0; font-size: 14px; font-weight: 600; }
+.pj-runtime-facts { margin: 0 0 8px; font-size: 12px; color: var(--text-soft); font-variant-numeric: tabular-nums; }
+.pj-runtime-agent { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; gap: 8px; align-items: start; padding: 8px 16px; border-bottom: 1px solid var(--border); }
+.pj-runtime-agent .pj-avatar { --size: 24px; }
+.pj-runtime-agent-name { font-weight: 500; }
+.pj-runtime-line { font-size: 12px; color: var(--text-soft); overflow-wrap: anywhere; }
+.pj-runtime-line[data-failed] { color: var(--red); }
+.pj-runtime-note { padding: 8px 16px; font-size: 12px; color: var(--text-soft); }
+@media (max-width: 760px) {
+  :root[data-runtime] body { padding-right: 0; }
+  .pj-runtime { position: static; width: auto; height: 80vh; border-left: 0; border-top: 1px solid var(--border); }
+}
+
 /* ---- print (File > Print…, Export as PDF…): the doc alone, as a reader sees it ---- */
 
 @media print {
