@@ -282,8 +282,8 @@ function cover(scene) {
   pet.classList.add('dl-pet');
   pet.type = 'button';
   pet.dataset.follow = '';
-  const title = el('h1', '', 'Blackboard Multi-agent System');
-  const lead = el('p', '', 'Agents that work beside you, not after you.');
+  const title = el('h1', '', 'Work with agents like teammates, not tools');
+  const lead = el('p', '', 'People and agents work on one board, at the same time. The board, not an LLM, decides who acts next.');
   scene.stage.classList.add('arch-cover');
   art.append(pet);
   scene.stage.append(art, title, lead);
@@ -1041,17 +1041,18 @@ function architecture(scene) {
 }
 architecture.once = true;
 
-// Every difference, side by side: [what, event-triggered, blackboard].
+// The common ways to run many agents, as docs/runtime-vision.md compares
+// them: [the way, who uses it], then a row per difference.
+const WAYS = [
+  ['Orchestrator and handoffs', 'Claude Code subagents, OpenAI Agents SDK, CrewAI'],
+  ['Graph', 'LangGraph'],
+  ['Group chat', 'AutoGen'],
+  ['Blackboard', 'Ponjo'],
+];
 const DIFFERENCES = [
-  ['Where agents work', 'Apart, each in a session of its own', 'Beside you, on one board'],
-  ['The truth', 'Messages in flight and each agent’s memory: a split brain', 'One board; agents remember nothing between runs'],
-  ['Who changes it', 'Each agent, on its own copy', 'Only the writer, in order; agents propose'],
-  ['Working in parallel', 'Copies go stale, so to stay correct agents take turns', 'The default: at worst a proposal is refused and retried, and the next look still settles the board'],
-  ['What wakes an agent', 'A message for it', 'The runtime, reading the board: whoever is due'],
-  ['A lost message, a restart', 'The work is lost', 'Nothing lost: the board still says what is due'],
-  ['Who goes next', 'Whoever sends the next event: often an LLM, which may forget or pick wrong', 'Code, from the board: the same answer every time'],
-  ['When it stops', 'When the events run out, or never', 'When what people asked for is met; chains are capped, fights go to a person'],
-  ['Fits', 'Fixed flows that split into independent tasks', 'Shared work that people and agents improve together'],
+  ['1 · Working at once', 'In parallel, each on its own copy; the lead merges', 'Branches in one step, merged by reducers', 'One speaker at a time', 'Everyone at once; the writer lands each change in order and refuses stale ones'],
+  ['1 · People', 'Give the task, review the result', 'Answer while the graph waits', 'Take a turn in the chat', 'Members, acting while agents act'],
+  ['2 · Who acts next', 'An LLM: the lead, or an agent handing on', 'The edges you wire, some routed by an LLM', 'A selector: in turn, or an LLM picks', 'Code, reading the board: the same answer every time'],
 ];
 
 function approachMark(role) {
@@ -1062,14 +1063,17 @@ function approachMark(role) {
   return mark;
 }
 
-// The differences as a table, in the design system's (.pj-usage-table), a row at a time.
+// The ways side by side, in the design system's table (.pj-usage-table), a row at a time.
 async function summary(scene) {
   scene.stage.classList.add('arch-summary');
   const table = el('table', 'pj-usage-table arch-compare');
   const head = el('tr');
-  head.append(...['', 'Event-triggered', 'Blackboard'].map((words) => el('th', '', words)));
-  head.cells[1].prepend(approachMark('problem'));
-  head.cells[2].prepend(approachMark('solution'));
+  head.append(el('th'), ...WAYS.map(([way, who]) => {
+    const cell = el('th', '', way);
+    cell.append(el('span', 'arch-who', who));
+    return cell;
+  }));
+  head.lastChild.prepend(approachMark('solution'));
   const rows = DIFFERENCES.map((cells) => {
     const row = el('tr');
     row.append(...cells.map((words) => el('td', '', words)));
@@ -1091,9 +1095,9 @@ summary.once = true;
 async function outcome(scene) {
   scene.stage.classList.add('arch-outcome');
   const GETS = [
-    ['Always on, with no jobs.', 'Agents act whenever the board changes, whoever changed it. When nothing changes, nothing runs.'],
     ['Parallel work on one board, with no branches.', 'Many agents and people edit at once; nothing to merge back.'],
     ['Coordination with no orchestrator.', 'One agent’s change is the next one’s cue.'],
+    ['Always on, with no jobs.', 'Agents act whenever the board changes, whoever changed it. When nothing changes, nothing runs.'],
   ];
   const list = el('ul', 'arch-gets');
   const items = GETS.map(([what, why]) => {
@@ -1117,7 +1121,11 @@ async function outcome(scene) {
   const foot = el('p', 'arch-note', 'Open-card Hold’em on Ponjo’s runtime, with scripted agents. The ');
   const link = el('a', '', 'poker page');
   link.href = 'poker.html';
-  foot.append(link, ', built apart with a small runtime of its own, came to the same shape: a pure plan, a view per player, a writer that refuses stale moves.');
+  const werewolf = el('a', '', 'Werewolf');
+  werewolf.href = 'werewolf.html';
+  const spy = el('a', '', 'Who’s the Spy');
+  spy.href = 'spy.html';
+  foot.append(link, ', built apart with a small runtime of its own, came to the same shape: a pure plan, a view per player, a writer that refuses stale moves. It now runs on this runtime, as do ', werewolf, ' and ', spy, ', where each seat sees only its own cards or role.');
   const body = el('div', 'arch-outcome-body');
   body.append(list, stats, foot);
   stats.style.opacity = foot.style.opacity = '0';
@@ -1135,17 +1143,17 @@ outcome.once = true;
 // [the part it is in, its title, the idea in a line, the scene]
 const CHAPTERS = [
   ['', '', '', cover],
-  ['Where agents work', '', '', point('Agents work beside you, in front of a blackboard,', 'instead of apart from you, in an isolated room.')],
-  ['Where agents work', 'Delegate', 'Each agent works on its own copy. Run two at once and one builds on a stale copy, so to stay correct they take turns: wait, review, redo.', delegate, 'problem'],
-  ['Where agents work', 'Blackboard', 'Everyone works on one board at once. At worst a stale proposal is refused and tried again on the new board.', blackboard, 'solution'],
-  ['What makes an agent run', '', '', point('Agent orchestration is a state reconciliation problem,', 'instead of an event triggering problem.')],
-  ['What makes an agent run', 'Handed on by an agent', 'Each agent must decide to hand on, and that is an LLM’s call: sometimes it forgets, or picks the wrong one. Nothing was lost. It was never sent.', handoff, 'problem'],
-  ['What makes an agent run', 'Seen on the board', 'An agent only does its own work. The change is the signal: code reads the board and finds who is due, the same every time.', seen, 'solution'],
-  ['What makes an agent run', 'Triggered by events', 'Pip is asleep when the baton comes. Miss one handoff, and the race stops.', events, 'problem'],
-  ['What makes an agent run', 'Reconciled from state', 'The runtime watches the board and calls only whoever is due, again until it is done. Nobody wires who goes next, and a missed call or a restart costs nothing: the board still shows who is due.', state, 'solution'],
-  ['Architecture', 'Event-triggered, the common way', 'State lives in messages in flight and in each agent’s memory. Lose a message and the work is lost, and someone has to wire who triggers whom.', eventsArchitecture, 'problem'],
-  ['Architecture', 'Blackboard', 'One board, one writer. People and agents propose changes, the writer lands them in order, and the runtime reads the board to start whoever is due.', architecture, 'solution'],
-  ['Summary', 'Two ways to run many agents', '', summary],
+  ['Difference 1 of 2', '', '', point('People and agents work on one board, at the same time,', 'instead of each on its own copy, taking turns.')],
+  ['Difference 1: one board, at the same time', 'Each on its own copy', 'Each agent works on its own copy. Run two at once and one builds on a stale copy, so to stay correct they take turns: wait, review, redo.', delegate, 'problem'],
+  ['Difference 1: one board, at the same time', 'One board', 'Everyone works on one board at once. Agents propose, and one writer lands each change in order; a change made on a stale board is refused, and the agent tries again on the new one.', blackboard, 'solution'],
+  ['Difference 2 of 2', '', '', point('The board decides who acts next,', 'instead of an LLM handing on, or a chain of events.')],
+  ['Difference 2: who acts next', 'Handed on by an LLM', 'With handoffs or a lead agent, an LLM decides who goes next: sometimes it forgets, or picks the wrong one. Nothing was lost. It was never sent.', handoff, 'problem'],
+  ['Difference 2: who acts next', 'Seen on the board', 'An agent only does its own work. The change is the signal: code reads the board and finds who is due, the same every time.', seen, 'solution'],
+  ['Difference 2: who acts next', 'Triggered by events', 'Pip is asleep when the baton comes. Miss one handoff, and the race stops. A durable queue keeps the baton, but someone still wires who runs next.', events, 'problem'],
+  ['Difference 2: who acts next', 'Reconciled from state', 'The runtime watches the board and calls only whoever is due, again until it is done, as a thermostat reads the room. Nobody wires who goes next, and a missed call or a restart costs nothing: the board still shows who is due.', state, 'solution'],
+  ['How it is built: both in one loop', 'Event-triggered, the common way', 'State lives in messages in flight and in each agent’s memory. Lose a message and the work is lost, and someone has to wire who triggers whom.', eventsArchitecture, 'problem'],
+  ['How it is built: both in one loop', 'Blackboard', 'One board, one writer: people and agents propose changes, and the writer lands them in order (difference 1). The runtime reads the board to start whoever is due (difference 2).', architecture, 'solution'],
+  ['Compared', 'The common ways to run many agents', '', summary],
   ['Outcome', 'What you get', 'What emerges when the board is the only state, and the runtime decides from it.', outcome],
 ];
 

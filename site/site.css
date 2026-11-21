@@ -283,11 +283,12 @@ a { color: var(--accent); }
 .arch-node-ink b, .arch-node-ink span { color: var(--chalk); }
 .arch-label { padding: 0 4px; background: var(--canvas); color: var(--text-soft); font-size: 12px; white-space: nowrap; }
 .arch-label-over { background: none; }
-/* the summary: the design system's table, its cells words that wrap, the blackboard column in ink */
+/* the comparison: the design system's table, its cells words that wrap, who uses each way under its name, the blackboard column in ink */
 .arch-stage.arch-summary { justify-content: safe center; overflow-y: auto; }
 .arch-compare { max-width: 960px; }
 .arch-compare :is(th, td) { padding: 8px 12px; text-align: left; vertical-align: top; white-space: normal; line-height: 1.45; }
-.arch-compare td:first-child { max-width: none; width: 22%; overflow: visible; }
+.arch-compare td:first-child { max-width: none; width: 16%; overflow: visible; }
+.arch-who { display: block; margin-top: 2px; color: var(--text-faint); font-size: 12px; font-weight: 400; }
 .arch-compare td:last-child { color: var(--text); }
 /* the outcome: what you get, then the numbers as tiles */
 .arch-stage.arch-outcome { justify-content: safe center; overflow-y: auto; }
