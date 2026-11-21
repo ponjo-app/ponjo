@@ -64,7 +64,7 @@
   <h2>States</h2>
   <p>Everyone shows what they are doing with their face, never with a badge or a dot, and the same on every face: in the header, on their card and on the thread a buddy works on. <code>web/life.js</code> moves it. A face has four eyes, which open wider when it is absorbed, and one mouth to say it with:</p>
   <ul>
-    <li><strong>Eyes</strong>: <em>open</em>, upright ovals with a glint, and wide with a second glint when it is absorbed; <em>shut</em> ‿; <em>happy</em> ^; <em>wince</em> &gt; &lt;. Never half-open, so a face never looks sly or bored. Eyes change shape behind a blink and pop open in the new one.</li>
+    <li><strong>Eyes</strong>: <em>open</em>, upright ovals with a glint, and wide with a second glint when it is absorbed; <em>shut</em> ‿; <em>happy</em> ^; <em>wince</em> &gt; &lt;; <em>dead</em> ✕, only in a game. Never half-open, so a face never looks sly or bored. Eyes change shape behind a blink and pop open in the new one.</li>
     <li><strong>Mouth</strong>: one curve from corner to corner, up to smile and down to sulk; open, filled, with a tongue when it is happy; its top lifted, an o.</li>
   </ul>
   <p>Each state has one expression:</p>
@@ -72,6 +72,7 @@
     <li><strong>Ready</strong> (a person: <strong>here</strong>): facing you, eyes open, a small smile. It looks about, blinks, and now and then smiles ^ ^, tilts its head or looks at you.</li>
     <li><strong>Working</strong>: absorbed. Its eyes open wide and bright, with a second glint, down on the doc, reading along the line; its mouth a small o; its head dipping as it types. Now and then it smiles ^ ^ at what it wrote, looks up to think (an o), or nods along. Its face grows a little. When it finishes, it looks up at you, pleased.</li>
     <li><strong>Away</strong>: asleep, eyes shut ‿ ‿, the head low, breathing slow, greyed out. Back, it wakes wide-eyed.</li>
+    <li><strong>Dead</strong>, only for a player out of a game (the werewolf page): a start, eyes wide and an o, then eyes ✕ ✕, a small frown, the head lolled, greyed out. It no longer breathes, blinks, looks at you or wakes when poked, so it never reads as asleep.</li>
     <li><strong>Failed</strong>, a moment: a wince &gt; &lt; and a shake of the head, then a sulk, eyes down, for a second or two, and the face flashes red once. The thread says what happened.</li>
   </ul>
   <p>The body barely moves: a breath, and the head's slow lean from the neck. The eyes lead and the head follows. A face near your pointer looks at you. A face you can click can be poked: pressed, it squashes; let go, it springs back and reacts as its state would. Ready, it hops and smiles ^ ^ at you; working, it looks up at you, pleased, and goes back to work; asleep, it starts awake, wide-eyed, and dozes off again. No two faces breathe in step. With reduced motion, a face shows its state's expression and holds still.</p>
@@ -125,7 +126,7 @@
     both.append(avatar('Clippy', { size }), avatar('Noor', { person: true, size }));
     return labelled(both, `${size} ${use}`);
   }));
-  fill('states', [['idle', 'Ready'], ['working', 'Working'], ['away', 'Away'], ['idle', 'Failed']]
+  fill('states', [['idle', 'Ready'], ['working', 'Working'], ['away', 'Away'], ['dead', 'Dead'], ['idle', 'Failed']]
     .map(([presence, label]) => labelled(avatar('Clippy', { size: 44, presence }), label)));
   fill('watcher', [['idle', 'Ready'], ['working', 'Working']]
     .map(([presence, label]) => labelled(avatar('Vera', { size: 44, presence }), `Watcher · ${label}`)));
@@ -134,7 +135,7 @@
   fill('queue', [['Ada', 'working', 'Working'], ['Noor', 'working', 'Typing', true], ['Clippy', 'idle', 'Ready'], ['Bob', 'idle', 'Here', true], ['Rex', 'idle', 'Ready'], ['Alice', 'away', 'Away', true], ['Fan', 'idle', 'You', true]]
     .map(([name, presence, label, person]) => labelled(avatar(name, { person, size: 32, presence }), label)));
   // The failed moment plays once in the app; here, every few seconds.
-  const failed = document.querySelectorAll('[data-faces="states"] .pj-avatar')[3];
+  const failed = document.querySelectorAll('[data-faces="states"] .pj-avatar')[4];
   const flinch = () => { failed.classList.remove('pj-failed'); void failed.offsetWidth; failed.classList.add('pj-failed'); };
   flinch();
   setInterval(flinch, 3000);

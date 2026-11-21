@@ -7,6 +7,10 @@
 //                 along the line, a small round mouth, the head dipping as it
 //                 types; now and then ^ ^ at what it wrote
 //   away          asleep: eyes shut ‿ ‿, the head low, breathing slow
+//   dead          out of a game (the werewolf page): a start, eyes wide and
+//                 an o, then eyes ✕ ✕, the mouth a small frown, the head
+//                 lolled; it no longer breathes, blinks, looks at you or
+//                 wakes when poked
 //   failed        a wince > < and a shake of the head, then a sulk, eyes
 //                 down and lip out, that eases back to its state
 //
@@ -106,6 +110,13 @@ const STATES = {
     moments: [],
     every: [1e9, 1e9],
   },
+  dead: {
+    face: { ...FACE, shape: 'dead', curve: -0.35, width: 4, tilt: -8, nod: 2 },
+    blink: null,
+    gaze: () => ({ x: 0, y: 0.5, hold: [1e9, 1e9] }),
+    moments: [],
+    every: [1e9, 1e9],
+  },
 };
 
 // What each moment does while it lasts (e: seconds in, d: its side).
@@ -123,6 +134,7 @@ const MOMENTS = {
   } },
   nod: { dur: 0.8, at: (x, e) => { x.nod += 2.4 * bump(e, 0.4) + 1.2 * bump(e - 0.4, 0.4); } },
   // when its state changes
+  die: { dur: 0.7, at: (x, e) => { const k = bump(e, 0.7); x.shape = 'open'; x.size = 1.6; x.curve = 0; x.open = 0.5 * k; x.round = 1; x.width = 3; x.nod -= 3 * k; x.tilt = 0; } }, // a start, then ✕ ✕
   settle: { dur: 0.9, at: (x, e) => { x.nod += 1.6 * bump(e, 0.9); } },
   done: { dur: 1.9, at: (x, e) => { const k = bump(e, 1.9); if (k > 0.2) x.shape = 'happy'; x.gaze = { x: 0, y: -0.5 }; x.curve += 0.45 * k; x.open += 0.55 * k; x.width += 1.5 * k; } },
   // poked
@@ -231,7 +243,7 @@ function frame(now) {
 
 function presenceOf(face) {
   const p = face.svg.closest('[data-presence]')?.dataset.presence;
-  return p === 'working' || p === 'away' ? p : 'idle';
+  return p === 'working' || p === 'away' || p === 'dead' ? p : 'idle';
 }
 
 function begin(face, name, now) {
@@ -252,7 +264,8 @@ function tick(face, now, dt) {
     face.momentAt = now + rand(...STATES[state].every);
     face.moment = null;
     if (from !== null && !reduce) {
-      if (state === 'working') begin(face, 'settle', now);
+      if (state === 'dead') begin(face, 'die', now);
+      else if (state === 'working') begin(face, 'settle', now);
       else if (from === 'working') begin(face, 'done', now);
       else if (from === 'away') begin(face, 'wake', now);
     }
@@ -302,7 +315,7 @@ function tick(face, now, dt) {
   }
 
   // the pointer: a face near it (or one that follows it) looks at you, and smiles a little
-  if (pointer && state !== 'away') {
+  if (pointer && state !== 'away' && state !== 'dead') {
     const r = face.svg.getBoundingClientRect();
     const dx = pointer.x - (r.left + r.width / 2), dy = pointer.y - (r.top + r.height / 2);
     const d = Math.hypot(dx, dy);
@@ -319,9 +332,9 @@ function tick(face, now, dt) {
   const t = now / 1000 * face.rate;
   const [p0, p1, p2, p3] = face.phase;
   const asleep = state === 'away';
-  const breath = Math.sin(t * (asleep ? 0.55 : 0.9) + p2) * (asleep ? 1.2 : 0.5);
+  const breath = state === 'dead' ? 0 : Math.sin(t * (asleep ? 0.55 : 0.9) + p2) * (asleep ? 1.2 : 0.5);
   if (asleep) x.open += Math.max(0, breath) * 0.12; // a small mouth breathing in its sleep
-  const lean = Math.sin(t * 0.5 + p0) * 1.1 + Math.sin(t * 0.17 + p1) * 0.7;
+  const lean = state === 'dead' ? 0 : Math.sin(t * 0.5 + p0) * 1.1 + Math.sin(t * 0.17 + p1) * 0.7;
   if (conf.typing) {
     // typing in bursts: a quick dip of the head with each few keys
     const burst = Math.sin(t * 0.8 + p1) > -0.2 ? 1 : 0;
@@ -396,7 +409,7 @@ if (typeof document !== 'undefined') {
   document.addEventListener('pointercancel', release, { capture: true, passive: true });
   document.addEventListener('click', (e) => {
     if (reduce) return;
-    for (const face of poked(e)) begin(face, presenceOf(face) === 'away' ? 'startle' : 'poke', performance.now());
+    for (const face of poked(e)) if (presenceOf(face) !== 'dead') begin(face, presenceOf(face) === 'away' ? 'startle' : 'poke', performance.now());
   }, { capture: true, passive: true });
 }
 
