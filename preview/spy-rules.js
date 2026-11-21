@@ -9,17 +9,21 @@
 // the spies (one, or two at seven or eight) another, close to it. No one is
 // told which they are. A round: each living player gives a clue to their
 // word, once, in seat order, from a seat dealt at random in the first round
-// and one seat on in each round after; then everyone alive votes at once,
-// and the player with the most votes is out, their side shown. A tie at the
-// top: the tied give one more clue each, and everyone votes again, between
-// them only; a second tie, and no one is out. The civilians win once every spy is out;
-// the spies, once they are as many as the civilians, or one is among the
-// last three.
+// and one seat on in each round after; then a discussion, where anyone
+// alive may talk, up to MAX_LINES lines, never their word, until the world
+// calls the vote (`endTalk`: time is up, or the host starts it); then
+// everyone alive votes at once, and the player with the most votes is out,
+// their side shown. A tie at the top: the tied give one more clue each, and
+// everyone votes again, between them only, with no discussion; a second
+// tie, and no one is out. The civilians win once every spy is out; the
+// spies, once they are as many as the civilians, or one is among the last
+// three.
 
 import { cryptoRandom } from './werewolf-rules.js';
 
 export const SIZES = [5, 6, 7, 8];
-export const MAX_CLUE = 200; // characters of a clue
+export const MAX_CLUE = 200; // characters of a clue, or a line in a discussion
+export const MAX_LINES = 3; // lines a player may say in one discussion
 export const spiesFor = (size) => (size >= 7 ? 2 : 1);
 
 // The words, civilians' and spies' in either order: close enough to blur, far enough to tell.
@@ -59,7 +63,7 @@ export function newGame({ words, roles, first = 0 }) {
   const game = {
     first,
     seats: roles.map((role) => ({ role, word: words[role], alive: true })),
-    words: { ...words }, round: 0, phase: 'clue', runoff: null, order: [], speaker: null, votes: {}, acted: [],
+    words: { ...words }, round: 0, phase: 'clue', runoff: null, order: [], speaker: null, votes: {}, acted: [], said: {},
     log: [], winner: null,
   };
   startRound(game);
@@ -72,17 +76,20 @@ const note = (game, entry) => game.log.push({ round: game.round, ...entry });
 
 /**
  * The moment the game is at, as a string: an action made on one moment is
- * stale once the game has moved to another. During a vote it stays the same
- * while the votes come in.
+ * stale once the game has moved to another. During a discussion or a vote
+ * it stays the same while the lines or the votes come in.
  */
 export const turn = (game) => [game.round, game.phase, game.runoff ? 'runoff' : '', game.speaker ?? ''].join(':');
 
-/** Who is due now, all at once: [{ seat, kind }], `kind` clue (the speaker) or vote (everyone alive who has not). */
+/** Who is due now, all at once: [{ seat, kind }], `kind` clue (the speaker) or vote (everyone alive who has not). In a discussion, no one: talking is free. */
 export function due(game) {
   if (game.phase === 'clue') return game.acted.includes(game.speaker) ? [] : [{ seat: game.speaker, kind: 'clue' }];
   if (game.phase === 'vote') return game.seats.flatMap((s, i) => (s.alive && !game.acted.includes(i) ? [{ seat: i, kind: 'vote' }] : []));
   return [];
 }
+
+// The lines `seat` may still say in this discussion: none outside one, or once out.
+export const linesLeft = (game, seat) => (game.phase === 'talk' && alive(game, seat) ? MAX_LINES - (game.said[seat] ?? 0) : 0);
 
 // Whom `seat` may vote for: another living player; in a runoff, one of the tied.
 export const targets = (game, seat) => (game.runoff ?? game.seats.map((_, i) => i)).filter((i) => i !== seat && alive(game, i));
@@ -90,26 +97,46 @@ export const targets = (game, seat) => (game.runoff ?? game.seats.map((_, i) => 
 // Whether `text` says `word`, or its plural, as a word of its own.
 export const says = (text, word) => new RegExp(`\\b${word.replace(/\W/g, '\\$&')}(e?s)?\\b`, 'i').test(text);
 
+// What a clue or a line says, or an error: something, not too long, never the speaker's word.
+function words(game, seat, action, what) {
+  const text = typeof action.text === 'string' ? action.text.trim() : '';
+  if (!text) return { error: `Say something: ${what === 'clue' ? 'a clue is your turn' : 'a line is a few words'}.` };
+  if (text.length > MAX_CLUE) return { error: `Too long: at most ${MAX_CLUE} characters, you wrote ${text.length}.` };
+  if (says(text, game.seats[seat].word)) return { error: `Your ${what} says your word: talk about it without saying it.` };
+  return { text };
+}
+
 /**
  * `seat` does `action`, made on the moment `action.at` (`turn`):
  *   clue { text }     a clue to their word, never the word itself
+ *   say { text }      a line in the discussion, never their word
  *   vote { target }   whom they think is a spy
  * Returns the new game, or { error } saying why it is not legal or stale, the game unchanged.
  */
 export function act(game, seat, action) {
   if (game.phase === 'over') return { error: 'The game is over.' };
   if (action?.at !== turn(game)) return { error: 'Stale: the game moved on before your action landed.' };
+  if (game.phase === 'talk' || action.type === 'say') {
+    if (game.phase !== 'talk') return { error: 'There is no discussion now.' };
+    if (action.type !== 'say') return { error: 'It is the discussion: you may only talk.' };
+    if (!alive(game, seat)) return { error: 'You are out: the out don\'t talk.' };
+    if (!linesLeft(game, seat)) return { error: `You have said your ${MAX_LINES} lines in this discussion.` };
+    const line = words(game, seat, action, 'line');
+    if (line.error) return line;
+    const g = clone(game);
+    note(g, { type: 'line', seat, text: line.text });
+    g.said[seat] = (g.said[seat] ?? 0) + 1;
+    return g;
+  }
   const mine = due(game).find((d) => d.seat === seat);
   if (!mine) return { error: game.acted.includes(seat) ? 'You have voted already: wait for the others.' : 'It is not your turn.' };
   const type = String(action.type ?? '');
   if (type !== mine.kind) return { error: mine.kind === 'clue' ? 'It is your turn to give a clue.' : 'Now you may only vote.' };
   const g = clone(game);
   if (type === 'clue') {
-    const text = typeof action.text === 'string' ? action.text.trim() : '';
-    if (!text) return { error: 'Say something: a clue is your turn.' };
-    if (text.length > MAX_CLUE) return { error: `Too long: at most ${MAX_CLUE} characters, you wrote ${text.length}.` };
-    if (says(text, g.seats[seat].word)) return { error: 'Your clue says your word: describe it without saying it.' };
-    note(g, { type: 'clue', seat, text });
+    const clue = words(g, seat, action, 'clue');
+    if (clue.error) return clue;
+    note(g, { type: 'clue', seat, text: clue.text });
   } else {
     if (!targets(g, seat).includes(action.target)) return { error: g.runoff ? 'Vote for one of the tied players, not yourself.' : 'Vote for another living player.' };
     g.votes[seat] = action.target;
@@ -133,18 +160,32 @@ export function fallback(game, seats = due(game).map((d) => d.seat)) {
   return settle(g);
 }
 
-// After an action: while no one is due, the phase ends and the next begins.
-function settle(g) {
-  while (g.phase !== 'over' && !due(g).length) end(g);
+// The discussion is over (its time is up, or the host starts the vote): everyone votes. Returns the new game.
+export function endTalk(game) {
+  if (game.phase !== 'talk') return game;
+  const g = clone(game);
+  Object.assign(g, { phase: 'vote', votes: {} });
+  note(g, { type: 'vote-called' });
   return g;
 }
 
+// After an action: while no one is due, the phase ends and the next begins; a discussion ends only by `endTalk`.
+function settle(g) {
+  while (g.phase !== 'over' && g.phase !== 'talk' && !due(g).length) end(g);
+  return g;
+}
+
+// The clues are all in: a discussion, then the vote; after a runoff's clues, the vote at once.
 function end(g) {
   g.acted = [];
   if (g.phase === 'vote') return tally(g);
   const next = g.order.slice(g.order.indexOf(g.speaker) + 1).find((i) => alive(g, i));
   if (next !== undefined) g.speaker = next;
-  else Object.assign(g, { phase: 'vote', speaker: null, votes: {} });
+  else if (g.runoff) Object.assign(g, { phase: 'vote', speaker: null, votes: {} });
+  else {
+    Object.assign(g, { phase: 'talk', speaker: null, said: {} });
+    note(g, { type: 'talk' });
+  }
 }
 
 // A round's clues go round from the seat after the last round's first (the
@@ -187,18 +228,19 @@ function win(g) {
 
 /**
  * Everything seat `seat` may see: its own word, never its side; who is
- * alive, and the side of each player voted out; whose clue it is, or who
- * has voted (not for whom, till the vote ends); and the log. Once the game
+ * alive, and the side of each player voted out; whose clue it is, the
+ * lines it may still say in a discussion, or who has voted (not for whom,
+ * till the vote ends); and the log. Once the game
  * is over, everything. A seat of null watches: it sees what anyone does,
  * and no word. The only way a player's prompt, or a page, sees the game.
  */
 export function view(game, seat) {
   const over = game.phase === 'over';
   const me = seat === null ? null : game.seats[seat];
-  const mine = seat === null ? null : due(game).find((d) => d.seat === seat);
+  const mine = seat === null ? null : due(game).find((d) => d.seat === seat) ?? (linesLeft(game, seat) ? { kind: 'talk' } : null);
   return {
     seat, word: me?.word ?? null, alive: me?.alive ?? false, round: game.round, phase: game.phase, winner: game.winner,
-    due: mine ? { kind: mine.kind, at: turn(game), ...(mine.kind === 'vote' ? { targets: targets(game, seat) } : {}) } : null,
+    due: mine ? { kind: mine.kind, at: turn(game), ...(mine.kind === 'vote' ? { targets: targets(game, seat) } : {}), ...(mine.kind === 'talk' ? { left: linesLeft(game, seat) } : {}) } : null,
     speaker: game.speaker, runoff: game.runoff && [...game.runoff],
     voted: game.phase === 'vote' ? [...game.acted] : [],
     seats: game.seats.map((s) => ({ alive: s.alive, role: over || !s.alive ? s.role : null, word: over ? s.word : null })),

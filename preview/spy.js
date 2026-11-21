@@ -19,9 +19,10 @@ import { $, arrows, el, load, message, models, notice, store, typingMessage } fr
 import { createRuntime } from '../src/core/runtime.js';
 import { createRuntimePanel } from '../web/runtime-panel.js';
 import { RECONNECT_MS, guestId, host, join } from './poker-share.js';
-import { DECIDE, HUMAN, MAX_CLUE, PERSONAS, begin, createWorld, decided, due, expire, intros, introduce, isPerson, land, leave, newTable, playing, seatFriend, show, start } from './spy-world.js';
+import { DECIDE, HUMAN, MAX_CLUE, MAX_LINES, PERSONAS, begin, callVote, createWorld, decided, due, expire, intros, introduce, isPerson, land, leave, newTable, playing, seatFriend, show, start } from './spy-world.js';
 
 const TURN = 90_000; // ms a turn may take; then everyone still due is taken as doing nothing
+const TALK = 90_000; // ms a discussion lasts, unless the host starts the vote sooner
 const NAME = 'ponjo-poker-name'; // the visitor's name at a friend's table, as the poker page keeps it
 const HELLO_MS = 1800;
 const SVG = 'http://www.w3.org/2000/svg';
@@ -74,15 +75,21 @@ function changed() {
   share();
 }
 
+// Each turn has TURN; a discussion, TALK, and then the vote.
 function timeTurn() {
   const key = playing(table) ? table.turnKey : '';
   if (key === clock.key) return;
   clearTimeout(clock.timer);
-  clock = { key, ends: key ? Date.now() + TURN : 0, timer: key && setTimeout(() => {
-    if (table.turnKey === key && playing(table)) expire(table);
+  const ms = table.game?.phase === 'talk' ? TALK : TURN;
+  clock = { key, ends: key ? Date.now() + ms : 0, timer: key && setTimeout(() => {
+    if (table.turnKey === key && playing(table)) {
+      if (table.game.phase === 'talk') callVote(table);
+      else expire(table);
+    }
     changed();
-  }, TURN) };
+  }, ms) };
 }
+setInterval(() => picture().v?.phase === 'talk' && draw(), 1000); // the discussion's clock
 
 // Each player's pace, as a person's at a table: ms from and to before they act.
 const PACE = { Ivy: [3000, 5500], Max: [1200, 2500], Juno: [2500, 4500], Sam: [2000, 3500], Lou: [2500, 5000], Remy: [3500, 6500], Pip: [1200, 2600] };
@@ -111,12 +118,13 @@ async function run({ agent }, { prompt: { rules, situation } }) {
 
 // With ?debug, the host's page shows what the runtime does (the runtime
 // panel): every player's word and thinking, so only on asking. An ask is a
-// turn of the game: its round, phase, a runoff, the speaker (turn, spy-rules.js).
+// turn of the game: its round, phase, a runoff, the speaker (turn,
+// spy-rules.js); or a line in a discussion.
 const panel = !ROOM && new URLSearchParams(location.search).has('debug') ? createRuntimePanel({
   where: 'this table', faceOf: (id) => faceOf(table, id), retry: (id) => runtime.retry(id),
   askText: (id) => {
-    const [, , round, phase, runoff] = id.split(':');
-    return `Round ${round}, ${phase}${runoff ? ' (runoff)' : ''}`;
+    const [kind, , round, phase, runoff] = id.split(':');
+    return kind === 'line' ? `A line in the discussion (${round})` : `Round ${round}, ${phase === 'talk' ? 'discussion' : phase}${runoff ? ' (runoff)' : ''}`;
   },
 }) : null;
 
@@ -284,7 +292,7 @@ function drawSeats(t, v) {
   }
   const ring = seats[v.seat] && $('.ww-timer', seats[v.seat]);
   if (!ring) return;
-  const on = Boolean(v.due) && !t.greeting && clock.ends > 0;
+  const on = Boolean(v.due) && v.due.kind !== 'talk' && !t.greeting && clock.ends > 0; // a discussion's clock is over the table
   ring.classList.toggle('ww-timer-on', on);
   if (!on || ring.dataset.at === v.due.at) return;
   ring.dataset.at = v.due.at;
@@ -308,7 +316,7 @@ function drawVotes(t, v) {
 }
 addEventListener('resize', () => draw());
 
-// Over the table: the round, and one line that changes with the moment.
+// Over the table: the round, and one line that changes with the moment; in a discussion, its clock, and the host's way to start the vote.
 function drawCenter(t, v) {
   const over = v?.phase === 'over';
   const mine = v && v.seat !== null ? v.seats[v.seat].role : null;
@@ -319,13 +327,16 @@ function drawCenter(t, v) {
     : t.greeting ? ['hello', null, 'Everyone says hello']
       : over ? ['over', null, mine ? ((mine === 'spy') === (v.winner === 'spies') ? 'You won' : 'You lost') : '']
         : v.phase === 'vote' ? [`vote:${v.runoff}`, symbol('ww-ballot'), v.runoff ? `Vote between ${tied}` : 'Vote for the spy']
-          : [`clue:${v.speaker}`, null, v.runoff ? `A tie: ${cap(tied)} give one more clue. ${speaker} clue` : `${speaker} clue`];
+          : v.phase === 'talk' ? ['talk', icon('users'), `Discussion · ${Math.max(0, Math.ceil((clock.ends - Date.now()) / 1000))}s, then the vote`]
+            : [`clue:${v.speaker}`, null, v.runoff ? `A tie: ${cap(tied)} give one more clue. ${speaker} clue` : `${speaker} clue`];
   const sub = $('.ww-sub');
-  if (sub.dataset.key !== key) {
+  const fresh = sub.dataset.key !== key;
+  if (fresh || key === 'talk') {
     sub.dataset.key = key;
     sub.replaceChildren(...[mark, words].filter(Boolean));
-    if (!still && words) sub.animate([{ opacity: 0, transform: 'translateY(6px)' }, { opacity: 1, transform: 'none' }], { duration: 400, easing: 'ease-out' });
+    if (fresh && !still && words) sub.animate([{ opacity: 0, transform: 'translateY(6px)' }, { opacity: 1, transform: 'none' }], { duration: 400, easing: 'ease-out' });
   }
+  $('.sp-vote-now').hidden = Boolean(ROOM) || v?.phase !== 'talk';
   $('.ww-over').hidden = !over;
   $('[data-action="new"]').hidden = Boolean(ROOM);
 }
@@ -356,15 +367,16 @@ function drawMe(t, v) {
       : !seated ? (t.people.includes(me) ? 'Watching: you play from the next game.' : 'Watching.')
         : !v.alive ? 'You are out: watch the rest.'
           : v.due?.kind === 'clue' ? 'Your turn: give a clue to your word in the chat, without saying it.'
+            : v.phase === 'talk' ? (v.due ? `Talk it over in the chat: ${v.due.left} line${v.due.left === 1 ? '' : 's'} left, never your word.` : `You have said your ${MAX_LINES} lines. The vote comes next.`)
             : v.due?.kind === 'vote' ? 'Click the player you think is a spy.'
               : voted ? 'You voted. Waiting for the others.' : '');
 }
 
-// The chat box: your clue on your turn; muted otherwise, and why.
+// The chat box: your clue on your turn, your lines in a discussion; muted otherwise, and why.
 const chat = $('.ww-chat-box');
 const box = chat.elements.text;
 function drawChat(t, v) {
-  const mine = !t.greeting && v?.due?.kind === 'clue';
+  const mine = !t.greeting && ['clue', 'talk'].includes(v?.due?.kind);
   if (chatAt !== (v?.due?.at ?? '')) {
     chatAt = v?.due?.at ?? '';
     box.value = '';
@@ -373,16 +385,17 @@ function drawChat(t, v) {
   chat.dataset.audience = mine ? 'all' : 'muted';
   box.disabled = !mine;
   box.maxLength = MAX_CLUE;
-  box.placeholder = mine ? 'Your clue, without your word…' : '';
+  box.placeholder = !mine ? '' : v.due.kind === 'talk' ? 'Say something to the table…' : 'Your clue, without your word…';
   $('[type=submit]', chat).disabled = !mine || !box.value.trim();
   const speaker = v && v.speaker !== null && v.speaker !== v.seat ? label(t, t.players[v.speaker]) : null;
-  const why = mine ? [icon('users'), 'Everyone hears your clue.']
+  const why = mine ? [icon('users'), v.due.kind === 'talk' ? `Everyone hears you · ${v.due.left} line${v.due.left === 1 ? '' : 's'} left.` : 'Everyone hears your clue.']
     : [symbol('ww-muted'), !v ? 'No game yet.'
       : t.greeting ? 'Muted while everyone says hello.'
         : v.phase === 'over' ? 'The game is over.'
           : v.seat === null ? 'Watching: you play from the next game.'
             : !v.alive ? 'You are out: the out don\'t clue.'
               : v.phase === 'vote' ? 'Muted while everyone votes.'
+                : v.phase === 'talk' ? `Muted: you have said your ${MAX_LINES} lines.`
                 : speaker ? `Muted: ${speaker} is giving a clue. You clue in turn.` : 'Muted.'];
   const line = $('.ww-audience');
   if (line.dataset.key !== why.at(-1)) {
@@ -393,7 +406,7 @@ function drawChat(t, v) {
 }
 chat.addEventListener('submit', (event) => {
   event.preventDefault();
-  if (chat.dataset.audience === 'all') perform({ type: 'clue' });
+  if (chat.dataset.audience === 'all') perform({ type: picture().v.due.kind === 'talk' ? 'say' : 'clue' });
 });
 box.addEventListener('input', () => draw());
 box.addEventListener('keydown', (event) => {
@@ -408,13 +421,15 @@ box.addEventListener('keydown', (event) => {
 function perform(action) {
   const { v } = picture();
   if (!v?.due) return;
-  const say = action.type === 'clue' ? box.value : '';
+  const say = action.type === 'vote' ? '' : box.value;
   if (action.type === 'vote') myVote = { at: v.log.length, target: action.target };
+  if (action.type === 'say') box.value = ''; // a discussion's turn stays the same: the box is cleared here
   if (ROOM) {
     guest.send({ type: 'act', action: { ...action, at: v.due.at }, say });
     return draw();
   }
   const { rejected } = land(table, HUMAN, { at: v.due.at }, { action, say });
+  if (rejected && action.type === 'say') box.value = say;
   refused(rejected);
   changed();
 }
@@ -433,22 +448,24 @@ function drawFeed(t, v) {
   let last = null; // who said the row before, to run their bubbles together
   const name = (i) => (i === v.seat ? 'you' : label(t, t.players[i]));
   const Name = (i) => cap(name(i));
-  const say = (id, text, more = false) => {
+  const say = (id, text, more = false, note = '') => {
     const side = v?.seats[t.players.indexOf(id)]?.role;
-    rows.push(message({ face: id !== me && faceOf(t, id), name: [label(t, id), ...(side ? [token(side)] : [])], text, mine: id === me, more }));
+    rows.push(message({ face: id !== me && faceOf(t, id), name: [label(t, id), ...(side ? [token(side)] : [])], text, note, mine: id === me, more }));
   };
   for (const h of t.hellos) {
     say(h.id, h.text, last === h.id);
     last = h.id;
   }
   for (const e of v?.log ?? []) {
-    if (e.type === 'clue' && !e.silent) {
-      say(t.players[e.seat], e.text, last === e.seat);
+    if ((e.type === 'clue' && !e.silent) || e.type === 'line') {
+      say(t.players[e.seat], e.text, last === e.seat, e.type === 'clue' ? 'clue' : '');
       last = e.seat;
       continue;
     }
     last = null;
-    if (e.type === 'round') rows.push(notice(`${e.round === 1 ? 'Round 1. Everyone has their word: one clue each, in seat order' : `Round ${e.round}`}, from ${name(e.from)}.`));
+    if (e.type === 'talk') rows.push(notice(`The clues are in. Talk it over: ${TALK / 1000} seconds, up to ${MAX_LINES} lines each, never your word.`));
+    else if (e.type === 'vote-called') rows.push(notice('Time to vote.'));
+    else if (e.type === 'round') rows.push(notice(`${e.round === 1 ? 'Round 1. Everyone has their word: one clue each, in seat order' : `Round ${e.round}`}, from ${name(e.from)}.`));
     else if (e.type === 'clue') rows.push(notice(`${Name(e.seat)} gave no clue.`));
     else if (e.type === 'vote') {
       const votes = Object.entries(e.votes).map(([s, x]) => `${Name(Number(s))} → ${x === null ? 'no vote' : name(x)}`);
@@ -693,6 +710,10 @@ joining.addEventListener('submit', (event) => {
 document.addEventListener('click', (event) => {
   const action = event.target.closest('[data-action]')?.dataset.action;
   if (action === 'new') openStart();
+  else if (action === 'vote-now' && !ROOM) {
+    callVote(table);
+    changed();
+  }
   else if (action === 'thinking') showThinking();
   else if (action === 'close') $('.pk-thinking').close();
   else if (action === 'key') ai.open();
