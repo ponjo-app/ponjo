@@ -174,10 +174,15 @@ runs going and the limits. A restart clears it: open asks run again.
 
 ## Agent log
 
-Each look writes what woke it, then each agent's verdict and why (asked in
-which ask, whose change, still typing, at the limit, already running); each
-run's end writes how it ended and what landed. Names, versions and ids
-only, never the world's content. In Ponjo: Settings > Agents > Agent log.
+The runtime tells its host what it does as events (`trace`), one format
+for every world: each look, what set it off and each agent's verdict and
+why (asked in which ask, whose change, still typing, at the limit, already
+running), and which runs it started; a look that failed; each run's end,
+how it ended and what landed; the breaker tripping. Only a run's end holds
+the world's content (its view, what it made); the host keeps and shows the
+rest as names, versions and ids. The fields: Event in `src/core/runtime.js`.
+In Ponjo the host writes them as the agent log (Settings > Agents > Agent
+log), and each run's end to the runs' log.
 
 ## Security
 

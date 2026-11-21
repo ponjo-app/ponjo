@@ -113,7 +113,7 @@ export function plan({ agents, asks, askers, notes, changedAt, running, prints, 
   }
   const start = [];
   for (const [id, task] of tasks) {
-    const agent = agents.find((b) => b.id === id); // a thread's opener may be gone
+    const agent = agents.find((b) => b.id === id); // the agent an ask names may be gone
     if (!agent) continue;
     const asked = task.asked || task.relayed;
     const reason = asked ? `asked in ${task.asks.map((a) => a.id).join(', ')}${task.asked ? '' : ' by an agent'}` : task.watch.since;

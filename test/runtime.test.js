@@ -80,6 +80,7 @@ function game({ tries = 3, limit = 1000 } = {}) {
 // The runtime on `world`, its agent making the moves `moves(view)` says.
 async function withRuntime(world, moves, fn) {
   const views = [];
+  const events = [];
   const runtime = await createRuntime({
     world,
     async run(task, view) {
@@ -88,13 +89,12 @@ async function withRuntime(world, moves, fn) {
     },
     breaker: async () => ({ pauseAfter: 100, pauseWithin: 10 }),
     watching: { read: async () => ({}), note: () => {} },
-    log: () => {},
-    ended: () => {},
+    trace: (event) => events.push(event),
     emit: () => {},
   });
   try {
     await runtime.sync();
-    await fn({ runtime, views });
+    await fn({ runtime, views, events });
   } finally {
     await runtime.close();
   }
@@ -113,10 +113,14 @@ test('a refused move: the player is asked again, told why, and its next move lan
 
 test('refused again and again: the world plays its fallback, once, and the runs stop', async () => {
   const { world, state } = game({ tries: 3 });
-  await withRuntime(world, () => 'bad', async ({ runtime, views }) => {
+  await withRuntime(world, () => 'bad', async ({ runtime, views, events }) => {
     await until(() => state.fallbacks === 1 && runtime.running().length === 0, 'the fallback');
     await sleep(200);
     assert.deepEqual([views.length, state.moves], [3, ['fallback']]);
+    const started = events.filter((e) => e.type === 'look').flatMap((e) => e.verdicts.filter((v) => v.run).map((v) => v.run));
+    const ended = events.filter((e) => e.type === 'run.end');
+    assert.deepEqual(ended.map((e) => e.run), started, 'the trace: each run a look started, and its end');
+    assert.deepEqual(ended.map((e) => e.answered.landed), ['Refused: bad is not a legal move', 'Refused: bad is not a legal move', 'Refused: bad is not a legal move']);
   });
 });
 
