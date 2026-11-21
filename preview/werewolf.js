@@ -14,7 +14,7 @@
 import { agentFace, personFace, setBuddies, setOwner } from '../web/faces.js';
 import { icon } from '../web/icons.js';
 import { $, el, message, models, notice, typingMessage } from './game-page.js';
-import { DECIDE, HUMAN, MAX_SPEECH, PERSONAS, ROLE_NAMES, createWorld, decided, expire, isPerson, land, newGame, show, turn } from './werewolf-world.js';
+import { DECIDE, HUMAN, MAX_SPEECH, PERSONAS, ROLE_NAMES, cast, createWorld, decided, expire, isPerson, land, newGame, show, turn } from './werewolf-world.js';
 import { createRuntime } from '../src/core/runtime.js';
 
 const TURN = 90_000; // ms a turn may take; then everyone still due is taken as doing nothing
@@ -742,12 +742,18 @@ function showThinking() {
   if (dialog instanceof HTMLDialogElement) dialog.showModal();
 }
 
-// ---- a new game: how many players ----
+// ---- a new game: how many players, and the roles that makes ----
 
 const starting = $('.ww-start');
 let size = 7;
 function openStart() {
   for (const b of starting.querySelectorAll('[data-size]')) b.setAttribute('aria-checked', String(Number(b.dataset.size) === size));
+  const roles = cast(size);
+  $('.ww-cast', starting).replaceChildren(...[...new Set(roles)].map((role) => {
+    const item = el('li', '', `${roles.filter((r) => r === role).length} × `);
+    item.append(token(role));
+    return item;
+  }));
   starting.hidden = false;
   document.body.classList.add('pk-buying-in');
 }
