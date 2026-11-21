@@ -149,6 +149,10 @@ a { color: var(--accent); }
   .arch-kicker { font-size: 13px; }
   .arch-heading { font-size: 24px; }
   .arch-say { min-height: 0; font-size: 16px; line-height: 1.5; }
+  .arch-stage.arch-api { max-width: none; aspect-ratio: auto; }
+  .arch-calls { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+  .arch-calls dt { font-size: 14px; }
+  .arch-calls dd { margin-bottom: 12px; font-size: 15px; }
 }
 
 /* the cover: Clippy, the title and what the story is about */
@@ -259,35 +263,30 @@ a { color: var(--accent); }
 .arch-board b { color: var(--chalk); font-size: 13px; }
 .arch-board .arch-bar { height: 8px; }
 .arch-board .arch-bar:not(.arch-mine) { background: var(--chalk); opacity: 0.5; }
-/* the board's version; a line in a row with, while it is a proposal, dashed, the version it was made on; refused, in red */
+/* the board's version; the writer, the one thing that changes the board, its check lit green
+   or red; a proposal, a card with its line, dashed, and the version it was made on; sent back, red */
 .arch-version { display: inline-block; margin-left: 8px; font-weight: 400; opacity: 0.75; }
-.arch-line { display: flex; align-items: center; gap: 8px; }
-.arch-board .arch-bar.arch-proposed { background: color-mix(in srgb, var(--buddy) 30%, transparent); outline: 1.5px dashed var(--buddy); outline-offset: 1px; }
-.arch-on { color: var(--chalk); font-size: 11px; opacity: 0.75; white-space: nowrap; }
+.arch-writer { display: flex; flex-direction: column; align-items: center; justify-content: center; box-sizing: border-box; border-radius: 8px; background: var(--text); color: var(--on-text); font-size: 13px; line-height: 1.25; transition: box-shadow 0.2s; }
+.arch-writer span { font-size: 11px; font-variant-numeric: tabular-nums; opacity: 0.85; }
+.arch-writer span:empty { display: none; }
+.arch-writer-ok { box-shadow: 0 0 0 3px var(--canvas), 0 0 0 5px var(--green); }
+.arch-writer-no { box-shadow: 0 0 0 3px var(--canvas), 0 0 0 5px var(--red); }
+.arch-paper.arch-proposal { gap: 6px; padding: 8px 10px; z-index: 1; }
+.arch-proposal .arch-bar { background: color-mix(in srgb, var(--buddy) 30%, transparent); outline: 1.5px dashed var(--buddy); outline-offset: 1px; }
+.arch-proposal span { color: var(--text-faint); font-size: 11px; }
+.arch-proposal.arch-refused { box-shadow: inset 0 0 0 1.5px var(--red); }
+.arch-proposal.arch-refused .arch-bar { background: color-mix(in srgb, var(--red) 60%, transparent); outline-color: var(--red); }
 /* other worlds on a board: a poker table's cards, face down in chalk, one turned up in its player's colour; a village's faces */
 .arch-cards, .arch-village { display: flex; gap: 8px; }
 .arch-card { width: 18px; height: 26px; border-radius: 3px; background: var(--chalk); opacity: 0.5; }
 .arch-card.arch-up { background: var(--buddy); opacity: 1; }
 .arch-sketch .arch-village .pj-avatar { --size: 24px; }
-/* the world's five calls: a code card, the call being made lit, its answer after it */
-.arch-code { display: flex; flex-direction: column; gap: 4px; box-sizing: border-box; padding: 16px; border-radius: 10px; background: var(--bg-soft); font-family: var(--mono); font-size: 13px; }
-.arch-call { display: flex; align-items: baseline; gap: 0; padding: 4px 8px; border-radius: 6px; color: var(--text-soft); white-space: nowrap; transition: background-color 0.25s, color 0.25s; }
-.arch-call b { color: var(--text); font-weight: 600; }
-.arch-call-on { background: var(--highlight); color: var(--text); }
-.arch-answer { margin-left: auto; padding-left: 12px; color: var(--text-faint); opacity: 0; }
-.arch-call-on .arch-answer { color: var(--text); }
-.arch-source { margin-top: auto; padding: 0 8px; color: var(--text-faint); font-size: 12px; }
-/* the poker table: a seat a player, its cards; the others' greyed while one looks; the pot, its chips */
-.arch-seats { display: flex; justify-content: space-around; }
-.arch-seat { display: flex; flex-direction: column; align-items: center; gap: 6px; transition: opacity 0.3s; }
-.arch-seat .arch-cards { gap: 4px; }
-.arch-seat.arch-hidden { opacity: 0.35; }
-.arch-sketch .arch-seat .pj-avatar { --size: 24px; }
-.arch-pot { display: flex; align-items: center; gap: 6px; min-height: 16px; }
-.arch-chip { width: 14px; height: 14px; border-radius: 9999px; background: var(--buddy); }
-.arch-chip.arch-proposed { background: color-mix(in srgb, var(--buddy) 30%, transparent); outline: 1.5px dashed var(--buddy); outline-offset: 1px; }
-.arch-chip.arch-refused { background: color-mix(in srgb, var(--red) 60%, transparent); outline-color: var(--red); }
-.arch-line.arch-refused .arch-bar { background: color-mix(in srgb, var(--red) 60%, transparent); outline-color: var(--red); }
+/* the world's five calls: each call, in code, and what it answers */
+.arch-stage.arch-api { gap: 16px; }
+.arch-calls { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 14px 24px; max-width: 880px; margin: 0; }
+.arch-calls dt { font-family: var(--mono); font-size: 18px; font-weight: 600; }
+.arch-calls dd { margin: 0; color: var(--text-soft); font-size: 20px; }
+.arch-source { color: var(--text-faint); font-size: 13px; }
 
 /* a scene as a diagram: boxes and arrows in an SVG, members over it at the same points (sketch in arch-story.js) */
 .arch-sketch { position: absolute; top: 50%; left: 50%; translate: -50% -50%; container-type: inline-size; }
