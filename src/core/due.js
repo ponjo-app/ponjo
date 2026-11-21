@@ -2,11 +2,8 @@
 // agents should be doing now, from its asks and what this machine noted,
 // with no clock or file of its own: a look at any time finds the same.
 
-/** How long people's changes pause before an agent watching runs on them (ms). */
-export const SETTLE_MS = 5000;
-
-/** Who made a change found on disk (another program), in `changedAt`. */
-export const OUTSIDE = Symbol('outside');
+/** Who made a change that is no member's, the world's own (in a doc: another program's), in `changedAt`. */
+export const WORLD = Symbol('world');
 
 /**
  * What to start and stop now. `agents` those here ({ id, name }); `asks`
@@ -20,9 +17,10 @@ export const OUTSIDE = Symbol('outside');
  * its view's fingerprint now; `woken` the ids of the agents whose view
  * holds what wakes them; `changedAt` who
  * last changed the world → { rev, at (when, on the clock of `now`), depth
- * (an agent's: its run's) }, people as one (null), another program as
- * OUTSIDE; `running` the ids of the agents running; `limit` the world's
- * depth limit; `paused` whether its watches are paused (the breaker).
+ * (an agent's: its run's) }, people as one (null), the world itself as
+ * WORLD; `running` the ids of the agents running; `limit` the world's
+ * depth limit; `settleMs` how long people's changes pause before they
+ * count; `paused` whether its watches are paused (the breaker).
  *
  * Returns { start ([{ agent, asks, askers, watch (whether it watches),
  * watchOnly, depth }]), stop (ids), wakeAt (when to look again, or null),
@@ -33,9 +31,8 @@ export const OUTSIDE = Symbol('outside');
  * the world says who, and the runtime starts work only for them.
  * A watcher, while whoever turned it on may ask and the watches are not
  * paused, is due once turned on, and on another member's change since its
- * last run started: people's once they pause SETTLE_MS, a file written
- * outside at once (it is whole: the door took it once it held still), an
- * agent's once its run ended (so the watcher sees all it did). Its own never counts, nor a
+ * last run started: people's once they pause `settleMs`, the world's own
+ * at once, an agent's once its run ended (so the watcher sees all it did). Its own never counts, nor a
  * change its view no longer shows: one whose view is as it was when its
  * last run started is not due. One whose last run named what wakes it is
  * due only while its view holds that.
@@ -44,13 +41,13 @@ export const OUTSIDE = Symbol('outside');
  * an agent's ask or change did, one more than that. Past `limit`, nothing
  * starts: agents waking each other come to rest.
  */
-export function plan({ agents, asks, askers, notes, changedAt, running, prints, woken, limit, paused, now }) {
+export function plan({ agents, asks, askers, notes, changedAt, running, prints, woken, limit, settleMs, paused, now }) {
   const noteOf = (id) => notes.get(id) ?? { seen: new Map(), lookedAt: null, print: null, wake: null, watch: null };
   const tasks = new Map(); // agent id → { asks, askers, asked, relayed, depth, watch }
   const taskOf = (id) => tasks.get(id) ?? tasks.set(id, { asks: [], askers: new Set(), asked: false, relayed: false, depth: Infinity, watch: null }).get(id);
   const asking = new Set();
   const why = new Map();
-  const nameOf = (by) => (by === null ? 'people' : by === OUTSIDE ? 'outside the app' : agents.find((b) => b.id === by)?.name ?? by);
+  const nameOf = (by) => (by === null ? 'people' : by === WORLD ? 'the world' : agents.find((b) => b.id === by)?.name ?? by);
   let wakeAt = null;
   const soonest = (at) => { wakeAt = wakeAt === null ? at : Math.min(wakeAt, at); };
   for (const ask of asks) {
@@ -83,16 +80,16 @@ export function plan({ agents, asks, askers, notes, changedAt, running, prints, 
         changed.push(`itself at rev ${rev}, which does not count`);
         continue;
       }
-      const agent = by !== null && by !== OUTSIDE;
+      const agent = by !== null && by !== WORLD;
       // An agent's counts once its run has landed, all it did.
-      if (by === OUTSIDE) byPeople = true;
+      if (by === WORLD) byPeople = true;
       else if (agent && !running.has(by)) {
         byAgent = true;
         depth = Math.min(depth, of + 1);
       }
-      else if (by === null && now - at >= SETTLE_MS) byPeople = true;
-      else if (by === null) soonest(at + SETTLE_MS); // people still typing: look once they pause
-      changed.push(`${nameOf(by)} at rev ${rev}${by === null && now - at < SETTLE_MS ? ', still typing' : ''}${agent && running.has(by) ? ', still landing' : ''}`);
+      else if (by === null && now - at >= settleMs) byPeople = true;
+      else if (by === null) soonest(at + settleMs); // people still typing: look once they pause
+      changed.push(`${nameOf(by)} at rev ${rev}${by === null && now - at < settleMs ? ', still typing' : ''}${agent && running.has(by) ? ', still landing' : ''}`);
     }
     let since = note.lookedAt === null ? 'its first look' : changed.length ? `changed by ${changed.join(', ')}, after its look at rev ${note.lookedAt}` : `no change since its look at rev ${note.lookedAt}`;
     // Its last run said what wakes it: not before its view holds that.

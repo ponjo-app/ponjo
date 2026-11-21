@@ -1,11 +1,10 @@
 // The agent runtime of one open doc (docs/agent-runtime.md): the loop
 // (src/core/runtime.js) on this machine. What only the doc host can do is
 // here: a run is the agent program once on its view (execute, runner.js),
-// a view's fingerprint is its doc's text's, and what the loop does and why
-// is written to this machine's agent log (logLoop) and its runs' log
-// (logRun). Nothing of it is written to a shared file.
+// what the loop does and why is written to this machine's agent log
+// (logLoop) and its runs' log (logRun), and the windows hear the buddies'
+// statuses with their asks as threads. Nothing of it is written to a shared file.
 
-import { createHash } from 'node:crypto';
 import { basename } from 'node:path';
 import { createRuntime } from '../core/runtime.js';
 import { pickedAgent } from '../store/agents.js';
@@ -17,6 +16,10 @@ import { execute, killTree, testAgent } from './runner.js';
 
 // A time as the agent log writes it, on this machine's clock: 2026-11-18 21:40:12.203.
 const stamp = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${d.toTimeString().slice(0, 8)}.${String(d.getMilliseconds()).padStart(3, '0')}`;
+
+// The runtime's statuses as the windows read them: a buddy at work, the
+// threads it was given, and the threads where its last run failed.
+const forWindows = (statuses) => statuses.map(({ asks, failed, ...s }) => ({ ...s, state: asks.length ? 'running' : 'ready', threadIds: asks, failed: failed.map(({ ask, ...f }) => ({ thread: ask, ...f })) }));
 
 /**
  * The buddies' statuses as someone at `level` sees them: why a run failed
@@ -44,11 +47,8 @@ export async function createBuddyRuntime({ world, docPath, settingsDir, secrets,
   }
 
   const runtime = await createRuntime({
-    world, emit, log: tell,
-    // A view's fingerprint: its doc's text's (its comments wake no watcher).
-    print: (files) => createHash('sha256').update(files.text).digest('base64url'),
-    // What wakes a buddy: lines of the doc, each whole.
-    wakes: (files, lines) => lines.some((l) => files.text.split(/\r?\n/).includes(l)),
+    world, log: tell,
+    emit: (type, payload) => emit(type, type === 'agents' ? forWindows(payload) : payload),
     breaker: async () => (await readSettings(settingsDir)).settings,
     watching: {
       read: () => readWatching(docPath(), settingsDir),
@@ -80,7 +80,7 @@ export async function createBuddyRuntime({ world, docPath, settingsDir, secrets,
     sync: runtime.sync,
     /** The agent, its settings or its secrets changed: the failed asks run again. */
     agentChanged: () => runtime.retry(),
-    statuses: runtime.statuses,
+    statuses: () => forWindows(runtime.statuses()),
     watches: runtime.watches,
     running: runtime.running,
     testAgent: async () => {

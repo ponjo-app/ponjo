@@ -6,7 +6,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { asksIn } from '../src/core/comments.js';
-import { OUTSIDE, SETTLE_MS, plan } from '../src/core/due.js';
+import { WORLD, plan } from '../src/core/due.js';
+import { SETTLE_MS } from '../src/host/doc-world.js';
 import { newSince } from '../src/core/prompt.js';
 
 const ME = 'u_me000001';
@@ -22,7 +23,7 @@ function look(over = {}) {
   const posted = new Map([...s.relayed].map(([id, people]) => [id, { for: people, depth: s.depth }]));
   const lines = new Set(s.text.split(/\r?\n/));
   const woken = new Set([...s.notes].filter(([, n]) => n.wake?.some((l) => lines.has(l))).map(([id]) => id));
-  return plan({ agents: buddies, asks: asksIn(s.threads, s.askers, s.taken, posted), askers: s.askers, notes: s.notes, changedAt: s.changedAt, running: s.running, limit: s.limit, paused: s.paused, prints: s.prints ?? new Map(), woken, now: s.now });
+  return plan({ agents: buddies, asks: asksIn(s.threads, s.askers, s.taken, posted), askers: s.askers, notes: s.notes, changedAt: s.changedAt, running: s.running, limit: s.limit, settleMs: SETTLE_MS, paused: s.paused, prints: s.prints ?? new Map(), woken, now: s.now });
 }
 const started = (result) => result.start.map((t) => t.agent.id);
 const watching = (lookedAt, over = {}) => new Map([['b_ada', note({ watch: { by: ME }, lookedAt, ...over })]]);
@@ -88,9 +89,9 @@ test('a watcher is due once turned on, on people\'s changes once they pause, and
   assert.deepEqual([started(paused), paused.start[0].depth], [['b_ada'], 0], 'their pause: depth 0');
   assert.deepEqual(started(look({ notes: watching(7), changedAt: people, now: 98_000 + SETTLE_MS })), [], 'a run since saw them');
 
-  const outside = look({ notes: watching(5), changedAt: new Map([[OUTSIDE, { rev: 7, at: 99_999 }]]) });
-  assert.deepEqual([started(outside), outside.start[0].depth, outside.wakeAt], [['b_ada'], 0, null], 'a file written outside: at once, depth 0, for it is whole');
-  assert.equal(outside.why.get('b_ada'), 'due: changed by outside the app at rev 7, after its look at rev 5');
+  const outside = look({ notes: watching(5), changedAt: new Map([[WORLD, { rev: 7, at: 99_999 }]]) });
+  assert.deepEqual([started(outside), outside.start[0].depth, outside.wakeAt], [['b_ada'], 0, null], 'the world\'s own change (in a doc, a file written outside): at once, depth 0');
+  assert.equal(outside.why.get('b_ada'), 'due: changed by the world at rev 7, after its look at rev 5');
 
   const buddy = look({ notes: watching(5), changedAt: new Map([['b_ben', { rev: 7, at: 99_000, depth: 4 }]]) });
   assert.deepEqual([started(buddy), buddy.start[0].depth], [['b_ada'], 5], 'another buddy: at once, one deeper than its run');
@@ -100,7 +101,7 @@ test('a watcher is due once turned on, on people\'s changes once they pause, and
   const deep = new Map([['b_ben', { rev: 7, at: 99_000, depth: 1000 }]]);
   assert.deepEqual(started(look({ notes: watching(5), changedAt: deep })), [], 'past the depth limit: they come to rest');
   assert.deepEqual(started(look({ notes: watching(5), changedAt: new Map([...deep, [null, { rev: 8, at: 0 }]]) })).concat(look({ notes: watching(5), changedAt: new Map([...deep, [null, { rev: 8, at: 0 }]]) }).start.map((t) => t.depth)), ['b_ada', 0], 'a person\'s change starts it again at depth 0');
-  assert.deepEqual(look({ notes: watching(5), changedAt: new Map([...deep, [OUTSIDE, { rev: 8, at: 99_999 }]]) }).start.map((t) => t.depth), [0], 'as does an outside one');
+  assert.deepEqual(look({ notes: watching(5), changedAt: new Map([...deep, [WORLD, { rev: 8, at: 99_999 }]]) }).start.map((t) => t.depth), [0], 'as does an outside one');
   assert.deepEqual(started(look({ notes: watching(5), changedAt: new Map([[null, { rev: 8, at: 0 }]]), paused: true })), [], 'watches paused: none');
 });
 

@@ -10,10 +10,9 @@ import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/
 import { tmpdir } from 'node:os';
 import { basename, delimiter, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { SETTLE_MS } from '../src/core/due.js';
 import { buildPrompt } from '../src/core/prompt.js';
 import { agentsFor, createBuddyRuntime } from '../src/host/buddy-runtime.js';
-import { createDocWorld } from '../src/host/doc-world.js';
+import { SETTLE_MS, createDocWorld } from '../src/host/doc-world.js';
 import { noteTaken } from '../src/store/history.js';
 import { agentScript, agentsDir, installAgents, listAgents } from '../src/store/agents.js';
 import { readSecrets, secretTails, writeSecrets } from '../src/store/secrets.js';
