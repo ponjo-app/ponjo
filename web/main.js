@@ -9,7 +9,7 @@
 import { api } from './api.js';
 import { markdown } from './views/markdown/index.js';
 import { viewFor } from './views/index.js';
-import { createCommentMargin } from './threads.js';
+import { avatar, createCommentMargin } from './threads.js';
 import { createDocBar } from './docbar.js';
 import { WORKING_MS, createPeople, modeOf } from './agent.js';
 import { setBuddies, setOwner } from './faces.js';
@@ -22,7 +22,8 @@ import { createAnchor, locate } from '../src/core/anchor.js';
 import { diffEdits, findEdit } from '../src/core/diff.js';
 import { createClient } from './client.js';
 import { createHistory } from './history.js';
-import { createRuns } from './runs.js';
+import { createRuntimePanel } from './runtime-panel.js';
+import { traceParts } from './trace.js';
 import { revisionMarks } from './marks.js';
 import { createFileList } from './files.js';
 import { setFindOptions } from './find.js';
@@ -55,7 +56,8 @@ let margin;
 let docBar; // the status bar under the page (web/docbar.js)
 let people;
 let history;
-let runs;
+let runtimePanel = null; // the runtime panel, while open (web/runtime-panel.js)
+let tracedRuns = []; // this doc's runs that left a trace, newest first (api.runs)
 let settings;
 let level; // what this page may do: 'read', 'write' or 'owner' (state())
 let defaultName;
@@ -273,8 +275,8 @@ async function start() {
     mentionable: () => people?.mentionable() ?? [],
     files: () => projectFiles?.all,
     openFile: (path) => files.open(path),
-    traceOf: (id) => runs?.runOf(id),
-    onTrace: (run) => runs.show(run),
+    traceOf: (id) => tracedRuns.find((r) => r.comments?.includes(id))?.run,
+    onTrace: (run) => openRuntime(run),
   });
   loadPaths();
 
@@ -361,21 +363,13 @@ async function start() {
     onUndo: undoVersions,
     onClose: () => editor.focus(),
   });
-  runs = createRuns({
-    api,
-    enabled: () => level === 'owner' && settings.get().trace,
-    commentOf: (id) => comments?.threads.find((t) => t.id === id)?.comments[0]?.body ?? null,
-    onChange: repaintThreads,
-    onOpen: () => history.close(),
-    onClose: () => editor.focus(),
-  });
-  runs.refresh();
-  settings.subscribe((next, prev) => next.trace !== prev.trace && runs.refresh());
+  document.querySelector('.pj-tool-runtime').addEventListener('click', () => (runtimePanel ? runtimePanel.close() : openRuntime()));
+  refreshRuns();
+  settings.subscribe((next, prev) => next.trace !== prev.trace && refreshRuns());
   settings.subscribe(followViews);
   document.addEventListener('keydown', (event) => {
     if ((event.ctrlKey || event.metaKey) && event.altKey && event.shiftKey && event.code === 'KeyH') {
       event.preventDefault();
-      runs.close();
       history.toggle();
     } else if ((event.ctrlKey || event.metaKey) && event.shiftKey && !event.altKey && event.code === 'KeyT') {
       event.preventDefault();
@@ -428,8 +422,10 @@ async function start() {
   });
   events.on('agents', (data) => {
     showAgents(data);
-    runs.refresh(); // a run that ended has its trace
+    runtimePanel?.agents(runtimeStatuses(data));
+    refreshRuns(); // a run that ended has its trace
   });
+  events.on('runtime', (event) => runtimePanel?.add(event, event.at));
   events.on('room', (data) => {
     if (people.render({ room: data })) repaintThreads();
   });
@@ -636,6 +632,55 @@ function afterTyping(key, fn) {
 }
 
 // The doc's agents changed (a status, or who is here).
+// ---- the runtime panel: what the buddies' runtime does, for the owner with Trace runs on ----
+
+// The runs that left a trace again, and whether the panel may open: on
+// opening the doc, after a run ends, and when Trace runs is switched.
+async function refreshRuns() {
+  const on = level === 'owner' && settings.get().trace;
+  document.querySelector('.pj-tool-runtime').hidden = !on;
+  if (!on) {
+    tracedRuns = [];
+    runtimePanel?.close();
+  } else tracedRuns = await api.runs().catch(() => tracedRuns);
+  repaintThreads(); // a reply's Trace link shows from them
+}
+
+// The statuses as the runtime has them (runtime.js): asks, not threads.
+const runtimeStatuses = (list) => list.map(({ threadIds, failed, ...a }) => ({ ...a, asks: threadIds, failed: failed.map(({ thread, ...f }) => ({ ask: thread, ...f })) }));
+
+// Opens the panel, on run `run` if given: the runs traced before, then what
+// the doc host kept of what its runtime did, then each event as it comes.
+async function openRuntime(run) {
+  if (!runtimePanel) {
+    const toggle = document.querySelector('.pj-tool-runtime');
+    const threadText = (id) => comments?.threads.find((t) => t.id === id)?.comments[0]?.body.replace(/\s+/g, ' ').trim();
+    runtimePanel = createRuntimePanel({
+      where: docName,
+      faceOf: (id, name) => avatar(name, 'agent', true, id),
+      askText: (id) => (threadText(id) ? `On “${threadText(id).slice(0, 60)}”` : 'A thread'),
+      retry: (buddy) => api.retry(buddy).catch(() => {}),
+      detail: async (id) => traceParts(await api.trace(id)),
+      onClose: () => {
+        runtimePanel = null;
+        toggle.setAttribute('aria-pressed', 'false');
+        editor.focus();
+      },
+    });
+    toggle.setAttribute('aria-pressed', 'true');
+    const recent = await api.runtime().catch(() => []);
+    const live = new Set(recent.map((e) => e.run));
+    for (const r of tracedRuns.slice().reverse()) {
+      if (live.has(r.run)) continue;
+      const asks = (r.threads ?? []).map((id) => ({ id }));
+      runtimePanel.add({ type: 'run.end', run: r.run, task: { agent: { name: r.buddy }, asks }, result: { at: Date.parse(r.at), ms: r.ms, outcome: r.outcome, usage: r.usage }, answered: { comments: r.comments } }, Date.parse(r.at) + r.ms);
+    }
+    for (const event of recent) runtimePanel.add(event, event.at);
+    runtimePanel.agents(runtimeStatuses(agents));
+  }
+  if (run) runtimePanel.show(run);
+}
+
 function showAgents(next) {
   // The server repeats statuses (each connection starts with them); redrawing
   // the faces and panels for the same ones is wasted work.
