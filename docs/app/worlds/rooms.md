@@ -61,6 +61,13 @@ seat has a task; a table no page has been at for a day is deleted.
   Ponjo's key also counts against the address that opened the table, at
   most 60 a minute (the INFER rate), and an address opens at most 60
   lines to tables a minute (SEATS). The owner cannot set these yet.
+- **Providers.** A visitor's key is Anthropic's, or one for an
+  OpenAI-compatible API at a known provider's host only, so the room is
+  no proxy: `api.openai.com`, `openrouter.ai`, `api.groq.com`,
+  `api.together.xyz`, `api.deepseek.com`, `api.mistral.ai`,
+  `api.fireworks.ai`, `generativelanguage.googleapis.com`,
+  `api.tokenfactory.nebius.com` (`OPENAI_HOSTS`, `relay/table.js`). A base
+  URL elsewhere is refused when the key is given, with the list.
 - **Views.** The room sends a page its whole view each time it changes,
   with the presence it may see, instead of telling it to read again.
 - **Deploys.** A page that cannot reach the room says so and tries again,

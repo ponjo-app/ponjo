@@ -29,6 +29,8 @@
 // Keys. Ponjo's (the ANTHROPIC_API_KEY secret) never leaves the Worker. A
 // visitor's is held in memory only, for the AI players of the table they
 // opened, and sent to no page: a failed call is told by its status alone.
+// An OpenAI-compatible one is called only at a known provider's host
+// (OPENAI_HOSTS): the relay is no proxy to anywhere else.
 // Nothing keeps it at rest; that needs a master secret the owner sets.
 // When the room is evicted it forgets the key: the AI players wait until
 // the host's page gives it again (the room asks it when it wakes), and
@@ -62,6 +64,10 @@ const MAX_PAGES = 20; // open at once
 const MAX_MEMBERS = 50; // tokens a table gives
 const MAX_MESSAGE = 16_000; // characters of a page's message
 const MAX_TOKENS = 4000; // of an answer on Ponjo's key: one turn's tool call
+// The hosts a visitor's OpenAI-compatible base URL may name: providers that
+// speak Chat Completions with tool calls. The relay calls no other, so it is
+// no proxy to anywhere a key's owner names.
+const OPENAI_HOSTS = ['api.openai.com', 'openrouter.ai', 'api.groq.com', 'api.together.xyz', 'api.deepseek.com', 'api.mistral.ai', 'api.fireworks.ai', 'generativelanguage.googleapis.com', 'api.tokenfactory.nebius.com'];
 const KEPT = ['game', 'table', 'members', 'own', 'spent', 'gone', 'touched', 'opener'];
 
 export class Table {
@@ -329,11 +335,13 @@ export class Table {
     }
   }
 
-  // The host's own key, or null for Ponjo's. One that cannot be used is refused, and nothing changes.
+  // The host's own key, or null for Ponjo's. One that cannot be used is
+  // refused, and nothing changes: an OpenAI-compatible one only at OPENAI_HOSTS.
   #useKey(socket, key) {
-    const ok = key === null || (typeof key === 'object' && ['anthropic', 'openai'].includes(key.provider) && [key.key, key.model].every((v) => typeof v === 'string' && v && v.length <= 500)
-      && (key.provider === 'anthropic' || (typeof key.endpoint === 'string' && key.endpoint.length <= 500 && key.endpoint.startsWith('https://'))));
-    if (!ok) return socket.send(JSON.stringify({ type: 'rejected', why: 'Your model\'s settings cannot be used: a key, a model and, for a base URL, https://.', body: {} }));
+    const refuse = (why) => socket.send(JSON.stringify({ type: 'rejected', why, body: {} }));
+    const ok = key === null || (typeof key === 'object' && ['anthropic', 'openai'].includes(key.provider) && [key.key, key.model].every((v) => typeof v === 'string' && v && v.length <= 500));
+    if (!ok) return refuse('Your model\'s settings cannot be used: they take a key and a model.');
+    if (key?.provider === 'openai' && !supported(key.endpoint)) return refuse(`Your base URL's host is not supported. Use https:// at one of ${OPENAI_HOSTS.join(', ')}.`);
     this.key = key && { provider: key.provider, key: key.key, model: key.model, ...(key.provider === 'openai' ? { endpoint: key.endpoint } : {}) };
     if (this.own !== Boolean(this.key)) this.ctx.storage.put('own', this.own = Boolean(this.key));
     this.#seat();
@@ -389,6 +397,17 @@ async function claude(messages, tools, env) {
     calls: content.filter((b) => b.type === 'tool_use').map(({ id, name, input }) => ({ id, name, args: JSON.stringify(input) })),
     text: content.filter((b) => b.type === 'text').map((b) => b.text).join(''),
   };
+}
+
+// Whether `endpoint` is https:// at one of OPENAI_HOSTS, on its usual port, with no name or password in it.
+function supported(endpoint) {
+  let url;
+  try {
+    url = new URL(endpoint);
+  } catch {
+    return false;
+  }
+  return url.protocol === 'https:' && OPENAI_HOSTS.includes(url.hostname) && !url.port && !url.username && !url.password;
 }
 
 function close(socket, code, reason) {

@@ -6,6 +6,7 @@
 import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer, request as get } from 'node:http';
+import { createServer as listen } from 'node:net';
 import { createHash, randomBytes } from 'node:crypto';
 import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -270,5 +271,42 @@ test('a page is let in only from Ponjo\'s pages, to a table that is there, as th
   const other = page(relay, room, { game: 'poker' });
   await until(() => other.closed, 'another game');
   assert.equal(other.closed.code, 4004);
+  host.close();
+});
+
+test('a visitor\'s OpenAI-compatible key is taken only for a known provider\'s host: any other is refused and never called', async (t) => {
+  const relay = await tables(t);
+  // A host the relay may not call: any line opened to it is counted.
+  let lines = 0;
+  const elsewhere = listen((socket) => {
+    lines++;
+    socket.destroy();
+  });
+  await new Promise((r) => elsewhere.listen(0, '127.0.0.1', r));
+  t.after(() => new Promise((r) => elsewhere.close(r)));
+  const { secret, room } = newRoom();
+  const host = page(relay, room, { game: 'spy', secret });
+  await until(() => host.view(), 'the host\'s first view');
+  const refusals = () => host.frames.filter((f) => f.type === 'rejected');
+  for (const endpoint of [`https://localhost:${elsewhere.address().port}/v1`, 'https://evil.example/v1', 'http://api.openai.com/v1', 'https://api.openai.com.evil.example/v1', 'https://user:pass@api.openai.com/v1']) {
+    host.send({ type: 'key', key: { provider: 'openai', key: VISITOR_KEY, model: 'm', endpoint } });
+  }
+  await until(() => refusals().length === 5, 'each base URL refused');
+  assert.ok(refusals().every((f) => /not supported.*api\.openai\.com, openrouter\.ai/.test(f.why)), 'the page is told which hosts are');
+  assert.ok(!JSON.stringify(host.frames).includes(VISITOR_KEY));
+  // A known provider's host is taken: no game is on, so nothing calls it; then back to Ponjo's key.
+  host.send({ type: 'key', key: { provider: 'openai', key: VISITOR_KEY, model: 'm', endpoint: 'https://api.groq.com/openai/v1' } });
+  host.send({ type: 'key', key: null });
+  await new Promise((r) => setTimeout(r, 500));
+  assert.equal(refusals().length, 5, 'taken');
+  // Nothing else changed: the AI players run on Ponjo's key, and none calls the host refused.
+  const calls = api.requests.length;
+  host.act({ type: 'start', size: 5 });
+  await until(() => {
+    host.playAlong();
+    return api.requests.length > calls + 1;
+  }, 'the AI players at work', 60_000);
+  assert.ok(api.requests.slice(calls).every((r) => r.headers['x-api-key'] === PONJO_KEY));
+  assert.equal(lines, 0, 'the refused host was never called');
   host.close();
 });
