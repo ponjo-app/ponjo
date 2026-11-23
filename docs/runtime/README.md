@@ -146,8 +146,9 @@ is due by; `why` in words.
 - The order of `tasks` is the world's priority.
 - Where one answer is wanted from several (a line said to the whole
   table), the world lists the task for one member, by a rule of the state.
-- **A task others wait on has an `at`.** The rules decide what happens
-  when it passes; nothing waits for ever.
+- **A task a person waits on has an `at`,** unless a system member, which
+  acts at once, answers it. The rules decide what happens when it passes;
+  no person waits for ever.
 
 ### Answers
 
@@ -161,8 +162,9 @@ kept in the state by a pure wrapper around its `apply`:
 | `{ failed }`, or not started by the wallet | failed | `turn`: its `fallback` at once; `ask`, `watch`: gone, a person may ask again |
 | nothing | answered | `turn`: its `fallback` at once; `ask`, `watch`: gone |
 
-A world gives only `apply`, `fallback(state, task)` and its limit of
-tries. A person's or an outside member's refused change lands nothing:
+A refused run still writes the ledger: that write takes a `rev`, and
+wakes only the seat whose view it changes. A world gives only `apply`,
+`fallback(state, task)` and its limit of tries. A person's or an outside member's refused change lands nothing:
 they see why at once. Answers are in the state, keyed by `given`, never by
 `rev`, so a restart, or another host on the same state, finds the same
 tasks.
