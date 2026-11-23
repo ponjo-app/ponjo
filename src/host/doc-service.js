@@ -203,13 +203,15 @@ export async function openDocService(docPath, { folder = null, room = null, sett
     }
     retryMs = RETRY_MS;
     tellSaved(null);
+    // Written now, so landed even if the file changes outside before the next write.
+    if (wroteAny) await noteWritten(docPath, settingsDir, writtenHash, writtenIds).catch(() => {});
+    // Told last, with nothing awaited after: what the caller holds once the
+    // doc is written (changeComments) is held before a window told can ask.
     for (const event of told.splice(0)) {
       for (const cursor of cursors.values()) cursor.at = mapOffset(cursor.at, event.ops);
       toldRev = event.rev;
       emit('ops', event);
     }
-    // Written now, so landed even if the file changes outside before the next write.
-    if (wroteAny) await noteWritten(docPath, settingsDir, writtenHash, writtenIds).catch(() => {});
   }
 
   // The file as changed outside, once it holds still: another program may be
