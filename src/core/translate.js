@@ -6,6 +6,10 @@ import { appendedComments, newComment } from './comments.js';
 
 // What a buddy that edited and said nothing, not even on its way out, says.
 const EDITED = 'Edited the doc.';
+/** What a buddy says in a thread that asked it where its run posted nothing. */
+export const LOOKED = 'Looked; nothing to change.';
+/** What a buddy says in each thread that asked it where its run failed (src/host/doc-world.js). */
+export const COULD_NOT_FINISH = 'Could not finish.';
 // How long a comment may be (src/core/prompt.js).
 const MOST = 280;
 
@@ -35,7 +39,8 @@ function lastWords(output) {
  * wrote no comment on the comment it left out: what it said last on its way
  * out, else that it edited the doc, in the first thread that asked it, still
  * open, else on the whole doc. No edit lands without a comment. A reply in a thread resolved meanwhile is
- * not posted.
+ * not posted. Each open thread that asked it and has none of its comments
+ * gets LOOKED: every ask is answered by a comment.
  */
 export function toChanges({ by, base, edited, comments, groups = [], threads, asking = [], output = '' }) {
   const open = new Set(threads.filter((t) => !t.resolved).map((t) => t.id));
@@ -50,5 +55,6 @@ export function toChanges({ by, base, edited, comments, groups = [], threads, as
     if (!posts.length) posts.push(newComment({ thread: asking.find((id) => open.has(id)), body: lastWords(output) ?? EDITED }, { by, at: '' }));
     carried = [{ comment: posts.at(-1), doc: edited }];
   }
+  for (const id of asking) if (open.has(id) && !posts.some((c) => c.thread === id)) posts.push(newComment({ thread: id, body: LOOKED }, { by, at: '' }));
   return { posts: posts.filter(kept), byLine: new Map([...byLine].filter(([, c]) => kept(c))), carried: carried.map((c) => ({ ...c, lands: kept(c.comment) })) };
 }

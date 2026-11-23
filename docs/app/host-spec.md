@@ -47,7 +47,7 @@ The code says turn nowhere: a buddy answering is a run.
 
 1. **Files are the truth.** Docs, their comments and buddies are plain
    files. Everything else is a cache rebuilt from them, or only costs undo
-   if lost. What runs on this machine (runs, failures, watches, the breaker) is
+   if lost. What runs on this machine (runs, why one failed, watches, the breaker) is
    this machine's and never written to a shared file.
 2. **One door, one writer.** Every change, whoever makes it, comes through
    the doc's one door, in one order. An agent gets only copies. A change
@@ -90,7 +90,7 @@ The code says turn nowhere: a buddy answering is a run.
 | `agents/` | config folder | each agent: a program and its manifest ([agent config](agent-config.md#agents)) | this user's |
 | `secrets.bin` | config folder | agents' secret settings, encrypted with the system keychain | this user's |
 | `state.json` | config folder | recent docs and folders, window bounds | cache |
-| `history/<doc>/` | config folder | the doc's versions; the window edits its file was last written with; the comments this host took; the buddies watching it | this machine's |
+| `history/<doc>/` | config folder | the doc's versions; the window edits its file was last written with; the comments this host took, and those its runs posted; the buddies watching it | this machine's |
 | `logs/` | config folder | `runs.jsonl`, a line per run; `agents.log`, why each look started what it did; with Trace runs on, `traces/<run>.json` | this machine's |
 
 The config folder is `~/Library/Application Support/Ponjo/` on macOS. Only
@@ -340,7 +340,8 @@ lands nothing if one of those it ran for may no longer ask when it ends.
 
 A buddy has one run at a time in a doc, given every thread that asks it
 and it has not been given; a comment written while it runs is for the
-next. The runtime's notes, breaker and runs are this machine's, in memory.
+next. The runtime's notes, breaker and runs are this machine's, in memory;
+what a restart needs of them is in `history/<doc>/`.
 Each look writes to `logs/agents.log` what woke it and each buddy's
 verdict, and each run's end a line, never the doc's text; the log is
 trimmed like the others.
@@ -353,22 +354,25 @@ asks the thread's buddies: the one that opened it, and each @mentioned
 there before. An empty one (resolving, reopening) asks no one. Only the
 comments of those who may write ask (the owner, a teammate who can edit),
 and only those the door took. Resolving a thread, which only people do,
-drops what it asked. A comment a run was given asks no more, though the run
-posted nothing there, until someone writes in the thread again: a buddy
-that answers nothing is not run again and again.
+drops what it asked. A run answers each thread it was given with a comment
+of its buddy's: one it posted there, else "Looked; nothing to change.", or
+if it failed "Could not finish." (Failures). So a buddy that answers
+nothing is not run again and again, nor after a restart, until someone
+writes in the thread again.
 
 **A buddy's ask.** A comment a run on this machine posted asks each other
 buddy it @mentions, and only them, a step deeper (see Depth and the
 breaker). The asked run
 is for the people the asking run was for, while one of them may still
 ask, and lands at their level. Which comments those are is this machine's,
-in memory: a buddy's comment found in the file, or after a restart, asks
-no one.
+kept with their people and depth in `history/<doc>/`, so they still ask
+after a restart: a buddy's comment found in the file asks no one.
 
 **A watch.** A person sets a buddy watching the doc, or unsets it; nothing
-the buddy or the app does changes it. It is noted on this machine, `{ by }`,
-never in the comments, and the buddy runs as whoever set it may, while they
-may ask. A watcher is due once set, then on another member's change since
+the buddy or the app does changes it. It is noted on this machine, `{ by }`
+with what its last run saw (the text's fingerprint) and named (its wake
+lines), never in the comments, and the buddy runs as whoever set it may,
+while they may ask. A watcher is due once set, then on another member's change since
 its last run started: people's once they pause for 5 s (`SETTLE_MS`); a
 file written outside the app at once, for it is whole (the door took it
 once it held still); a buddy's once that buddy's run has ended: its edits
@@ -385,6 +389,9 @@ heard then are noted with `base`). It reads the rest in the comments
 itself, and comments where it will, as any member. A run may name, in
 `PONJO_WAKE`, lines of the doc that wake it ([wake](agent-config.md#wake)):
 until its next run the watcher is due only while the doc holds one, whole.
+On opening, what changed while the app was closed is as a file written
+outside it: a watcher whose doc's text is not as its last run saw it runs
+once.
 
 **Depth and the breaker.** So that buddies cannot wake each other for
 ever, each run has a depth: 0 when a person's ask or change, or a file
@@ -420,7 +427,8 @@ machine's, in memory.
    no comment, on the one it left out (what the agent printed last, in
    one line of at most 280 characters, else "Edited the doc."), in the
    first thread that asked it, or else on the whole doc: no edit lands
-   without a comment. A reply in a thread resolved meanwhile is dropped, with its
+   without a comment. A thread that asked it where it posted nothing gets
+   "Looked; nothing to change.": every ask is answered by a comment. A reply in a thread resolved meanwhile is dropped, with its
    edits; a line that would resolve is ignored, as only people resolve. In
    a thread that asked it, its comments come just after the last comment
    it was given, so one written meanwhile is after them, still to answer.
@@ -458,16 +466,20 @@ the comment's edits, never its actions.
 ### Failures
 
 A run that fails (an exit other than 0, a timeout, a run the host could not
-start) lands nothing and writes nothing to a shared file: a failure is this
-machine's. It is noted in the buddy's `failed`, by thread or for its watch,
-and shown on the buddy and the thread with Retry (`retry({ buddy })`); why
-(the end of the output, the script) to the owner alone. It is not run
-again on its own, for it may well fail again at the same cost: it runs
-again when someone writes in the thread, on Retry, when the agent, its
-settings or its secrets change, and, for a watcher, when people next pause.
-Errors an agent can outlast, such as a busy API, it retries itself
-([Ponjo agent](ponjo-agent.md)). After a restart, the notes are gone: asks
-not answered run again.
+start) lands nothing but its buddy's "Could not finish." in each thread it
+was given that still asks it, just after the last comment it was given
+there; why (the end of the output, the script) is the owner's alone, in
+the run's trace and the agent log. That comment answers the ask, so it is
+not run again on its own, for it may well fail again at the same cost, nor
+after a restart: it runs again when someone writes in the thread. Retry,
+on that comment while it is the thread's latest, for whoever may ask, is
+that: it posts their reply `@<buddy> try again.`. A failed watch run is
+noted in the buddy's `failed`, in memory, and shown on the buddy with
+Retry (`retry({ buddy })`), why to the owner alone; it runs again on
+Retry, when the agent, its settings or its secrets change, and when people
+next pause. Errors an agent can outlast, such as a busy API, it retries
+itself ([Ponjo agent](ponjo-agent.md)). After a restart, asks not answered
+run again.
 
 ## Sharing
 

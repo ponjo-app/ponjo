@@ -23,7 +23,6 @@ const MENTION_BEFORE_CARET = /(^|[^A-Za-z0-9._-])@([A-Za-z0-9._-]*)$/;
  *           onReply: (threadId: string, body: string) => Promise<void>,
  *           onResolve: (threadId: string) => Promise<void>, onReopen: (threadId: string) => Promise<void>,
  *           onUndo: (replyId: string) => Promise<void>, onRedo: (replyId: string) => Promise<void>,
- *           onRetry: (buddyId: string) => Promise<void>,
  *           actionsOf?: (replyId: string) => object[], mayDecide?: () => boolean,
  *           onDecide?: (decision: 'approve' | 'decline' | 'retry', actionId: string) => Promise<void>,
  *           onShowEdits: (replyId: string | null) => void,
@@ -223,11 +222,11 @@ export function createCommentMargin(margin, handlers) {
     if (comment.body.trim()) row.append(head, body, foldButton(comment.id, open));
     else row.append(head);
     // To retry, or to redo what was dropped, the human asks again; a run
-    // that failed on the host (its reply says why, or that it failed) has
-    // Retry, for whoever may ask (`retry`, its buddy).
+    // that failed on the host (its reply says it could not finish) has
+    // Retry, for whoever may ask (`retry`), which asks its buddy again.
     if (comment.retry) {
       const note = el('div', 'pj-card-note pj-msg-note');
-      note.append(linkButton('Retry', () => handlers.onRetry(comment.retry)));
+      note.append(linkButton('Retry', () => handlers.onReply(comment.thread, `@${shown} try again.`)));
       row.append(note);
     } else if (comment.failed && !comment.host) row.append(el('div', 'pj-card-note pj-msg-note', `The run failed. @mention ${shown} again to retry.`));
     if (edits[comment.id]?.conflict) row.append(el('div', 'pj-card-note pj-msg-note', `People changed some of the same lines while it worked, so its edit there was not applied. @mention ${shown} again to redo it.`));

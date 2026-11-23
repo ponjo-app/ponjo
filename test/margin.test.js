@@ -1,12 +1,12 @@
 // The comment margin (web/threads.js): threads not open are folded; the open
 // one sits at its text however many cards stack above it; the threads with
 // no place in the text are one comment icon at the top, opened in place and
-// closed by a click in the doc. The desktop app on a folder, so it needs the
-// page built (npm run build).
+// closed by a click in the doc; a failed run's answer has Retry. The desktop
+// app on a folder, so it needs the page built (npm run build).
 
 import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, realpath, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, realpath, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -32,13 +32,17 @@ const COMMENTS = [
   { id: 'c_capagain', thread: 'c_capacity', by: fan, at: at(12), body: 'Thanks.' },
   { id: 'c_wholedoc', anchor: null, by: fan, at: at(20), body: 'On the doc as a whole.' },
   { id: 'c_deleted1', anchor: { exact: 'a sentence no longer here', prefix: '', suffix: '', start: 0 }, by: fan, at: at(21), body: 'About deleted text.' },
+  // A thread whose buddy's run failed (src/host/doc-world.js, failed).
+  { id: 'c_failed01', anchor: on('for details'), by: fan, at: at(30), body: '@Clippy fail' },
+  { id: 'c_failreply', thread: 'c_failed01', by: clippy, at: at(31), body: 'Could not finish.' },
 ];
 
 let app;
 let page;
+let folder;
 
 before(async () => {
-  const folder = join(await mkdtemp(join(tmpdir(), 'ponjo-margin-')), 'project');
+  folder = join(await mkdtemp(join(tmpdir(), 'ponjo-margin-')), 'project');
   await mkdir(folder);
   await writeFile(join(folder, 'plan.md'), SAMPLE);
   await writeFile(join(folder, 'plan.md.comments.jsonl'), [{ comments: 3 }, ...COMMENTS].map((line) => JSON.stringify(line)).join('\n') + '\n');
@@ -57,7 +61,7 @@ before(async () => {
   app = await launchElectron(electron, [join(root, 'desktop', 'main.js'), ...sandbox, `--user-data-dir=${join(config, 'profile')}`, folder], { env });
   page = await app.page('plan.md', 60_000);
   await waitFor(() => page.evaluate('window.ponjoReady.then(() => true)'), 30_000, 'the page ready');
-  await waitFor(() => page.evaluate(`document.querySelectorAll('.pj-margin .pj-card').length === 6`), 10_000, 'the cards');
+  await waitFor(() => page.evaluate(`document.querySelectorAll('.pj-margin .pj-card').length === 7`), 10_000, 'the cards');
 });
 
 after(() => app?.quit());
@@ -80,7 +84,7 @@ const margin = () => page.evaluate(`(() => {
 
 test('threads not open are folded to their first comment and their latest reply, with no status line; the open one is whole, at its text, though five cards stack above it', { timeout: 60_000 }, async () => {
   const folded = await margin();
-  assert.equal(folded.folded, 6);
+  assert.equal(folded.folded, 7);
   assert.equal(folded.latest, 'Thanks.', 'the latest reply');
   assert.equal(folded.between, '1 more reply', 'and how many it leaves out');
   assert.equal(folded.status, null, 'no line on who is at work or how many replied');
@@ -90,7 +94,7 @@ test('threads not open are folded to their first comment and their latest reply,
   await page.evaluate(`document.querySelector('.pj-margin [data-thread="c_capacity"]').click()`);
   await waitFor(async () => (await margin()).replies === 3, 10_000, 'the thread open');
   const open = await margin();
-  assert.equal(open.folded, 5);
+  assert.equal(open.folded, 6);
   assert.ok(Math.abs(open.drift) < 16, `the open card at its text (${open.drift}px)`);
 });
 
@@ -127,4 +131,19 @@ test('an action a reply proposed shows under it, its input in full; the owner ap
   const done = await action();
   assert.deepEqual(done.buttons, [], 'nothing left to decide');
   assert.match(done.foot, /^Approved by .+\. posted to #ops$/);
+});
+
+test('a buddy\'s "Could not finish." shows failed, with Retry: Retry asks the buddy again as the person, and it runs', { timeout: 60_000 }, async () => {
+  await page.evaluate(`document.querySelector('.pj-margin [data-thread="c_failed01"]').click()`);
+  const rows = () => page.evaluate(`[...document.querySelectorAll('.pj-margin [data-thread="c_failed01"] .pj-msg')].map((row) => ({
+    body: row.querySelector('.pj-body')?.textContent, failed: row.classList.contains('pj-msg-failed'), buttons: [...row.querySelectorAll('.pj-msg-note button')].map((b) => b.textContent),
+  }))`);
+  await waitFor(async () => (await rows()).length === 2, 10_000, 'the thread open');
+  assert.deepEqual((await rows())[1], { body: 'Could not finish.', failed: true, buttons: ['Retry'] });
+  await page.evaluate(`[...document.querySelectorAll('.pj-margin [data-thread="c_failed01"] .pj-msg-note button')].find((b) => b.textContent === 'Retry').click()`);
+  const sidecar = async () => (await readFile(join(folder, 'plan.md.comments.jsonl'), 'utf8')).trim().split('\n').slice(1).map((l) => JSON.parse(l)).filter((c) => c.thread === 'c_failed01');
+  await waitFor(async () => (await sidecar()).length === 3, 20_000, 'the person\'s reply, then the buddy\'s run');
+  assert.deepEqual((await sidecar()).slice(1).map((c) => [c.by.name, c.body]), [['fzhan', '@Clippy try again.'], ['Clippy', 'Nothing to change.']]);
+  await waitFor(async () => (await rows()).length === 4, 10_000, 'the replies shown');
+  assert.deepEqual((await rows())[1].buttons, [], 'Retry only on the latest');
 });

@@ -18,6 +18,7 @@ import { createChrome } from './ui.js';
 import { createSettings } from './settings.js';
 import { icon } from './icons.js';
 import { viewSettings } from '../src/core/settings.js';
+import { COULD_NOT_FINISH } from '../src/core/translate.js';
 import { createAnchor, locate } from '../src/core/anchor.js';
 import { diffEdits, findEdit } from '../src/core/diff.js';
 import { createClient } from './client.js';
@@ -256,7 +257,6 @@ async function start() {
     onReopen: (thread) => send(api.comment({ thread, body: '' })),
     onUndo: undoReply,
     onRedo: redoReply,
-    onRetry: (buddy) => api.retry(buddy).catch(() => {}),
     actionsOf: (reply) => actions.filter((a) => a.comment === reply),
     mayDecide: () => level === 'owner',
     onDecide: (decision, id) => api.decideAction(decision, id),
@@ -646,8 +646,9 @@ async function refreshRuns() {
   repaintThreads(); // a reply's Trace link shows from them
 }
 
-// The statuses as the runtime has them (runtime.js): asks, not threads.
-const runtimeStatuses = (list) => list.map(({ threadIds, failed, ...a }) => ({ ...a, asks: threadIds, failed: failed.map(({ thread, ...f }) => ({ ask: thread, ...f })) }));
+// The statuses as the runtime has them (runtime.js): asks, not threads; a
+// failed ask is answered in its thread, so none is noted.
+const runtimeStatuses = (list) => list.map(({ threadIds, ...a }) => ({ ...a, asks: threadIds, failed: [] }));
 
 // Opens the panel, on run `run` if given: the runs traced before, then what
 // the doc host kept of what its runtime did, then each event as it comes.
@@ -799,21 +800,13 @@ noticeBanner.querySelector('[data-action="any-size"]').addEventListener('click',
   followViews();
 });
 
-// The threads in the margin: the doc's, each with its buddies' failed runs
-// there as their last reply, from their statuses, never from the comments'
-// file (a failure is the host's, not the doc's). The owner's say why; a
-// failure new since the last time makes its buddy flinch.
+// The threads in the margin: a buddy's "Could not finish." is its failed
+// run's answer (src/host/doc-world.js, failed), shown failed, the latest in
+// its thread with Retry for whoever may ask; one new since the last time
+// makes its buddy flinch.
 let failedShown = null; // ids of the failed replies on screen; null until the first update
 function paintThreads() {
-  const failures = new Map(); // thread → its failed replies
-  for (const a of agents) {
-    for (const { thread, at, why } of a.failed ?? []) {
-      if (a.threadIds.includes(thread)) continue; // running there again
-      const reply = { id: `failed-${a.id}-${thread}-${at}`, thread, by: { id: a.id, name: a.name, kind: 'ai' }, at, body: why ?? 'The run failed.', failed: true, host: true, retry: reading() ? null : a.id };
-      failures.set(thread, [...(failures.get(thread) ?? []), reply]);
-    }
-  }
-  const threads = comments.threads.map((t) => (failures.has(t.id) ? { ...t, comments: [...t.comments, ...failures.get(t.id)] } : t));
+  const threads = comments.threads.map((t) => ({ ...t, comments: t.comments.map((c) => (c.by.kind === 'ai' && c.body === COULD_NOT_FINISH ? { ...c, failed: true, host: true, retry: !reading() && c === t.comments.at(-1) } : c)) }));
   const failed = threads.flatMap((t) => t.comments).filter((c) => c.failed);
   if (failedShown) for (const c of failed.filter((c) => !failedShown.has(c.id))) people?.failed(c.by.id);
   failedShown = new Set(failed.map((c) => c.id));
@@ -1156,7 +1149,7 @@ function offerRename() {
 
 // The threads drawn again, as when the people in the doc change.
 function repaintThreads() {
-  if (comments) margin?.update(comments.threads, { id: myId, name: me }, comments.edits);
+  if (comments && margin) paintThreads();
 }
 
 /** Rename the human in comments, in every doc; false when the name is not allowed. */
