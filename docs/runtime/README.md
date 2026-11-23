@@ -171,7 +171,15 @@ kept in the state by a pure wrapper around its `apply`:
 reply in a thread resolved meanwhile). A refused run still writes the
 ledger: that write takes a `rev`, and
 wakes only the seat whose view it changes. A world gives only `apply`,
-`fallback(state, task)` and its limit of tries. A person's or an outside member's refused change lands nothing:
+its limit of tries, and
+
+```
+fallback(state, task, at)    → state
+```
+
+the state once the rules have played `task` for no one (a silent clue, an
+abstention, a pass), `at` the stamp of the change that set it off, pure as
+`apply` is. A person's or an outside member's refused change lands nothing:
 they see why at once. Answers are in the state, keyed by `given`, never by
 `rev`, so a restart, or another host on the same state, finds the same
 tasks.
@@ -396,8 +404,6 @@ the design before this one:
 - The breaker counts runs in a window; the depth limit is 1,000; a busy
   API fails a run after one retry ([Ponjo agent](../app/ponjo-agent.md));
   runs share no queue. Spy's wallet has the proposed limits, in its page.
-- The ledger hands `fallback` the change's `at` as well, which spy needs to
-  time the next turn from.
 
 ## Migration
 

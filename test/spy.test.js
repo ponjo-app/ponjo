@@ -235,29 +235,57 @@ test('a run that fails takes its turn\'s fallback at once', () => {
   assert.equal(t.state().game.speaker, 2);
 });
 
-test('a discussion is a channel: each line is a task for everyone else; a pass or quiet answers it; no one due, the vote', () => {
+test('a discussion: each seat is due on its opening, then on each line that names it; a line to no one asks the next AI player with lines left; no one due, the vote', () => {
   const t = play(open(), 'ccsccc');
   while (t.state().game.phase === 'clue') act_(t, t.state().players[t.state().game.speaker], { type: 'clue', text: 'Hot' });
   runs(t, 'Ivy', { type: 'say', text: 'Max, your clue was odd.', thinking: 'Max?' });
   assert.deepEqual(t.state().lines.at(-1), { id: 1, by: 'Ivy', text: 'Max, your clue was odd.', to: ['Max'], depth: 1, from: [], game: 1, kind: 'talk', round: 1 });
-  assert.deepEqual(tasks(t, 'Ivy'), [], 'her own line is the latest');
-  assert.deepEqual(tasks(t, 'Max').map((x) => [x.given, x.depth]), [['talk:1:1:1', 1]]);
+  assert.deepEqual(['Ivy', 'Max', 'Juno'].map((id) => tasks(t, id).map((x) => x.given)), [[], ['talk:1:1:0'], ['talk:1:1:0']], 'a line leaves the tasks it does not make as they were: a run on one goes on');
+  runs(t, 'Max', null); // quiet on the opening
+  assert.deepEqual(tasks(t, 'Max').map((x) => [x.given, x.depth]), [['talk:1:1:1', 1]], 'then the line that names him');
+  for (const id of ['Juno', 'Sam', 'Lou']) runs(t, id, { type: 'pass' });
+  does(t, HUMAN, { type: 'pass' });
   does(t, HUMAN, { type: 'say', text: 'Who is the spy, everyone?' });
-  assert.deepEqual(tasks(t, 'Ivy').map((x) => [x.given, x.from, x.depth]), [['talk:1:1:2', [HUMAN], 0]], 'a new line, a new task');
-  runs(t, 'Max', null); // quiet
-  assert.deepEqual(tasks(t, 'Max'), [], 'quiet is a pass');
-  assert.equal(t.state().passed.Max, 'talk:1:1:2');
-  const word = t.state().game.seats[seatOf(t, 'Juno')].word;
-  assert.match(runs(t, 'Juno', { type: 'say', text: `I love ${word}` }).refused, /says your word/);
-  runs(t, 'Sam', { type: 'say', text: 'Hot drinks are hot' });
-  assert.ok(tasks(t, 'Max').length, 'Sam\'s line asks Max again');
+  assert.equal(t.state().lines.at(-1).next, 'Ivy', 'to no one: the next AI player after the host');
+  assert.deepEqual(['Ivy', 'Juno', 'Sam', 'Lou'].map((id) => tasks(t, id).map((x) => [x.given, x.from, x.depth])), [[['talk:1:1:2', [HUMAN], 0]], [], [], []]);
+  runs(t, 'Max', null);
+  assert.deepEqual(tasks(t, 'Max'), [], 'quiet answers it');
+  assert.equal(t.state().heard.Max, 'talk:1:1:1');
+  const word = t.state().game.seats[seatOf(t, 'Ivy')].word;
+  assert.match(runs(t, 'Ivy', { type: 'say', text: `I love ${word}` }).refused, /says your word/);
+  assert.match(tasks(t, 'Ivy')[0].refused, /says your word/, 'due again, told why');
+  runs(t, 'Ivy', { type: 'say', text: 'Hot drinks are hot' });
+  assert.deepEqual(tasks(t, 'Max').map((x) => [x.given, x.from]), [['talk:1:1:3', [HUMAN]]], 'Ivy\'s line, to no one, asks Max, for the host');
   does(t, HUMAN, { type: 'say', text: 'One' });
   does(t, HUMAN, { type: 'say', text: 'Two' });
   assert.match(does(t, HUMAN, { type: 'say', text: 'Three' }).refused, new RegExp(`${MAX_LINES} lines`));
   assert.deepEqual(view_(t, HUMAN).actions, [], 'three lines said');
-  for (const id of t.state().players) if (tasks(t, id).length) act_(t, id, { type: 'pass' });
-  assert.equal(t.state().game.phase, 'vote');
+  assert.deepEqual(tasks(t, 'Ivy').map((x) => x.given), ['talk:1:1:4'], 'the first of the host\'s two lines to no one; the second asks her next');
+  while (t.state().game.phase === 'talk') for (const id of t.state().players) if (tasks(t, id).length) act_(t, id, { type: 'pass' });
   assert.deepEqual(t.state().thoughts.Ivy, [{ round: 1, kind: 'talk', text: 'Max?', action: null }]);
+});
+
+test('a discussion costs about a run per seat and one per line: five AI players talking to no one, none of their runs stopped', async () => {
+  const t = play(open(), 'cccccs');
+  while (t.state().game.phase === 'clue') act_(t, t.state().players[t.state().game.speaker], { type: 'clue', text: 'Hot' });
+  let calls = 0;
+  let stopped = 0;
+  const said = {};
+  // Each says a line to no one on its first two tasks, then passes.
+  const talk = (id) => async (tasks_, view, signal) => {
+    if (tasks_[0].given.startsWith('talk:')) calls++;
+    await new Promise((resolve) => setTimeout(resolve, 5 + Math.random() * 20));
+    if (signal.aborted) return stopped++, null;
+    said[id] = (said[id] ?? 0) + 1;
+    return { base: view.content.moment, body: said[id] <= 2 ? { type: 'say', text: `A thought, number ${said[id]}` } : { type: 'pass' } };
+  };
+  const players = t.state().players.slice(1).map((id) => control(t.as(id), { program: talk(id) }));
+  does(t, HUMAN, { type: 'pass' });
+  await until(() => t.state().game.phase === 'vote', 'the vote');
+  for (const p of players) p.stop();
+  const lines = t.state().lines.filter((l) => l.kind === 'talk').length;
+  assert.equal(lines, 10);
+  assert.deepEqual([calls, stopped], [5 + lines, 0], 'not five runs a line');
 });
 
 test('the clock: the hellos one by one, then the first clue; a turn\'s time up takes everyone still due as doing nothing; a discussion\'s, the vote', () => {

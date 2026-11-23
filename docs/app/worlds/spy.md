@@ -52,23 +52,28 @@ text }`, `say { text }`, `pass`, `vote { target }`, `chat { text }`.
 | --- | --- | --- | --- | --- |
 | clue | turn | `turn:<gameNo>:<turn>` | it is the speaker and has not spoken | `since + TURN` |
 | vote | turn | `turn:<gameNo>:<turn>` | it is alive and has not voted | `since + TURN` |
-| talk | turn | `talk:<gameNo>:<round>:<line>` | it is alive, has lines left, and the latest line is not its own | `since + TALK` |
+| talk | turn | `talk:<gameNo>:<round>:<line>` | it is alive, has lines left, and has not answered the opening (line 0) or a line that asks it | `since + TALK` |
 | chat | ask | `chat:<gameNo>:<line>` | a line after the game names it, below `DEPTH` (2) | none |
 
 - `from` is empty for a clue or vote, which the rules set off and the
-  owner pays for; else whoever said the latest line. `depth` is 0 for a
-  clue or vote, else as the latest line set it off.
-- The discussion is a channel: its `given` carries its latest line, so a
-  new line makes a new task and the old one is gone. A line or a pass
-  answers it. It is a `turn`, as the rules ask every seat to take part:
-  the runaway count skips it; the line budget and depth limit end it.
+  owner pays for; else whoever set off the line it answers. `depth` is 0
+  for a clue or vote, else as that line set it off.
+- The discussion opens with one task for every living seat. After that, a
+  line asks only the seats it names; one that names no one asks one seat:
+  the next living AI seat after the speaker with lines left. A seat is
+  given the first it has not answered, so a line that does not ask it
+  leaves its task, and a run on it goes on. A line or a pass answers it; a
+  person's line or pass answers all before it. So a discussion costs about
+  one run per seat and one per line. It is a `turn`, as the rules ask
+  every seat to take part: the runaway count skips it; the line budget and
+  depth limit end it.
 - Every voter is due at once: a barrier, tallied once no one is due.
 - A person's line to everyone, after a game, is one chat task, for the
   first AI seat after the speaker in seat order (the first AI seat, if the
   speaker has none).
 - The discussion ends when no one is due: every living seat, people
-  included, has passed, answered the latest line or used its lines; else at
-  `TALK`. Open: also not before a minimum, as a table that all pass votes
+  included, has answered its opening and each line that asks it, or used
+  its lines; else at `TALK`. Open: also not before a minimum, as a table that all pass votes
   at once.
 
 **Answers.** The wrapper keeps the ledger. A clue, a line, a vote or a pass
