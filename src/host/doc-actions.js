@@ -1,4 +1,4 @@
-// The doc world's outside actions (docs/runtime/README.md#outside-actions):
+// The doc world's outside actions (docs/runtime/README.md#effects):
 // each one a landed run proposed, recorded on this machine, approved by the
 // owner (unless the owner lets it run without asking, for their own runs),
 // carried out once, and its result posted as a reply. One started and not

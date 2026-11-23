@@ -1,4 +1,4 @@
-// The executor (docs/runtime/README.md, A run): runs the agent once as a
+// The executor (docs/app/host-spec.md, A run): runs the agent once as a
 // buddy, on the files of its view in a new private folder, with its prompt
 // on stdin, and hands back the copies and the comments' groups of edits
 // when it exits. The agent knows nothing of Ponjo; nothing here knows the doc.

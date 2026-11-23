@@ -369,7 +369,7 @@ How each of its worlds implements this: [doc](../app/worlds/doc.md),
 | agent | a buddy |
 | agent program | an agent (`agents/`, run by `src/host/runner.js`) |
 | world | the doc world (`src/core/doc-world.js`); three games in `preview/` |
-| store | the doc's door (`src/host/doc-service.js`), with the rest of its state beside it (`src/host/doc-store.js`); for a game, a [room](../app/worlds/rooms.md) on the relay, holding a store in memory (`src/core/store.js`) |
+| store | the doc's door (`src/host/doc-service.js`), with the rest of its state beside it (`src/host/doc-store.js`); for a game, a [room](../app/worlds/rooms.md) on the relay, holding a store (`src/core/store.js`) kept in its storage |
 | answers | the ledger, a wrapper around a world (`src/core/ledger.js`) |
 | wallet | the config folder: settings, secrets, logs; for a game, the room, for the key's owner |
 | controller | `src/core/controller.js`, with the wallet's limits and the clock's program; a doc's buddies' and clock's are given their programs, logs and settings by `src/host/buddy-runtime.js` |
@@ -377,30 +377,29 @@ How each of its worlds implements this: [doc](../app/worlds/doc.md),
 
 Open: Ponjo's limits. Proposed: a depth limit of 10, and N = 30.
 
-## Today
+## Differs
 
-Who's the Spy, werewolf and poker run on this design's core
-(`src/core/store.js`, `ledger.js`, `controller.js`), each table's store in
-its room on the relay (`relay/table.js`, [rooms](../app/worlds/rooms.md#today)),
-with its AI seats, its clock and its wallet; each page is one seat's
-client, sent only its view ([spy](../app/worlds/spy.md#today),
-[werewolf](../app/worlds/werewolf.md#today),
-[poker](../app/worlds/poker.md#today)). What they share is in
-`preview/game-kit.js`. The doc runs on it too, a controller per buddy per
-open doc and one for the clock ([doc](../app/worlds/doc.md#today)), with
-these differences:
+Where Ponjo's code is not yet this design. Each world's own:
+[doc](../app/worlds/doc.md#differs), [poker](../app/worlds/poker.md#differs),
+[werewolf](../app/worlds/werewolf.md#differs), [spy](../app/worlds/spy.md#differs),
+[rooms](../app/worlds/rooms.md#differs).
 
-- People have no controllers: a window reads the door's own `state`, and
-  the door lands typing and comments of its own accord.
-- The doc's `rev` starts again each time it opens, and its ledger is in
-  memory; a restart finds its tasks in the state on disk.
-- Its limits are the owner's settings: a depth limit of 1,000, and N runs
-  within a window since a person last acted; a busy API fails a run after
-  one retry ([Ponjo agent](../app/ponjo-agent.md)); runs share no queue.
-  The games' wallets have the proposed limits, and each room a budget of
-  model calls an hour.
+- **A doc's people have no controllers.** A window reads the door's own
+  `state`, and the door lands typing and comments of its own accord.
+- **A doc's `rev` starts again each time it opens**, and its ledger is in
+  memory; a restart finds its tasks in the state kept on disk.
+- **A game's room sends a page its whole view** each time it changes, not
+  a notice to read again.
+- **The limits.** A doc's are the owner's settings: a depth limit of 1,000,
+  and N runs within a window of minutes since a person last acted. The
+  games' are the proposed ones.
+- **No capacity queue.** Runs share none: a doc runs one run per buddy at a
+  time, the Ponjo agent tries a busy API once more itself
+  ([Ponjo agent](../app/ponjo-agent.md)), and a room's AI seats each call
+  the model within the table's calls an hour.
+- **No key is kept at rest in a room.** A visitor's is in its memory only;
+  an evicted room waits for their page to give it again.
 
 ## Migration
 
-How Ponjo's code gets there, in six steps, each with its tests and its
-design gate: [runtime migration](../app/runtime-migration.md).
+How Ponjo's code got here, in six steps: [runtime migration](../app/runtime-migration.md).

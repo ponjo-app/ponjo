@@ -77,7 +77,8 @@ listed for one AI player, the one whose last line is oldest, ties in seat
 order. A turn comes first; with no chat during a game, a seat never has a
 turn and a line at once.
 
-Open: chat before a game wakes AI players, or, as today, only after one.
+Open: whether chat before a game wakes AI players. In the code it wakes
+none; only chat after one does.
 
 **Answers.** The ledger's. Accepted, a change goes through the rules'
 `act`: the seat joins `acted`, and `settle` ends a phase once no one is
@@ -104,8 +105,11 @@ task, with its ring; the AI seats run in the room, with their wallet.
 - **Room**: commits `leave` for a person gone past `RECONNECT_MS`, as
   presence says; their turns take the fallback.
 
-Open: the narrator's call gates AI players (a turn task once its step is
-called, as for people today), or only paces what views show.
+Open: whether the narrator's call gates AI players or only paces what
+views show. In the code it gates every night turn, an AI seat's as a
+person's: listed once its step is called, due by the call's end; the rules
+hold the night at the witch's step until the last call (`daybreak`), so
+the day never begins before dawn is called.
 
 ## Presence
 
@@ -114,36 +118,19 @@ called, as for people today), or only paces what views show.
 ## Agent clients
 
 Tools: `content`, `rules` and the persona as the prompt; the world's
-actions as the only tools (today one, `DECIDE`). A run: a model call, the
+actions as the only tools (one, `DECIDE`). A run: a model call, the
 player's thinking time (at night at most `NIGHT_THINK`), a speech's typing
 time, told as presence. The wallet, in the room: Ponjo's key or a visitor's,
 the room's budget and rate, the depth limit; the breaker counts no turn.
 
-## Today
+## Differs
 
-- The store is the table's room on the relay (`relay/table.js`, a `Table`
-  Durable Object at infer.ponjo.app, [rooms](rooms.md)), which runs this
-  world (`preview/werewolf-world.js`, through `preview/game-tables.js`). Each
-  page (`preview/werewolf.js`) is one seat's client (`sit`,
-  `preview/game-kit.js`): it draws the view the room sends it and sends
-  what its person does; no page holds the state.
-- The room sends a page its whole view each time it changes, with the
-  presence it may see, instead of a notice to read again; there is no
-  `wait` and no `past`.
-- The AI seats, the clock and the wallet run in the room: the limits
-  (depth 10, N 30), in memory; the table's model calls an hour, on Ponjo's
-  key or the opener's own; no queue per provider. The opener's own key is
-  held in memory only, not kept in storage ([rooms](rooms.md#today)).
-- The room deals, in the opener's `start { size }`, adding `roles`;
-  `apply` checks they are a shuffle of `cast(size)`. There is no dealer member.
-- The narrator's call gates every night turn, an AI seat's as a person's:
-  listed once its step is called, due by the call's end. The rules hold
-  the night at the witch's step until the clock's last call
-  (`daybreak`), so the day never begins before dawn is called. Chat before
-  a game wakes no AI player.
+- Its room's ([rooms](rooms.md#differs)).
+- There is no dealer member: the room deals in the opener's
+  `start { size }`, adding `roles`; `apply` checks they are a shuffle of
+  `cast(size)`.
 - The table keeps `call { day, step, at }`, `since` and `thoughts` beside
-  the game, not in it; tasks are `turn:<no>:<turn>`, `line:<no>:<id>`,
-  `call:<no>:<day>:<step>`, `hello:<no>:<seat>`, `expire:<no>:<turn>`.
-- An AI seat's program waits its persona's thinking time
-  (`game-tables.js`) after the model answers, and a speech's typing time,
-  told as presence, so its change lands that much later.
+  the game, not in it, for `called`, `since` and `minds`; the tasks carry
+  the game's `no`: `turn:<no>:<turn>`, `line:<no>:<id>`,
+  `call:<no>:<day>:<step>`, `hello:<no>:<seat>`, `begin:<no>`,
+  `expire:<no>:<turn>`.

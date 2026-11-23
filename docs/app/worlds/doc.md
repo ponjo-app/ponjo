@@ -24,7 +24,8 @@ sidecar of another version, nothing is due.
 
 ## Store
 
-The doc's door (`src/host/doc-service.js`), holding both files in memory.
+The doc's door (`src/host/doc-service.js`), holding both files in memory,
+with the rest of the state and the ledger beside it (`src/host/doc-store.js`).
 
 ```
 read(member)        → { rev, view }
@@ -46,7 +47,7 @@ whose tasks it moves.
 
 ## World
 
-`view(state, member, past)`:
+`src/core/doc-world.js`. `view(state, member, past)`:
 
 | Field | A person | A buddy |
 | --- | --- | --- |
@@ -105,7 +106,7 @@ The owner, the room's teammates, the buddies (`buddies/`, a project's
 their window or page (`web/client.js`): it shows every task, and the
 person also acts of their own accord, which is most of what a doc sees. A
 buddy's runs on the owner's doc host, one per open doc, and acts only on
-its tasks. A buddy file changed by `git pull` may rename it, changing whom
+its tasks; so does the clock's (`src/host/buddy-runtime.js`). A buddy file changed by `git pull` may rename it, changing whom
 an old `@name` names, but vouches for no ask.
 
 ## Presence
@@ -138,25 +139,20 @@ agent, its settings and secrets; effects in `actions/`, records in
 Capacity. One queue per provider and key, for the Ponjo agent's calls. A
 command-line agent calls its provider itself and waits on its own.
 
-## Today
-
-The world is `src/core/doc-world.js`; its store the door with
-`src/host/doc-store.js` beside it; a controller per buddy per open doc,
-and the clock's (`src/host/buddy-runtime.js`). What differs:
+## Differs
 
 - People have no controllers. Typing, comments, undo and outside files
   land at the door of its own accord; what they do to the watches and the
   typing to settle is the world's `noted`, not `apply`.
-- `record` is the history's `taken.json` and `posted.json`, a watch's
-  `seen` is `print` in `watching.json`, and its `since` is set again on
-  opening; `rev` starts again at each opening, and the ledger is in memory.
-- `wait` wakes a member when its tasks or the door's rev change, not on a
-  hash of its whole view.
-- Why a watch run failed, and what a watcher is told is new since its last
-  run (`newSince`), are in memory: after a restart it is a first look.
+- `rev` starts again at each opening; `typed`, `settled` and the ledger
+  are in memory. Kept are `record` (the history's `taken.json` and
+  `posted.json`) and the watches (`watching.json`, `seen` as `print`), a
+  watch's `since` set again on opening.
+- What a watcher is told is new since its last run (`newSince`), and why
+  its last run failed, are in memory: after a restart it is a first look.
+- The past is the last 1,000 edits in memory (`doc-service.js`), not
+  history's versions by hash: a window's edit from before them is `stale`.
 - The limits: a depth limit of 1,000 (`buddy-runtime.js`), and N is
   Settings > Agents' `pauseAfter` runs within `pauseWithin` minutes since a
-  person last acted; capacity is one run per buddy per doc, and runs share
-  no queue.
-- `at` is `Date.now()`; a window's edit moves over a log of 1,000
-  (`doc-service.js`).
+  person last acted (300 in 10). Capacity is one run per buddy per doc;
+  runs share no queue.
