@@ -8,153 +8,153 @@ and returns: [agent config](../agent-config.md).
 ## State
 
 ```
-State { text, threads, settled, answered, problem }    at { epoch, rev }
+State   { text, threads, record, watches, answers, settled, log }    at rev
+Watch   { by, seen (a text's hash), since (least depth of changes since), wake }
+Answer  { buddy, thread, last (the latest comment its run was given), failed? }
 ```
 
-`text` is the doc; `threads` the sidecar's ([SPEC](../../../spec/SPEC.md));
-`settled` the last rev at which people had paused; `answered` each buddy's
-watermarks: per thread, the `until` it was given, per watch, the hash of
-the text it was given; `problem` why the sidecar may not be written (another
-version): then nothing is due. `text` and `threads` are files; the rest is
-the door's memory. `rev` counts text and comment changes since the host
-opened the doc, which `epoch` names.
+`text` and `threads` are the doc and its [sidecar](../../../spec/SPEC.md).
+The rest is the door's own, kept with `rev` in `history/<doc>/`, so a
+restart finds the same tasks. `record` says who wrote each comment, as the
+door authenticated them, with its depth and, for a buddy's, its run's
+`for`; a comment not in it is by `outside`. `settled` is the rev at which
+people last paused; `log` the last 1,000 operations, for `apply` to move a
+window's edit over. With a sidecar of another version, nothing is due.
 
-Open: whether `answered` outlives a restart: in the sidecar, in history, or not.
+Open: whether a watch is a fact in the sidecar, which travels with the file
+but is `by: outside` anywhere else, or in the door's own state.
 
 ## Store
 
-The doc's door (`src/host/doc-service.js`):
+The doc's door (`src/host/doc-service.js`), holding text and sidecar in
+memory.
 
 ```
-read()               → { rev, state }     door.text(), the sidecar, door.rev()
-wait(rev, deadline)  → rev                 subscribe(fn), told as each change lands
-commit(change)       → { rev, actions } | { refused: why }
+read(member)        → { rev, view }
+wait(member, rev)   → rev        once that member's view changed
+commit(change)      → { rev, actions } | { refused: why }
 ```
 
-The door moves a change made on an older state onto the newest, rather
-than refuse it. A window's edit, operations on `{ epoch, rev }`, is
-transformed by character over what landed since (`transform`); one from
-another epoch, or older than the log's 1,000 changes, is refused `stale`.
-A whole text (a run's group, an outside change, an undo) is merged by line,
-`merge3(base, now, late)`, the doc's lines winning, and never refused. The
-transform or the merge is the apply, so no retry is needed. A run's change
-is one commit, at one rev; each group is still a version in history.
+`commit` sets `by` from the connection (an owner's window, a teammate's
+page through the relay, a buddy's controller) and `at`, comments' too,
+from the door's clock. A window's operations are transformed by character
+over `log`; a whole text (a run's group, an outside change, an undo) is
+merged by line, `merge3`, the doc's lines winning. A run's change is one
+commit at one rev; each group is still a version in history, to undo
+alone. A person's edit older than `log` is refused `stale`.
 
-Every call carries `who`, set by the host from the connection, checked
-once (`can`). A run commits as its buddy, at most `write`.
-
-An outside write (`git pull`, another editor) is a commit `by: outside`:
-the door watches both files, takes a doc file once still for 50 ms, saves
-it to history and merges it by line from the text the file last held. A
-sidecar it did not write is taken whole; its new comments ask no one.
-
-## Local
-
-| Holds | Where | Why it is local |
-| --- | --- | --- |
-| `taken`: each comment this host took from a member, by a hash of its thread, author and body | `history/<doc>/taken.json` | only a comment taken here asks; in the file `by` is what its writer says (SPEC §7) |
-| `posted`: each comment a run here posted, with the run's `for` and depth | Open: memory, or `history/<doc>/` | its @mentions ask for those people |
-| watches: buddy → `{ by }` | `history/<doc>/watching.json` | a watch spends on every change |
-| the room: teammates and levels | memory (`src/host/room.js`) | who may ask |
-| settings: the agent, its settings and secrets, `about`, `actions`, `pauseAfter`, `pauseWithin` | `settings.json`, `secrets.bin` | what runs, and what it may do unasked |
-| actions: the programs, each one's record | `actions/`, `logs/actions.jsonl` | carried out once, by this machine's leave |
-| limits: depth 1,000; the breaker, 300 runs in 10 min | memory | one decision for all the owner's buddies |
-
-The door notes `taken` before it writes a person's comment; `record`
-notes `posted` before a run's commit. `changed()` returns on a watch, the
-room, the settings, a buddy file (`buddies/`, or a project's
-`.ponjo/buddies/`, outside the door), or a run's end.
+The past is history's versions, named by SHA-256 (`history/<doc>/`). All
+see the whole doc, so any text or comment change wakes every member;
+`settled` wakes only those whose tasks it changes.
 
 ## World
 
-```
-due(state, local, buddy)     → [Task]
-view(state, local, task)     → { files, prompt }
-apply(state, change, local)  → { state, actions } | { refused: why }
-```
+`view(state, member, past)`:
 
-An ask is a person's comment that names a buddy, open until the buddy
-comments after it in the thread (`askedBy`, `src/core/comments.js`). It
-asks whom it @mentions; one that mentions no one asks the thread's
-buddies: the one that opened it and each @mentioned there before. Only a
-comment in `taken`, by a member who may write, asks. An empty comment
-(resolving, reopening) asks no one; resolving drops what the thread asked.
-A comment in `posted` asks each other buddy it @mentions, for that run's
-`for`, at its depth + 1. An ask's id is its thread's; its version is
-`until`, the time of the thread's latest comment.
+| Field | A person | A buddy |
+| --- | --- | --- |
+| `content` | the text, the threads, the members | the same |
+| `actions` | type, comment, resolve, reopen, watch, undo, restore; the owner more | comment `{ thread \| anchor, body, edits }` |
+| `tasks` | Open, below | its task, below |
+| `seen` | everyone in the doc | everyone in the doc |
+| `rules` | the help | what any member can do and the etiquette (`buildPrompt`) |
 
-A watch is due while it is on, whoever set it may ask, and the text is not
-the one its watermark hashes. Comments alone wake no watcher. A run may
-name lines in `PONJO_WAKE`; until its next run the watch is due only while
-the text holds one of them, whole.
+Tasks. A buddy has at most one task: every ask needs the same seat (the
+buddy) and rights (`write`), whoever asked. `given` holds each thread that
+asks it, by id, and `watch` while its watch is due; `as` is the buddy;
+`for` is each asker and the watch's `by`; `depth` the least of theirs.
 
-Audiences. A task is `for` an ask's author; for a buddy's ask, that run's
-`for`; for a watch, its `by`. Every person in the doc sees the whole text
-and every thread: the sidecar is one plain shared file, so there are no
-private threads, and all views of a buddy are the same. The audience
-decides only who must still be allowed to ask, and whose runs count.
+- A comment `record` has by a member who may write asks whom it
+  @mentions, or with none the thread's buddies; a buddy's, each other buddy
+  it @mentions, for its run's `for`, at its depth + 1. An empty one asks no
+  one; resolving drops what the thread asked.
+- A thread asks until the buddy has an answer at its latest comment.
+- A watch is due when `since` is set, the text's hash is not `seen`, the
+  text holds a `wake` line if it has any, and people have settled.
 
-Watermarks. `apply` records each run's change as answered: per given
-thread, the `until` it was given; for the watch, the hash of `base`'s text.
-A run that made nothing, or failed, records the same; Retry is a person's
-commit that clears a failed one.
-Open: how an empty or failed run is kept: a sidecar line (an empty reply,
-or SPEC's `failed`), a note in `history/<doc>/`, or door memory only.
-Open: how a change of the agent or its settings voids failed watermarks: a
-commit by the host, or a settings hash in each that `due` compares.
+Open: whether a comment that @mentions a person is a task for them.
 
-Readiness and staleness. A person's change is ready once people pause for
-5 s (`SETTLE_MS`): the host clock commits `{ by: clock, settled: rev }` 5 s
-after it if none came since. Until then every watch is not ready, so the
-controller stops a run only a watch gave. An outside change is ready at
-once (a program may write more often than a run lasts: the run lands
-merged, and is due again); a buddy's when it lands.
+Answers. Every run's change lands. `apply` answers each given thread at
+the latest comment the run's view held, so one written meanwhile still
+asks, and posts its replies just after it; a reply in a thread resolved
+meanwhile is dropped, with its edits. It sets the watch's `seen` to the
+hash of the text it lands, or of the text given if another member's change
+landed meanwhile, clears `since`, and keeps the run's `wake` lines. Each
+text change lowers the other watches' `since`. Nothing made is an answer;
+a failure is recorded `failed`, gone until a person asks again (Retry).
+It is turned away only when the sidecar became unwritable; due again once
+it is not. `{ refused }` is for people and outside programs alone.
 
-Depth. 0 for a person's ask, and for a watch woken by a person's or an
-outside change; for a buddy's ask, or a watch woken only by buddies'
-changes, their run's depth + 1.
-Open: how `due` tells from a snapshot who made the changes since a
-watermark (its own wakes it not; a buddy's sets the depth): a per-member
-last change kept in the state, or the door's log in `read`.
+Open: how an answer that posted no comment is kept: in the sidecar (a
+SPEC change: an empty buddy reply, or `failed` again), where an outside
+write can remove it and ask again, or in the door's own state.
+
+Time. `deadlines(state)` holds `{ settled: rev }` 5 s (`SETTLE_MS`) after
+a person's latest text change; typing meanwhile keeps it from landing.
+Until it lands no watch is listed, so a run only a watch gave is stopped.
+An outside change is ready at once: the door took it whole.
 
 Disagreement. Open: how buddies undoing each other for different people
-are seen: versions by author in history, or text hashes in the state.
+are seen: text hashes `apply` keeps per group, by author, or another way.
 
-`apply` refuses a run's change if one of `for` may no longer ask. Else it
-merges each group (`merge3`; `conflict` where the doc's lines stayed),
-moving a thread whose quote the group rewrote; posts each comment, in a
-given thread just after the last comment given there; drops a reply in a
-thread resolved meanwhile, with its edits; records the watermarks; and
-returns the actions of the comments that landed. A run's copies become its
-change before `record` (`toChanges`, `src/core/translate.js`).
+## Members and controllers
 
-## Controllers
+The owner, the room's teammates and the buddies (`buddies/`, a project's
+`.ponjo/buddies/`), each with a controller. A person's is their window or
+page (`web/client.js`): it shows every task, and the person also acts of
+their own accord, which is most of what a doc sees. A buddy's runs on the
+owner's doc host, one per open doc, acts only on its task, and goes on
+while any of its `given` is listed. A buddy file changed by `git pull` may
+rename it, changing whom an old `@name` names, but vouches for no ask.
 
-One for each buddy in each open doc, on the owner's doc host, ending when
-the doc closes. The owner pays for every run: a teammate has a page, not a
-host. A project's buddy is one agent per owner who opens the project; two
-owners on the same files (git, a synced folder) each run a door and see
-each other's commits as outside writes. Only `taken` keeps both from
-answering one ask.
+## Presence
+
+Cursors, who has a window on the project (`here`), who is typing, which
+buddy is at work: told to the door, shown to all in the doc, kept nowhere.
+
+## Outside programs
+
+Another editor, `git pull`, a synced folder, the clock: each commits as
+itself, a file as `by: outside`. A doc file is taken once still for 50 ms,
+saved to history and merged by line from the text the file last held. A
+sidecar's new comments are in no `record` and ask no one. Another owner's
+Ponjo on the same files is one too: each door is a store, and sees the
+other's commits as outside writes, so no ask runs on both.
+
+## Agent clients
+
+Renderers. Files, for a command-line agent: copies of the doc and sidecar
+in a private folder, the persona, `rules` and the task on stdin; Translate
+(`toChanges`) turns the copies and `PONJO_GROUPS`, `PONJO_WAKE`,
+`PONJO_ACTIONS` into one change, ids included. Tools: the Ponjo agent's
+`comment`, with its edits ([Ponjo agent](../ponjo-agent.md)).
+
+Local, the config folder: whom the owner pays for (the owner, teammates
+who can write); budgets (none yet); depth 1,000; the breaker, N runs since
+a person last acted in the doc; the agent, its settings and secrets; the
+outside actions, each a task for the owner. A change of the agent asks
+nothing again.
+
+Capacity. One queue per provider and key, for the Ponjo agent's calls. A
+command-line agent calls its provider from its own process: the host sees
+neither its waiting nor its 429s.
 
 ## Today
 
-- The world is five calls with I/O (`src/host/doc-world.js:55-205`), and
-  `due` the controller's `plan` (`src/core/due.js:251`).
-- Watermarks and the change log are notes in memory
-  (`src/core/runtime.js:88-94`), and `posted` too
-  (`src/host/doc-world.js:37`); no watch runs on opening (`runtime.js:92`).
+- The world is five calls with I/O (`src/host/doc-world.js:55-205`), the
+  plan the controller's (`src/core/due.js:44`); one controller per open doc,
+  for all its buddies (`src/host/open-doc.js:42`), none for people.
+- Answers, watches' `seen`, `since` and wake lines are notes in memory
+  (`src/core/runtime.js:88-94`); a buddy's comments' `for` and depth too
+  (`doc-world.js:37`); `taken` is local's (`src/store/history.js:148-160`).
 - A run that makes nothing commits nothing (`doc-world.js:185`); a failure
-  is noted in memory (`runtime.js:271-277`).
-- A run lands as a door call per group and per comment
-  (`doc-world.js:172-194`), so a buddy's change counts once its run ended
-  (`due.js:291-296`).
-- One task per buddy, its askers joined (`due.js:253-270`); one asker no
-  longer allowed drops the run (`doc-world.js:164`).
-- People's pause is the controller's clock (`due.js:297-298`); staleness a
-  flag on the log (`doc-world.js:99`). Comments, settings and actions are
-  read from disk at each call (`src/host/doc-service.js:389`,
-  `doc-world.js:144-145`), not at a rev.
-- The depth limit is the world's (`doc-world.js:19`); the breaker counts
-  per doc (`runtime.js:288-294`). One controller per open doc, for all its
-  buddies (`src/host/open-doc.js:197`).
+  waits for Retry in memory (`runtime.js:271-277`), and runs again when the
+  agent changes (`open-doc.js:52`).
+- `rev` starts again at each opening (`doc-service.js:94-96`); comments are
+  read from disk at each call (`doc-service.js:389-392`); a run lands in a
+  commit per group and comment (`doc-world.js:172-194`), so a watcher
+  counts a buddy's change once its run ended (`due.js:84-89`).
+- People's pause is the controller's clock (`due.js:90-91`); `at` is
+  `Date.now()` (`doc-service.js:442`); outside is `world` (`doc-world.js:23`).
+- A watcher's last view is in memory (`runtime.js:264`); the breaker counts
+  300 runs in 10 min (`runtime.js:288-294`); runs share no queue.
