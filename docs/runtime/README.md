@@ -373,14 +373,15 @@ Open: Ponjo's limits. Proposed: a depth limit of 10, and N = 30.
 Ponjo's code follows the design before this one:
 
 - The world is one object of five calls with I/O (`members`, `asks`,
-  `view`, `wait`, `propose`); who is due is the runtime's plan
-  (`src/core/due.js`); a controller reads the whole state.
+  `view`, `wait`, `propose`), and the doc's sixth, `failed`; who is due is
+  the runtime's plan (`src/core/due.js`); a controller reads the whole state.
 - One controller per open doc or game, for all its agents; people have
   none, and each game writes its own "your turn" and its own view for
   people (poker's `share`).
-- Who is due rests on notes in memory; a run that makes nothing or fails
-  commits nothing; a failure waits for Retry, in memory. Each game keeps
-  its own tries and fallback.
+- Who is due rests on notes in memory. In a game, a run that makes nothing
+  or fails commits nothing, and a failure waits for Retry, in memory; the
+  doc answers each ask with a comment instead. Each game keeps its own
+  tries and fallback.
 - The doc's `rev` starts again each time it opens; the comments are read
   from disk beside the door; a run lands in several commits.
 - A game's table lives only in the memory of the page that opened it: a

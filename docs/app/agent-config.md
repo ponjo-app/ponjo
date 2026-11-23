@@ -23,7 +23,7 @@ An agent is a filter ([architecture](host-spec.md#a-run)):
 | `PONJO_SETTING_<KEY>` | each of the agent's [settings](#settings) |
 | stdout | anything; kept in the trace, never posted |
 | Exit 0 | success; the app adds the appended comments and merges the doc copy's edits into the doc, each with the comment it comes with. |
-| Any other exit | nothing lands and nothing is written: the threads that asked it show that it failed, with the end of the output to the owner. |
+| Any other exit | nothing lands but its buddy's "Could not finish." in each thread that asked it; the end of the output is the owner's alone. |
 
 A buddy acts only by commenting: an answer, a question or a change to the
 doc is a comment, and an edit comes with one. It runs when a person's
@@ -31,7 +31,8 @@ comment asks it, or another buddy's that @mentions it, and its comment in
 that thread answers it ([architecture](host-spec.md#asks-and-watches));
 its own comment that @mentions another buddy asks that buddy, for a step.
 A run that posts nothing
-there is not run again for it until someone writes there. The program
+there answers it all the same, "Looked; nothing to change.", and is not run
+again for it until someone writes there. The program
 needs no Ponjo tool: it reads files and edits them.
 
 ### Paths
@@ -224,12 +225,12 @@ keeps the steps it took. The Ponjo agent writes each message of its turn
 
 ## Errors
 
-A run that does not exit 0 writes nothing to the doc or its sidecar. Each
-thread that asked it shows that it failed, with Retry; the owner also sees
-the end of the program's own output, as is, and the script that ran, to run
-yourself. It runs again on Retry, when someone writes in the thread, when
-the agent or its settings change, or after a restart; never on its own, so
-an agent should retry what it can outlast (a busy API) itself.
+A run that does not exit 0 changes nothing in the doc. Its buddy answers
+each thread that asked it "Could not finish.", with Retry, which posts your
+`@<buddy> try again.`; the owner sees, in the run's trace, the end of the
+program's own output, as is, and the script that ran, to run yourself. It
+runs again only when someone writes in the thread, Retry too, never on its
+own, so an agent should retry what it can outlast (a busy API) itself.
 
 ## Open
 

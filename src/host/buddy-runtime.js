@@ -40,17 +40,17 @@ const LINES = {
   'watches.paused': ({ runs, within }) => [`watches paused: ${runs} runs in ${within} min`],
 };
 
-// The runtime's statuses as the windows read them: a buddy at work, the
-// threads it was given, and the threads where its last run failed.
-const forWindows = (statuses) => statuses.map(({ asks, failed, ...s }) => ({ ...s, state: asks.length ? 'running' : 'ready', threadIds: asks, failed: failed.map(({ ask, ...f }) => ({ thread: ask, ...f })) }));
+// The runtime's statuses as the windows read them: a buddy at work and the
+// threads it was given. A failed ask is answered in its thread (doc-world.js, failed).
+const forWindows = (statuses) => statuses.map(({ asks, failed, ...s }) => ({ ...s, state: asks.length ? 'running' : 'ready', threadIds: asks }));
 
 /**
- * The buddies' statuses as someone at `level` sees them: why a run failed
- * is the owner's machine's, so only the owner hears it.
+ * The buddies' statuses as someone at `level` sees them: why a watch run
+ * failed is the owner's machine's, so only the owner hears it.
  */
 export function agentsFor(level, agents) {
   if (level === 'owner') return agents;
-  return agents.map((a) => ({ ...a, failed: a.failed.map(({ thread, at }) => ({ thread, at })), watchFailed: a.watchFailed && { at: a.watchFailed.at } }));
+  return agents.map((a) => ({ ...a, watchFailed: a.watchFailed && { at: a.watchFailed.at } }));
 }
 
 /**
@@ -117,7 +117,7 @@ export async function createBuddyRuntime({ world, docPath, settingsDir, secrets,
   return {
     look: runtime.look,
     sync: runtime.sync,
-    /** The agent, its settings or its secrets changed: the failed asks run again. */
+    /** The agent, its settings or its secrets changed: a failed watch runs again. */
     agentChanged: () => runtime.retry(),
     statuses: () => forWindows(runtime.statuses()),
     /** What the runtime did lately (keep): its newest events, oldest first. */
@@ -140,6 +140,7 @@ export async function createBuddyRuntime({ world, docPath, settingsDir, secrets,
         runtime.resume();
         return {};
       },
+      // Buddy `buddy`'s failed watch runs again.
       retry: (body) => {
         if (typeof body?.buddy !== 'string') throw new DocError('bad_input', 'expected { buddy }');
         runtime.retry(body.buddy);

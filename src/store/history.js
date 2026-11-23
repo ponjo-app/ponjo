@@ -8,6 +8,7 @@
 //   <config>/history/<key>/index.json   the versions, oldest first
 //   <config>/history/<key>/<sha256>.md  each version's text, by content
 //   <config>/history/<key>/taken.json   the comments this host took (noteTaken)
+//   <config>/history/<key>/posted.json  the comments runs here posted (notePosted)
 //   <config>/history/<key>/watching.json the buddies watching the doc here (noteWatching)
 // `key` is derived from the doc's absolute path; renaming a doc in Ponjo
 // moves its history along (moveHistory).
@@ -170,9 +171,32 @@ async function readTakenFile(dir) {
 const takenHash = (c) => hashText(JSON.stringify([c.thread ?? null, c.by.id, c.body]));
 
 /**
+ * The comments runs on this host posted, for a restart: `posted` maps each
+ * to { for, depth } (src/host/doc-world.js); only those of `ids`, the
+ * comments the sidecar holds, are kept. Only such a buddy's comment asks
+ * the buddies it @mentions.
+ */
+export async function notePosted(docPath, root, posted, ids) {
+  const dir = historyDir(docPath, root);
+  const kept = new Set(ids);
+  await mkdir(dir, { recursive: true });
+  await writeAtomic(join(dir, 'posted.json'), JSON.stringify(Object.fromEntries([...posted].filter(([id]) => kept.has(id)))));
+}
+
+/** The comments noted by notePosted, as a Map, or none. */
+export async function readPosted(docPath, root) {
+  try {
+    return new Map(Object.entries(JSON.parse(await readFile(join(historyDir(docPath, root), 'posted.json'), 'utf8')) ?? {}));
+  } catch {
+    return new Map();
+  }
+}
+
+/**
  * The buddies watching the doc on this host, for a restart: { <buddy>: {
- * by, thread } } (src/host/doc-service.js). Kept here, never in the
- * sidecar: what makes a buddy run on this machine is this machine's.
+ * by, print, wake } } (src/core/runtime.js): who set it, and what its last
+ * run saw and named. Kept here, never in the sidecar: what makes a buddy
+ * run on this machine is this machine's.
  */
 export async function noteWatching(docPath, root, watching) {
   const dir = historyDir(docPath, root);

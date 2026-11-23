@@ -204,11 +204,12 @@ and 30 days, and by model.
   by undoing that undo.
   **Undo this change** in history undoes any version, or a burst of typing.
   It works in every window of the team.
-- **A failed run** changes nothing in the doc or its comments: each thread
-  that asked it shows it as the buddy's reply in red, with **Retry**. You
-  see why (the end of its output); a teammate sees only that it failed. It
-  runs again on Retry, when someone writes in the thread, or once you fix
-  the agent's settings or key.
+- **A failed run** changes nothing in the doc: in each thread that asked
+  it, the buddy replies "Could not finish." in red, with **Retry**, which
+  asks it again as you ("@Clippy try again."). Only you see why (the end
+  of its output), in the run's trace. It runs again only when someone
+  writes in the thread. A buddy that found nothing to do says so: "Looked;
+  nothing to change."
 - **Actions outside the doc.** An AI buddy acts outside the doc (posts a
   message, opens an issue) only by proposing an action with its comment,
   never by itself. The action shows under that comment: what it is, its

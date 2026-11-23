@@ -51,3 +51,10 @@ test('a run that changed nothing comes to nothing; lines it could not mean are l
   const odd = { before: header, after: `${header}not json\n${JSON.stringify({ thread: 'c_9', body: 'Nowhere.' })}\n${JSON.stringify({ thread: 'c_1', body: '  ' })}\n` };
   assert.deepEqual(shape(run({ comments: odd })), { posts: [], carried: [] });
 });
+
+test('each open thread that asked it, where it posted nothing, gets "Looked; nothing to change.": every ask is answered by a comment', () => {
+  const threads = [open('c_1'), open('c_2'), { ...open('c_3'), resolved: true }];
+  const result = run({ threads, asking: ['c_1', 'c_2', 'c_3'], comments: sidecar({ thread: 'c_1', body: 'Done.' }) });
+  assert.deepEqual(shape(result), { posts: [['c_1', 'Done.'], ['c_2', 'Looked; nothing to change.']], carried: [] }, 'not where it replied, nor in a thread resolved meanwhile');
+  assert.deepEqual([...result.byLine.keys()], [0], 'not a line its agent wrote');
+});

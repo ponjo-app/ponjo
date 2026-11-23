@@ -22,7 +22,7 @@ const LOOK_AGAIN_MAX_MS = 30_000;
 // is asked, what each sees and how a change lands; the runtime knows nothing
 // else of it. Its values the runtime only passes on: `files` (what a view
 // holds), `made` (what a run left) and what `propose` answers. Its five
-// calls answer with a promise; `print` and `wakes` at once.
+// calls, and `failed`, answer with a promise; `print` and `wakes` at once.
 //
 // members()                  → [Member]
 // asks()                     → [Ask]; rejects with code 'unreadable' when nothing can be answered
@@ -38,6 +38,10 @@ const LOOK_AGAIN_MAX_MS = 30_000;
 //                              nothing (a refusal), its answer then having `rejected`, why:
 //                              what follows is the world's change, an ask made again
 //                              carrying the run's `for` and `depth`
+// failed(agent, asks)        optional: a failed run's answer in the world, `agent` as
+//                              propose's, `asks` those it was given that still ask it;
+//                              answers as propose. Without it the runtime notes the
+//                              failure, shown until its ask is given again (retry)
 // print(files)               → a view's fingerprint: a watcher whose view's is as it
 //                              was when its last run started is not due
 // wakes(files, wake)         → whether a view holds what a run said wakes it (`wake`)
@@ -72,7 +76,7 @@ const LOOK_AGAIN_MAX_MS = 30_000;
  *   failed), wake (what wakes it next, or none), made (what to propose) },
  *   and rejects if it could not start.
  * - `breaker()`: { pauseAfter, pauseWithin } as they are now.
- * - `watching`: { read() (who watches, as last noted: id → { by }), note(noted) }.
+ * - `watching`: { read() (who watches, as last noted: id → { by, print, wake }), note(noted) }.
  * - `trace(event)`: what the runtime did and why, as it happens (Event,
  *   below), for the host to write or show; resolves once it is taken.
  * - `emit(type, payload)`: what the host passes on as it changes: `agents`
@@ -83,14 +87,17 @@ export async function createRuntime({ world, run, breaker, watching, trace, emit
   // (its view's fingerprint as its last watch run started, or null), since
   // (the files of its last watch run's view, or null), wake (what that
   // run named, or null), failed (ask, or 'watch' for its watch, → { at, why
-  // }), watch }. The watch is noted by the host too (watching), as only a
-  // person changes it; the rest is gone on a restart.
+  // }), watch }. The watch, its print and its wake are noted by the host
+  // too (watching), for a restart; the rest is gone on one.
   const notes = new Map();
   const noteOf = (id) => notes.get(id) ?? notes.set(id, { seen: new Map(), lookedAt: null, print: null, since: null, wake: null, failed: new Map(), watch: null }).get(id);
-  for (const [id, { by }] of Object.entries(await watching.read())) noteOf(id).watch = { by };
+  for (const [id, { by, print = null, wake = null }] of Object.entries(await watching.read())) Object.assign(noteOf(id), { watch: { by }, print, wake });
   let version = (await world.wait(Infinity, 0)).rev; // the world's version, as last read from its log
-  for (const note of notes.values()) note.lookedAt = version; // no run on opening
-  const changedAt = new Map(); // who last changed the world → { rev, at }, people as null
+  // On opening, what changed while closed is the world's own change: a
+  // watcher whose last run left its print runs on it, unless its view is
+  // as that run saw it; one with none does not run.
+  const changedAt = new Map([[WORLD, { rev: version, at: performance.now() }]]); // who last changed the world → { rev, at }, people as null
+  for (const note of notes.values()) note.lookedAt = note.print === null ? version : version - 1;
   const depths = new Map(); // agent → the depth of its latest run: its changes' and asks'
   // The breaker: when each run in the window started (performance.now()),
   // and whether it tripped, pausing the watches until someone resumes them.
@@ -247,38 +254,41 @@ export async function createRuntime({ world, run, breaker, watching, trace, emit
 
   // A run ended: the agent's notes say what it was given and how it went,
   // and what it left behind is proposed to the world, as the agent, for
-  // whoever asked it: the world lands it as they may. A failed run lands nothing: it is
-  // noted as the agent's failure in each ask it was given that still asks
-  // it (and for its watch), and asks again only when someone writes there,
-  // on Retry, or once the agent program or its settings change. Resolves to
-  // what the world says landed ({ landed (in words), … }).
+  // whoever asked it: the world lands it as they may. A failed run lands
+  // nothing; the world answers it in each ask it was given that still asks
+  // it (failed), or else it is noted as the agent's failure there, asking
+  // again only when someone writes there, on Retry, or once the agent
+  // program or its settings change. A failed watch run is noted. Resolves
+  // to what the world says landed ({ landed (in words), … }).
   async function finish(r, view, result) {
     const { task } = r;
     const id = task.agent.id;
     const failed = result.outcome !== 'ok';
     const note = noteOf(id);
+    const agent = { ...task.agent, for: task.askers, depth: task.depth };
     for (const a of task.asks) note.seen.set(a.id, Date.parse(a.until));
     if (note.watch) {
       note.lookedAt = r.from;
       note.print = r.print ?? null;
       if (!failed && task.watch) note.since = view.files;
       note.wake = !failed && result.wake?.length ? result.wake : null; // until its next run: what wakes it
+      noteWatches();
     }
     if (task.watch) {
       if (failed) note.failed.set('watch', { at: new Date().toISOString(), why: result.body });
       else note.failed.delete('watch');
     }
+    for (const a of task.asks) note.failed.delete(a.id);
     if (failed) {
       const still = new Set((await world.asks().catch(() => [])).filter((a) => a.agent === id).map((a) => a.id));
-      for (const a of task.asks) note.failed.delete(a.id);
+      const asks = task.asks.filter((a) => still.has(a.id));
       const at = new Date().toISOString();
-      for (const a of task.asks) if (still.has(a.id)) note.failed.set(a.id, { at, why: result.body });
+      if (!world.failed) for (const a of asks) note.failed.set(a.id, { at, why: result.body });
       broadcastAgents();
-      return { landed: 'Failed' };
+      return world.failed ? world.failed(agent, asks) : { landed: 'Failed' };
     }
-    for (const a of task.asks) note.failed.delete(a.id);
     broadcastAgents();
-    return world.propose({ ...task.agent, for: task.askers, depth: task.depth }, r.from, { files: view.files, asks: task.asks }, result.made);
+    return world.propose(agent, r.from, { files: view.files, asks: task.asks }, result.made);
   }
 
   // ---- the breaker ----
@@ -295,11 +305,8 @@ export async function createRuntime({ world, run, breaker, watching, trace, emit
 
   // ---- what people do ----
 
-  // Note who watches, and tell the windows.
-  function keepWatching() {
-    watching.note(Object.fromEntries([...notes].filter(([, n]) => n.watch).map(([id, n]) => [id, n.watch])));
-    broadcastAgents();
-  }
+  // Note who watches, and what each last run saw (print) and named (wake).
+  const noteWatches = () => watching.note(Object.fromEntries([...notes].filter(([, n]) => n.watch).map(([id, n]) => [id, { ...n.watch, print: n.print, wake: n.wake }])));
   // Agent `id` watches the world (`on`), or no longer, as person `by`
   // says: it looks at once; turned off, a run of it on now ends with no
   // answer unless something else asks it.
@@ -308,7 +315,8 @@ export async function createRuntime({ world, run, breaker, watching, trace, emit
     if (on && !note.watch) Object.assign(note, { watch: { by }, lookedAt: null, print: null, since: null, wake: null });
     if (!on) Object.assign(note, { watch: null, print: null, since: null, wake: null });
     if (!on) note.failed.delete('watch');
-    keepWatching();
+    noteWatches();
+    broadcastAgents();
     look(`${nameOf(id)}'s watch turned ${on ? 'on' : 'off'}`);
   }
   // Run the failed asks of agent `id` (or every agent's) again: someone

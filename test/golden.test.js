@@ -286,7 +286,7 @@ golden('an outside change', async ({ call, docPath, advance }) => {
 golden('a failure and Retry', async ({ call, advance }) => {
   const id = await comment(call, '@Clippy fail');
   await advance(1000);
-  await call('retry', { buddy: 'Clippy' });
+  await call('comment', { thread: id, body: '@Clippy try again.' }); // Retry
   await advance(1000);
   await call('comment', { thread: id, body: '@Clippy say fine now' });
   await advance(1000);

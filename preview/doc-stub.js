@@ -20,6 +20,7 @@ import { apply, diffOps } from '../src/core/ot.js';
 import { appendedComments, askedOf, movedAnchor, newComment, newId, parseSidecar, peopleOf, serializeSidecar, threadsOf } from '../src/core/comments.js';
 import { diffEdits, merge3 } from '../src/core/diff.js';
 import { buildPrompt } from '../src/core/prompt.js';
+import { COULD_NOT_FINISH, LOOKED } from '../src/core/translate.js';
 import { summarizeUsage } from '../src/core/usage.js';
 import { matches, searchPattern } from '../src/core/search.js';
 import { INFER, turn } from '../agents/ponjo-core.mjs';
@@ -126,10 +127,9 @@ const epoch = newId('e');
 let rev = 0;
 
 const running = new Map(); // buddy id → thread ids
-const failures = new Map(); // buddy id → Map(thread id → { at, why }): a failed run posts nothing, as in the app
 const watching = new Set(); // the buddies a person turned watch on for: shown, never run here (the preview runs only on comments)
 let watches = { paused: true }; // paused, to show Resume
-const agents = () => buddies().map((b) => ({ ...b, state: running.has(b.id) ? 'running' : 'ready', threadIds: running.get(b.id) ?? [], failed: [...(failures.get(b.id) ?? [])].map(([thread, f]) => ({ thread, ...f })), watching: watching.has(b.id) }));
+const agents = () => buddies().map((b) => ({ ...b, state: running.has(b.id) ? 'running' : 'ready', threadIds: running.get(b.id) ?? [], watching: watching.has(b.id) }));
 
 function view() {
   const text = s.files[current];
@@ -173,9 +173,11 @@ const plain = (path) => path.replace(/^\.?\//, '');
 // Buddy `id`'s run on `threads`, on copies of the doc and its comments as
 // they are now; then, as the app does (src/host/doc-service.js, finishRun),
 // each comment's edits land as their own version, merged with what was
-// typed meanwhile, and its comments come after. Dropped if the doc was
-// renamed meanwhile, and a reply with its edits if its thread was resolved.
-// Only people resolve (docs/app/product-vision.md).
+// typed meanwhile, and its comments come after; each thread it was given,
+// still open, where it said nothing gets "Looked; nothing to change.", or,
+// had it failed, "Could not finish.". Dropped if the doc was renamed
+// meanwhile, and a reply with its edits if its thread was resolved. Only
+// people resolve (docs/app/product-vision.md).
 async function run(id, threads) {
   const doc = current;
   const sidecar = `${doc}.comments.jsonl`;
@@ -183,22 +185,19 @@ async function run(id, threads) {
   const buddy = buddies().find((b) => b.id === id);
   const by = { id, name: buddy.name, kind: 'ai' };
   let texts = null;
-  let failure = null;
   try {
     const prompt = buildPrompt({ buddy, buddies: buddies(), docName: doc, sidecarName: sidecar, threads, project: inFolder, human: { name: s.settings.name, about: s.settings.about.trim() } });
     texts = await turn({ prompt, doc, sidecar }, { infer, readFile: (path) => read(plain(path), copies), resolve: plain });
   } catch (error) {
-    failure = error.message.split('\n')[0];
+    console.error(error);
   }
   if (doc !== current) return;
   const open = new Set(threadsOf(comments()).filter((t) => !t.resolved).map((t) => t.id));
   const kept = (c) => c.thread === undefined || open.has(c.thread);
   const at = new Date().toISOString();
-  const failed = failures.get(id) ?? new Map();
-  failures.set(id, failed);
-  for (const t of threads) failed.delete(t.id);
-  if (failure) {
-    for (const t of threads.filter((t) => open.has(t.id))) failed.set(t.id, { at, why: failure });
+  const say = (thread, body) => comments().push(newComment({ thread, body }, { by, at }));
+  if (!texts) {
+    for (const t of threads.filter((t) => open.has(t.id))) say(t.id, COULD_NOT_FINISH);
   } else {
     const added = appendedComments(copies[sidecar], texts.sidecar, { text: texts.doc, by, at, threads: new Set(comments().filter((c) => c.thread === undefined).map((c) => c.id)) });
     let prev = copies[doc];
@@ -216,6 +215,7 @@ async function run(id, threads) {
       prev = group.doc;
     }
     comments().push(...added.map((a) => a.comment).filter(kept));
+    for (const t of threads.filter((t) => open.has(t.id) && !added.some((a) => a.comment.thread === t.id))) say(t.id, LOOKED);
   }
   save();
   emit('ops', { epoch, rev: ++rev, ops: [], id: null, by: { id, kind: 'buddy' }, comments: true });
@@ -281,11 +281,6 @@ const calls = {
   resume() {
     watches = { paused: false };
     emit('watches', watches);
-    return {};
-  },
-  retry({ buddy }) {
-    failures.delete(buddy);
-    setTimeout(answer);
     return {};
   },
   saveSettings(patch) {

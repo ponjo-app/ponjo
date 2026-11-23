@@ -137,7 +137,7 @@ export async function openDoc(docPath, { folder = null, room = null, settingsDir
       }
     },
     hello: () => ({ ...doc.hello(), agents: runtime.statuses() }),
-    /** The agents' secrets changed: the failed asks run again. */
+    /** The agents' secrets changed: a failed watch runs again. */
     agentChanged: () => runtime.agentChanged(),
     running: () => runtime.running(),
     async moveTo(...args) {

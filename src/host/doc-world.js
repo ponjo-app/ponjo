@@ -9,9 +9,9 @@ import { asksIn, movedAnchor, newId, parseSidecar, threadsOf } from '../core/com
 import { merge3 } from '../core/diff.js';
 import { diffOps } from '../core/ot.js';
 import { buildPrompt, newSince } from '../core/prompt.js';
-import { toChanges } from '../core/translate.js';
+import { COULD_NOT_FINISH, toChanges } from '../core/translate.js';
 import { listActions } from '../store/actions.js';
-import { readTaken } from '../store/history.js';
+import { notePosted, readPosted, readTaken } from '../store/history.js';
 import { SIDECAR_SUFFIX, readSidecarText } from '../store/files.js';
 import { settingsWithId } from '../store/settings.js';
 import { createDocActions } from './doc-actions.js';
@@ -33,8 +33,15 @@ const KINDS = { person: 'person', buddy: 'agent', outside: 'world' };
  */
 export function createDocWorld({ door, subscribe, place, pathInProject, buddies, me, settingsDir, emit = () => {} }) {
   // The comments a run here posted → { for (the people it was for), depth
-  // (its run's) }: its @mentions ask.
-  const posted = new Map();
+  // (its run's) }: its @mentions ask. Kept in history (notePosted), so they
+  // still ask after a restart, each write after the one before.
+  const posted = readPosted(place().docPath, settingsDir);
+  let noting = Promise.resolve();
+  function keepPosted() {
+    noting = noting.then(async () => notePosted(place().docPath, settingsDir, await posted, (await door.readComments()).lines.map((l) => l.comment?.id)))
+      .catch((error) => console.error('Could not note the comments posted here:', error));
+    return noting;
+  }
   // Who waits for the next change: each is told as one lands, then reads
   // the door's log, so a change it was not told of is in it all the same.
   const waiting = new Set();
@@ -46,7 +53,8 @@ export function createDocWorld({ door, subscribe, place, pathInProject, buddies,
     settingsDir, docPath: () => place().docPath, owner: me, changed: (list) => emit('actions', list),
     async reply(action, body) {
       const { id } = await door.comment({ id: newId('c'), thread: action.thread, anchor: null, body }, { ...action.buddy, kind: 'ai', level: 'write' });
-      posted.set(id, { for: action.for, depth: action.depth + 1 });
+      (await posted).set(id, { for: action.for, depth: action.depth + 1 });
+      await keepPosted();
     },
   });
 
@@ -119,7 +127,7 @@ export function createDocWorld({ door, subscribe, place, pathInProject, buddies,
       const { threads, problem } = await threadsNow(agents.map(({ id, name }) => ({ id, name })));
       if (problem) throw Object.assign(new Error(`the comments cannot be read (${problem})`), { code: 'unreadable' });
       const askers = (await members()).filter((m) => m.mayAsk).map((m) => m.id);
-      return asksIn(threads, askers, await readTaken(place().docPath, settingsDir), posted);
+      return asksIn(threads, askers, await readTaken(place().docPath, settingsDir), await posted);
     },
 
     /**
@@ -156,8 +164,9 @@ export function createDocWorld({ door, subscribe, place, pathInProject, buddies,
      * it posted are recorded, to be carried out (doc-actions.js). Each comment's edits (its group)
      * land as a version of their own, merged with what landed since
      * (merge3), then its comments; in a thread that asked it, just after
-     * the last comment it was given. Resolves to { landed (in words, for
-     * its trace), comments (the ids of those it posted) }.
+     * the last comment it was given; a thread it was given where it posted
+     * nothing gets "Looked; nothing to change." (toChanges). Resolves to {
+     * landed (in words, for its trace), comments (the ids of those it posted) }.
      */
     async propose(agent, version, old, made) {
       const here = await members();
@@ -186,15 +195,18 @@ export function createDocWorld({ door, subscribe, place, pathInProject, buddies,
       // A reply comes just after the latest comment the run was given in
       // its thread, each after the one before it.
       const after = new Map(old.asks.map((a) => [a.id, a.until]));
+      const relayed = await posted;
       try {
         for (const c of posts) {
           const { at } = await door.comment({ id: c.id, thread: c.thread, anchor: c.anchor ?? null, body: c.body, after: c.thread !== undefined ? after.get(c.thread) : undefined }, who);
           if (c.thread !== undefined && after.has(c.thread)) after.set(c.thread, at);
-          posted.set(c.id, { for: agent.for, depth: agent.depth });
+          relayed.set(c.id, { for: agent.for, depth: agent.depth });
         }
       } catch (error) {
         console.error(`Could not post ${agent.name}'s comments:`, error);
         return { comments: [], landed: 'Its comments were not posted' };
+      } finally {
+        await keepPosted();
       }
       const proposed = (made.actions ?? []).filter((a) => byLine.has(a.comment)).map((a) => {
         const c = byLine.get(a.comment);
@@ -202,6 +214,24 @@ export function createDocWorld({ door, subscribe, place, pathInProject, buddies,
       });
       if (proposed.length) await actions.propose(agent, proposed);
       return { comments: posts.map((c) => c.id), landed: conflict ? 'Posted; where it collided with people, their lines stayed' : 'Posted' };
+    },
+
+    /**
+     * A failed run's answer, as `agent` (as propose's): "Could not finish."
+     * in each thread of `asks`, those it was given that still ask it, just
+     * after the last comment it was given there. Why it failed is the
+     * owner's: its trace's. Resolves as propose.
+     */
+    async failed(agent, asks) {
+      const who = { id: agent.id, name: agent.name, kind: 'ai', level: 'write' };
+      const comments = [];
+      try {
+        for (const a of asks) comments.push((await door.comment({ thread: a.id, anchor: null, body: COULD_NOT_FINISH, after: a.until }, who)).id);
+      } catch (error) {
+        console.error(`Could not post ${agent.name}'s failure:`, error);
+        return { comments, landed: 'Failed; its comments were not posted' };
+      }
+      return { comments, landed: 'Failed' };
     },
   };
 }
