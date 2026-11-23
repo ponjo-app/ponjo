@@ -1,13 +1,15 @@
 // The spy page (site/spy.html): a person, any friends they invite and AI
 // players round one table at a game of Who's the Spy. The rules
-// (spy-rules.js) own what must be exact; the players decide the rest from
-// the rules and what their seat may see (spy-world.js). As on the poker page
-// (preview/poker.js), Ponjo's agent runtime (src/core/runtime.js) runs them
-// on the table as a world: here, a run is one call of the visitor's model
-// (game-page.js, with the log's messages and the vote arrows). The table is
+// (spy-rules.js) own what must be exact; the table is a world
+// (spy-world.js) on the runtime's core (src/core/): a store in this page,
+// kept in the browser's storage on each change, so a refresh goes on with
+// the game. Each member has a controller: an AI player's program is one
+// call of the visitor's model (game-page.js, with the log's messages and the
+// vote arrows); the person's is this screen, which draws their seat's view
+// and lands what they do; the clock's waits for each deadline. The table is
 // drawn as the werewolf page draws its clearing, from a seat's own view
 // alone. Friends join by a link (poker-share.js): the host's page holds the
-// table and runs the AI players, and sends each friend's page its seat's
+// store and runs the AI players, and sends each friend's page its seat's
 // view; a friend's page, opened at `#join=<room>`, only draws and sends what
 // its player does. preview/build.js bundles it into dist/preview.
 
@@ -15,16 +17,17 @@
 
 import { agentFace, personFace, setBuddies, setOwner } from '../web/faces.js';
 import { icon } from '../web/icons.js';
-import { $, arrows, el, load, message, models, notice, store, typingMessage } from './game-page.js';
-import { createRuntime } from '../src/core/runtime.js';
+import { $, arrows, el, load, message, models, notice, store as keep, typingMessage } from './game-page.js';
+import { clock, control, limits } from '../src/core/controller.js';
+import { ledger } from '../src/core/ledger.js';
+import { createStore } from '../src/core/store.js';
 import { createRuntimePanel } from '../web/runtime-panel.js';
 import { RECONNECT_MS, guestId, host, join } from './poker-share.js';
-import { DECIDE, HUMAN, MAX_CLUE, MAX_LINES, PERSONAS, begin, callVote, createWorld, decided, due, expire, intros, introduce, isPerson, land, leave, newTable, playing, seatFriend, show, start } from './spy-world.js';
+import { deal } from './spy-rules.js';
+import { CLOCK, DECIDE, HUMAN, MAX_CLUE, MAX_LINES, PERSONAS, TALK, TURN, decided, isPerson, newTable, prompt, world } from './spy-world.js';
 
-const TURN = 90_000; // ms a turn may take; then everyone still due is taken as doing nothing
-const TALK = 90_000; // ms a discussion lasts, unless the host starts the vote sooner
 const NAME = 'ponjo-poker-name'; // the visitor's name at a friend's table, as the poker page keeps it
-const HELLO_MS = 1800;
+const TABLE = 'ponjo-spy-table'; // the table the host's page holds: { rev, state }, as its store last saved it
 const SVG = 'http://www.w3.org/2000/svg';
 
 setBuddies(PERSONAS.map(({ id }) => ({ id, name: id })));
@@ -32,15 +35,11 @@ setOwner(HUMAN);
 
 const ROOM = new URLSearchParams(location.hash.slice(1)).get('join'); // a friend's page: the room of the table it joins
 const me = ROOM ? guestId(ROOM) : HUMAN; // who this page plays as
-const table = newTable(); // the host's; a friend's page draws what the host sends (`remote`)
-let remote = null; // a friend's page: the host's last state
-const running = new Set(); // players with a run going
-const typing = new Set(); // players typing their clue
-let failed = new Map(); // players whose run failed → why, until Retry
-let clock = { key: '', ends: 0 };
+let shown = null; // the host's page: its seat's view, as its controller last read it
+let remote = null; // a friend's page: what the host last sent, { view, presence }
 let myVote = null; // { at, target }: this page's vote, its own to see before the vote ends
 let away = ''; // a friend's page: why the line to the host is down
-// What the page last drew: the seats, for which game; the last vote's arrows and when its dots land; the dealt word; the turn the chat box is for.
+// What the page last drew: the seats, for which game; the last vote's arrows and when its dots land; the dealt word; the moment the chat box is for.
 let seats = [];
 let seatsFor = '';
 let votesIn = 0;
@@ -49,138 +48,98 @@ let dealt = 0;
 let chatAt = '';
 const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-// The players' model. Once the visitor picks another, what failed is tried again.
-const ai = models(() => {
-  runtime?.retry();
-  changed();
+const ai = models(() => draw()); // the players' model
+
+// ---- the store and its members, on the host's page ----
+
+// The store, kept in this browser on each change. Its members' presence
+// (who is at work, whose run failed) is drawn here and sent to friends.
+const spy = ledger(world);
+const table = ROOM ? null : createStore(spy, {
+  load: () => load(TABLE) ?? { rev: 0, state: spy.wrap(newTable()) },
+  save: (kept) => keep(kept, TABLE),
+  heard() {
+    draw();
+    for (const [peer, { id }] of peers) send(peer, id);
+  },
 });
-
-// ---- the controller ----
-
-// Every change: on the host's page, a friend gone from the table is taken
-// as doing nothing on their turn; then draw it, and tell the world, whose
-// runtime looks again and starts the runs that are due; time the turn, and
-// send friends the table. A friend's page only draws.
-function changed() {
-  if (ROOM) return draw();
-  for (;;) {
-    const gone = playing(table) ? due(table.game).map((d) => table.players[d.seat]).filter((id) => isPerson(id) && !table.people.includes(id)) : [];
-    if (!gone.length) break;
-    expire(table, gone);
-  }
-  draw();
-  world.changed();
-  runtime?.sync(); // who is at the table may have changed
-  timeTurn();
-  share();
+const clients = new Map();
+const client = (id) => clients.get(id) ?? clients.set(id, table.client(id)).get(id);
+const wallet = limits(); // the host's: its key pays for every AI player
+// A person's change, the host's or a friend's: what landed, or why not.
+function commit(id, change) {
+  const out = client(id).commit(change);
+  if (!out.refused) wallet.acted();
+  return out;
 }
-
-// Each turn has TURN; a discussion, TALK, and then the vote.
-function timeTurn() {
-  const key = playing(table) ? table.turnKey : '';
-  if (key === clock.key) return;
-  clearTimeout(clock.timer);
-  const ms = table.game?.phase === 'talk' ? TALK : TURN;
-  clock = { key, ends: key ? Date.now() + ms : 0, timer: key && setTimeout(() => {
-    if (table.turnKey === key && playing(table)) {
-      if (table.game.phase === 'talk') callVote(table);
-      else expire(table);
-    }
-    changed();
-  }, ms) };
-}
-setInterval(() => picture().v?.phase === 'talk' && draw(), 1000); // the discussion's clock
 
 // Each player's pace, as a person's at a table: ms from and to before they act.
 const PACE = { Ivy: [3000, 5500], Max: [1200, 2500], Juno: [2500, 4500], Sam: [2000, 3500], Lou: [2500, 5000], Remy: [3500, 6500], Pip: [1200, 2600] };
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, Math.max(0, ms)));
 const typeTime = (text) => Math.min(6000, Math.max(1200, text.length * 60));
 
-// A run: one call of the model on what the player sees, then the player's
-// own time to think; its proposal goes to the world, which lands a clue
-// once the player is seen typing it.
-async function run({ agent }, { prompt: { rules, situation } }) {
-  const at = Date.now();
+// With ?debug, the host's page shows each AI player's runs (the runtime
+// panel): every player's word and thinking, so only on asking. A task is
+// a turn of the game: its round, phase, a runoff; a line in a discussion;
+// or a line in the chat after it.
+const panel = !ROOM && new URLSearchParams(location.search).has('debug') ? createRuntimePanel({
+  where: 'this table', faceOf: (id) => faceOf(picture().t, id),
+  askText: (given) => {
+    const [kind, , round, phase, runoff] = given.split(':');
+    return kind === 'talk' ? `The discussion (round ${round})` : kind === 'chat' ? 'A line in the chat' : `Round ${round}, ${phase}${runoff ? ' (runoff)' : ''}`;
+  },
+}) : null;
+let runs = 0;
+
+// AI player `id`'s program: a run is one call of the model on what its
+// seat sees, then the player's own time to think. What it decided lands at
+// once; each page types a line out after.
+const think = (id) => async (tasks, view, signal) => {
   const started = performance.now();
+  const run = `r${++runs}`;
+  const { rules, situation } = prompt(view, id);
+  let result;
+  client(id).presence({ working: true });
   try {
     const { calls, text, usage } = await ai.infer()([{ role: 'user', content: rules, cache: true }, { role: 'user', content: situation }], [DECIDE]);
     let args = {};
     try {
       args = JSON.parse(calls.find((c) => c.name === 'decide')?.args ?? '{}');
     } catch {}
-    const [from, to] = PACE[agent.id] ?? [2000, 4000];
+    const [from, to] = PACE[id];
     await wait(from + Math.random() * (to - from) - (performance.now() - started));
-    return { at, ms: performance.now() - started, outcome: 'ok', usage, made: decided({ thinking: text, ...args }) };
+    const body = decided({ thinking: text, ...args }, view.actions);
+    result = { outcome: signal.aborted ? 'stopped' : 'ok', usage, made: body };
+    client(id).presence(null);
+    return body && { base: view.content.moment, body };
   } catch (error) {
-    return { at, ms: performance.now() - started, outcome: 'failed', body: String(error.message).split('\n')[0] };
+    const why = String(error.message).split('\n')[0];
+    result = { outcome: 'failed', body: why };
+    client(id).presence({ failed: why });
+    throw new Error(why);
+  } finally {
+    panel?.add({ type: 'run.end', run, task: { agent: { id, name: id }, asks: tasks.map((t) => ({ id: t.given, from: t.from.join(', ') })), depth: tasks[0].depth }, view: { prompt: { rules, situation } }, result: { ms: performance.now() - started, ...result } });
   }
-}
+};
 
-// With ?debug, the host's page shows what the runtime does (the runtime
-// panel): every player's word and thinking, so only on asking. An ask is a
-// turn of the game: its round, phase, a runoff, the speaker (turn,
-// spy-rules.js); or a line in a discussion.
-const panel = !ROOM && new URLSearchParams(location.search).has('debug') ? createRuntimePanel({
-  where: 'this table', faceOf: (id) => faceOf(table, id), retry: (id) => runtime.retry(id),
-  askText: (id) => {
-    const [kind, , round, phase, runoff] = id.split(':');
-    return kind === 'line' ? `A line in the discussion (${round})` : `Round ${round}, ${phase === 'talk' ? 'discussion' : phase}${runoff ? ' (runoff)' : ''}`;
-  },
-}) : null;
-
-// The table as a world, and on the host's page, Ponjo's runtime on it. What
-// it says of the players (statuses): who is at work, and whose run failed.
-const world = createWorld(() => table, {
-  async typing(id, text) {
-    typing.add(id);
-    draw();
-    share();
-    await wait(typeTime(text));
-    typing.delete(id);
-  },
-});
-const runtime = ROOM ? null : await createRuntime({
-  world, run,
-  breaker: async () => ({ pauseAfter: Infinity, pauseWithin: 10 }), // the table has no watches to pause
-  watching: { read: async () => ({}), note: () => {} },
-  trace: (event) => panel?.add(event),
-  emit(type, statuses) {
-    if (type !== 'agents') return;
-    panel?.agents(statuses);
-    running.clear();
-    for (const s of statuses) if (s.asks.length) running.add(s.id);
-    failed = new Map(statuses.filter((s) => s.failed.length).map((s) => [s.id, s.failed.at(-1).why]));
-    draw();
-    share();
-  },
-});
-
-// A new game: the players say hello round the table, a line every second
-// or two, written for them, so no model is asked; then the first clue.
+// A new game: the AI players fill the seats the people leave, each with its
+// hello, which the clock says for it round the table; then the first clue.
 function startGame(size) {
-  start(table, size);
+  const ais = PERSONAS.slice(0, Math.max(0, size - picture().t.people.length)).map(({ id, hello }) => ({ id, hello }));
   myVote = null;
-  const no = table.gameNo;
-  const lines = intros(table);
-  changed();
-  lines.forEach((line, k) => setTimeout(() => {
-    if (table.gameNo !== no) return;
-    introduce(table, line);
-    changed();
-  }, 600 + k * HELLO_MS));
-  setTimeout(() => {
-    if (table.gameNo !== no) return;
-    begin(table);
-    changed();
-  }, 600 + lines.length * HELLO_MS + 800);
+  commit(HUMAN, { body: { type: 'start', size, dealt: deal(size), ais } });
 }
 
-// ---- what this page draws: the table as it is here, and its own seat's view ----
+// ---- what this page draws: its seat's view of the table ----
 
-const empty = { people: [], names: {}, players: [], hellos: [], greeting: false, gameNo: 0, notes: {}, lines: [] };
-// This page's player may chat: outside a game (none yet, or it is over), once at the table.
-const chatting = (t, v) => !t.greeting && (!v || v.phase === 'over') && t.people.includes(me);
-const picture = () => (ROOM ? (remote ? { t: remote.table, v: remote.view } : { t: empty, v: null }) : { t: table, v: show(table, HUMAN) });
+const EMPTY = { content: { people: [], names: {}, players: [], gameNo: 0, greeting: false, hellos: [], game: null, lines: [], thoughts: {}, moment: '', ends: 0 }, actions: [], tasks: [] };
+// The view this page draws (`t` its content, `v` the game as its seat sees it), and the presence it may see.
+function picture() {
+  const view = (ROOM ? remote?.view : shown) ?? EMPTY;
+  return { t: view.content, v: view.content.game, view };
+}
+const presence = () => (ROOM ? remote?.presence : shown && client(HUMAN).present()) ?? {};
+
 const label = (t, id) => (id === me ? 'You' : isPerson(id) ? t.names[id] ?? (id === HUMAN ? 'Host' : 'Friend') : id);
 const cap = (text) => text[0].toUpperCase() + text.slice(1);
 const list = (names) => (names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names.at(-1)}` : names.join(''));
@@ -265,8 +224,9 @@ function badge(node, mark) {
   if (!still) node.animate([{ transform: 'rotateY(90deg) scale(0.4)', opacity: 0 }, { transform: 'none', opacity: 1 }], { duration: 420, easing: 'cubic-bezier(0.3, 1.5, 0.5, 1)' });
 }
 
-function drawSeats(t, v) {
+function drawSeats(t, v, view) {
   const vote = lastVote(v);
+  const present = presence();
   for (const [i, node] of seats.entries()) {
     const id = t.players[i];
     const s = v.seats[i];
@@ -275,7 +235,7 @@ function drawSeats(t, v) {
     node.toggleAttribute('data-dead', !s.alive);
     node.toggleAttribute('data-turn', !t.greeting && v.phase === 'clue' && v.speaker === i);
     node.toggleAttribute('data-pickable', canVote(t, v, i));
-    $('.pj-agent-face', node).dataset.presence = !s.alive ? 'away' : running.has(id) || typing.has(id) || (!t.greeting && v.phase === 'clue' && v.speaker === i) || (i === v.seat && v.due && !t.greeting) ? 'working' : 'idle';
+    $('.pj-agent-face', node).dataset.presence = !s.alive ? 'away' : present[id]?.working || typing.has(id) || (!t.greeting && v.phase === 'clue' && v.speaker === i) || (i === v.seat && v.due && !t.greeting) ? 'working' : 'idle';
     const status = out ? [`out:${out.round}`, () => symbol('ww-ballot'), 'dead', `Voted out, round ${out.round}`]
       : v.voted.includes(i) ? ['voted', () => symbol('ww-ballot'), 'voted', 'Has voted'] : null;
     badge($('[data-at="status"]', node), status);
@@ -287,21 +247,21 @@ function drawSeats(t, v) {
     }
     const dotsNode = $('.ww-dots', node);
     if (dotsNode.childElementCount !== dots) dotsNode.replaceChildren(...Array.from({ length: dots }, (_, k) => Object.assign(el('i'), { style: `animation-delay: ${votesIn + k * 120}ms` })));
-    $('.pk-tag', node).textContent = failed.has(id) ? 'Can\'t reach the model' : '';
+    $('.pk-tag', node).textContent = present[id]?.failed ? 'Can\'t reach the model' : '';
     $('.pk-tag', node).dataset.kind = 'failed';
     const words = [i === v.seat ? 'You' : label(t, id), status?.[3], s.role && SIDE[s.role], vote && i in vote.votes && (vote.votes[i] === null ? 'No vote' : `Voted ${label(t, t.players[vote.votes[i]])}`), dots && `${dots} vote${dots > 1 ? 's' : ''}`, !isPerson(id) && PERSONAS.find((p) => p.id === id).blurb];
     node.title = words.filter(Boolean).join(' · ');
   }
   const ring = seats[v.seat] && $('.ww-timer', seats[v.seat]);
   if (!ring) return;
-  const on = Boolean(v.due) && v.due.kind !== 'talk' && !t.greeting && clock.ends > 0; // a discussion's clock is over the table
-  ring.classList.toggle('ww-timer-on', on);
-  if (!on || ring.dataset.at === v.due.at) return;
-  ring.dataset.at = v.due.at;
+  const task = view.tasks.find((x) => x.given.startsWith('turn:')); // a discussion's clock is over the table
+  ring.classList.toggle('ww-timer-on', Boolean(task));
+  if (!task || ring.dataset.at === task.given) return;
+  ring.dataset.at = task.given;
   const circle = ring.firstChild;
   circle.style.animation = 'none';
   void circle.getBoundingClientRect();
-  circle.style.animation = `ww-drain ${TURN}ms linear ${clock.ends - TURN - Date.now()}ms forwards`;
+  circle.style.animation = `ww-drain ${TURN}ms linear ${task.at - TURN - Date.now()}ms forwards`;
 }
 
 // Arrows from face to face: who voted for whom, from the vote's result until
@@ -318,8 +278,8 @@ function drawVotes(t, v) {
 }
 addEventListener('resize', () => draw());
 
-// Over the table: the round, and one line that changes with the moment; in a discussion, its clock, and the host's way to start the vote.
-function drawCenter(t, v) {
+// Over the table: the round, and one line that changes with the moment; in a discussion, its clock, and a way to pass.
+function drawCenter(t, v, view) {
   const over = v?.phase === 'over';
   const mine = v && v.seat !== null ? v.seats[v.seat].role : null;
   $('.ww-phase-text').textContent = !v || t.greeting ? 'Who\'s the Spy' : over ? (v.winner === 'civilians' ? 'The civilians win' : `The ${v.seats.filter((s) => s.role === 'spy').length > 1 ? 'spies win' : 'spy wins'}`) : `Round ${v.round}`;
@@ -329,7 +289,7 @@ function drawCenter(t, v) {
     : t.greeting ? ['hello', null, 'Everyone says hello']
       : over ? ['over', null, mine ? ((mine === 'spy') === (v.winner === 'spies') ? 'You won' : 'You lost') : '']
         : v.phase === 'vote' ? [`vote:${v.runoff}`, symbol('ww-ballot'), v.runoff ? `Vote between ${tied}` : 'Vote for the spy']
-          : v.phase === 'talk' ? ['talk', icon('users'), `Discussion · ${Math.max(0, Math.ceil((clock.ends - Date.now()) / 1000))}s, then the vote`]
+          : v.phase === 'talk' ? ['talk', icon('users'), `Discussion · ${Math.max(0, Math.ceil((t.ends - Date.now()) / 1000))}s, then the vote`]
             : [`clue:${v.speaker}`, null, v.runoff ? `A tie: ${cap(tied)} give one more clue. ${speaker} clue` : `${speaker} clue`];
   const sub = $('.ww-sub');
   const fresh = sub.dataset.key !== key;
@@ -338,7 +298,7 @@ function drawCenter(t, v) {
     sub.replaceChildren(...[mark, words].filter(Boolean));
     if (fresh && !still && words) sub.animate([{ opacity: 0, transform: 'translateY(6px)' }, { opacity: 1, transform: 'none' }], { duration: 400, easing: 'ease-out' });
   }
-  $('.sp-vote-now').hidden = Boolean(ROOM) || v?.phase !== 'talk';
+  $('.sp-pass').hidden = !view.tasks.some((x) => x.given.startsWith('talk:'));
   $('.ww-over').hidden = !over && (Boolean(v) || Boolean(ROOM)); // before any game, the host's way to start one
   $('[data-action="thinking"]').hidden = !over;
   $('[data-action="new"]').hidden = Boolean(ROOM);
@@ -365,7 +325,7 @@ function drawWord(t, v) {
 function drawMe(t, v) {
   const seated = v && v.seat !== null;
   const voted = v?.phase === 'vote' && v.voted.includes(v.seat);
-  $('.ww-ask').textContent = away || (!v ? (ROOM && remote?.table.people.includes(me) ? 'You are at the table: you play from the next game.' : '')
+  $('.ww-ask').textContent = away || (!v ? (ROOM && t.people.includes(me) ? 'You are at the table: you play from the next game.' : '')
     : t.greeting || v.phase === 'over' ? ''
       : !seated ? (t.people.includes(me) ? 'Watching: you play from the next game.' : 'Watching.')
         : !v.alive ? 'You are out: watch the rest.'
@@ -375,24 +335,26 @@ function drawMe(t, v) {
               : voted ? 'You voted. Waiting for the others.' : '');
 }
 
-// The chat box: your clue on your turn, your lines in a discussion; muted otherwise, and why.
+// The chat box: your clue on your turn, your lines in a discussion, the
+// chat out of a game; muted otherwise, and why. What you wrote stays as the
+// moment moves on.
 const chat = $('.ww-chat-box');
 const box = chat.elements.text;
-function drawChat(t, v) {
-  const talking = !t.greeting && ['clue', 'talk'].includes(v?.due?.kind);
-  const mine = talking || chatting(t, v);
-  if (chatAt !== (v?.due?.at ?? '')) {
-    chatAt = v?.due?.at ?? '';
-    box.value = '';
+const says = (view) => ['clue', 'say', 'chat'].find((a) => view.actions.includes(a));
+function drawChat(t, v, view) {
+  const talking = ['clue', 'say'].includes(says(view));
+  const mine = Boolean(says(view));
+  if (chatAt !== t.moment) {
+    chatAt = t.moment;
     $('.ww-error').hidden = true;
   }
   chat.dataset.audience = mine ? 'all' : 'muted';
   box.disabled = !mine;
   box.maxLength = MAX_CLUE;
-  box.placeholder = !mine ? '' : !talking ? 'Chat with the table…' : v.due.kind === 'talk' ? 'Say something to the table…' : 'Your clue, without your word…';
+  box.placeholder = !mine ? '' : !talking ? 'Chat with the table…' : says(view) === 'say' ? 'Say something to the table…' : 'Your clue, without your word…';
   $('[type=submit]', chat).disabled = !mine || !box.value.trim();
   const speaker = v && v.speaker !== null && v.speaker !== v.seat ? label(t, t.players[v.speaker]) : null;
-  const why = mine ? [icon('users'), !talking ? 'Everyone at the table hears you.' : v.due.kind === 'talk' ? `Everyone hears you · ${v.due.left} line${v.due.left === 1 ? '' : 's'} left.` : 'Everyone hears your clue.']
+  const why = mine ? [icon('users'), !talking ? 'Everyone at the table hears you.' : says(view) === 'say' ? `Everyone hears you · ${v.due.left} line${v.due.left === 1 ? '' : 's'} left.` : 'Everyone hears your clue.']
     : [symbol('ww-muted'), !v ? 'Join the table to chat.'
       : t.greeting ? 'Muted while everyone says hello.'
         : v.phase === 'over' ? 'Join the table to chat.'
@@ -410,7 +372,8 @@ function drawChat(t, v) {
 }
 chat.addEventListener('submit', (event) => {
   event.preventDefault();
-  if (chat.dataset.audience === 'all') perform({ type: picture().v?.due?.kind === 'clue' ? 'clue' : 'say' });
+  const type = says(picture().view);
+  if (type) perform({ type, text: box.value });
 });
 box.addEventListener('input', () => draw());
 box.addEventListener('keydown', (event) => {
@@ -420,23 +383,21 @@ box.addEventListener('keydown', (event) => {
   }
 });
 
-// What this page's player does: landed here through the writer, as an AI
-// player's proposal, or on a friend's page sent to the host, which lands it.
-function perform(action) {
-  const { t, v } = picture();
-  if (!v?.due && !chatting(t, v)) return;
-  const at = v?.due?.at ?? ''; // a line in the chat is for no moment of a game
-  const say = action.type === 'vote' ? '' : box.value;
-  if (action.type === 'vote') myVote = { at: v.log.length, target: action.target };
-  if (action.type === 'say') box.value = ''; // a discussion's turn stays the same, and the chat has none: the box is cleared here
+// What this page's player does, on the moment it sees: landed here as
+// they act (a person's change answers no task: refused, it lands nothing,
+// and they see why), or, on a friend's page, sent to the host, which lands it.
+function perform(body) {
+  const { t, v, view } = picture();
+  if (!view.actions.includes(body.type)) return;
+  if (body.type === 'vote') myVote = { at: v.log.length, target: body.target };
+  if ('text' in body) box.value = '';
   if (ROOM) {
-    guest.send({ type: 'act', action: { ...action, at }, say });
+    guest.send({ type: 'act', base: t.moment, body });
     return draw();
   }
-  const { rejected } = land(table, HUMAN, { at }, { action, say });
-  if (rejected && action.type === 'say') box.value = say;
-  refused(rejected);
-  changed();
+  const { refused: why } = commit(HUMAN, { base: t.moment, body });
+  if (why && 'text' in body) box.value = body.text;
+  refused(why);
 }
 function refused(why) {
   $('.ww-error').textContent = why ?? '';
@@ -446,7 +407,26 @@ function refused(why) {
 
 // ---- the log: what this page's seat saw, as a chat app shows it ----
 
-function drawFeed(t, v) {
+// A line an AI player said lands at once; this page types it out first,
+// one after another, unless it was there when the page opened. `reveal`:
+// each line's key → when it shows; `typing`, the players typing one now.
+const reveal = new Map();
+const typing = new Set();
+let revealed = 0;
+let opened = false;
+function shownAt(key, id, text) {
+  if (!reveal.has(key)) {
+    const at = opened && !isPerson(id) ? Math.max(Date.now() + typeTime(text), revealed + 400) : 0;
+    if (at) {
+      revealed = at;
+      setTimeout(draw, at - Date.now() + 20);
+    }
+    reveal.set(key, at);
+  }
+  return reveal.get(key);
+}
+
+function drawFeed(t, v, view) {
   const feed = $('.pk-feed');
   const stick = feed.scrollHeight - feed.scrollTop - feed.clientHeight < 40;
   const rows = [];
@@ -457,10 +437,18 @@ function drawFeed(t, v) {
     const side = v?.seats[t.players.indexOf(id)]?.role;
     rows.push(message({ face: id !== me && faceOf(t, id), name: [label(t, id), ...(side ? [token(side)] : [])], text, note, mine: id === me, more }));
   };
+  // Whether line `key` shows yet; if not, its player is typing it.
+  typing.clear();
+  const typed = (key, id, text) => {
+    if (shownAt(key, id, text) <= Date.now()) return true;
+    typing.add(id);
+    return false;
+  };
   // the chat: before this game (or the next, before any), and after it
   const chatted = (after) => t.lines.filter((l) => l.kind === 'chat' && l.after === after && l.game === (v || after ? t.gameNo : t.gameNo + 1));
   const chatLines = (list) => {
     for (const l of list) {
+      if (!typed(`l:${l.id}`, l.by, l.text)) continue;
       say(l.by, l.text, last === l.by);
       last = l.by;
     }
@@ -470,8 +458,9 @@ function drawFeed(t, v) {
     say(h.id, h.text, last === h.id);
     last = h.id;
   }
-  for (const e of v?.log ?? []) {
+  for (const [k, e] of (v?.log ?? []).entries()) {
     if ((e.type === 'clue' && !e.silent) || e.type === 'line') {
+      if (!typed(`g:${t.gameNo}:${k}`, t.players[e.seat], e.text)) continue;
       say(t.players[e.seat], e.text, last === e.seat, e.type === 'clue' ? 'clue' : '');
       last = e.seat;
       continue;
@@ -493,33 +482,30 @@ function drawFeed(t, v) {
   }
   if (v) chatLines(chatted(true));
   for (const id of typing) rows.push(typingMessage(faceOf(t, id), id));
-  for (const [id, why] of failed) {
-    const row = notice(`${id} could not reach the model: ${why}`);
+  for (const [id, p] of Object.entries(presence())) {
+    if (!p.failed) continue;
+    const row = notice(`${id} could not reach the model: ${p.failed}`);
     row.dataset.failed = '';
-    if (!ROOM) {
-      const again = el('button', 'pj-link-button', 'Retry');
-      again.type = 'button';
-      again.addEventListener('click', () => runtime.retry(id));
-      row.append(' ', again);
-    } else row.append(' Waiting for the host to retry.');
     rows.push(row);
   }
   feed.replaceChildren(...rows);
   if (stick) feed.scrollTop = feed.scrollHeight;
+  opened ||= view !== EMPTY;
 }
 
 function draw() {
-  const { t, v } = picture();
+  const { t, v, view } = picture();
   layout(t);
+  drawFeed(t, v, view); // first: it says who is typing
   if (v) {
     drawVotes(t, v);
-    drawSeats(t, v);
+    drawSeats(t, v, view);
   }
-  drawCenter(t, v);
+  drawCenter(t, v, view);
   drawWord(t, v);
   drawMe(t, v);
-  drawChat(t, v);
-  drawFeed(t, v);
+  drawChat(t, v, view);
+  if (!ROOM && !starting.hidden) drawStart();
 }
 
 // ---- a seat's menu: your vote ----
@@ -576,7 +562,7 @@ function showThinking() {
     meta.append(token(v.seats[seat].role), ` "${v.seats[seat].word}"`);
     summary.append(icon('chevron'), faceOf(t, id), el('span', 'pj-trace-title', id), meta);
     part.append(summary);
-    const thoughts = t.notes[id]?.thoughts ?? [];
+    const thoughts = t.thoughts[id] ?? [];
     if (!thoughts.length) part.append(el('p', 'pj-empty', 'No decisions.'));
     for (const th of thoughts) {
       const target = Number.isInteger(th.action?.target) ? ` ${label(t, t.players[th.action.target])}` : '';
@@ -593,22 +579,27 @@ function showThinking() {
 const starting = $('.ww-start');
 let size = 6;
 function openStart() {
-  const people = table.people.length;
+  starting.hidden = false;
+  document.body.classList.add('pk-buying-in');
+  drawStart();
+}
+// The sizes the people at the table fit, and who they are.
+function drawStart() {
+  const { t } = picture();
+  const people = t.people.length;
   size = Math.max(size, people, 5);
   for (const b of starting.querySelectorAll('[data-size]')) {
     b.setAttribute('aria-checked', String(Number(b.dataset.size) === size));
     b.disabled = Number(b.dataset.size) < people;
   }
-  const names = table.people.map((id) => label(table, id));
+  const names = t.people.map((id) => label(t, id));
   $('.sp-people').textContent = `At the table: ${names.join(', ')}. AI players take the ${size - people === 1 ? 'other seat' : `other ${size - people} seats`}.`;
-  starting.hidden = false;
-  document.body.classList.add('pk-buying-in');
 }
 starting.addEventListener('click', (event) => {
   const b = event.target.closest('[data-size]');
   if (!b || b.disabled) return;
   size = Number(b.dataset.size);
-  openStart();
+  drawStart();
 });
 starting.addEventListener('submit', (event) => {
   event.preventDefault();
@@ -616,75 +607,59 @@ starting.addEventListener('submit', (event) => {
   document.body.classList.remove('pk-buying-in');
   startGame(size);
 });
-
 // ---- friends: the host's page invites them; a friend's page joins ----
 
-const peers = new Map(); // a friend's page in the room → its player's id
+// Each friend's page in the room → its player's id, and the controller that
+// sends it its seat's view, with the presence it may see, each time that changes.
+const peers = new Map();
 let room = null; // the room, once the host invites friends
+const send = (peer, id) => room.send(peer, { type: 'state', view: client(id).read().view, presence: client(id).present() });
 const inviting = $('.pk-invite');
 async function invite() {
   inviting.hidden = false;
   document.body.classList.add('pk-setting-up');
-  inviting.elements.name.value = table.names[HUMAN] ?? load(NAME) ?? '';
-  room ??= await host({ joined, heard: (peer, message) => peers.has(peer) && apply(peer, message), left });
+  inviting.elements.name.value = picture().t.names[HUMAN] ?? load(NAME) ?? '';
+  room ??= await host({ joined, heard: (peer, message) => peers.has(peer) && act(peer, message), left });
   inviting.elements.link.value = room.link;
 }
 function closeInvite() {
-  const name = inviting.elements.name.value.trim().slice(0, 20);
+  const name = inviting.elements.name.value.trim();
   if (name) {
-    table.names[HUMAN] = name;
-    store(name, NAME);
+    commit(HUMAN, { body: { type: 'join', name } });
+    keep(name, NAME);
   }
   inviting.hidden = true;
   document.body.classList.remove('pk-setting-up');
-  if (!starting.hidden) openStart();
-  changed();
 }
 // A friend's page opens. One that was at the table (its page reloaded) is
 // back in its seat, by the name it had.
 function joined(peer, hello) {
   if (!/^f[0-9a-f]{8}$/.test(String(hello?.id))) return room.turnAway(peer, 'Not a player');
-  peers.set(peer, hello.id);
-  if (table.names[hello.id]) seatFriend(table, hello.id, table.names[hello.id]);
-  if (!starting.hidden) openStart();
-  changed();
+  const { id } = hello;
+  peers.set(peer, { id, ...control(client(id), { show: () => send(peer, id) }) });
+  const { people, names } = picture().t;
+  if (names[id] && !people.includes(id)) commit(id, { body: { type: 'join', name: names[id] } });
 }
-// A friend's page goes: they leave the table unless a page of theirs is back within RECONNECT_MS (a reload).
 function left(peer) {
-  const id = peers.get(peer);
+  const p = peers.get(peer);
+  if (!p) return; // turned away
   peers.delete(peer);
+  p.stop();
+  gone(p.id);
+}
+// A friend whose page went leaves the table unless a page of theirs is back within RECONNECT_MS (a reload).
+function gone(id) {
   setTimeout(() => {
-    if (!id || [...peers.values()].includes(id)) return;
-    leave(table, id);
-    if (!starting.hidden) openStart();
-    changed();
+    if (![...peers.values()].some((p) => p.id === id)) client(id).commit({ body: { type: 'leave' } });
   }, RECONNECT_MS);
 }
-// What a friend's page sends: to sit at the table, or what its player does.
-function apply(peer, message) {
-  const id = peers.get(peer);
-  if (message.type === 'sit') {
-    seatFriend(table, id, String(message.name ?? '').trim().slice(0, 20) || 'Friend');
-    if (!starting.hidden) openStart();
-  } else if (message.type === 'act' && message.action && typeof message.action === 'object') {
-    const { type, target, at } = message.action;
-    const { rejected } = land(table, id, { at }, { action: { type: String(type), ...(Number.isInteger(target) ? { target } : {}) }, say: String(message.say ?? '') });
-    if (rejected) room.send(peer, { type: 'rejected', why: rejected });
-  } else return;
-  changed();
-}
-
-// Each friend's page gets the table as its player may see it: its own
-// seat's view, who is at the table, and the AI players' thinking once the game is over.
-function share() {
-  if (!room) return;
-  const over = table.game?.phase === 'over';
-  for (const [peer, id] of peers) {
-    const { people, names, players, hellos, greeting, gameNo } = table;
-    const lines = table.lines.filter((l) => l.kind === 'chat'); // the discussions' are in the game's log
-    const notes = over ? table.notes : {};
-    room.send(peer, { type: 'state', table: { people, names, players, hellos, greeting, gameNo, notes, lines }, view: show(table, id), running: [...running], typing: [...typing], failed: [...failed], clock: clock.ends ? clock.ends - Date.now() : 0 });
-  }
+// What a friend's page sends: to sit at the table, or what its player does, made on `base`.
+function act(peer, message) {
+  const { id } = peers.get(peer);
+  const b = message.body ?? {};
+  const body = message.type === 'sit' ? { type: 'join', name: message.name } : { type: String(b.type), ...(typeof b.text === 'string' ? { text: b.text } : {}), ...(Number.isInteger(b.target) ? { target: b.target } : {}) };
+  const { refused: why } = commit(id, { base: String(message.base ?? ''), body });
+  if (why) room.send(peer, { type: 'rejected', why });
 }
 
 // A friend's page: the table as the host sends it.
@@ -697,10 +672,7 @@ const guest = ROOM && join(ROOM, { id: me }, {
     }
     if (message.type !== 'state') return;
     remote = message;
-    if (!joining.hidden && message.table.people.includes(me)) closeJoin(); // back at the table after a reload
-    for (const [set, ids] of [[running, message.running], [typing, message.typing]]) set.clear() || ids.forEach((id) => set.add(id));
-    failed = new Map(message.failed);
-    clock = { ends: message.clock && Date.now() + message.clock };
+    if (!joining.hidden && message.view.content.people.includes(me)) closeJoin(); // back at the table after a reload
     draw();
   },
   away(reason) {
@@ -716,7 +688,7 @@ function closeJoin() {
 joining.addEventListener('submit', (event) => {
   event.preventDefault();
   const name = joining.elements.name.value.trim().slice(0, 20) || 'Friend';
-  store(name, NAME);
+  keep(name, NAME);
   guest.send({ type: 'sit', name });
   closeJoin();
 });
@@ -731,10 +703,7 @@ document.addEventListener('click', (event) => {
     document.body.classList.remove('pk-buying-in');
     draw();
   }
-  else if (action === 'vote-now' && !ROOM) {
-    callVote(table);
-    changed();
-  }
+  else if (action === 'pass') perform({ type: 'pass' });
   else if (action === 'thinking') showThinking();
   else if (action === 'close') $('.pk-thinking').close();
   else if (action === 'key') ai.open();
@@ -748,6 +717,7 @@ document.addEventListener('click', (event) => {
 $('.pk-thinking').addEventListener('click', (event) => {
   if (event.target === event.currentTarget) event.currentTarget.close(); // a click on the backdrop
 });
+setInterval(() => picture().v?.phase === 'talk' && draw(), 1000); // the discussion's clock
 
 if (ROOM) {
   for (const node of document.querySelectorAll('[data-action="invite"], [data-action="key"]')) node.hidden = true;
@@ -757,6 +727,17 @@ if (ROOM) {
   document.body.classList.add('pk-buying-in');
 } else {
   ai.draw();
-  openStart();
+  // The members' controllers: each AI player's, the clock's, and this screen's, the host's seat.
+  for (const { id } of PERSONAS) control(client(id), { program: think(id), wallet });
+  control(client(CLOCK), clock());
+  control(client(HUMAN), {
+    show(view) {
+      shown = view;
+      draw();
+    },
+  });
+  // Friends at a table this page held before it reloaded: the room is new, so they are gone.
+  for (const id of shown.content.people) if (id !== HUMAN) gone(id);
+  if (!shown.content.game) openStart();
 }
 draw();

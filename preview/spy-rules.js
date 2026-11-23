@@ -11,7 +11,7 @@
 // word, once, in seat order, from a seat dealt at random in the first round
 // and one seat on in each round after; then a discussion, where anyone
 // alive may talk, up to MAX_LINES lines, never their word, until the world
-// calls the vote (`endTalk`: time is up, or the host starts it); then
+// calls the vote (`endTalk`: no one has more to say, or time is up); then
 // everyone alive votes at once, and the player with the most votes is out,
 // their side shown. A tie at the top: the tied give one more clue each, and
 // everyone votes again, between them only, with no discussion; a second
@@ -75,9 +75,9 @@ const alive = (game, seat) => Boolean(game.seats[seat]?.alive);
 const note = (game, entry) => game.log.push({ round: game.round, ...entry });
 
 /**
- * The moment the game is at, as a string: an action made on one moment is
- * stale once the game has moved to another. During a discussion or a vote
- * it stays the same while the lines or the votes come in.
+ * The moment the game is at, as a string: the world's base for an action,
+ * which is stale once the game has moved to another. During a discussion or
+ * a vote it stays the same while the lines or the votes come in.
  */
 export const turn = (game) => [game.round, game.phase, game.runoff ? 'runoff' : '', game.speaker ?? ''].join(':');
 
@@ -107,15 +107,14 @@ function words(game, seat, action, what) {
 }
 
 /**
- * `seat` does `action`, made on the moment `action.at` (`turn`):
+ * `seat` does `action`:
  *   clue { text }     a clue to their word, never the word itself
  *   say { text }      a line in the discussion, never their word
  *   vote { target }   whom they think is a spy
- * Returns the new game, or { error } saying why it is not legal or stale, the game unchanged.
+ * Returns the new game, or { error } saying why it is not legal, the game unchanged.
  */
 export function act(game, seat, action) {
   if (game.phase === 'over') return { error: 'The game is over.' };
-  if (action?.at !== turn(game)) return { error: 'Stale: the game moved on before your action landed.' };
   if (game.phase === 'talk' || action.type === 'say') {
     if (game.phase !== 'talk') return { error: 'There is no discussion now.' };
     if (action.type !== 'say') return { error: 'It is the discussion: you may only talk.' };
@@ -160,7 +159,7 @@ export function fallback(game, seats = due(game).map((d) => d.seat)) {
   return settle(g);
 }
 
-// The discussion is over (its time is up, or the host starts the vote): everyone votes. Returns the new game.
+// The discussion is over (no one has more to say, or its time is up): everyone votes. Returns the new game.
 export function endTalk(game) {
   if (game.phase !== 'talk') return game;
   const g = clone(game);
@@ -240,7 +239,7 @@ export function view(game, seat) {
   const mine = seat === null ? null : due(game).find((d) => d.seat === seat) ?? (linesLeft(game, seat) ? { kind: 'talk' } : null);
   return {
     seat, word: me?.word ?? null, alive: me?.alive ?? false, round: game.round, phase: game.phase, winner: game.winner,
-    due: mine ? { kind: mine.kind, at: turn(game), ...(mine.kind === 'vote' ? { targets: targets(game, seat) } : {}), ...(mine.kind === 'talk' ? { left: linesLeft(game, seat) } : {}) } : null,
+    due: mine ? { kind: mine.kind, ...(mine.kind === 'vote' ? { targets: targets(game, seat) } : {}), ...(mine.kind === 'talk' ? { left: linesLeft(game, seat) } : {}) } : null,
     speaker: game.speaker, runoff: game.runoff && [...game.runoff],
     voted: game.phase === 'vote' ? [...game.acted] : [],
     seats: game.seats.map((s) => ({ alive: s.alive, role: over || !s.alive ? s.role : null, word: over ? s.word : null })),

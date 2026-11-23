@@ -35,7 +35,7 @@ token and stamps `at`. A change is `{ by, at, as, base, answers, body }`;
 ```
 view(state, member, past)    → { content, actions, tasks, seen, rules }
 apply(state, change, past)   → { state, effects: [] } | { refused: why }
-fallback(state, task)        a silent clue, an abstention, a pass; tries: 3
+fallback(state, task, at)    a silent clue, an abstention, a pass; tries: 3
 ```
 
 **view.** `content` is the rules' `view(game, seat)`: its own word, never
@@ -50,25 +50,30 @@ text }`, `say { text }`, `pass`, `vote { target }`, `chat { text }`.
 
 | Task | `kind` | `given` | Due while | `at` |
 | --- | --- | --- | --- | --- |
-| clue | turn | `turn:<turn>` | it is the speaker and has not spoken | `since + TURN` |
-| vote | turn | `turn:<turn>` | it is alive and has not voted | `since + TURN` |
-| talk | turn | `talk:<gameNo>:<round>:<line>` | it is alive, has lines left, and the latest line is not its own | `since + TALK` |
+| clue | turn | `turn:<gameNo>:<turn>` | it is the speaker and has not spoken | `since + TURN` |
+| vote | turn | `turn:<gameNo>:<turn>` | it is alive and has not voted | `since + TURN` |
+| talk | turn | `talk:<gameNo>:<round>:<line>` | it is alive, has lines left, and has not answered the opening (line 0) or a line that asks it | `since + TALK` |
 | chat | ask | `chat:<gameNo>:<line>` | a line after the game names it, below `DEPTH` (2) | none |
 
 - `from` is empty for a clue or vote, which the rules set off and the
-  owner pays for; else whoever said the latest line. `depth` is 0 for a
-  clue or vote, else as the latest line set it off.
-- The discussion is a channel: its `given` carries its latest line, so a
-  new line makes a new task and the old one is gone. A line or a pass
-  answers it. It is a `turn`, as the rules ask every seat to take part:
-  the runaway count skips it; the line budget and depth limit end it.
+  owner pays for; else whoever set off the line it answers. `depth` is 0
+  for a clue or vote, else as that line set it off.
+- The discussion opens with one task for every living seat. After that, a
+  line asks only the seats it names; one that names no one asks one seat:
+  the next living AI seat after the speaker with lines left. A seat is
+  given the first it has not answered, so a line that does not ask it
+  leaves its task, and a run on it goes on. A line or a pass answers it; a
+  person's line or pass answers all before it. So a discussion costs about
+  one run per seat and one per line. It is a `turn`, as the rules ask
+  every seat to take part: the runaway count skips it; the line budget and
+  depth limit end it.
 - Every voter is due at once: a barrier, tallied once no one is due.
 - A person's line to everyone, after a game, is one chat task, for the
   first AI seat after the speaker in seat order (the first AI seat, if the
   speaker has none).
 - The discussion ends when no one is due: every living seat, people
-  included, has passed, answered the latest line or used its lines; else at
-  `TALK`. Open: also not before a minimum, as a table that all pass votes
+  included, has answered its opening and each line that asks it, or used
+  its lines; else at `TALK`. Open: also not before a minimum, as a table that all pass votes
   at once.
 
 **Answers.** The wrapper keeps the ledger. A clue, a line, a vote or a pass
@@ -79,7 +84,7 @@ failed run, a task the wallet will not start, or nothing on a turn: its
 person's refused `act` lands nothing; they see why at once.
 
 **Time.** The clock's tasks, each with its base: `hello:<gameNo>:<seat>`
-at `start.at` plus `HELLO_MS` each, then `begin`; `expire:<turn>` at
+at `start.at` plus `HELLO_MS` each, then `begin`; `expire:<gameNo>:<turn>` at
 `since + TURN` (each seat still due takes its `fallback`); `vote-called`
 at `since + TALK`. Each lands only if its turn is still the game's.
 
@@ -119,24 +124,20 @@ Capacity: one queue per provider and key, in task priority.
 
 ## Today
 
-- Five calls with I/O (`preview/spy-world.js:285-338`); the runtime plans
-  (`src/core/due.js`) and reads the whole table (`spy-world.js:298-311`).
-- The table is the opener's page memory, changed in place (`spy.js:35`,
-  `spy-world.js:105-110`); `?debug` shows every word (`spy.js:123-129`); a
-  friend is whoever their page says (`spy.js:645-650`).
-- One runtime for all AI seats, no breaker (`spy.js:142-158`); people have
-  no controller (`spy.js:365-380`, `679-687`).
-- Answers are memory (`src/core/runtime.js:260`); quiet lands nothing, and
-  a race picks the answer to a line to everyone (`spy-world.js:189-191`,
-  `table-talk.js:30`); a failed run waits for Retry (`runtime.js:271-278`);
-  tries are in `notes` (`spy-world.js:200-214`).
-- The discussion: an ask as it begins, one per line that names a seat
-  (`spy-world.js:271-275`); it ends by `TALK` or "vote now" (`spy.js:79-91`,
-  `734-737`). Turn asks are from `HUMAN` (`spy-world.js:268`).
-- Time is page timers (`spy.js:24-27`, `160-176`) and `stamp()`
-  (`table-talk.js:15-16`); a gone friend falls back in the page
-  (`spy.js:66-70`); a run waits `PACE` and typing before it lands
-  (`spy.js:95`, `spy-world.js:333`); the world deals (`spy-world.js:142`).
-- The three games each copy `commit`, the world wrapper, tries, thoughts and
-  turn stamps (`spy-world.js:105`, `285`; `werewolf-world.js:137`, `229`;
+- The store is in the opener's page (`preview/spy.js`), not a room: it
+  keeps `{ rev, state }` in the page's storage on each commit, so a
+  refresh goes on with the game, but that page holds the whole state, and
+  with `?debug` shows each AI seat's prompt. The AI seats, the clock and
+  the wallet's limits (depth 10, N 30) run there too, with no budget or
+  rate, and no queue per provider.
+- A friend is whoever their page says (`spy.js`, `joined`), and reaches the
+  store through the opener's page (`preview/poker-share.js`), which sends
+  each only their seat's view. That page commits `leave` for a friend not
+  back within `RECONNECT_MS`; reloaded, it opens a new room, so its friends
+  leave.
+- The opener's page deals, in its `start`: there is no dealer member.
+- An AI seat's program waits its persona's pace (`PACE`, `spy.js`) after
+  the model answers, so its change lands that much later.
+- Werewolf and poker still copy `commit`, the world wrapper, tries,
+  thoughts and turn stamps (`werewolf-world.js:137`, `229`;
   `poker-world.js:147`, `382`).
