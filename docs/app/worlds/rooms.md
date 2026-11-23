@@ -16,6 +16,9 @@ turn-based games with hidden information. Each is a store of the
 - **Identity.** The room gives each member a token when they sit. `by` is
   the member whose token sent the change. A page that comes back with its
   token is in its seat again; one without is a new member.
+- **Leaving.** The room is itself a member that watches presence: a player
+  whose page has been gone for `RECONNECT_MS` it commits as `leave`, and
+  the rules play the fallback on their turns.
 - **Time.** The clock is a member that runs in the room: the room's alarm
   wakes it at its next task's `at`.
 - **Secrets.** The dealer runs in the room; the deck leaves it only in the

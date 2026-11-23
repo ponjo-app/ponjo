@@ -159,7 +159,7 @@ kept in the state by a pure wrapper around its `apply`:
 | accepted | answered | gone |
 | refused by `apply` | a try, and why, shown in the seat's next view | due again; at the world's limit of tries, its `fallback` |
 | `{ failed }`, or not started by the wallet | failed | `turn`: its `fallback` at once; `ask`, `watch`: gone, a person may ask again |
-| nothing | answered | gone |
+| nothing | answered | `turn`: its `fallback` at once; `ask`, `watch`: gone |
 
 A world gives only `apply`, `fallback(state, task)` and its limit of
 tries. A person's or an outside member's refused change lands nothing:
@@ -253,7 +253,8 @@ carry(effects)   → each effect that landed: approved, carried out once
 - **For whom.** The owner always pays. Their policy says for which people
   in `from` they let a task start (the room, the team, themselves).
 - **How much.** A quota per person: a run's cost is charged evenly to the
-  `from` of the tasks it answers.
+  `from` of the tasks it answers; a task with no `from` (a turn the rules
+  set) to the owner's own budget.
 - **Runaway.** Past a depth limit, nothing starts, so agents waking each
   other come to rest. Past N runs on `watch` tasks, or of `depth` above 0,
   since a person last acted in what this agent sees, none starts until one
