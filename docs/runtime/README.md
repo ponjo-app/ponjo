@@ -136,9 +136,10 @@ Task  { given, as, kind, from, depth, at?, why }
 
 `given` the one id it answers; `as` the seat; `kind` `turn` (the rules
 ask it), `ask` (a member asked) or `watch` (a standing request); `from`
-the people whose changes set it off; `depth` 0 when a person or the rules
-set it off, else one more than the agent's change that did; `at` when it
-is due by; `why` in words.
+the people whose changes set it off, empty when the rules alone did; `depth`
+counted from the change that set it off, whatever the kind: 0 for a
+person's or the world's own, one more than an agent's; `at` when it is due
+by; `why` in words.
 
 - Tasks come from the state alone: who must act, who asked whom, who
   turned on a watch. Each fact is a change whose `by` the store set, so a
