@@ -1,4 +1,4 @@
-// Golden agent logs (docs/agent-runtime.md, Agent log): fixed scenarios run
+// Golden agent logs (docs/runtime/README.md, Agent log): fixed scenarios run
 // on a fake clock against a real doc and the fake agent
 // (test/fixtures/fake-agent.js), and the agent log each writes is compared
 // line by line with the one recorded in test/fixtures/golden/. A change to

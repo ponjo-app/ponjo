@@ -1,5 +1,5 @@
 // The architecture page (site/architecture.html): the blackboard agent
-// runtime (docs/runtime-vision.md) as chapters down the page, a screen each,
+// runtime (docs/runtime/vision.md) as chapters down the page, a screen each,
 // each a looping animation with one line under it on the idea it shows; it
 // plays while on screen. With reduced motion a chapter shows its last frame
 // and holds still. preview/build.js bundles it into dist/preview.
@@ -1190,7 +1190,7 @@ function calls(scene) {
 calls.once = true;
 
 // The common way, an orchestrator, against Ponjo's controller, as
-// docs/runtime-vision.md compares them: [the way, who uses it], then a row
+// docs/runtime/vision.md compares them: [the way, who uses it], then a row
 // per difference.
 const WAYS = [
   ['Orchestrator', 'Claude Code subagents, OpenAI Agents SDK, CrewAI'],

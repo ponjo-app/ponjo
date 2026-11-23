@@ -1,5 +1,5 @@
 // The spy table (site/spy.html) as a world for Ponjo's agent runtime
-// (src/core/runtime.js, the contract; docs/agent-runtime.md), as the poker
+// (src/core/runtime.js, the contract; docs/runtime/README.md), as the poker
 // table is (poker-world.js): one table everyone shares, with a change log;
 // who is asked (each AI player the rules say is due: the one whose clue it
 // is, or everyone in a vote, at once; in a discussion, everyone once as it

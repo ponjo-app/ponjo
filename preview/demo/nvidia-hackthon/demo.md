@@ -4,7 +4,7 @@
 
 
 
-![banner-light.png](https://github.com/ponjo-app/ponjo/blob/main/docs/imgs/banner-light.png?raw=true "banner-light.png")
+![banner-light.png](https://github.com/ponjo-app/ponjo/blob/main/docs/app/imgs/banner-light.png?raw=true "banner-light.png")
 
 
 

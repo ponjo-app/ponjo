@@ -9,7 +9,7 @@ and a prompt). An **agent program** is the tool that does an agent's
 thinking, such as Claude Code. A **world** is the board's rules: a doc, a
 poker table, an incident. A **host** is the application that runs it all,
 such as Ponjo, an editor. The reference: [Blackboard Agent
-Runtime](agent-runtime.md).
+Runtime](README.md).
 
 *The name* is the blackboard architecture's (Hearsay-II, in the 1970s):
 knowledge sources work on one shared blackboard, and a control part picks
@@ -148,8 +148,8 @@ An orchestrator fits those better.
   deciding from state through one blocking wait, one writer, asks and
   watches woken by a view's change, stateless agents, the agent log, chains
   limited by depth with a breaker, and outside actions carried out once and
-  approved by the owner ([outside actions](agent-runtime.md#outside-actions));
+  approved by the owner ([outside actions](README.md#outside-actions));
   for docs, and for three game worlds with per-member views and refusals.
 - **Not yet:** the four components as above, and a host that keeps
   running with no window open. What differs:
-  [Today](agent-runtime.md#today).
+  [Today](README.md#today).

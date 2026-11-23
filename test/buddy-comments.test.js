@@ -1,4 +1,4 @@
-// Buddies comment (docs/agent-config.md, Comments): a run gets a copy of
+// Buddies comment (docs/app/agent-config.md, Comments): a run gets a copy of
 // the sidecar, and the lines it appends are added as the buddy's comments.
 // The agent is the fake script (test/fixtures/fake-agent.js).
 

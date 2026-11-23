@@ -1,4 +1,4 @@
-// DocService (docs/host-spec.md, The doc): orders every edit to one doc, as text
+// DocService (docs/app/host-spec.md, The doc): orders every edit to one doc, as text
 // operations on a revision, and writes the doc and its sidecar, one at a
 // time; changes made outside the app; versions. It runs the buddies
 // @mentioned in the doc's comments (runner.js) and lands what each run
@@ -461,7 +461,7 @@ export async function openDocService(docPath, { folder = null, room = null, sett
 
   // ---- undo ----
 
-  // Undo version `id` (docs/host-spec.md, Versions and undo), or every
+  // Undo version `id` (docs/app/host-spec.md, Versions and undo), or every
   // version from `from` to it: the change from the parent of `from` to `id`
   // taken back, merged with everything landed since (merge3), so lines
   // anyone changed since stay. On the machine that has the versions; by

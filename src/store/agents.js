@@ -1,4 +1,4 @@
-// Agents (docs/agent-config.md#agents): what runs a buddy's work, in the
+// Agents (docs/app/agent-config.md#agents): what runs a buddy's work, in the
 // config folder's `agents/`: the program `<name>` on macOS and Linux,
 // `<name>.cmd` on Windows, and its manifest `<name>.json`, if any. Claude
 // Code, Codex and the Ponjo agent ship, written when missing and replaced

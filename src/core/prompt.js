@@ -1,4 +1,4 @@
-// The prompt on a buddy's run (docs/agent-config.md#the-contract), the same
+// The prompt on a buddy's run (docs/app/agent-config.md#the-contract), the same
 // for the app's runner (src/host/runner.js) and the preview (preview/doc-stub.js).
 // It says what a member can do and the etiquette every member keeps; what
 // this buddy does is its persona's.

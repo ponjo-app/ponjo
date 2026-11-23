@@ -4,8 +4,8 @@ Thanks for helping. People and AI agents both contribute here; the same rules ap
 
 ## Start here
 
-- What we build and why: [product vision](docs/product-vision.md), [user experience](docs/user-experience.md).
-- How it is built: [architecture](docs/architecture.md). Comment format: [SPEC](spec/SPEC.md).
+- What we build and why: [product vision](docs/app/product-vision.md), [user experience](docs/app/user-experience.md).
+- How it is built: [architecture](docs/app/architecture.md). Comment format: [SPEC](spec/SPEC.md).
 - Try it without installing: the [online demo](https://ponjo.app/preview/?folder).
 
 ## Pick an issue

@@ -2,7 +2,7 @@
 // one doc, each with the page's side of the doc host's order
 // (web/client.js), joined to the doc host the harness starts as the app does
 // (test/views/main.js), 150 ms away each way (`?delay=` sets it). Plan A
-// (docs/markdown-view.md, Many writers): typing goes out as operations as
+// (docs/app/markdown-view.md, Many writers): typing goes out as operations as
 // it is typed, one edit on its way at a time; before taking
 // the host's edits a view's text is read once more, the edits moved over
 // what it has not landed, and shown with applyText. With `?relay=<URL>`,

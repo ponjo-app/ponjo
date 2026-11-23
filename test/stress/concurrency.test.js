@@ -6,7 +6,7 @@
 // gets one reply, every buddy edit lands, and no human text is lost. A
 // fixed seed by default; another can be passed as STRESS_SEED.
 //
-// The protocol fuzz (docs/testing-ci.md, Editing tests): a real DocService
+// The protocol fuzz (docs/app/testing-ci.md, Editing tests): a real DocService
 // on a temp file and 1 to 4 pages (web/client.js), each on a fake line that
 // delays, drops (calls fail `offline`) and loses events, while the host
 // starts again, its writes fail, the file changes outside and teammates are

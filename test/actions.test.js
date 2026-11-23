@@ -1,4 +1,4 @@
-// Outside actions (docs/agent-runtime.md#outside-actions): proposed with a
+// Outside actions (docs/runtime/README.md#outside-actions): proposed with a
 // comment, recorded on this machine, approved by the owner unless set to
 // run without asking, carried out once, and never again on their own.
 

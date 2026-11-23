@@ -1,4 +1,4 @@
-// An open doc and its buddies (docs/architecture.md, Components): the doc
+// An open doc and its buddies (docs/app/architecture.md, Components): the doc
 // service, which knows nothing of buddies, the doc as a world, which reads
 // the doc and lands what runs left behind through its door, and the agent
 // runtime, which reaches the doc only through the world and hears each

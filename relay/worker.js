@@ -1,4 +1,4 @@
-// The relay and the teammate's page, at one origin (docs/architecture.md,
+// The relay and the teammate's page, at one origin (docs/app/architecture.md,
 // Sharing): a Cloudflare Worker that serves the page (dist/web/team.html,
 // as static assets; relay/wrangler.toml) and joins the owner's doc host to
 // each teammate's page, with one Durable Object per room. It stores nothing.
@@ -33,7 +33,7 @@
 // on to ENDPOINT with the key, the model and a cap on tokens of its own, and
 // its answer comes back as is. Only the messages and tools are taken from
 // the page, with `tool_choice: auto` as every provider of the Ponjo agent
-// sends it (docs/ponjo-agent.md). POST /infer/anthropic/messages is the
+// sends it (docs/app/ponjo-agent.md). POST /infer/anthropic/messages is the
 // game pages' AI players' (site/poker.html, werewolf.html, spy.html,
 // preview/game-page.js): an Anthropic Messages request as INFER.anthropic
 // sends it goes on to ANTHROPIC_ENDPOINT with the ANTHROPIC_API_KEY and

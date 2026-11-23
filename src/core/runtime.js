@@ -1,4 +1,4 @@
-// The agent runtime of one world (docs/agent-runtime.md): the loop. It
+// The agent runtime of one world (docs/runtime/README.md): the loop. It
 // keeps this machine's notes on the world's agents, the runs going and
 // the breaker, and one timer. Whenever anything may have changed it looks: reads
 // the world (members, asks), asks the plan (due.js) what to start and

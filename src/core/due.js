@@ -1,4 +1,4 @@
-// The rules (docs/agent-runtime.md, How the plan decides): what a world's
+// The rules (docs/runtime/README.md, How the plan decides): what a world's
 // agents should be doing now, from its asks and what this machine noted,
 // with no clock or file of its own: a look at any time finds the same.
 

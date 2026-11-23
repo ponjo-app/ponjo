@@ -1,5 +1,5 @@
 // A teammate's page reaching the owner's doc host through the relay
-// (docs/host-spec.md, Sharing), run locally (test/relay/harness.js): the
+// (docs/app/host-spec.md, Sharing), run locally (test/relay/harness.js): the
 // page as web/relay.js and web/client.js in Node, then the browser build
 // itself in Electron.
 

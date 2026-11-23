@@ -1,4 +1,4 @@
-// The doc as a world (docs/agent-runtime.md, The world's five calls): who
+// The doc as a world (docs/runtime/README.md, The world's five calls): who
 // its members are, what is asked, what a member sees, and how what a run
 // left behind lands. It reaches the doc only through its door, writing as
 // the buddy, and knows nothing of runs.

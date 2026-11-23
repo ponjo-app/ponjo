@@ -1,5 +1,5 @@
 // The poker table (site/poker.html) as a world for Ponjo's agent runtime
-// (src/core/runtime.js, the contract; docs/agent-runtime.md): one table
+// (src/core/runtime.js, the contract; docs/runtime/README.md): one table
 // everyone shares, with a change log; who is asked (a player's turn, a line
 // to it, a word after a big hand); `prompt`, what a player is shown; and
 // `land`, the one writer, which lands proposals in order and turns away a

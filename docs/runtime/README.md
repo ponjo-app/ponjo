@@ -1,7 +1,7 @@
 # Blackboard Agent Runtime
 
 How people and agents work on one shared state. Why it is built this way:
-[vision](runtime-vision.md). Ponjo is one application built on it
+[vision](vision.md). Ponjo is one application built on it
 ([Ponjo](#ponjo)).
 
 | Word | Means |
@@ -216,8 +216,8 @@ hold only for actions that are proposed.
 ## Ponjo
 
 Ponjo, a text editor where people and buddies co-author files, is a host.
-Its rules for a doc are in the [host spec](host-spec.md#buddies); what an
-agent program gets and returns, in [agent config](agent-config.md).
+Its rules for a doc are in the [host spec](../app/host-spec.md#buddies); what an
+agent program gets and returns, in [agent config](../app/agent-config.md).
 
 | Here | In Ponjo |
 | --- | --- |

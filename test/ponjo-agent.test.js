@@ -1,4 +1,4 @@
-// The Ponjo agent (docs/ponjo-agent.md): `turn` with a fake `infer`;
+// The Ponjo agent (docs/app/ponjo-agent.md): `turn` with a fake `infer`;
 // each provider's `infer` on a fake server of its API; and the shipped
 // script once, with its settings and its trace.
 

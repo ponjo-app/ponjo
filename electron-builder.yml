@@ -1,4 +1,4 @@
-# Installers for the Ponjo desktop app (docs/architecture.md, Desktop app).
+# Installers for the Ponjo desktop app (docs/app/architecture.md, Desktop app).
 # Build with `npm run dist:desktop`; output goes to release/.
 
 appId: app.ponjo.desktop

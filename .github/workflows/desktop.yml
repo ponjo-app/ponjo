@@ -15,7 +15,7 @@
 # installers, the tests and the stress test: the `changes` job decides, and
 # the `package` jobs still run and report success so the required checks pass.
 # Every push to main runs the full gate. Each night the stress test alone runs
-# for 30 minutes of random seeds (docs/testing-ci.md, Editing tests).
+# for 30 minutes of random seeds (docs/app/testing-ci.md, Editing tests).
 
 name: Desktop builds
 
@@ -147,7 +147,7 @@ jobs:
       - run: xvfb-run -a npm test # the view contract tests open an Electron window
 
   perf:
-    # The latency promise (docs/architecture.md, Latency): each view at its
+    # The latency promise (docs/app/architecture.md, Latency): each view at its
     # limits, typed in while a teammate's edits arrive, and a key to a
     # teammate's page through the relay. A few minutes.
     needs: changes

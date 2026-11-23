@@ -1,6 +1,6 @@
 // The Ponjo agent's benchmark: each case of scripts/bench-cases.js run a few
 // times on a real model, under the contract the app runs it on
-// (docs/agent-config.md), and what each run left checked. On your own key,
+// (docs/app/agent-config.md), and what each run left checked. On your own key,
 // not in CI: it costs tokens, and a model answers differently each time.
 //
 //   npm run bench:agent -- --env .env.nemotron --runs 3 --only question

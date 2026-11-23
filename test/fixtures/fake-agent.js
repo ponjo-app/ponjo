@@ -1,4 +1,4 @@
-// A stand-in for an agent CLI (docs/agent-config.md): it reads the prompt
+// A stand-in for an agent CLI (docs/app/agent-config.md): it reads the prompt
 // on stdin, edits the doc's copy at PONJO_DOC and appends its comments to
 // PONJO_COMMENTS. It acts on each thread of the prompt whose latest comment
 // is not its own, as that comment says:

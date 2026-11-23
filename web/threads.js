@@ -262,7 +262,7 @@ export function createCommentMargin(margin, handlers) {
     return box;
   }
 
-  // An action the reply proposed outside the doc (docs/agent-runtime.md#outside-actions):
+  // An action the reply proposed outside the doc (docs/runtime/README.md#outside-actions):
   // its name and state, its input in full, then who decided and what came
   // of it; for the owner, Approve and Decline while it waits, Retry once it
   // failed or may have run.

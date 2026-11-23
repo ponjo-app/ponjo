@@ -1,4 +1,4 @@
-// Room (docs/host-spec.md, Sharing): a project's room while its owner
+// Room (docs/app/host-spec.md, Sharing): a project's room while its owner
 // hosts it, in the doc host's memory only: whether it is locked, its
 // teammates and the ids kicked out of it. It dies when it closes; nothing of
 // it is ever written.

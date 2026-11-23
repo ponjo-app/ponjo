@@ -1,8 +1,8 @@
 # Testing and CI/CD (draft)
 
 How Ponjo is tested and shipped, derived from
-[architecture](architecture.md), [host spec](host-spec.md), [SPEC](../spec/SPEC.md),
-[PROJECT](../spec/PROJECT.md) and [agent config](agent-config.md).
+[architecture](architecture.md), [host spec](host-spec.md), [SPEC](../../spec/SPEC.md),
+[PROJECT](../../spec/PROJECT.md) and [agent config](agent-config.md).
 Each test guards a rule there; a test that guards none is not needed.
 
 ## Principles

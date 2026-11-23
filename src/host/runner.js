@@ -1,4 +1,4 @@
-// The executor (docs/agent-runtime.md, A run): runs the agent once as a
+// The executor (docs/runtime/README.md, A run): runs the agent once as a
 // buddy, on the files of its view in a new private folder, with its prompt
 // on stdin, and hands back the copies and the comments' groups of edits
 // when it exits. The agent knows nothing of Ponjo; nothing here knows the doc.
@@ -102,7 +102,7 @@ export async function runAction({ script, id, input, timeoutMs = RUN_TIMEOUT_MS 
   }
 }
 
-// A run's environment (docs/agent-config.md): its copies, the project, the
+// A run's environment (docs/app/agent-config.md): its copies, the project, the
 // buddy, where it may write its trace, its comments' groups of edits and
 // the lines that wake it next and the actions it proposes, and the agent's settings.
 const runEnv = ({ doc, sidecar, folder, buddy, settings, trace = '', groups = '', wake = '', actions = '' }) => ({

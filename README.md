@@ -1,7 +1,7 @@
 <h1>
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/imgs/banner-dark.png">
-    <img src="docs/imgs/banner-light.png" alt="Ponjo: Write together with your AI buddies" width="100%">
+    <source media="(prefers-color-scheme: dark)" srcset="docs/app/imgs/banner-dark.png">
+    <img src="docs/app/imgs/banner-light.png" alt="Ponjo: Write together with your AI buddies" width="100%">
   </picture>
 </h1>
 
@@ -24,7 +24,7 @@ Nightly installers for macOS (`.dmg`) and Windows are on the [nightly release](h
 2. Open a text file or a folder. Markdown files open in the Markdown editor, other text files as plain text.
 3. Select some text, add a comment and @mention an AI buddy. Its reply and any edits show up in the doc as it works.
 
-Buddies run on a command-line agent you already have, such as Claude Code or Codex. See [Agent Config](docs/agent-config.md) to set one up.
+Buddies run on a command-line agent you already have, such as Claude Code or Codex. See [Agent Config](docs/app/agent-config.md) to set one up.
 
 ## Development
 
@@ -60,20 +60,20 @@ npm run deploy -- --dry-run  # check
 npm run deploy               # builds the page it serves (dist/web), then deploys
 ```
 
-Then check it on two machines: [the sharing checklist](docs/testing-ci.md#sharing--two-machines-by-hand).
+Then check it on two machines: [the sharing checklist](docs/app/testing-ci.md#sharing--two-machines-by-hand).
 
 ### The preview's buddies
 
-In the [online demo](https://ponjo.app/preview/), a buddy asked answers on NVIDIA Nemotron through the same Worker deployed as `ponjo-hackathon` at `infer.ponjo.app` (the `hackathon` env in [relay/wrangler.toml](relay/wrangler.toml)), which holds a [Nebius Token Factory](https://tokenfactory.nebius.com) key and picks the model. CI deploys it from each push to `main` once the unit tests pass (`infer` in [desktop.yml](.github/workflows/desktop.yml)), the key from the repo's `TOKEN_FACTORY_KEY` secret; `npm test` runs it in front of a fake model (`test/infer.test.js`). The same Worker runs the AI players of the game pages ([poker](https://ponjo.app/poker.html), [werewolf](https://ponjo.app/werewolf.html), [Who's the Spy](https://ponjo.app/spy.html)) on Claude Haiku 5.5, with the repo's `ANTHROPIC_API_KEY` secret (`preview/game-page.js`). [docs/nebius-hackathon.md](docs/nebius-hackathon.md) says how it uses them.
+In the [online demo](https://ponjo.app/preview/), a buddy asked answers on NVIDIA Nemotron through the same Worker deployed as `ponjo-hackathon` at `infer.ponjo.app` (the `hackathon` env in [relay/wrangler.toml](relay/wrangler.toml)), which holds a [Nebius Token Factory](https://tokenfactory.nebius.com) key and picks the model. CI deploys it from each push to `main` once the unit tests pass (`infer` in [desktop.yml](.github/workflows/desktop.yml)), the key from the repo's `TOKEN_FACTORY_KEY` secret; `npm test` runs it in front of a fake model (`test/infer.test.js`). The same Worker runs the AI players of the game pages ([poker](https://ponjo.app/poker.html), [werewolf](https://ponjo.app/werewolf.html), [Who's the Spy](https://ponjo.app/spy.html)) on Claude Haiku 5.5, with the repo's `ANTHROPIC_API_KEY` secret (`preview/game-page.js`). [docs/app/nebius-hackathon.md](docs/app/nebius-hackathon.md) says how it uses them.
 
 ## Learn more
 
-- [Product vision](docs/product-vision.md)
-- [User experience](docs/user-experience.md)
-- [Architecture](docs/architecture.md)
-- [Agent runtime](docs/agent-runtime.md)
-- [Host spec](docs/host-spec.md)
-- [Markdown view](docs/markdown-view.md)
+- [Product vision](docs/app/product-vision.md)
+- [User experience](docs/app/user-experience.md)
+- [Architecture](docs/app/architecture.md)
+- [Blackboard Agent Runtime](docs/runtime/README.md), how buddies run
+- [Host spec](docs/app/host-spec.md)
+- [Markdown view](docs/app/markdown-view.md)
 - [UX Design System](https://ponjo.app/design.html)
 - [Sidecar Config Spec](spec/SPEC.md)
 

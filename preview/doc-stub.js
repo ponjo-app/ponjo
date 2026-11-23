@@ -175,7 +175,7 @@ const plain = (path) => path.replace(/^\.?\//, '');
 // each comment's edits land as their own version, merged with what was
 // typed meanwhile, and its comments come after. Dropped if the doc was
 // renamed meanwhile, and a reply with its edits if its thread was resolved.
-// Only people resolve (docs/product-vision.md).
+// Only people resolve (docs/app/product-vision.md).
 async function run(id, threads) {
   const doc = current;
   const sidecar = `${doc}.comments.jsonl`;

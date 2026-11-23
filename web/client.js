@@ -1,5 +1,5 @@
-// The page's side of the order the doc host keeps (docs/host-spec.md,
-// The log; docs/markdown-view.md, Many writers, plan A): the view's typing
+// The page's side of the order the doc host keeps (docs/app/host-spec.md,
+// The log; docs/app/markdown-view.md, Many writers, plan A): the view's typing
 // goes to the host as operations on the rev it started from, one edit at a
 // time: at once when none is on its way, else all typed meanwhile once the
 // host answers. Others' edits come back as operations, moved over the typing
