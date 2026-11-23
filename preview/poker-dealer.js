@@ -3,6 +3,8 @@
 // turn it is, what is legal, the pot and its side pots, ranking hands. Pure:
 // each call takes a hand and returns a new one, so it is tested with no page
 // (test/poker.test.js). The players decide; this only says what may land.
+// A hand holds no deck: it is dealt its hole cards when it starts, and each
+// street's cards (`board`) once the betting before it is over.
 //
 // A card is a string, its rank then its suit: 'As', 'Td', '7h'.
 
@@ -19,6 +21,9 @@ export function shuffled(random = cryptoRandom) {
   }
   return deck;
 }
+
+// `n` cards from a shuffled deck, none of them `out` (dealt already).
+export const draw = (out, n) => shuffled().filter((c) => !out.includes(c)).slice(0, n);
 
 // A fair whole number below n from crypto.getRandomValues, with no modulo bias.
 function cryptoRandom(n) {
@@ -108,11 +113,14 @@ const clone = (hand) => structuredClone(hand);
 /**
  * A new hand. `players` are [{ id, stack }] in seat order; those with no
  * chips sit out. The button moves to the next seat with chips after
- * `button` (-1 for the first hand). Heads up, the button posts the small blind.
+ * `button` (-1 for the first hand). Heads up, the button posts the small
+ * blind. `deck`: the hole cards, dealt in order from the seat after the
+ * button, two rounds; the rest are not kept.
  */
 export function startHand({ id, players, button, blinds: [sb, bb], deck = shuffled() }) {
+  const cards = [...deck];
   const hand = {
-    id, sb, bb, deck: [...deck], board: [], street: 'preflop', n: 0, actions: [], result: null,
+    id, sb, bb, board: [], street: 'preflop', n: 0, actions: [], result: null,
     seats: players.map(({ id: who, stack }) => ({ id: who, stack, inHand: stack > 0, folded: false, allIn: false, bet: 0, total: 0, hole: [], actedN: -1 })),
     button: 0, toAct: null, currentBet: 0, minRaise: bb, fullRaiseN: -1,
   };
@@ -124,7 +132,7 @@ export function startHand({ id, players, button, blinds: [sb, bb], deck = shuffl
   for (let round = 0; round < 2; round++) {
     for (let k = 1; k <= hand.seats.length; k++) {
       const s = hand.seats[(hand.button + k) % hand.seats.length];
-      if (s.inHand) s.hole.push(hand.deck.shift());
+      if (s.inHand) s.hole.push(cards.shift());
     }
   }
   post(hand, sbSeat, sb, 'small blind');
@@ -166,10 +174,9 @@ export function legal(hand, seat = hand.toAct) {
   };
 }
 
-// The legal options in words, for a player told why its action did not land.
-export function describeLegal(hand, seat = hand.toAct) {
-  const l = legal(hand, seat);
-  const word = hand.currentBet === 0 ? 'bet' : 'raise to';
+// The legal options `l` (`legal`) in words, facing `currentBet`, for a player told what it may do.
+export function describeLegal(l, currentBet) {
+  const word = currentBet === 0 ? 'bet' : 'raise to';
   return [
     'fold',
     l.check ? 'check' : `call ${l.call}${l.call < l.toCall ? ' (all in)' : ''}`,
@@ -240,8 +247,8 @@ export function act(hand, seat, action) {
   return { hand: settle(h) };
 }
 
-// After an action: end the street when no one is due, deal on, and end the
-// hand when one player is left or the board is out.
+// After an action: end the street when no one is due, and wait for its
+// cards (`owed`); end the hand when one player is left or the river is over.
 function settle(h) {
   if (h.seats.filter(inHand).length === 1) return finish(h);
   if (h.toAct !== null && due(h, h.seats[h.toAct])) return h;
@@ -254,13 +261,22 @@ function settle(h) {
   h.currentBet = 0;
   h.minRaise = h.bb;
   h.fullRaiseN = -1;
-  const deal = { preflop: ['flop', 3], flop: ['turn', 1], turn: ['river', 1] }[h.street];
-  if (!deal) return finish(h);
-  h.deck.shift(); // burn
-  h.board.push(...h.deck.splice(0, deal[1]));
-  h.street = deal[0];
+  return h.street === 'river' ? finish(h) : h;
+}
+
+const STREETS = { preflop: ['flop', 3], flop: ['turn', 1], turn: ['river', 1] };
+// How many cards the hand waits for: the next street's, once the betting before it is over.
+export const owed = (hand) => (hand.street !== 'done' && hand.toAct === null ? STREETS[hand.street][1] : 0);
+
+/** The next street's `cards`, as many as the hand is `owed`: { hand }, or { error }. */
+export function board(hand, cards) {
+  const n = owed(hand);
+  if (!n || cards.length !== n) return { error: `The hand is owed ${n} cards.` };
+  const h = clone(hand);
+  h.board.push(...cards);
+  h.street = STREETS[h.street][0];
   h.toAct = h.seats.filter(canAct).length > 1 ? next(h, h.button, canAct) : null;
-  return settle(h);
+  return { hand: settle(h) };
 }
 
 // The hand's end: an uncalled bet back to its bettor, then each pot to its
@@ -306,10 +322,10 @@ function finish(h) {
 export function view(hand, seat) {
   const shown = hand.result?.showdown ? new Set(Object.keys(hand.result.hands).map(Number)) : new Set();
   return {
-    id: hand.id, street: hand.street, board: [...hand.board], blinds: [hand.sb, hand.bb], button: hand.button,
+    id: hand.id, n: hand.n, street: hand.street, board: [...hand.board], blinds: [hand.sb, hand.bb], button: hand.button,
     toAct: hand.toAct, currentBet: hand.currentBet, pot: hand.seats.reduce((sum, s) => sum + s.total, 0),
     seats: hand.seats.map((s, i) => ({
-      id: s.id, stack: s.stack, bet: s.bet, inHand: s.inHand, folded: s.folded, allIn: s.allIn,
+      id: s.id, stack: s.stack, bet: s.bet, total: s.total, inHand: s.inHand, folded: s.folded, allIn: s.allIn,
       hole: i === seat || shown.has(i) ? [...s.hole] : null,
     })),
     actions: hand.actions.map((a) => ({ ...a })),

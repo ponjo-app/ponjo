@@ -7,24 +7,10 @@
 /* global document */
 
 import { INFER } from '../agents/ponjo-core.mjs';
+import { keep, load } from './game-kit.js';
 
 export const $ = (selector, root = document) => root.querySelector(selector);
 export const el = (tag, className = '', text = '') => Object.assign(document.createElement(tag), { className, textContent: text });
-
-// What the visitor keeps in this browser, or null.
-export function load(key) {
-  try {
-    return JSON.parse(localStorage.getItem(key)) ?? null;
-  } catch {
-    return null;
-  }
-}
-export function store(value, key) {
-  try {
-    if (value) localStorage.setItem(key, JSON.stringify(value));
-    else localStorage.removeItem(key);
-  } catch {}
-}
 
 // ---- the model ----
 
@@ -88,7 +74,7 @@ export function models(onUse) {
   // From now on the players run on `next`, the visitor's own, or null for Ponjo's.
   function use(next) {
     settings = next;
-    store(settings, SAVED);
+    keep(settings, SAVED);
     close();
     draw();
     onUse();

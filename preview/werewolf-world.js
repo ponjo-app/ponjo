@@ -1,24 +1,35 @@
-// The werewolf game (site/werewolf.html) as a world for Ponjo's agent
-// runtime (src/core/runtime.js, the contract; docs/runtime/README.md), as
-// the poker table is (preview/poker-world.js): one game everyone shares,
-// with a change log; who is asked, as the rules say (`due`); `prompt`, what
-// a player is shown, built from its seat's `view` alone; and `land`, the
-// one writer, which lands proposals in order and turns away a stale or
-// illegal one, asking the player again, and after MAX_TRIES playing the
-// rules' fallback. Unlike poker, players are often asked at once (the
-// wolves at night, everyone in a vote): the writer collects their actions,
-// and the rules end the phase once all are in, or `expire` once its time is
-// up. A day's speech is a player's action on its turn, not side chat. Once
-// the game is over, the table chats about it (table-talk.js): the AI players
-// answer the lines that concern them. When the players run is the
-// runtime's; the page (preview/werewolf.js) runs the model and draws the game.
+// The werewolf game (site/werewolf.html) as a world on the runtime's core
+// (docs/app/worlds/werewolf.md; src/core/store.js, ledger.js,
+// controller.js): `view` and `apply`, both pure. The table everyone
+// shares: who is at it, the game (werewolf-rules.js), the chat before a
+// game and after it, each AI player's thinking. `view` gives a member only
+// what its seat may see, and its tasks; `apply` lands a change, or refuses
+// it, saying why. No clock and no randomness: the time is each change's
+// `at`, the deal comes in the host's `start`, and the clock is a member
+// whose tasks are the deadlines and the narrator's calls.
+//
+// At night the narrator calls dusk, then each role, alive or not, for a
+// fixed time, so how long a call lasts says nothing of who acted in it: a
+// role's turn is listed once its call begins and is due by its end, when
+// whoever has not acted takes the rules' fallback. After the witch's call,
+// dawn. Players are often due at once (the wolves at night, everyone in a
+// vote): the rules end a phase once all are in.
+//
+// The people are the host (HUMAN), whose page holds the table, and any
+// friends who joined it by a link; the AI players fill the seats left.
+// Outside a game the people at the table chat; once one is over, the AI
+// players of it answer what concerns them.
 
-import { MAX_SPEECH, act, cast, deal, due, fallback, newGame as start, turn, view } from './werewolf-rules.js';
-import { DEPTH, MAX_LINE, asks, linesOf, named, say, stamp } from './table-talk.js';
+import { MAX_SPEECH, SIZES, act, cast, daybreak, due, fallback as sayNothing, newGame, turn, view as seatView } from './werewolf-rules.js';
+import { DEPTH, MAX_LINE, deadline, latest, line as newLine, named, think as thought } from './game-kit.js';
 
 export const HUMAN = 'you';
-const MAX_TRIES = 3; // proposals turned away on one turn before the world's fallback plays for the player
-const THOUGHTS_SHOWN = 8; // a player's own latest thinking its prompt has
+export const CLOCK = 'clock'; // the member whose tasks are the deadlines and the narrator's calls
+export const MAX_PEOPLE = 8; // at the table, as at the largest game
+export const TURN = 90_000; // ms a turn by day may take; then everyone still due is taken as doing nothing
+export const CALLS = ['dusk', 'wolves', 'seer', 'witch']; // the narrator's calls each night, in order
+export const CALL_MS = { dusk: 3000, wolves: 8000, seer: 8000, witch: 8000 }; // each call's length, long enough for a player's thinking and the model's answer
+const HELLO_MS = 2200; // ms from one AI player's hello to the next, and from the last to dusk
 
 // Each AI player's character: who they are (`blurb`, shown on the page),
 // how they talk and how long they go on (`voice`, `words`), how they play,
@@ -96,204 +107,237 @@ export const PERSONAS = [
     hello: 'Um, hi. I\'m Nell. Sorry, I\'ve never played this with, um, strangers before.',
   },
 ];
-
-/**
- * A new game at a table of `size`: the `people` first (the host, then the
- * friends they invited, in the order they joined; `names`, theirs), then AI
- * players, `ids` or the first of PERSONAS, to fill the seats. `roles` are
- * each seat's; dealt at random if left out. Notes, per AI player: its
- * thinking, and how its last proposal went; `asked`, per AI player, the
- * turn it was last asked for and when (an Ask's time, runtime.js). `lines`
- * is the table's chat (table-talk.js), which the page keeps from game to
- * game, each line marked with the `game` (number `no`) it goes with and
- * whether it was said `after` it.
- */
-export function newGame(size = 7, { people = [HUMAN], names = {}, ids = PERSONAS.map((p) => p.id), roles = deal(size), lines = [], no = 1 } = {}) {
-  const seated = people.slice(0, size);
-  const ais = ids.slice(0, size - seated.length);
-  const game = {
-    rev: 0, log: [], players: [...seated, ...ais], names, state: start(roles), asked: {}, lines, no,
-    notes: Object.fromEntries(ais.map((id) => [id, { tries: 0, triesAt: '', rejected: '', thoughts: [] }])),
-  };
-  ask(game);
-  return game;
-}
 export const isPerson = (id) => !PERSONAS.some((p) => p.id === id);
-const personName = (game, id) => game.names[id] ?? (id === HUMAN ? 'the host' : 'a friend');
-export const seatOf = (game, id) => game.players.indexOf(id);
 
+/**
+ * A new table: the host alone, before a game. `people` are the host and
+ * the friends at the table, in the order they joined; `names` theirs.
+ * `game` is the rules' game once one starts, number `no`, `players` its
+ * seats' ids, `intros` the AI players' hellos still to say and `hellos`
+ * those said. `call`: the narrator's call tonight, { day, step, at }.
+ * `lines`: the chat, each line marked with the `game` it goes with and
+ * whether it was said `after` it. `thoughts`: each AI player's thinking.
+ * `since`: the `at` of the change that began the moment (`moment`).
+ */
+export function newTable() {
+  return { people: [HUMAN], names: {}, players: [], no: 0, greeting: false, intros: [], hellos: [], game: null, call: null, lines: [], thoughts: {}, since: 0 };
+}
 
-// Each AI player the rules ask for a turn it was not asked for yet is asked
-// from now: another player's action in the same turn asks it nothing new.
-function ask(game) {
-  const at = turn(game.state);
-  for (const { seat } of due(game.state)) {
-    const id = game.players[seat];
-    if (!isPerson(id) && game.asked[id]?.turn !== at) game.asked[id] = { turn: at, at: stamp() };
+const playing = (t) => Boolean(t.game) && t.game.phase !== 'over' && !t.greeting; // the game is on, past the hellos
+const here = (t, id) => !isPerson(id) || t.people.includes(id); // a friend who left plays on as doing nothing
+const nameOf = (t, id) => (isPerson(id) ? t.names[id] ?? (id === HUMAN ? 'the host' : 'a friend') : id);
+// The moment the table is at: a change made on another is stale. It moves
+// with each hello, and with each turn of the game (`turn`, werewolf-rules.js).
+const moment = (t) => (t.game ? `${t.no}:${t.greeting ? `hello:${t.hellos.length}` : turn(t.game)}` : '');
+// Who is due now: at night, only once the narrator has called their step.
+const dueNow = (t) => (t.game.phase === 'night' && t.call?.step !== t.game.step ? [] : due(t.game));
+// When the moment's turns are due by: at night, the end of the call; by day, TURN after it began.
+const ends = (t) => (t.game.phase === 'night' ? t.call.at + CALL_MS[t.call.step] : t.since + TURN);
+const WHY = { kill: 'Your kill', check: 'Your check', potion: 'Your potions', speak: 'Your speech', last: 'Your last words', vote: 'Your vote' };
+
+// ---- tasks ----
+
+// What player `id`, in `seat`, is due to do: its turn; once the game is
+// over, each line in the chat after it that asks it.
+function tasksOf(t, id, seat) {
+  if (seat < 0) return [];
+  if (t.game?.phase === 'over') return isPerson(id) ? [] : chatTasks(t, id);
+  if (!playing(t) || !here(t, id)) return [];
+  const mine = dueNow(t).find((d) => d.seat === seat);
+  return mine ? [{ given: `turn:${moment(t)}`, as: id, kind: 'turn', from: [], depth: 0, at: ends(t), why: WHY[mine.kind] }] : [];
+}
+
+// A line in the chat after the game asks the AI players it names, under
+// DEPTH; a person's line to everyone, the one whose last line is oldest.
+function chatTasks(t, id) {
+  return t.lines.filter((l) => l.after && l.game === t.no && l.by !== id && l.depth < DEPTH && (l.to.includes(id) || (isPerson(l.by) && !l.to.length && answerer(t, l) === id)))
+    .map((l) => ({ given: `line:${t.no}:${l.id}`, as: id, kind: 'ask', from: l.from, depth: l.depth, why: `${nameOf(t, l.by)} said "${l.text}"${l.to.length ? '' : ' to everyone'}` }));
+}
+// Who answers a person's line `l` to everyone: the AI player whose last line since the game, before it, is oldest; ties in seat order.
+function answerer(t, l) {
+  const last = (p) => t.lines.findLast((x) => x.after && x.game === t.no && x.id < l.id && x.by === p)?.id ?? 0;
+  return t.players.filter((p) => !isPerson(p)).reduce((a, p) => (last(p) < last(a) ? p : a));
+}
+
+// The clock's: each hello in turn, `as` its player, then dusk; at night,
+// the end of each call; by day, the end of a turn, when everyone still due
+// takes the rules' fallback.
+function clockTasks(t) {
+  if (t.greeting) return [t.intros.length ? deadline(`hello:${t.no}:${t.players.indexOf(t.intros[0].id)}`, t.intros[0].id, t.since + HELLO_MS, 'A hello') : deadline(`begin:${t.no}`, CLOCK, t.since + HELLO_MS, 'Night falls')];
+  if (!playing(t)) return [];
+  if (t.game.phase === 'night') return [deadline(`call:${t.no}:${t.call.day}:${t.call.step}`, CLOCK, ends(t), 'The next call')];
+  return [deadline(`expire:${moment(t)}`, CLOCK, ends(t), 'The turn is up')];
+}
+
+// What `id` may do now: its turn's actions; out of a game, chat.
+function actionsOf(t, id, seat) {
+  if (playing(t)) {
+    const mine = seat < 0 ? null : dueNow(t).find((d) => d.seat === seat);
+    if (!mine) return [];
+    if (mine.kind !== 'potion') return { kill: ['kill'], check: ['check'], speak: ['speak'], last: ['speak'], vote: ['vote', 'abstain'] }[mine.kind];
+    const { due: can } = seatView(t.game, seat);
+    return [can.save && 'save', can.poison && 'poison', 'pass'].filter(Boolean);
   }
+  return !t.greeting && (t.people.includes(id) || (t.game && seat >= 0)) ? ['chat'] : [];
 }
 
-// Every change lands here: a revision, a line in the log.
-function commit(game, change) {
-  game.rev++;
-  game.log.push({ rev: game.rev, ...change });
-  ask(game);
-}
+// ---- the world ----
 
-// What a run of `id` is made on, which its proposal lands against (`land`):
-// the moment its action will be for, and what the rules ask of it.
-export function begin(game, id) {
-  return { at: turn(game.state), kind: due(game.state).find((d) => d.seat === seatOf(game, id))?.kind ?? null };
+/**
+ * The game as seat `seat` sees it (the rules' `view`): at night, the step
+ * the narrator has called, its turn only once called, and whom the wolves
+ * attacked only in the witch's call.
+ */
+function gameView(t, seat) {
+  const v = seatView(t.game, seat);
+  if (t.greeting) return { ...v, due: null };
+  if (!playing(t) || t.game.phase !== 'night') return v;
+  const step = t.call.step;
+  return { ...v, step, due: step === t.game.step ? v.due : null, log: v.log.filter((e) => !(e.type === 'attacked' && e.day === t.game.day && step !== 'witch')) };
 }
 
 /**
- * The writer: lands `id`'s proposal { thinking, action, say }, made on
- * `basis` (what `begin` gave its run), or turns it away. `say` is the
- * speech on a speaking turn, and a line to the pack with a wolf's kill. The
- * rules turn away an action that is illegal, or made on a moment the game
- * has left; turned away, an AI player is asked again on the game as it is,
- * told why, up to MAX_TRIES, and then the rules' fallback plays for it.
- * Once the game is over, `say` is a line in the chat (`chat`).
- * Returns { landed, rejected }.
+ * What `member` sees: `content`, the table as its seat may see it (its
+ * role and its night's secrets, never another's, until the game is over;
+ * its own thinking, and everyone's once it is over); `actions`; `tasks`;
+ * `seen`, whose presence it sees (by day, everyone's; at night, its own
+ * and, a wolf's, its pack's); `rules`, how the game is played, in words.
  */
-export function land(game, id, basis, { thinking = '', action = null, say: line = '', for: those }) {
-  if (game.state.phase === 'over') return chat(game, id, basis, { thinking, say: line, for: those });
-  const say = line;
-  const seat = seatOf(game, id);
-  const n = game.notes[id];
-  const mine = due(game.state).find((d) => d.seat === seat);
-  const speaking = mine && (mine.kind === 'speak' || mine.kind === 'last');
-  const proposed = { ...(action ?? (speaking ? { type: 'speak' } : {})), at: basis.at };
-  if (typeof say === 'string' && (proposed.type === 'speak' || proposed.type === 'kill')) proposed.text = say;
-  if (n && thinking) n.thoughts.push({ day: game.state.day, phase: game.state.phase, kind: mine?.kind ?? null, text: String(thinking), action: action && { ...action } });
-  const out = act(game.state, seat, proposed);
-  if (!out.error) {
-    game.state = out;
-    commit(game, { type: 'action', by: id, kind: mine.kind });
-    if (n) n.rejected = '';
-    return { landed: true, rejected: null };
-  }
-  commit(game, { type: 'rejected', by: id, why: out.error });
-  if (n) {
-    const at = turn(game.state);
-    const still = due(game.state).some((d) => d.seat === seat);
-    n.tries = n.triesAt === at ? n.tries + 1 : 1;
-    n.triesAt = at;
-    n.rejected = still ? `Your last action was turned away: ${out.error}` : '';
-    if (still) game.asked[id] = { turn: at, at: stamp() }; // asked again
-    if (still && n.tries >= MAX_TRIES) {
-      game.state = fallback(game.state, [seat]);
-      commit(game, { type: 'action', by: id, kind: mine.kind, forced: true });
-      n.rejected = '';
-    }
-  }
-  return { landed: false, rejected: out.error };
-}
-
-// A line in the chat after the game, by a player of it: an AI player's empty one is staying quiet.
-function chat(game, id, basis, { thinking = '', say: line = '', for: those }) {
-  const text = typeof line === 'string' ? line.trim().slice(0, MAX_LINE) : '';
-  const n = game.notes[id];
-  if (n && thinking) n.thoughts.push({ day: game.state.day, phase: 'over', kind: 'chat', text: String(thinking), action: null });
-  if (!game.players.includes(id)) return { landed: false, rejected: 'You were not in this game.' };
-  if (!text) return { landed: false, rejected: isPerson(id) ? 'Say something.' : null };
-  const about = basis.about ? game.lines[basis.about - 1] : null;
-  const to = named(game.players, (p) => (!isPerson(p) ? p : game.names[p] ?? ''), text);
-  if (!say(game.lines, { by: id, text, to, about, for: those, isPerson, kind: 'chat', game: game.no, after: true })) return { landed: false, rejected: null }; // answered already
-  commit(game, { type: 'chat', by: id });
-  return { landed: true, rejected: null };
-}
-
-// The turn's time is up, or the players `ids` are gone: everyone still due
-// (of them) is taken as doing nothing (the rules' `fallback`). Returns whether anyone was.
-export function expire(game, ids = game.players) {
-  const seats = due(game.state).map((d) => d.seat).filter((seat) => ids.includes(game.players[seat]));
-  if (!seats.length) return false;
-  game.state = fallback(game.state, seats);
-  commit(game, { type: 'expired', late: seats.map((seat) => game.players[seat]) });
-  return true;
-}
-
-// ---- the game as a world ----
-
-/**
- * The game as Ponjo's runtime reaches it: the five calls and what they need
- * (runtime.js, the contract), for this one `game`: a new game is a new
- * world. `typing(id, text)` resolves once the page has shown AI player `id`
- * typing its speech `text` for as long as that takes, so a speech lands
- * after it is seen typed; `ready()` says whether the page lets the players
- * act now (not while they say hello, nor while the narrator is behind the
- * day). The page calls `changed()` after each change it makes itself; the
- * waits then read the game's log.
- */
-export function createWorld(game, { typing = async () => {}, ready = () => true } = {}) {
-  const waiting = new Set();
-  const changed = () => {
-    for (const done of waiting) done();
-  };
+function view(t, member) {
+  const seat = t.players.indexOf(member);
+  const { people, names, players, no, greeting, hellos, lines } = t;
+  const game = t.game && gameView(t, seat);
+  const night = playing(t) && t.game.phase === 'night';
   return {
-    changed,
-    // In the game every ask is the rules'; after it, players answer each other in the chat, as deep as table-talk.js lets them.
-    limits: { depth: DEPTH },
-    // The game has no watches.
-    settleMs: 0,
-    print: () => '',
-    wakes: () => false,
-
-    async members() {
-      return game.players.map((id) => (isPerson(id) ? { id, name: personName(game, id), kind: 'person', mayAsk: true } : { id, name: id, kind: 'agent', mayAsk: false }));
+    content: {
+      people, names, players, no, greeting, hellos, lines, game,
+      call: night ? { ...t.call, ends: ends(t) } : null,
+      thoughts: t.game?.phase === 'over' ? t.thoughts : seat < 0 ? {} : { [member]: latest(t.thoughts, member) },
+      moment: moment(t),
     },
-    // Each AI player the rules ask for an action, from the host, whose game
-    // it is; once the game is over, each line in the chat that concerns it.
-    async asks() {
-      if (game.state.phase === 'over') {
-        const after = game.lines.filter((l) => l.kind === 'chat' && l.after && l.game === game.no);
-        return game.players.filter((id) => !isPerson(id)).flatMap((id) => asks(after, id, isPerson, `chat:${game.no}`));
-      }
-      if (!ready()) return [];
-      return due(game.state).flatMap(({ seat }) => {
-        const id = game.players[seat];
-        if (isPerson(id)) return [];
-        const { turn: at, at: when } = game.asked[id];
-        return [{ id: `turn:${at}`, agent: id, from: HUMAN, at: when, until: when }];
-      });
-    },
-    // What `agent` sees for its asks: `files` is what its run is made on
-    // (begin) and the line it answers, `prompt` { rules, situation }.
-    async view(agent, { asks: asked = [] } = {}) {
-      const lines = linesOf(game.lines, asked, `chat:${game.no}`);
-      return { rev: game.rev, files: { ...begin(game, agent.id), about: lines.at(-1)?.id ?? null }, prompt: prompt(game, agent.id, lines) };
-    },
-    async wait(version, deadline) {
-      for (;;) {
-        const since = game.log.filter((c) => c.rev > version);
-        if (since.length || performance.now() >= deadline) return { rev: game.rev, log: since.map((c) => ({ rev: c.rev, by: { id: c.by ?? null, kind: !c.by ? 'world' : isPerson(c.by) ? 'person' : 'agent' }, at: performance.now(), asks: true, stale: false })) };
-        await new Promise((resolve) => {
-          const done = () => {
-            waiting.delete(done);
-            resolve();
-          };
-          waiting.add(done);
-        });
-      }
-    },
-    // A run's proposal ({ thinking, action, say }, as `decided` takes the
-    // model's answer), landed against what it was made on: a speech once
-    // the player is seen typing it. Resolves to { landed, rejected }.
-    async propose(agent, version, old, made) {
-      if ((old.files.kind === 'speak' || old.files.kind === 'last' || game.state.phase === 'over') && made.say.trim()) await typing(agent.id, made.say);
-      const out = land(game, agent.id, old.files, { ...made, for: agent.for });
-      changed();
-      return out;
-    },
+    actions: actionsOf(t, member, seat),
+    tasks: member === CLOCK ? clockTasks(t) : tasksOf(t, member, seat),
+    seen: night ? [...new Set([member, ...(game.pack ?? []).map((i) => t.players[i])])] : [...new Set([...t.people, ...t.players])],
+    rules: RULES,
   };
 }
 
-// ---- what a player is shown ----
+/**
+ * Lands `change` ({ by, at, base, answers, body }), or { refused: why }.
+ * `body`, by `type`:
+ *   start { size, roles }        the host: a game of `roles` (a shuffle of
+ *                                the rules' `cast(size)`), the people at the
+ *                                table first, then AI players in the seats left
+ *   join { name }                a person sits at the table, or renames
+ *   leave                        a friend leaves: in a game, each of their turns is taken as doing nothing
+ *   kill { target, text? }, check { target }, save, poison { target }, pass,
+ *   speak { text }, vote { target }, abstain, chat { text }
+ *                                made on `base`, the moment; an AI player's with its `thinking`
+ * The clock's change answers its task. After each, a friend gone is taken
+ * as doing nothing, and a night that has begun is called from dusk.
+ */
+function apply(t, change) {
+  const next = step(t, change);
+  return next.refused ? next : { state: settle(next, t, change.at), effects: [] };
+}
+
+// A turn no one played (the ledger's): the rules' fallback for its seat.
+function fallback(t, task, at) {
+  const seat = t.players.indexOf(task.as);
+  return settle(playing(t) && seat >= 0 ? { ...t, game: sayNothing(t.game, [seat]) } : t, t, at);
+}
+
+export const world = { view, apply, fallback, tries: 3 };
+
+function step(t, { by, at, base, answers = [], body }) {
+  if (by === CLOCK) return tick(t, answers[0], at);
+  const b = body ?? {};
+  if (b.type === 'start') return start(t, by, b);
+  if (b.type === 'join') return join(t, by, b.name);
+  if (b.type === 'leave') return leave(t, by);
+  if (base !== moment(t)) return { refused: 'Stale: the game moved on before your action landed.' };
+  if (b.type === 'chat') return chat(t, by, b, answers);
+  if (!playing(t)) return { refused: t.greeting ? 'Wait for everyone to say hello.' : 'There is no game on: chat instead.' };
+  const seat = t.players.indexOf(by);
+  if (!dueNow(t).some((d) => d.seat === seat) && due(t.game).some((d) => d.seat === seat)) return { refused: 'Wait for the narrator to call you.' };
+  const game = act(t.game, seat, { type: String(b.type), target: b.target, text: b.text, at: turn(t.game) });
+  if (game.error) return { refused: game.error };
+  return think({ ...t, game }, t, by, b);
+}
+
+// After a change: a night that has begun is called from dusk; a friend
+// gone is taken as doing nothing on their turn; a new moment begins at `at`.
+function settle(t, before, at) {
+  for (;;) {
+    if (playing(t) && t.game.phase === 'night' && t.call?.day !== t.game.day) t = { ...t, call: { day: t.game.day, step: 'dusk', at } };
+    const gone = playing(t) ? dueNow(t).filter((d) => !here(t, t.players[d.seat])).map((d) => d.seat) : [];
+    if (!gone.length) break;
+    t = { ...t, game: sayNothing(t.game, gone) };
+  }
+  return moment(t) === moment(before) ? t : { ...t, since: at };
+}
+
+// The clock's task `given` is due: it lands, at `at`.
+function tick(t, given, at) {
+  if (!clockTasks(t).some((task) => task.given === given)) return { refused: 'Not due.' };
+  const kind = given.split(':')[0];
+  if (kind === 'hello') return { ...t, intros: t.intros.slice(1), hellos: [...t.hellos, t.intros[0]] };
+  if (kind === 'begin') return { ...t, greeting: false };
+  if (kind === 'expire') return { ...t, game: sayNothing(t.game) };
+  // A call is over: whoever its role still has due does nothing; the next role is called, or, after the witch, dawn.
+  const { step: called } = t.call;
+  const game = t.game.step === called ? sayNothing(t.game) : t.game;
+  const next = CALLS[CALLS.indexOf(called) + 1];
+  return next ? { ...t, game, call: { ...t.call, step: next, at } } : { ...t, game: daybreak(game), call: null };
+}
+
+function start(t, by, { size, roles }) {
+  if (by !== HUMAN) return { refused: 'Only the host starts a game.' };
+  if (t.greeting || playing(t)) return { refused: 'A game is on.' };
+  if (!SIZES.includes(size) || !Array.isArray(roles) || [...roles].sort().join() !== cast(size).sort().join()) return { refused: `A game is ${SIZES.join(', ')} seats, dealt their roles.` };
+  const people = t.people.slice(0, size);
+  const seated = PERSONAS.slice(0, size - people.length);
+  return { ...t, players: [...people, ...seated.map((p) => p.id)], game: newGame(roles), no: t.no + 1, greeting: true, intros: seated.map(({ id, hello }) => ({ id, text: hello })), hellos: [], call: null, thoughts: {} };
+}
+
+// A person sits at the table as `name`, and plays from the next game; one there already takes the name.
+function join(t, by, name) {
+  const as = String(name ?? '').trim().slice(0, 20) || 'Friend';
+  if (!isPerson(by)) return { refused: 'Only a person sits at the table.' };
+  if (!t.people.includes(by) && t.people.length >= MAX_PEOPLE) return { refused: 'The table is full.' };
+  return { ...t, people: t.people.includes(by) ? t.people : [...t.people, by], names: { ...t.names, [by]: as } };
+}
+
+function leave(t, by) {
+  if (by === HUMAN || !t.people.includes(by)) return { refused: 'You are not at the table.' };
+  return { ...t, people: t.people.filter((p) => p !== by) };
+}
+
+// A line in the chat out of a game, by someone at the table, or a player
+// of the game just played: before any game, it goes with the next.
+function chat(t, by, b, answers) {
+  if (t.greeting || playing(t)) return { refused: 'Not now: the game is on.' };
+  if (!t.people.includes(by) && !(t.game && t.players.includes(by))) return { refused: 'You are not at the table.' };
+  const text = String(b.text ?? '').trim().slice(0, MAX_LINE);
+  if (!text) return { refused: 'Say something.' };
+  const after = Boolean(t.game);
+  const asked = tasksOf(t, by, t.players.indexOf(by)).filter((x) => answers.includes(x.given));
+  const to = named([...new Set([...t.players, ...t.people])], (id) => (!isPerson(id) || t.names[id] ? nameOf(t, id) : ''), text);
+  return think({ ...t, lines: [...t.lines, newLine(t.lines, { by, text, to, person: isPerson(by), asked, game: after ? t.no : t.no + 1, after })] }, t, by, b);
+}
+
+// An AI player's thinking lands with its change, as of the moment it was made on (`before`).
+function think(t, before, by, b) {
+  if (isPerson(by) || !b.thinking) return t;
+  const action = b.type === 'chat' ? null : { type: b.type, ...(Number.isInteger(b.target) ? { target: b.target } : {}) };
+  return { ...t, thoughts: thought(t.thoughts, by, { day: before.game?.day ?? 0, phase: before.game?.phase ?? 'over', text: String(b.thinking), action }) };
+}
+
+// ---- what an AI player is shown ----
 
 export const ROLE_NAMES = { wolf: 'werewolf', seer: 'seer', witch: 'witch', villager: 'villager' };
 
-export const RULES = `You are a player in a game of werewolf (狼人杀) with people and other AI players. Each player has a secret role:
+const RULES = `You are a player in a game of werewolf (狼人杀) with people and other AI players. Each player has a secret role:
 - Werewolves (2): each night they pick one player to kill, together. They know each other. They win once they are as many as everyone else alive.
 - Seer (1): each night, checks one player and learns whether they are a werewolf.
 - Witch (1): has two potions, each usable once a game: a save, which brings back the wolves' victim of that night (never herself), and a poison, which kills a player she picks. At most one potion a night. She is told whom the wolves attacked only while she still has the save.
@@ -333,19 +377,22 @@ export const DECIDE = {
   },
 };
 
-// The model's answer as the writer takes it: seats are numbered from 1 in what a player is shown, from 0 here.
-export function decided(args) {
+/**
+ * The model's answer as a change's body, for a view whose `actions` are
+ * these: seats are numbered from 1 in what a player is shown, from 0 here;
+ * a speech with no action is a speech; in the chat, an empty line is nothing (null).
+ */
+export function decided(args, actions) {
   const a = args?.action && typeof args.action === 'object' ? args.action : null;
+  const thinking = String(args?.thinking ?? '');
+  const text = typeof args?.say === 'string' ? args.say : '';
+  if (actions.includes('chat')) return text.trim() ? { type: 'chat', text: text.slice(0, MAX_LINE), thinking } : null;
   const target = Number.isInteger(a?.target) ? a.target - 1 : undefined;
-  return { thinking: String(args?.thinking ?? ''), action: a && { type: String(a.type), ...(target !== undefined ? { target } : {}) }, say: typeof args?.say === 'string' ? args.say : '' };
+  return { type: a ? String(a.type) : actions.includes('speak') ? 'speak' : '', thinking, ...(text ? { text } : {}), ...(target !== undefined ? { target } : {}) };
 }
 
-// A seat as a player is shown it: "seat 3, Wen", with its role when that player may know it.
-const seatName = (game, v, i) => `seat ${i + 1}, ${i === v.seat ? 'you' : isPerson(game.players[i]) ? `${personName(game, game.players[i])}, a person` : game.players[i]}${v.seats[i].role ? ` (${ROLE_NAMES[v.seats[i].role]})` : ''}`;
-
-// One entry of the log, in words, for the player whose view `v` it is in.
-function entryText(game, v, e) {
-  const who = (i) => seatName(game, v, i);
+// One entry of the log, in words, for the player whose view `v` it is in; `who(i)` names seat i.
+function entryText(v, e, who) {
   const names = (list) => (list.length ? list.map(who).join(' and ') : 'no one');
   switch (e.type) {
     case 'night': return `Night ${e.day} falls.`;
@@ -377,44 +424,43 @@ const ASK = {
 };
 
 /**
- * What player `id` is shown now: the rules and its own style, then the
- * game as its seat's `view` has it, and nothing else, so another player's
- * role or a night's secrets can reach it only if that seat may know them.
- * `lines`: the lines in the chat after the game that woke it.
- * Returns { rules, situation }; the rules stay the same run to run, so they cache.
+ * What AI player `id` is shown, from its `view` alone, so another
+ * player's role or a night's secrets can reach it only if its seat may
+ * know them: the rules and its own style, then the game as its seat sees
+ * it, and what its tasks ask. Returns { rules, situation }; the rules stay
+ * the same run to run, so they cache.
  */
-export function prompt(game, id, lines = []) {
-  const seat = seatOf(game, id);
-  const v = view(game.state, seat);
+export function prompt({ content: c, tasks, rules: how }, id) {
+  const v = c.game;
+  const seat = v.seat;
   const persona = PERSONAS.find((p) => p.id === id);
   const rules = [
-    `${RULES}\n\nYou are ${id}, in seat ${seat + 1}: ${persona.blurb.toLowerCase()}.`,
+    `${how}\n\nYou are ${id}, in seat ${seat + 1}: ${persona.blurb.toLowerCase()}.`,
     `How you talk: ${persona.voice} Your speeches run to about ${persona.words} words.`,
     `How you play: ${persona.play}`,
     `As a werewolf: ${persona.wolf}`,
     `As the seer or the witch: ${persona.claim}`,
     'Your character colours how you talk and play; still, you play to win for your side.',
   ].join('\n');
+  const who = (i) => `seat ${i + 1}, ${i === seat ? 'you' : isPerson(c.players[i]) ? `${nameOf(c, c.players[i])}, a person` : c.players[i]}${v.seats[i].role ? ` (${ROLE_NAMES[v.seats[i].role]})` : ''}`;
   const parts = [];
-  parts.push(`Your role: ${ROLE_NAMES[v.role]}.${v.pack ? ` The werewolves: ${v.pack.map((i) => seatName(game, v, i)).join(' and ')}.` : ''}${v.potions ? ` Your potions: save ${v.potions.save ? 'unused' : 'used'}, poison ${v.potions.poison ? 'unused' : 'used'}.` : ''}`);
-  parts.push(['The players, in seat order:', ...v.seats.map((s, i) => `- ${seatName(game, v, i)}: ${s.alive ? 'alive' : 'dead'}`)].join('\n'));
-  parts.push(['What has happened, as you saw it:', ...v.log.map((e) => `- ${entryText(game, v, e)}`)].join('\n'));
-  const mine = game.notes[id].thoughts.slice(-THOUGHTS_SHOWN);
+  parts.push(`Your role: ${ROLE_NAMES[v.role]}.${v.pack ? ` The werewolves: ${v.pack.map(who).join(' and ')}.` : ''}${v.potions ? ` Your potions: save ${v.potions.save ? 'unused' : 'used'}, poison ${v.potions.poison ? 'unused' : 'used'}.` : ''}`);
+  parts.push(['The players, in seat order:', ...v.seats.map((s, i) => `- ${who(i)}: ${s.alive ? 'alive' : 'dead'}`)].join('\n'));
+  parts.push(['What has happened, as you saw it:', ...v.log.map((e) => `- ${entryText(v, e, who)}`)].join('\n'));
+  const mine = c.thoughts[id] ?? [];
   if (mine.length) parts.push(['Your own earlier thinking:', ...mine.map((t) => `- ${t.phase === 'night' ? 'Night' : 'Day'} ${t.day}: ${t.text}`)].join('\n'));
   if (v.phase === 'over') {
-    const who = (p) => (p === id ? 'you' : isPerson(p) ? personName(game, p) : p);
-    const after = game.lines.filter((l) => l.kind === 'chat' && l.after && l.game === game.no);
-    parts.push(`The game is over: every role is shown above.${after.length ? `\n${['The chat since:', ...after.map((l) => `- ${who(l.by)}: "${l.text}"`)].join('\n')}` : ''}`);
-    const woke = lines.map((l) => `${who(l.by)} said "${l.text}"${l.to.length ? '' : ' to everyone'}`).join(', and ');
-    parts.push(`Now: ${woke}. Answer if you will, as yourself, about the game just played: action speak, with one short line in say, or an empty say to stay quiet.`);
+    const name = (p) => (p === id ? 'you' : nameOf(c, p));
+    const after = c.lines.filter((l) => l.after && l.game === c.no);
+    parts.push(`The game is over: every role is shown above.${after.length ? `\n${['The chat since:', ...after.map((l) => `- ${name(l.by)}: "${l.text}"`)].join('\n')}` : ''}`);
+    parts.push(`Now: ${tasks.map((t) => t.why).join(', and ')}. Answer if you will, as yourself, about the game just played: action speak, with one short line in say, or an empty say to stay quiet.`);
   }
   if (v.due) {
     const extra = v.due.kind === 'potion' ? ` You may: ${[v.due.save && 'save', v.due.poison && 'poison', 'pass'].filter(Boolean).join(', ')}.` : v.due.kind === 'kill' && v.due.round === 2 ? ' The pack disagreed: pick once more.' : '';
-    parts.push(`Now: ${ASK[v.due.kind]}${extra}${game.notes[id].rejected ? `\n${game.notes[id].rejected}` : ''}`);
+    const refused = tasks.find((t) => t.refused)?.refused;
+    parts.push(`Now: ${ASK[v.due.kind]}${extra}${refused ? `\nYour last action was turned away: ${refused}` : ''}`);
   }
   return { rules, situation: parts.join('\n\n') };
 }
 
-// What a page draws: person `id`'s own view; someone not in the game (watching) sees what everyone does.
-export const show = (game, id = HUMAN) => view(game.state, seatOf(game, id));
-export { MAX_SPEECH, cast, turn };
+export { MAX_SPEECH, cast };

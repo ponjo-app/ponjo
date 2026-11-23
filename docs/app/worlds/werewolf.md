@@ -47,8 +47,8 @@ makes another stale; the last tallies in the same commit.
 ```
 view(state, member, past)   → { content, actions, tasks, seen, rules }
 apply(state, change, past)  → { state, effects: [] } | { refused: why }
-fallback(state, task)       → the rules' fallback for task.as
-limit                       MAX_TRIES (3)
+fallback(state, task, at)   → state      the rules' fallback for task.as
+tries                       3
 ```
 
 **`view`** is the seat's. `content` is the rules' `view(game, seat)`: its
@@ -82,10 +82,10 @@ Open: chat before a game wakes AI players, or, as today, only after one.
 **Answers.** The ledger's. Accepted, a change goes through the rules'
 `act`: the seat joins `acted`, and `settle` ends a phase once no one is
 due, so the barrier is the rules'. Refused (illegal, stale, a turn with no
-action), it is a try, its why in the seat's next view; at `MAX_TRIES`,
-`fallback`. A turn that failed, or that the wallet will not start, is its
-`fallback` at once. A run that made nothing is answered: the seat waits
-for `expire`. Its thinking lands in `minds` whatever else does.
+action), it is a try, its why in the seat's next view; at 3 tries,
+`fallback`. A turn that failed, that the wallet will not start, or whose
+run made nothing, is its `fallback` at once. Its thinking lands in `minds`
+with a change that lands.
 
 ## Members and controllers
 
@@ -121,20 +121,27 @@ the room's budget and rate, the depth limit; the breaker counts no turn.
 
 ## Today
 
-- The store is the opener's page (`werewolf.js:40`), which reads every
-  role; a friend is whoever their page says (`werewolf.js:948-950`).
-- Five calls with I/O (`werewolf-world.js:229-290`); a prompt is built from
-  the whole table (`:386-416`); friends get a view plus who runs
-  (`werewolf.js:988-993`). One runtime per game, for its agents
-  (`werewolf.js:172-199`); the page writes people's "your turn"
-  (`werewolf.js:323-334`).
-- The table changes in place (`werewolf-world.js:137-141`, `171`) and is
-  stamped by `stamp()` (`table-talk.js:16`). Given asks are in memory
-  (`due.js:57`); a failed run commits nothing (`src/core/runtime.js:277`);
-  tries are the world's own, a stale one counted on the new turn
-  (`werewolf-world.js:176-189`). A line to all asks every AI player
-  (`table-talk.js:30-40`).
-- The deal is in `newGame` (`werewolf-world.js:111`); clock, narrator,
-  hellos and leaving are page timers (`werewolf.js:69-117`, `233-253`,
-  `955-965`); a call lasts until its role acts (`werewolf.js:99-100`);
-  `view.step` is the rules' (`werewolf-rules.js:294`).
+- The store is in the opener's page (`preview/werewolf.js`), not a room:
+  it keeps `{ rev, state }` in the page's storage on each commit
+  (`openTable`, `preview/game-kit.js`), so a refresh goes on with the game,
+  but that page holds the whole state, and with `?debug` shows each AI
+  seat's prompt. The AI seats, the clock and the wallet's limits (depth
+  10, N 30) run there too, with no budget or rate, and no queue per provider.
+- A friend is whoever their page says, and reaches the store through the
+  opener's page (`friends`, `game-kit.js`, over `preview/poker-share.js`),
+  which sends each only their seat's view and the presence it may see.
+  That page commits `leave` for a friend not back within `RECONNECT_MS`;
+  reloaded, it opens a new room, so its friends leave.
+- The opener's page deals, in its `start { size, roles }`; `apply` checks
+  the roles are a shuffle of `cast(size)`. There is no dealer member.
+- The narrator's call gates every night turn, an AI seat's as a person's:
+  listed once its step is called, due by the call's end. The rules hold
+  the night at the witch's step until the clock's last call
+  (`daybreak`), so the day never begins before dawn is called. Chat before
+  a game wakes no AI player.
+- The table keeps `call { day, step, at }`, `since` and `thoughts` beside
+  the game, not in it; tasks are `turn:<no>:<turn>`, `line:<no>:<id>`,
+  `call:<no>:<day>:<step>`, `hello:<no>:<seat>`, `expire:<no>:<turn>`.
+- An AI seat's program waits its persona's thinking time (`PACE`,
+  `werewolf.js`) after the model answers, and a speech's typing time, told
+  as presence, so its change lands that much later.

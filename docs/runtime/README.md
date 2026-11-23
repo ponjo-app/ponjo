@@ -379,31 +379,26 @@ Open: Ponjo's limits. Proposed: a depth limit of 10, and N = 30.
 
 ## Today
 
-Who's the Spy runs on this design's core (`src/core/store.js`,
-`ledger.js`, `controller.js`), with its store in the opener's page
-([spy](../app/worlds/spy.md#today)). The doc, poker and werewolf follow
-the design before this one:
+Who's the Spy, werewolf and poker run on this design's core
+(`src/core/store.js`, `ledger.js`, `controller.js`), each with its store
+in the opener's page, kept in that page's storage, so a refresh goes on
+with the game; that page can read every word, role and card
+([spy](../app/worlds/spy.md#today), [werewolf](../app/worlds/werewolf.md#today),
+[poker](../app/worlds/poker.md#today)). What they share is in
+`preview/game-kit.js`. The doc follows the design before this one:
 
 - The world is one object of five calls with I/O (`members`, `asks`,
-  `view`, `wait`, `propose`), and the doc's sixth, `failed`; who is due is
-  the runtime's plan (`src/core/due.js`); a controller reads the whole state.
-- One controller per open doc or game, for all its agents; people have
-  none, and each game writes its own "your turn" and its own view for
-  people (poker's `share`).
-- Who is due rests on notes in memory. In a game, a run that makes nothing
-  or fails commits nothing, and a failed run waits for Retry, in memory; the
-  doc answers each ask with a comment instead. Each game keeps its own
-  tries and fallback.
+  `view`, `wait`, `propose`), and `failed`; who is due is the runtime's
+  plan (`src/core/due.js`); a controller reads the whole state.
+- One controller per open doc, for all its agents; people have none.
+- Who is due rests on notes in memory; the doc answers each ask with a
+  comment instead.
 - The doc's `rev` starts again each time it opens; the comments are read
   from disk beside the door; a run lands in several commits.
-- A game's table lives only in the memory of the page that opened it: a
-  refresh ends the game, and that page can read every card. Spy's is kept
-  in that page's storage, so a refresh goes on with it; that page can read
-  every word.
-- Time is in page timers and in `stamp()`; tables change in place.
 - The breaker counts runs in a window; the depth limit is 1,000; a busy
   API fails a run after one retry ([Ponjo agent](../app/ponjo-agent.md));
-  runs share no queue. Spy's wallet has the proposed limits, in its page.
+  runs share no queue. The games' wallets have the proposed limits, in
+  their pages.
 
 ## Migration
 

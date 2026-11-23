@@ -36,14 +36,14 @@ turn-based games with hidden information. Each is a store of the
 - **Presence** goes to the room, which passes it on as each view's `seen`
   allows, and keeps none.
 
-It replaces the opener's page as the store, the forwarding in
-`preview/poker-share.js`, each game's own view for friends (poker's
-`share`) and the pages' timers. The relay keeps state for it; today it
+It replaces the opener's page as the store and the forwarding in
+`preview/poker-share.js`. The relay keeps state for it; today it
 keeps none ([architecture](../architecture.md)).
 
 ## Today
 
-The table is in the memory of the page that opened it: a refresh ends the
-game, and the opener's page can read every card and role. Friends read and
-act through that page over the relay, and a friend is whoever their page
-says it is (`preview/poker.js:871`, `preview/werewolf.js:948-950`).
+The table's store is in the page that opened it, kept in that page's
+storage, so a refresh goes on with the game; that page can read every
+card, role and word. Friends read and act through that page over the
+relay, each sent only their seat's view, and a friend is whoever their
+page says it is (`friends`, `preview/game-kit.js`).

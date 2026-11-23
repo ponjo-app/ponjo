@@ -1,22 +1,32 @@
-// The poker table (site/poker.html) as a world for Ponjo's agent runtime
-// (src/core/runtime.js, the contract; docs/runtime/README.md): one table
-// everyone shares, with a change log; who is asked (a player's turn, a line
-// to it, a word after a big hand); `prompt`, what a player is shown; and
-// `land`, the one writer, which lands proposals in order and turns away a
-// stale or illegal action, asking the player again, and after MAX_TRIES
-// playing the dealer's fallback. When the players run is the runtime's;
-// the page (preview/poker.js) runs the model and draws the table.
+// The poker table (site/poker.html) as a world on the runtime's core
+// (docs/app/worlds/poker.md; src/core/store.js, ledger.js,
+// controller.js): `view` and `apply`, both pure. The table everyone
+// shares: who sits where with how many chips, the hand (poker-dealer.js),
+// the chat, the reactions, each AI player's thinking. `view` gives a
+// member only what its seat may see, and its tasks; `apply` lands a
+// change, or refuses it, saying why. No clock, no deck and no randomness:
+// the time is each change's `at`; the dealer is a member whose tasks are
+// to deal a hand and each street's cards, which come in its changes; the
+// clock is a member whose tasks are the turns' deadlines.
+//
+// The people are the host (HUMAN), whose page holds the table, and any
+// friends who joined it by a link and bought in; AI players come and go
+// between hands as the host asks. Anyone may chat and react at any time.
 
-import { act, describeLegal, startHand, view } from './poker-dealer.js';
+import { act, board, describeLegal, legal, owed, shuffled, startHand, view as handView } from './poker-dealer.js';
+import { DEPTH, MAX_LINE, after, deadline, line as newLine, named, think as thought } from './game-kit.js';
 
 export const HUMAN = 'you';
-export const BLINDS = [10, 20];
+export const DEALER = 'dealer'; // the member who deals: its changes bring the cards
+export const CLOCK = 'clock'; // the member whose tasks are the turns' deadlines
+const BLINDS = [10, 20];
 export const STACK = 1000;
-const MAX_SAY = 240; // characters of a line at the table
-const MAX_TRIES = 3; // proposals turned away on one turn before the dealer folds or checks for the player
-const CHAT_SHOWN = 24; // latest lines a prompt has
-const DEPTH = 2; // a line this deep in replies wakes no one: nobody replies to a reply forever
+export const [MIN_BUY, MAX_BUY] = [200, 1000]; // what a person may buy in for, and hold on the table
 export const MAX_SEATS = 6;
+export const TURN = 30_000; // ms a turn may take while it holds up a person; then the dealer checks or folds for the player
+const HELLO_MS = 1400; // ms each AI player's hello takes to show, before the first deal
+const CHAT_SHOWN = 24; // latest lines an AI player's view has
+const DECK = shuffled().sort();
 
 // `talk`: the share of its turns, or of lines other players say to it, on which a player may say something.
 export const PERSONAS = [
@@ -70,20 +80,26 @@ export const PERSONAS = [
   },
 ];
 const FIRST = ['Gary', 'Duke', 'Penny']; // the players at a new table, in seats 1, 3 and 5
-// Seat numbers go round the table from the person's, 0: six seats, a player keeps its own.
-
-// A new table: the person, who sits down with `buyIn` from their bankroll,
-// and `ids`' players with STACK each. Players come and go between hands:
-// `joining` take a seat when the next hand is dealt, `leaving` give theirs up.
-// People, the person (HUMAN) and any friends, buy chips: `topUp` holds what
-// each added since the hand began; one with none sits a hand out. `names`:
-// the friends' names; the person has none.
-export function newTable(buyIn = STACK, ids = FIRST) {
-  const players = [{ id: HUMAN, stack: buyIn }, ...ids.map((id) => ({ id, stack: STACK }))];
-  const slots = Object.fromEntries([[HUMAN, 0], ...ids.map((id, k) => [id, ids.length === 3 ? 2 * k + 1 : k + 1])]);
-  return { rev: 0, log: [], players, slots, names: {}, hand: null, handNo: 0, button: -1, topUp: {}, joining: [], leaving: [], chat: [], turnAt: null, notes: Object.fromEntries(PERSONAS.map(({ id }) => [id, note()])) };
-}
+// Seat numbers go round the table from the host's, 0: six seats, a player keeps its own.
 export const isPerson = (id) => !PERSONAS.some((p) => p.id === id);
+
+/**
+ * A new table: the host, with no chips until they buy in (`sit`), and
+ * `ids`' players with STACK each. Players come and go between hands:
+ * `joining` take a seat when the next hand is dealt, `leaving` give theirs
+ * up. People, the host and any friends, buy chips: `topUp` holds what each
+ * added since the hand began; one with none sits a hand out. `names`: the
+ * people's names. `chat`: the lines said; `reactions`: the emoji sent;
+ * `thoughts`: each AI player's thinking. `dealing`: the dealer is to deal
+ * the next hand, at `dealAt` if set; `deals`, how many it dealt, a hand or
+ * none for want of chips. `since`: the `at` of the change that
+ * began the turn.
+ */
+export function newTable(ids = FIRST) {
+  const players = [{ id: HUMAN, stack: 0 }, ...ids.map((id) => ({ id, stack: STACK }))];
+  const slots = Object.fromEntries([[HUMAN, 0], ...ids.map((id, k) => [id, ids.length === 3 ? 2 * k + 1 : k + 1])]);
+  return { players, slots, names: {}, hand: null, handNo: 0, button: -1, topUp: {}, joining: [], leaving: [], chat: [], reactions: [], thoughts: {}, greeted: false, dealing: false, dealAt: 0, deals: 0, since: 0 };
+}
 
 // The seats no one has, or will have at the next hand.
 export const freeSeats = (table) => [...Array(MAX_SEATS).keys()].filter((k) => !lineup(table).some((p) => table.slots[p.id] === k)); // a leaving player's seat is its own till the hand ends
@@ -94,66 +110,19 @@ export const lineup = (table) => [
   ...(table.hand ? table.hand.seats : table.players).map(({ id }) => ({ id, joining: false, leaving: table.leaving.includes(id) })),
   ...table.joining.map((id) => ({ id, joining: true, leaving: false })),
 ];
-const playing = (table) => lineup(table).filter((p) => p.id !== HUMAN && !p.leaving); // whom the person plays against
-
-// A player takes a seat at the next hand, and says hello. False if there
-// is no free seat, or it is already at the table.
-export function addPlayer(table, id, seat = freeSeats(table)[0]) {
-  const persona = PERSONAS.find((p) => p.id === id);
-  if (!persona || lineup(table).some((p) => p.id === id && !p.leaving)) return false;
-  if (table.leaving.includes(id)) table.leaving = table.leaving.filter((x) => x !== id); // asked to stay, in its own seat
-  else if (freeSeats(table).includes(seat)) {
-    table.joining.push(id);
-    table.slots[id] = seat;
-  } else return false;
-  commit(table, { type: 'join', by: id });
-  say(table, id, persona.hello[0], { depth: DEPTH });
-  return true;
-}
-
-// A friend takes `seat` at the next hand, as `name`, with `buyIn` from their
-// bankroll. False if the seat is taken, or they are at the table.
-export function seatFriend(table, id, name, seat, buyIn) {
-  if (!isPerson(id) || lineup(table).some((p) => p.id === id) || !freeSeats(table).includes(seat)) return false;
-  table.joining.push(id);
-  table.slots[id] = seat;
-  table.names[id] = name;
-  table.topUp[id] = buyIn;
-  commit(table, { type: 'join', by: id });
-  return true;
-}
-
-// A player gives up its seat after this hand (at once if it has not sat
-// down yet), and says goodbye. False for the person, or for the last player
-// left to play against.
-export function removePlayer(table, id) {
-  if (isPerson(id) || !playing(table).some((p) => p.id === id) || playing(table).length < 2) return false;
-  if (table.joining.includes(id)) {
-    table.joining = table.joining.filter((x) => x !== id);
-    delete table.slots[id];
-  } else table.leaving.push(id);
-  commit(table, { type: 'part', by: id });
-  say(table, id, PERSONAS.find((p) => p.id === id).bye, { depth: DEPTH });
-  return true;
-}
-const note = () => ({ tries: 0, triesKey: '', rejected: '', thoughts: [] });
-
-// A time for an ask, each later than the last (the runtime tells asks apart by them).
-let last = 0;
-const stamp = () => new Date((last = Math.max(Date.now(), last + 1))).toISOString();
-
-// Every change lands here: a revision, a line in the log. A deal or an
-// action starts a turn, asked from then (`turnAt`).
-function commit(table, change) {
-  table.rev++;
-  table.log.push({ rev: table.rev, ...change });
-  if (change.type === 'deal' || change.type === 'action') table.turnAt = stamp();
-}
-
+const playing = (table) => lineup(table).filter((p) => p.id !== HUMAN && !p.leaving); // whom the host plays against
 const seatOf = (table, id) => table.players.findIndex((p) => p.id === id);
-const turnKey = (hand) => `${hand.id}:${hand.n}`;
-export const nameOf = (table, id) => (isPerson(id) ? table.names[id] ?? 'the person' : id);
-const names = (table, text) => [...PERSONAS.map(({ id }) => id), ...Object.keys(table.names)].filter((id) => new RegExp(`\\b${nameOf(table, id).replace(/\W/g, '\\$&')}\\b`, 'i').test(text));
+const nameOf = (table, id) => (id === DEALER ? 'Dealer' : isPerson(id) ? table.names[id] ?? 'the person' : id);
+const names = (table, text) => named([...PERSONAS.map(({ id }) => id), ...Object.keys(table.names)], (id) => nameOf(table, id), text);
+const live = (table) => Boolean(table.hand) && table.hand.street !== 'done';
+// The turn the table is at, while a hand is live: a move made on another is stale.
+const moment = (table) => (live(table) ? `${table.hand.id}:${table.hand.n}` : '');
+const actor = (table) => (live(table) && table.hand.toAct !== null ? table.hand.seats[table.hand.toAct].id : null);
+// When the turn is due by: TURN after it began, unless it is a person's, alone with AI players.
+const ends = (table) => {
+  const id = actor(table);
+  return id && (!isPerson(id) || lineup(table).some((p) => p.id !== id && isPerson(p.id))) ? table.since + TURN : 0;
+};
 
 // A person's chips now, with what they added since the hand began.
 export function myChips(table, id = HUMAN) {
@@ -161,289 +130,326 @@ export function myChips(table, id = HUMAN) {
   return (seat < 0 ? 0 : (table.hand ? table.hand.seats : table.players)[seat].stack) + (table.topUp[id] ?? 0);
 }
 
-// More chips for a person, from their bankroll: they land before the next hand, as at a real table.
-export function topUp(table, amount, id = HUMAN) {
-  table.topUp[id] = (table.topUp[id] ?? 0) + amount;
-  commit(table, { type: 'topup', by: id, amount });
+// A big hand, which a player may react to: an all-in, or a pot of 15 big blinds.
+const isBig = (hand) => hand?.street === 'done' && (hand.actions.some((a) => a.allIn) || hand.seats.reduce((sum, s) => sum + s.total, 0) >= 15 * hand.bb);
+// Who has a word after a big hand: two AI players, the winner first, then those still in at the end.
+function reactors(hand) {
+  const won = hand.result.won.findIndex(Boolean);
+  return [won, ...[...hand.seats.keys()].filter((i) => i !== won && hand.seats[i].inHand && !hand.seats[i].folded)].filter((i) => i > 0).slice(0, 2).map((i) => hand.seats[i].id).filter((id) => !isPerson(id));
+}
+
+/**
+ * Whether AI player `id` may talk on a task `given`: a number in [0, 1)
+ * from the two alone (FNV-1a), under its `talk`. The same each time it is
+ * asked, so a run's view and the change it makes agree.
+ */
+export function rolls(id, given) {
+  let h = 0x811c9dc5;
+  for (const ch of `${id}|${given}`) h = Math.imul(h ^ ch.codePointAt(0), 0x01000193) >>> 0;
+  return h / 2 ** 32 < PERSONAS.find((p) => p.id === id).talk;
+}
+// Whether a run of AI player `id` on `tasks` may say something: always to a line or after a big hand; on a turn, as it rolls.
+const talks = (id, tasks) => tasks.some((t) => !t.given.startsWith('turn:') || rolls(id, t.given));
+
+// ---- tasks ----
+
+// A line asks AI player `id`: one that names it, a person's always, an AI
+// player's as it rolls; a person's to the whole table, the one it is `to`
+// (the next AI player after them); none at DEPTH.
+const asks = (l, id) => l.by !== id && l.by !== DEALER && l.depth < DEPTH && (l.to.includes(id) ? isPerson(l.by) || rolls(id, `line:${l.id}`) : l.next === id);
+
+// What member `id` is due to do: its turn; an AI player at the table, each
+// line that asks it, and a word after a big hand.
+function tasksOf(t, id) {
+  const tasks = [];
+  if (actor(t) === id) tasks.push({ given: `turn:${moment(t)}`, as: id, kind: 'turn', from: [], depth: 0, ...(ends(t) ? { at: ends(t) } : {}), why: 'Your turn' });
+  if (isPerson(id) || seatOf(t, id) < 0) return tasks;
+  for (const l of t.chat) if (asks(l, id)) tasks.push({ given: `line:${l.id}`, as: id, kind: 'ask', from: l.from, depth: l.depth, why: `${nameOf(t, l.by)} said "${l.text}"` });
+  if (isBig(t.hand) && reactors(t.hand).includes(id)) tasks.push({ given: `react:${t.hand.id}`, as: id, kind: 'turn', from: [], depth: 0, why: 'A big hand just ended' });
+  return tasks;
+}
+
+// The dealer's: the next hand, once asked to deal it; a street's cards, once its betting is over.
+function dealerTasks(t) {
+  if (live(t)) return owed(t.hand) ? [deadline(`board:${t.hand.id}:${t.hand.street}`, DEALER, undefined, 'The next street')] : [];
+  return t.dealing ? [deadline(`deal:${t.deals + 1}`, DEALER, t.dealAt || undefined, 'The next hand')] : [];
+}
+
+// The clock's: a turn's end, when the dealer checks or folds for its player.
+const clockTasks = (t) => (ends(t) ? [deadline(`timeout:${moment(t)}`, CLOCK, ends(t), 'The turn is up')] : []);
+
+// ---- the world ----
+
+/**
+ * What `member` sees: `content`, the table as its seat may see it (its own
+ * hole cards, others' at a showdown, and, for a person, the AI players'
+ * once the hand is over; its own chips to come; the chat, an AI player
+ * its latest; its own thinking this hand, and for a person everyone's
+ * once the hand is over; on its turn, what is `legal`); the dealer, the
+ * cards out and how many it is to deal; `actions`; `tasks`; `seen` (every
+ * presence, to all); `rules`, how the game is played, in words.
+ */
+function view(t, member) {
+  const tasks = member === CLOCK ? clockTasks(t) : member === DEALER ? dealerTasks(t) : tasksOf(t, member);
+  const turn = actor(t) === member;
+  const base = { actions: turn ? ['fold', 'check', 'call', 'bet', 'raise', 'allin', 'say', 'react'] : ['say', 'react'], tasks, seen: lineup(t).map((p) => p.id), rules: RULES };
+  if (member === DEALER) return { ...base, content: { out: t.hand ? [...t.hand.seats.flatMap((s) => s.hole), ...t.hand.board] : [], need: live(t) ? owed(t.hand) : 2 * MAX_SEATS } };
+  const person = isPerson(member);
+  const seat = t.hand ? t.hand.seats.findIndex((s) => s.id === member) : -1;
+  const over = t.hand?.street === 'done';
+  let hand = t.hand && handView(t.hand, seat);
+  if (hand && person && over) hand = { ...hand, seats: hand.seats.map((s, i) => (isPerson(s.id) ? s : { ...s, hole: [...t.hand.seats[i].hole] })) };
+  const mine = (id) => (t.thoughts[id] ?? []).filter((x) => x.hand === t.hand?.id);
+  const { players, slots, names, handNo, button, joining, leaving, greeted, dealing } = t;
+  return {
+    ...base,
+    content: {
+      players, slots, names, handNo, button, joining, leaving, greeted, dealing, hand,
+      topUp: { [member]: t.topUp[member] ?? 0 },
+      chat: person ? t.chat : t.chat.slice(-CHAT_SHOWN),
+      reactions: t.reactions,
+      thoughts: person ? (over ? Object.fromEntries(Object.keys(t.thoughts).map((id) => [id, mine(id)])) : {}) : { [member]: mine(member) },
+      legal: turn ? legal(t.hand) : null,
+      moment: moment(t),
+      ends: ends(t),
+    },
+  };
+}
+
+/**
+ * Lands `change` ({ by, at, base, answers, body }), or { refused: why }.
+ * A player's `body`: { action, say, react, thinking }, each if any: a move
+ * on its turn (fold, check, call, bet, raise or allin, with `amount`, the
+ * total for the street), made on `base`, the turn; a line; an emoji; an AI
+ * player's thinking. A refused change lands none of them; a move that
+ * lands takes its line, its emoji and its thinking with it. A line of an
+ * AI player's run lands only if the run may talk (`talks`). Or by `type`:
+ *   name { name }                a person goes by `name`
+ *   sit { buyIn }             the host buys chips; the first time, the AI
+ *                                players say hello; the next hand is dealt
+ *   sit { seat, name, buyIn }    a friend takes `seat` at the next hand
+ *   topup { amount }             more chips, landing before the next hand
+ *   leave                        a person cashes out between hands; a friend
+ *                                gone mid-hand gives up the seat, folding
+ *   next                         the host: the next hand
+ *   add { id, seat }, remove { id }   the host: an AI player sits down at
+ *                                the next hand, or gives up its seat after this one
+ * The dealer's change answers its task with `cards`, the clock's its own.
+ */
+function apply(state, change) {
+  const t = structuredClone(state);
+  const out = step(t, change);
+  return out?.refused ? out : { state: settle(t, state, change.at), effects: [] };
+}
+
+// A turn no one played (the ledger's): the dealer checks, or folds, for its player.
+function fallback(state, task, at) {
+  const t = structuredClone(state);
+  if (task.given === `turn:${moment(t)}`) force(t, task.as);
+  return settle(t, state, at);
+}
+
+export const world = { view, apply, fallback, tries: 3 };
+
+function step(t, { by, at, base, answers = [], body }) {
+  const b = body ?? {};
+  if (by === CLOCK) {
+    if (!clockTasks(t).some((x) => x.given === answers[0])) return { refused: 'Not due.' };
+    return void force(t, actor(t));
+  }
+  if (by === DEALER) return dealt(t, answers[0], b.cards);
+  if (b.type) return command(t, by, b, at);
+  const asked = tasksOf(t, by).filter((x) => answers.includes(x.given));
+  if (b.action) {
+    if (base !== moment(t) || actor(t) !== by) return { refused: 'Stale: the table moved on before your action landed.' };
+    const out = act(t.hand, t.hand.toAct, b.action);
+    if (out.error) return { refused: out.error };
+    t.hand = out.hand;
+  } else if (asked.some((x) => x.given.startsWith('turn:'))) return { refused: 'It is your turn and you gave no action.' };
+  const text = typeof b.say === 'string' ? b.say.trim().slice(0, MAX_LINE) : '';
+  if (isPerson(by) && !b.action && !text && !REACTIONS.includes(b.react)) return { refused: 'Say something.' };
+  if (REACTIONS.includes(b.react)) t.reactions.push({ id: t.reactions.length + 1, by, emoji: b.react, hand: t.hand?.id ?? 0 });
+  if (text && (isPerson(by) || talks(by, asked))) say(t, by, text, asked);
+  if (!isPerson(by) && b.thinking) t.thoughts = thought(t.thoughts, by, { hand: t.hand?.id ?? 0, street: t.hand?.street ?? '', text: String(b.thinking), action: b.action ? { ...b.action } : null });
+}
+
+// After a change: a person who left mid-hand is checked or folded for on
+// their turn; a new turn begins at `at`.
+function settle(t, before, at) {
+  while (actor(t) && isPerson(actor(t)) && t.leaving.includes(actor(t))) force(t, actor(t));
+  if (moment(t) !== moment(before)) t.since = at;
+  return t;
+}
+
+// The dealer checks, or else folds, for `id` on its turn.
+function force(t, id) {
+  const seat = t.hand.seats.findIndex((s) => s.id === id);
+  t.hand = act(t.hand, seat, { type: 'check' }).hand ?? act(t.hand, seat, { type: 'fold' }).hand;
+}
+
+// The dealer's change: the cards for its task `given`, none of them out already.
+function dealt(t, given, cards) {
+  if (!dealerTasks(t).some((x) => x.given === given)) return { refused: 'Not due.' };
+  const out = t.hand ? [...t.hand.seats.flatMap((s) => s.hole), ...t.hand.board] : [];
+  const need = live(t) ? owed(t.hand) : 2 * MAX_SEATS;
+  if (!Array.isArray(cards) || cards.length < need || new Set(cards).size !== cards.length || cards.some((c) => !DECK.includes(c) || out.includes(c))) return { refused: `Deal ${need} cards from the rest of the deck.` };
+  if (live(t)) t.hand = board(t.hand, cards.slice(0, need)).hand;
+  else deal(t, cards);
+}
+
+// What a person does that is not a move, a line or an emoji, at `at`.
+function command(t, by, b, at) {
+  const between = !live(t);
+  const amount = Math.round(Number(b.amount ?? b.buyIn)) || 0;
+  const seated = lineup(t).some((p) => p.id === by && !p.leaving);
+  if (b.type === 'name') {
+    t.names[by] = String(b.name ?? '').trim().slice(0, 20) || 'Friend';
+    return;
+  }
+  if (b.type === 'sit' && by === HUMAN) {
+    if (amount < MIN_BUY || myChips(t) + amount > MAX_BUY) return { refused: `Buy in for ${MIN_BUY} to ${MAX_BUY}.` };
+    t.topUp[HUMAN] = (t.topUp[HUMAN] ?? 0) + amount;
+    if (!t.greeted) greet(t, at);
+    if (between) t.dealing = true;
+    return;
+  }
+  if (b.type === 'sit') {
+    const name = String(b.name ?? '').trim().slice(0, 20) || 'Friend';
+    if (amount < MIN_BUY || amount > MAX_BUY) return { refused: `Buy in for ${MIN_BUY} to ${MAX_BUY}.` };
+    if (isPerson(by) && !lineup(t).some((p) => p.id === by) && freeSeats(t).includes(b.seat)) {
+      t.joining.push(by);
+      t.slots[by] = b.seat;
+      t.names[by] = name;
+      t.topUp[by] = amount;
+      return;
+    }
+    return { refused: 'That seat is taken.' };
+  }
+  if (b.type === 'topup') {
+    if (!seated || amount <= 0 || myChips(t, by) + amount > MAX_BUY) return { refused: `You may hold up to ${MAX_BUY} on the table.` };
+    t.topUp[by] = (t.topUp[by] ?? 0) + amount;
+    return;
+  }
+  if (b.type === 'leave') {
+    if (!seated || !isPerson(by)) return { refused: 'You are not at the table.' };
+    if (between || seatOf(t, by) < 0) return void leave(t, by);
+    if (by === HUMAN) return { refused: 'Leave once the hand is over.' };
+    t.leaving.push(by); // gone mid-hand: checked or folded for, and out at the next deal
+    return;
+  }
+  if (by !== HUMAN) return { refused: 'Only the host does that.' };
+  if (b.type === 'next') {
+    if (!between) return { refused: 'The hand is not over.' };
+    t.dealing = true;
+    return;
+  }
+  if (b.type === 'add') return addPlayer(t, String(b.id), b.seat) ? undefined : { refused: 'There is no seat for them.' };
+  if (b.type === 'remove') return removePlayer(t, String(b.id)) ? undefined : { refused: 'A table needs someone to play against.' };
+  return { refused: `No action "${b.type}".` };
+}
+
+// A line of chat by `by` (a person, an AI player answering the tasks
+// `asked`, or the dealer), at `depth` if given.
+function say(t, by, text, asked = [], depth) {
+  const l = newLine(t.chat, { by, text, to: by === DEALER ? [] : names(t, text), person: isPerson(by), asked, hand: t.hand?.id ?? 0 });
+  if (depth !== undefined) l.depth = depth;
+  else if (isPerson(by) && by !== DEALER && !l.to.length) l.next = after(t.players.map((p) => p.id), by, (p) => !isPerson(p)); // to the whole table: one AI player answers
+  t.chat.push(l);
+}
+
+// The players at the table say hello when the host first sits down, each
+// its first line in seat order, then any more: lines written for them, so
+// they ask no one. The first hand is dealt once they are said, from `at`.
+function greet(t, at) {
+  const here = playing(t).filter((p) => !isPerson(p.id)).map(({ id }) => PERSONAS.find((p) => p.id === id));
+  const lines = [...here.map((p) => [p.id, p.hello[0]]), ...here.flatMap((p) => p.hello.slice(1).map((text) => [p.id, text]))];
+  for (const [id, text] of lines) say(t, id, text, [], DEPTH);
+  t.greeted = true;
+  t.dealAt = at + lines.length * HELLO_MS;
+}
+
+// An AI player takes a seat at the next hand, and says hello. False if
+// there is no free seat, or it is already at the table.
+function addPlayer(t, id, seat = freeSeats(t)[0]) {
+  const persona = PERSONAS.find((p) => p.id === id);
+  if (!persona || lineup(t).some((p) => p.id === id && !p.leaving)) return false;
+  if (t.leaving.includes(id)) t.leaving = t.leaving.filter((x) => x !== id); // asked to stay, in its own seat
+  else if (freeSeats(t).includes(seat)) {
+    t.joining.push(id);
+    t.slots[id] = seat;
+  } else return false;
+  say(t, id, persona.hello[0], [], DEPTH);
+  return true;
+}
+
+// An AI player gives up its seat after this hand (at once if it has not sat
+// down yet), and says goodbye. False for a person, or for the last player
+// left to play against.
+function removePlayer(t, id) {
+  if (isPerson(id) || !playing(t).some((p) => p.id === id) || playing(t).length < 2) return false;
+  if (t.joining.includes(id)) {
+    t.joining = t.joining.filter((x) => x !== id);
+    delete t.slots[id];
+  } else t.leaving.push(id);
+  say(t, id, PERSONAS.find((p) => p.id === id).bye, [], DEPTH);
+  return true;
 }
 
 // A person leaves between hands: their chips go back to their bankroll.
-// The person keeps the seat, to buy in again; a friend gives it up. Returns how many.
-export function leave(table, id = HUMAN) {
-  const amount = myChips(table, id);
-  const seat = seatOf(table, id);
-  if (seat < 0) { // a friend not yet dealt in
-    table.joining = table.joining.filter((x) => x !== id);
-    delete table.slots[id];
-    delete table.topUp[id];
-    commit(table, { type: 'leave', by: id, amount });
-    return amount;
+// The host keeps the seat, to buy in again; a friend gives it up.
+function leave(t, id) {
+  if (seatOf(t, id) < 0) { // a friend not yet dealt in
+    t.joining = t.joining.filter((x) => x !== id);
+    delete t.slots[id];
+    delete t.topUp[id];
+    return;
   }
-  if (table.hand) table.hand.seats[seat].stack = 0;
-  table.players[seat].stack = 0;
-  delete table.topUp[id];
-  if (id !== HUMAN) table.leaving.push(id);
-  commit(table, { type: 'leave', by: id, amount });
-  return amount;
+  if (t.hand) t.hand.seats[seatOf(t, id)].stack = 0;
+  t.players[seatOf(t, id)].stack = 0;
+  delete t.topUp[id];
+  if (id !== HUMAN) t.leaving.push(id);
 }
 
-// The next hand. An AI player out of chips buys back in for STACK first;
-// people buy in themselves, and one with no chips sits the hand out. With
-// no person to play, or no one to play against, there is no hand.
-export function deal(table, deck) {
-  const before = (table.hand ? table.hand.seats : table.players).map(({ id, stack }) => ({ id, stack }));
-  for (const id of table.leaving) delete table.slots[id];
-  const players = [...before.filter((p) => !table.leaving.includes(p.id)), ...table.joining.map((id) => ({ id, stack: isPerson(id) ? 0 : STACK }))]
-    .sort((a, b) => table.slots[a.id] - table.slots[b.id]);
+// The next hand, its hole cards from `cards`. An AI player out of chips
+// buys back in for STACK first; people buy in themselves, and one with no
+// chips sits the hand out. With no person to play, there is no hand.
+function deal(t, cards) {
+  t.dealing = false;
+  t.dealAt = 0;
+  t.deals++;
+  const before = (t.hand ? t.hand.seats : t.players).map(({ id, stack }) => ({ id, stack }));
+  for (const id of t.leaving) delete t.slots[id];
+  const players = [...before.filter((p) => !t.leaving.includes(p.id)), ...t.joining.map((id) => ({ id, stack: isPerson(id) ? 0 : STACK }))]
+    .sort((a, b) => t.slots[a.id] - t.slots[b.id]);
   // the button stays with its player or, if that player left, with the nearest one before it still here
-  const at = table.button;
-  table.button = -1;
-  for (let k = at; k >= 0 && table.button < 0; k--) table.button = players.findIndex((p) => p.id === before[k]?.id);
-  table.joining = [];
-  table.leaving = [];
-  for (const p of players) p.stack += table.topUp[p.id] ?? 0;
-  table.topUp = {};
+  const at = t.button;
+  t.button = -1;
+  for (let k = at; k >= 0 && t.button < 0; k--) t.button = players.findIndex((p) => p.id === before[k]?.id);
+  t.joining = [];
+  t.leaving = [];
+  for (const p of players) p.stack += t.topUp[p.id] ?? 0;
+  t.topUp = {};
+  t.players = players;
   if (!players.some((p) => isPerson(p.id) && p.stack)) {
-    table.players = players;
-    table.hand = null; // the seats are the players' now, for the next hand once someone buys in
-    return false;
+    t.hand = null; // the seats are the players' now, for the next hand once someone buys in
+    return;
   }
   for (const p of players) {
     if (p.stack || isPerson(p.id)) continue;
     p.stack = STACK;
-    commit(table, { type: 'rebuy', by: p.id, amount: STACK });
+    say(t, DEALER, `${p.id} buys back in for $${STACK.toLocaleString('en')}.`, [], DEPTH);
   }
-  table.handNo++;
-  table.hand = startHand({ id: table.handNo, players, button: table.button, blinds: BLINDS, deck });
-  table.button = table.hand.button;
-  table.players = players;
-  commit(table, { type: 'deal', hand: table.handNo });
-  return true;
-}
-
-// A big hand, which every player may react to once: an all-in, or a pot of 15 big blinds.
-export const isBig = (hand) => hand?.street === 'done' && (hand.actions.some((a) => a.allIn) || hand.seats.reduce((sum, s) => sum + s.total, 0) >= 15 * hand.bb);
-
-// What the table asks of AI player `id` now (an Ask, runtime.js), each from
-// the person whose table it is, or from whoever said a line: its turn, once
-// dealt or once its last action was turned away; each chat line that
-// concerns it; and, after a big hand, a word.
-function asksOf(table, id) {
-  const hand = table.hand;
-  const seat = seatOf(table, id);
-  const asks = [];
-  const at = (when) => ({ at: when, until: when });
-  if (hand && hand.street !== 'done' && hand.toAct === seat) asks.push({ id: `turn:${turnKey(hand)}`, agent: id, from: HUMAN, ...at(table.turnAt) });
-  for (const line of table.chat) {
-    if (!concerns(line, id)) continue;
-    const by = isPerson(line.by) ? { from: line.by } : { from: line.by, for: line.for, depth: line.depth - 1 }; // an AI player's line asks for whom its run was
-    asks.push({ id: `line:${line.id}`, agent: id, ...by, ...at(line.at) });
-  }
-  if (isBig(hand) && after(hand).includes(seat)) asks.push({ id: `react:${hand.id}`, agent: id, from: HUMAN, ...at(table.turnAt) });
-  return asks;
-}
-
-// What a run of `id` is for, from the asks it was given: { turn, lines (the
-// chat lines that concern it), react }.
-function dueOf(table, asks) {
-  const hand = table.hand;
-  return {
-    turn: asks.some((a) => hand && hand.street !== 'done' && a.id === `turn:${turnKey(hand)}`),
-    lines: asks.filter((a) => a.id.startsWith('line:')).map((a) => table.chat[Number(a.id.slice(5)) - 1]),
-    react: asks.some((a) => a.id.startsWith('react:')),
-  };
-}
-
-// Who has a word after a big hand: two AI players, the winner first, then those still in at the end.
-const after = (hand) => {
-  const won = hand.result.won.findIndex(Boolean);
-  return [won, ...[...hand.seats.keys()].filter((i) => i !== won && hand.seats[i].inHand && !hand.seats[i].folded)].filter((i) => i > 0).slice(0, 2);
-};
-
-// A line concerns a player when it names the player, or when the person says it to the whole table.
-function concerns(line, id) {
-  if (line.by === id || line.by === 'dealer' || line.depth >= DEPTH) return false;
-  return line.to.includes(id) || (isPerson(line.by) && !line.to.length);
-}
-
-// What a run of `id` for `due` is made on, which its proposal lands against
-// (`land`): the hand and turn it saw, what it answers, and `talk`, whether
-// it may say something this time. Always when the person spoke to it or
-// after a big hand; else as often as its character talks (`roll` < talk).
-export function begin(table, id, due, roll = Math.random()) {
-  const talk = due.react || due.lines.some((l) => isPerson(l.by)) || roll < PERSONAS.find((p) => p.id === id).talk;
-  return { hand: table.hand?.id ?? 0, n: table.hand?.n ?? 0, street: table.hand?.street ?? '', turn: due.turn, about: due.lines.at(-1)?.id ?? null, react: due.react, talk };
-}
-
-// The players at the table say hello when the person first sits down, each
-// its first line in seat order, then any more: lines written for them, so they wake no one.
-export const intros = (table) => {
-  const here = playing(table).filter((p) => !isPerson(p.id)).map(({ id }) => PERSONAS.find((p) => p.id === id));
-  return [...here.map((p) => [p.id, p.hello[0]]), ...here.flatMap((p) => p.hello.slice(1).map((text) => [p.id, text]))];
-};
-export const introduce = (table, [id, text]) => say(table, id, text, { depth: DEPTH });
-
-// The reactions anyone may send: an emoji shown by their face a moment.
-export const REACTIONS = ['😂', '😮', '😤', '👍', '👏', '🔥'];
-export function react(table, by, emoji) {
-  if (!REACTIONS.includes(emoji)) return false;
-  commit(table, { type: 'react', by, emoji, hand: table.hand?.id ?? 0 });
-  return true;
-}
-
-// A line of chat, by the person, a player or the dealer; an AI player's
-// run says it `for` the people the run was for.
-export function say(table, by, text, { depth = 0, about = null, for: those } = {}) {
-  const body = String(text).trim().slice(0, MAX_SAY);
-  if (!body) return null;
-  const line = { id: table.chat.length + 1, by, text: body, to: by === 'dealer' ? [] : names(table, body).filter((n) => n !== by), depth, about, hand: table.hand?.id ?? 0, at: stamp(), ...(those ? { for: those } : {}) };
-  table.chat.push(line);
-  commit(table, { type: 'chat', by, line: line.id });
-  return line;
-}
-
-/**
- * The writer: lands `id`'s proposal { action, say, thinking }, made on
- * `basis` (what `begin` gave its run), or turns it away. An action lands
- * only if the player is still to act on the very state its run saw, and the
- * dealer says it is legal; turned away, the player is asked again on the
- * table as it is, told why, up to MAX_TRIES, and then the dealer checks or
- * folds for it. A line lands unless it answers a line of the person's to the
- * whole table that another player has answered already, so the table settles.
- * Returns { landed, rejected }.
- */
-export function land(table, id, basis, proposal) {
-  const hand = table.hand;
-  const seat = seatOf(table, id);
-  const n = table.notes[id];
-  const { action = null, thinking = '' } = proposal;
-  if (thinking && !isPerson(id)) n.thoughts.push({ hand: basis.hand, street: basis.street, text: String(thinking), action: action && { ...action } });
-  let rejected = null;
-  let landed = false;
-  const live = hand && hand.id === basis.hand && hand.street !== 'done';
-  if (action || (basis.turn && live && hand.toAct === seat)) {
-    if (!live || hand.n !== basis.n || hand.toAct !== seat) rejected = 'stale: the table moved on before your action landed.';
-    else if (!action) rejected = 'it is your turn and you gave no action.';
-    else {
-      const out = act(hand, seat, action);
-      if (out.error) rejected = out.error;
-      else {
-        table.hand = out.hand;
-        landed = true;
-        commit(table, { type: 'action', by: id, hand: hand.id, action: out.hand.actions[hand.actions.length] }); // after it, the dealer may add an uncalled bet returned
-      }
-    }
-  }
-  if (rejected && !isPerson(id)) {
-    commit(table, { type: 'rejected', by: id, why: rejected });
-    const still = table.hand?.street !== 'done' && table.hand?.toAct === seat;
-    const key = still ? turnKey(table.hand) : '';
-    n.tries = n.triesKey === key ? n.tries + 1 : 1;
-    n.triesKey = key;
-    n.rejected = still ? `Your last action was turned away: ${rejected}` : '';
-    if (still) table.turnAt = stamp(); // asked again
-    if (still && n.tries >= MAX_TRIES) {
-      force(table, id);
-      n.rejected = '';
-    }
-  } else if (landed && n) {
-    n.rejected = '';
-  }
-  if (proposal.react) react(table, id, proposal.react);
-  const text = proposal.say;
-  if (typeof text === 'string' && text.trim() && basis.talk !== false) {
-    const about = basis.about ? table.chat[basis.about - 1] : null;
-    const answered = about && isPerson(about.by) && !about.to.includes(id) && table.chat.some((l) => l.about === about.id && !isPerson(l.by));
-    if (!answered) say(table, id, text, { depth: about ? about.depth + 1 : 1, about: about?.id ?? null, for: proposal.for });
-  }
-  return { landed, rejected };
-}
-
-// The dealer checks, or else folds, for `id` on its turn: an AI player turned
-// away too often, or a person whose time ran out.
-export function force(table, id) {
-  const before = table.hand;
-  const seat = seatOf(table, id);
-  if (before?.street === 'done' || before?.toAct !== seat) return;
-  table.hand = act(before, seat, { type: 'check' }).hand ?? act(before, seat, { type: 'fold' }).hand;
-  commit(table, { type: 'action', by: id, hand: before.id, action: table.hand.actions[before.actions.length], forced: true });
-}
-
-// ---- the table as a world ----
-
-/**
- * The table as Ponjo's runtime reaches it: the five calls and what they
- * need (runtime.js, the contract). `table()` is the table as it is now;
- * `typing(id, text)` resolves once the page has shown AI player `id`
- * typing `text` for as long as that takes, so a run's line comes after its
- * action, as a person's would. The page calls `changed()` after each change
- * it makes itself; the waits then read the table's log.
- */
-export function createWorld(table, { typing = async () => {} } = {}) {
-  const waiting = new Set();
-  const changed = () => {
-    for (const done of waiting) done();
-  };
-  const kindOf = (by) => (!by || by === 'dealer' ? 'world' : isPerson(by) ? 'person' : 'agent');
-  return {
-    changed,
-    // How deep players answer each other: the table's rule (DEPTH) holds first.
-    limits: { depth: DEPTH },
-    // The table has no watches.
-    settleMs: 0,
-    print: () => '',
-    wakes: () => false,
-
-    async members() {
-      const t = table();
-      return lineup(t).map(({ id }) => (isPerson(id) ? { id, name: nameOf(t, id), kind: 'person', mayAsk: true } : { id, name: id, kind: 'agent', mayAsk: false }));
-    },
-    async asks() {
-      const t = table();
-      return t.players.filter((p) => !isPerson(p.id)).flatMap((p) => asksOf(t, p.id));
-    },
-    // What `agent` sees for `asks`: `files` is what its run is made on (begin),
-    // `prompt` { rules, situation }.
-    async view(agent, { asks = [] }) {
-      const t = table();
-      const due = dueOf(t, asks);
-      const basis = begin(t, agent.id, due);
-      return { rev: t.rev, files: basis, prompt: prompt(t, agent.id, due, basis.talk) };
-    },
-    async wait(version, deadline) {
-      for (;;) {
-        const t = table();
-        const since = t.log.filter((c) => c.rev > version);
-        if (since.length || performance.now() >= deadline) return { rev: t.rev, log: since.map((c) => ({ rev: c.rev, by: { id: c.by ?? null, kind: kindOf(c.by) }, at: performance.now(), asks: true, stale: false })) };
-        await new Promise((resolve) => {
-          const done = () => {
-            waiting.delete(done);
-            resolve();
-          };
-          waiting.add(done);
-        });
-      }
-    },
-    // A run's proposal ({ thinking, action, react, say }, or null: nothing
-    // to say), landed against what it was made on: the action, then once
-    // the player is seen typing it, its line. Resolves to { landed, rejected }.
-    async propose(agent, version, old, made) {
-      if (!made) return { landed: false, rejected: null };
-      const out = land(table(), agent.id, old.files, { thinking: made.thinking, action: made.action, react: made.react });
-      changed();
-      if (typeof made.say === 'string' && made.say.trim() && old.files.talk) {
-        await typing(agent.id, made.say);
-        land(table(), agent.id, old.files, { say: made.say, for: agent.for });
-        changed();
-      }
-      return out;
-    },
-  };
+  t.handNo++;
+  t.hand = startHand({ id: t.handNo, players, button: t.button, blinds: BLINDS, deck: cards });
+  t.button = t.hand.button;
 }
 
 // ---- what a player is shown ----
 
-export const RULES = `You are a player at a No-Limit Texas Hold'em table, playing for play money only (amounts are play dollars, no real money). Two to six seats: people, and AI players, who may come and go between hands. Blinds are $${BLINDS[0]}/$${BLINDS[1]}; you sit with $${STACK}, and buy back in for $${STACK} when you lose it all.
+// The reactions anyone may send: an emoji shown by their face a moment.
+export const REACTIONS = ['😂', '😮', '😤', '👍', '👏', '🔥'];
+
+const RULES = `You are a player at a No-Limit Texas Hold'em table, playing for play money only (amounts are play dollars, no real money). Two to six seats: people, and AI players, who may come and go between hands. Blinds are $${BLINDS[0]}/$${BLINDS[1]}; you sit with $${STACK}, and buy back in for $${STACK} when you lose it all.
 
 The rules, in short: each player gets two private cards. Betting goes round on four streets: preflop, then the flop (three shared cards on the board), the turn (one more), the river (one more). On your turn you may fold; check if there is nothing to call; call; or bet / raise, which in this game is always to a total for this street ("raise to 120"), at least the last raise more than the current bet, or all in. When one player is left, they win the pot; otherwise the best five-card hand from each player's two cards and the board wins at the showdown, and side pots go to those who could match the bets. A dealer runs the game and checks every action: one that is not legal, or comes after the table moved on, is turned away and you are asked again.
 
@@ -480,62 +486,73 @@ export const DECIDE = {
   },
 };
 
-const cardsText = (cards) => (cards?.length ? cards.join(' ') : '—');
-const who = (table, seat, me) => (seat === me ? 'you' : nameOf(table, table.hand.seats[seat].id));
+// The model's answer as a change's body: { action, say, react, thinking }, each if any.
+export function decided(args) {
+  const a = args?.action && typeof args.action === 'object' ? args.action : null;
+  return {
+    thinking: String(args?.thinking ?? ''),
+    ...(a ? { action: { type: String(a.type), ...(Number.isInteger(a.amount) ? { amount: a.amount } : {}) } } : {}),
+    ...(typeof args?.say === 'string' && args.say.trim() ? { say: args.say } : {}),
+    ...(REACTIONS.includes(args?.react) ? { react: args.react } : {}),
+  };
+}
 
-function actionText(table, a, me) {
-  const by = who(table, a.seat, me);
+const cardsText = (cards) => (cards?.length ? cards.join(' ') : '—');
+
+function actionText(c, a, me) {
+  const by = a.seat === me ? 'you' : nameOf(c, c.hand.seats[a.seat].id);
   if (a.type === 'uncalled') return `${a.amount} uncalled returned to ${by}`;
   if (a.type.endsWith('blind')) return `${by} post${by === 'you' ? '' : 's'} the ${a.type} ${a.amount}`;
   return `${by} ${a.type}${a.type === 'bet' || a.type === 'raise' ? (a.type === 'raise' ? ' to ' : ' ') + a.amount : a.type === 'call' ? ` ${a.amount}` : ''}${a.allIn ? ' (all in)' : ''}`;
 }
 
 /**
- * What player `id` is shown for a run woken by `due`: the rules and its own
- * style, then the situation, built only from the dealer's `view` for its
- * seat, so another player's cards can reach it only once shown. Returns
- * { rules, situation }; the rules stay the same run to run, so they cache.
+ * What AI player `id` is shown, from its `view` alone, so another player's
+ * cards can reach it only once shown: the rules and its own style, then
+ * the table as its seat sees it, and what its tasks ask. Returns { rules,
+ * situation }; the rules stay the same run to run, so they cache.
  */
-export function prompt(table, id, due, talk = true) {
-  const me = seatOf(table, id);
+export function prompt({ content: c, tasks, rules: how }, id) {
   const persona = PERSONAS.find((p) => p.id === id);
-  const rules = `${RULES}\n\nYou are ${id}. ${persona.style}`;
+  const rules = `${how}\n\nYou are ${id}. ${persona.style}`;
   const parts = [];
-  const hand = table.hand;
-  if (hand) {
-    const v = view(hand, me);
+  const v = c.hand;
+  const turn = tasks.some((t) => t.given.startsWith('turn:'));
+  if (v) {
+    const me = v.seats.findIndex((s) => s.id === id);
+    const who = (i) => (i === me ? 'you' : nameOf(c, v.seats[i].id));
     const order = v.seats.map((_, k) => (v.button + 1 + k) % v.seats.length);
     parts.push(`Hand ${v.id}. Street: ${v.street === 'done' ? 'the hand is over' : v.street}. Board: ${cardsText(v.board)}. Pot: ${v.pot}.`);
     parts.push(['Seats, from the small blind round to the button:', ...order.map((i) => {
       const s = v.seats[i];
       const tags = [i === v.button && 'button', !s.inHand && 'sitting out, no chips', s.folded && 'folded', s.allIn && 'all in'].filter(Boolean);
-      return `- ${i === me ? `${id} (you)` : nameOf(table, s.id)}: stack ${s.stack}, bet this street ${s.bet}${tags.length ? `, ${tags.join(', ')}` : ''}${s.hole ? `, cards ${cardsText(s.hole)}` : ''}`;
+      return `- ${i === me ? `${id} (you)` : nameOf(c, s.id)}: stack ${s.stack}, bet this street ${s.bet}${tags.length ? `, ${tags.join(', ')}` : ''}${s.hole ? `, cards ${cardsText(s.hole)}` : ''}`;
     })].join('\n'));
     const streets = ['preflop', 'flop', 'turn', 'river', 'done'];
     parts.push(['Actions this hand:', ...streets.map((st) => {
-      const done = v.actions.filter((a) => a.street === st).map((a) => actionText(table, a, me));
+      const done = v.actions.filter((a) => a.street === st).map((a) => actionText(c, a, me));
       return done.length ? `- ${st === 'done' ? 'end' : st}: ${done.join('; ')}` : null;
     }).filter(Boolean)].join('\n'));
     if (v.result) {
-      parts.push(['Result:', ...v.result.pots.map((p, k) => `- ${k ? `side pot ${k}` : 'pot'} ${p.amount} to ${p.winners.map((i) => who(table, i, me)).join(' and ')}`),
-        ...Object.entries(v.result.hands).map(([i, h]) => `- ${who(table, Number(i), me)} showed ${cardsText(v.seats[i].hole)}: ${h.name}`)].join('\n'));
+      parts.push(['Result:', ...v.result.pots.map((p, k) => `- ${k ? `side pot ${k}` : 'pot'} ${p.amount} to ${p.winners.map(who).join(' and ')}`),
+        ...Object.entries(v.result.hands).map(([i, h]) => `- ${who(Number(i))} showed ${cardsText(v.seats[i].hole)}: ${h.name}`)].join('\n'));
     }
-    const mine = table.notes[id].thoughts.filter((t) => t.hand === v.id);
+    const mine = c.thoughts[id] ?? [];
     if (mine.length) parts.push(['Your own earlier thinking this hand:', ...mine.map((t) => `- ${t.street}: ${t.text}`)].join('\n'));
-    if (due.turn) {
-      const l = describeLegal(hand, me);
-      parts.push(`It is your turn. To call: ${hand.currentBet - hand.seats[me].bet}. You may: ${l}.${table.notes[id].rejected ? `\n${table.notes[id].rejected}` : ''}`);
+    if (turn && c.legal) {
+      const refused = tasks.find((t) => t.refused)?.refused;
+      parts.push(`It is your turn. To call: ${c.legal.toCall}. You may: ${describeLegal(c.legal, v.currentBet)}.${refused ? `\nYour last action was turned away: ${refused}` : ''}`);
     }
   }
-  const reactions = table.log.filter((c) => c.type === 'react' && c.hand === (hand?.id ?? 0)).slice(-8);
-  if (reactions.length) parts.push(`Reactions this hand, latest last: ${reactions.map((c) => `${c.by === id ? `${id} (you)` : nameOf(table, c.by)} ${c.emoji}`).join(', ')}.`);
-  const chat = table.chat.slice(-CHAT_SHOWN);
-  if (chat.length) parts.push(['The chat, latest last:', ...chat.map((l) => `- ${l.by === id ? `${id} (you)` : l.by === 'dealer' ? 'Dealer' : nameOf(table, l.by)}: ${l.text}`)].join('\n'));
+  const reactions = c.reactions.filter((r) => r.hand === (v?.id ?? 0)).slice(-8);
+  if (reactions.length) parts.push(`Reactions this hand, latest last: ${reactions.map((r) => `${r.by === id ? `${id} (you)` : nameOf(c, r.by)} ${r.emoji}`).join(', ')}.`);
+  if (c.chat.length) parts.push(['The chat, latest last:', ...c.chat.map((l) => `- ${l.by === id ? `${id} (you)` : nameOf(c, l.by)}: ${l.text}`)].join('\n'));
+  const lines = tasks.filter((t) => t.given.startsWith('line:'));
   const why = [
-    due.turn && 'it is your turn: decide your action',
-    due.lines.length && `${due.lines.map((l) => `${nameOf(table, l.by)} said "${l.text}"`).join(', and ')}${due.turn ? '' : ' (it is not your turn: no action, only say, if anything)'}`,
-    due.react && !due.turn && 'a big hand just ended: say something only if it is worth it, no action',
+    turn && 'it is your turn: decide your action',
+    lines.length && `${lines.map((t) => t.why).join(', and ')}${turn ? '' : ' (it is not your turn: no action, only say, if anything)'}`,
+    tasks.some((t) => t.given.startsWith('react:')) && !turn && 'a big hand just ended: say something only if it is worth it, no action',
   ].filter(Boolean);
-  parts.push(`Why you are woken: ${why.join('; ')}.${talk ? '' : ' Stay quiet this time: no say (a reaction is fine).'}`);
+  parts.push(`Why you are woken: ${why.join('; ')}.${talks(id, tasks) ? '' : ' Stay quiet this time: no say (a reaction is fine).'}`);
   return { rules, situation: parts.join('\n\n') };
 }

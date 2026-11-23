@@ -32,7 +32,7 @@ unused: the hand and the chat are in the state. There are no effects.
 ```
 view(state, member, past)    → { content, actions, tasks, seen, rules }
 apply(state, change, past)   → { state, effects: [] } | { refused: why }
-fallback(state, task)        → change        a check, else a fold; for other tasks, nothing
+fallback(state, task, at)    → state         a check, else a fold; for other tasks, nothing
 tries                        3
 ```
 
@@ -115,26 +115,29 @@ turns. Capacity: one queue per key in the room, turns before lines.
 
 ## Today
 
-`W` is `preview/poker-world.js`, `P` is `preview/poker.js`:
-
-- The table lives only in the opener's page memory (`P:39`): a refresh ends
-  the game, and that page can read every card. The way there: a room.
-- Five calls with I/O (`W:382`); who is due is `plan` (`src/core/due.js:44`),
-  from `seen` in memory (`src/core/runtime.js:260`). One runtime for all
-  seats, on the opener's key (`P:152`); people have none: the page draws
-  their turn (`P:571`) and friends' views (`share`, `P:901`).
-- `land`, `say`, `deal`, `force` change the table in place (`W:315`, :296,
-  :193, :364); `commit` only logs (`W:147`), a rev per rebuy (`W:214`).
-- `stamp()` reads `Date.now()` (`W:143`); a refused turn is re-asked by a
-  new `turnAt` (`W:344`); turn timers are page `setTimeout`s, for people
-  only (`P:80-94`); `force` checks `toAct`, not the turn (`W:367`).
-- The world keeps its own tries and fallback (`W:139`, :341-348) and a
-  refused run's thinking (`W:320`); `view` rolls `Math.random()` (`W:273`).
-- A run lands in two commits, the line after `typing` (`W:432-437`); its
-  pace reads the live table (`P:103-109`). A failed run commits nothing;
-  Retry is in memory (`P:162`, :800).
-- Every AI seat hears a person's whole-table line; the first answer wins
-  (`W:264-267`, :356). Hellos are page timers (`W:110`, `P:244-251`).
-- `startHand` shuffles, `act` deals from `hand.deck`
-  (`preview/poker-dealer.js:113`, :259-260). A person's move lands on a base
-  from the table now (`P:637`); a friend is whoever its hello claims (`P:871`).
+- The store is in the opener's page (`preview/poker.js`), not a room: it
+  keeps `{ rev, state }` in the page's storage on each commit (`openTable`,
+  `preview/game-kit.js`), so a refresh goes on with the hand, but that page
+  holds the whole state, every hole card, and with `?debug` shows each AI
+  seat's prompt. The AI seats, the dealer, the clock and the wallet's
+  limits (depth 10, N 30) run there too, on the opener's key or theirs,
+  with no budget or rate, and no queue per provider. The bankroll stays in
+  the visitor's browser, apart from the table.
+- The dealer's program is a script in that page: for `deal` and `board` it
+  draws the cards from a fresh shuffle of those not yet out (`draw`,
+  `preview/poker-dealer.js`), so no deck is kept anywhere; its view lists
+  every card out. `apply` checks its cards are new and enough. Its task is
+  `deal:<n>`, `n` counting deals, a hand or none for want of chips; the
+  first carries an `at`, once the hellos are said.
+- A friend is whoever their page says, and reaches the store through the
+  opener's page (`friends`, `game-kit.js`, over `preview/poker-share.js`),
+  which sends each only their seat's view. That page commits `leave` for a
+  friend not back within `RECONNECT_MS`, or turned away; mid-hand, they are
+  checked or folded for, and out at the next deal. Reloaded, it opens a new
+  room, so its friends leave.
+- The roll is a hash of the seat and `given` (`rolls`); a person's line to
+  the whole table asks the next AI seat after the speaker (its `next`); a
+  person alone with AI seats has no `at`, as before.
+- An AI seat's program waits its persona's pace (`PACE`, `poker.js`)
+  after the model answers, so its change lands that much later; each page
+  types a fresh line out after.

@@ -17,7 +17,7 @@ thoughts  { member → [{ round, kind, text }] }
 ```
 
 `turn(game)` names the moment (round, phase, runoff, speaker); lines and
-votes do not move it. `lines`: the discussion and the chat (`table-talk.js`).
+votes do not move it. `lines`: the discussion and the chat (`game-kit.js`).
 `since`: the `at` of the change that began the turn. The answer ledger is
 the generic wrapper's.
 
@@ -138,6 +138,6 @@ Capacity: one queue per provider and key, in task priority.
 - The opener's page deals, in its `start`: there is no dealer member.
 - An AI seat's program waits its persona's pace (`PACE`, `spy.js`) after
   the model answers, so its change lands that much later.
-- Werewolf and poker still copy `commit`, the world wrapper, tries,
-  thoughts and turn stamps (`werewolf-world.js:137`, `229`;
-  `poker-world.js:147`, `382`).
+- What the three games share is in `preview/game-kit.js`: lines, the
+  clock's tasks, thoughts, the store kept in the page, the AI seats'
+  program, a fresh line typed out, and friends.
