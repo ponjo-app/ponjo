@@ -1,13 +1,20 @@
-# Blackboard Agent Runtime
+# Blackboard Agent Runtime: vision
 
 **People and a team of agents watch the same board and improve it together.
-When the board changes, the world's rules say who is due, the runtime runs
-them, and the one writer decides what lands.**
+When the board changes, the world's rules say who is due, the controller
+runs them, and the one writer decides what lands.**
 
 *Terms.* A **member** is a person or an **agent** (an AI member: an identity
 and a prompt). An **agent program** is the tool that does an agent's
 thinking, such as Claude Code. A **world** is the board's rules: a doc, a
-poker table, an incident. The reference: [agent runtime](agent-runtime.md).
+poker table, an incident. A **host** is the application that runs it all,
+such as Ponjo, an editor. The reference: [Blackboard Agent
+Runtime](agent-runtime.md).
+
+*The name* is the blackboard architecture's (Hearsay-II, in the 1970s):
+knowledge sources work on one shared blackboard, and a control part picks
+who acts next. Here the knowledge sources are people and agents, and the
+world's rules pick; the controller only runs them.
 
 ## The problem
 
@@ -48,9 +55,9 @@ refused and redone, or lost, at no cost. A run that made nothing, or
 failed, lands too: that it answered is part of the state (fact 3).
 
 **3. Rules in the world, trust on the owner's machine, mechanism in the
-runtime.** The world says who is due, what each member sees and what lands.
-The owner's machine says whom it will spend for, and how much. The runtime
-only starts and stops runs. Private views follow: a member is handed only
+controller.** The world says who is due, what each member sees and what
+lands. The owner's machine says whom it will spend for, and how much. The
+controller only starts and stops runs. Private views follow: a member is handed only
 its view, and woken only when it changes.
 
 **4. Rules are pure; I/O is apart.** The world is functions of a snapshot:
@@ -69,10 +76,10 @@ and agents that keep running are stopped for a person to settle.
 | Store | keeps the shared state; lands every change, in one order, on a condition | 2, 4 |
 | Local | keeps what only the owner's machine writes: who asked for work, the limits, outside actions | 3 |
 | World | pure functions: who is due, what a member sees, what a change does | 1, 3, 4 |
-| Runtime | waits for a change, starts and stops runs, commits what they made | 1, 2 |
+| Controller | waits for a change, starts and stops runs, commits what they made | 1, 2 |
 
 Each answers one question: the world whether a run *should* happen, local
-whether it *may*, the runtime that it *does*, the store what is *true*.
+whether it *may*, the controller that it *does*, the store what is *true*.
 
 **Why local is not part of the store.** Who can write a thing decides
 whether it can be trusted, not who can read it. Anyone who reaches the
@@ -82,13 +89,13 @@ there can make the owner's machine spend or act.
 **How a change moves**, at a poker table:
 
 1. The dealer commits "Action on: Bob". The store lands it as rev 41.
-2. The runtime, waiting past rev 40, wakes and reads rev 41.
+2. The controller, waiting past rev 40, wakes and reads rev 41.
 3. The world's `due`: it is Bob's turn, newer than what Bob last answered.
    Local allows it.
 4. A run hands Bob's view to the agent program, which decides to call.
 5. The run commits the call. The store applies the world's rules: it is
    still Bob's turn, so it lands as rev 42, which records that Bob answered.
-6. The runtime wakes again. The dealer's next move makes Alice due.
+6. The controller wakes again. The dealer's next move makes Alice due.
 
 Nobody drew that flow: each step is `due` on a new state.
 
@@ -119,13 +126,13 @@ in 2026:
 
 ## Evidence
 
-Open-card Hold'em on Ponjo's real runtime, with scripted agents, lost no
-actions. Small fixes that follow from these principles took it from 3.4 runs
+Open-card Hold'em on the runtime as Ponjo hosts it, with scripted agents,
+lost no actions. Small fixes that follow from these principles took it from 3.4 runs
 and 5.2 s per action to 1 run and 0.25 s. The [poker page](https://ponjo.app/poker.html),
 three AI players and you at one table, was built from scratch with its own
 small runtime and arrived at the same shape: a pure plan, one view that
 hides others' cards, a writer that refuses stale moves, and table talk
-limited by depth. It now runs on Ponjo's runtime, as a world
+limited by depth. It now runs on this runtime, as a world
 (`preview/poker-world.js`). So do [Werewolf](https://ponjo.app/werewolf.html)
 and [Who's the Spy](https://ponjo.app/spy.html), games of hidden roles,
 where each seat sees only what it may.
@@ -137,12 +144,12 @@ An orchestrator fits those better.
 
 ## Status
 
-- **Built**, in the design before this one: deciding from state through
-  one blocking wait, one writer, asks and watches woken by a view's change,
-  stateless agents, the agent log, chains limited by depth with a breaker,
-  and outside actions carried out once and approved by the owner
-  ([agent runtime](agent-runtime.md#outside-actions)); for docs in Ponjo,
-  and for three game worlds with per-member views and refusals.
+- **Built**, in the design before this one, with Ponjo as its host:
+  deciding from state through one blocking wait, one writer, asks and
+  watches woken by a view's change, stateless agents, the agent log, chains
+  limited by depth with a breaker, and outside actions carried out once and
+  approved by the owner ([outside actions](agent-runtime.md#outside-actions));
+  for docs, and for three game worlds with per-member views and refusals.
 - **Not yet:** the four components as above, and a host that keeps
-  running with no window open. What differs: [agent
-  runtime](agent-runtime.md#today).
+  running with no window open. What differs:
+  [Today](agent-runtime.md#today).

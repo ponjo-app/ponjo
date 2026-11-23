@@ -1,26 +1,29 @@
-# Agent runtime
+# Blackboard Agent Runtime
 
-How agents run against a world. Why it is built this way: [runtime
-vision](runtime-vision.md). What an agent program gets and returns: [agent
-config](agent-config.md).
+How people and agents work on one shared state. Why it is built this way:
+[vision](runtime-vision.md). Ponjo is one application built on it
+([Ponjo](#ponjo)).
 
-| Word | Means | In Ponjo |
-| --- | --- | --- |
-| member | a person or an agent | |
-| agent | an AI member: an id and a prompt | a buddy |
-| agent program | the tool that does an agent's thinking | an agent |
-| world | the rules: who is due, what each member sees, what a change does | the doc world |
-| store | where the world's state is kept, and the one way it changes | the doc's door |
-| local | what only the owner's machine knows and allows | the config folder |
-| task | one agent, due for some people, given some things to answer | |
-| run | an agent program working once on a task | |
+| Word | Means |
+| --- | --- |
+| member | a person or an agent |
+| agent | an AI member: an id and a prompt |
+| agent program | the tool that does an agent's thinking |
+| host | the application that runs the runtime: it gives it a store, local, a world and an agent program |
+| owner | the person whose machine runs the host, with their keys |
+| world | the rules: who is due, what each member sees, what a change does |
+| store | where the world's state is kept, and the one way it changes |
+| local | what only the owner's machine knows and allows |
+| controller | what waits for changes and starts and stops runs |
+| task | one agent, due for some people, given some things to answer |
+| run | an agent program working once on a task |
 
 ## Components
 
 ```mermaid
 flowchart LR
   others(["People, outside programs, the host's clock"]) -- "commit" --> store
-  subgraph runtime["Runtime"]
+  subgraph controller["Controller"]
     loop["Loop"] -- "launch, stop" --> run["Run"]
   end
   loop -- "read, wait" --> store["Store"]
@@ -38,10 +41,10 @@ flowchart LR
 | Store | keeps the shared state; lands every change, one at a time | decides a rule | the state can move (a file, a database, a remote object) and no rule changes |
 | Local | keeps what only the owner's machine may say: who asked for work, what it may spend; carries out outside actions | keeps shared state | anyone who reaches the shared state can write it, so what makes this machine spend comes only from what this machine writes |
 | World | three pure functions: who is due, what a member sees, what a change does | does I/O or reads a clock | a rule is a function of the state: tested alone, the same answer at every look, safe to apply again |
-| Runtime | waits, starts and stops runs, commits what they made | decides who is due | one mechanism for every world |
+| Controller | waits, starts and stops runs, commits what they made | decides who is due | one mechanism for every world |
 
-The agent program is the host's: the runtime calls it, and knows only its
-answer.
+The agent program is the host's: the controller calls it, and knows only
+its answer.
 
 ## Store
 
@@ -67,7 +70,7 @@ made }`: the people it ran for, what it was given, its depth, the files it
 was given, and what it left (`made`), which may be nothing or `{ failed }`.
 
 *Why.* These four properties (one snapshot, a write on a condition, a
-growing version, a wait) are all the runtime and the world need. So a
+growing version, a wait) are all the controller and the world need. So a
 store can be a file held by one process, a database (a transaction;
 `WHERE rev = ?`; notify or poll) or a remote object (its version; `If-Match`;
 a webhook or poll). Only the store changes when the truth moves.
@@ -137,7 +140,7 @@ watch) makes it due; `why` in words, for the agent log.
 host, gives the same verdict at every look, can be applied again when a
 commit meets a newer state, and does not care where the state is kept.
 
-## Runtime
+## Controller
 
 ```
 loop:
@@ -163,7 +166,7 @@ launch(task):
   works makes the wait return at once.
 - It holds only the runs going. Losing them loses at most their work.
 
-The runtime tells its host what it does, as events (`trace`): each look,
+The controller tells the host what it does, as events (`trace`): each look,
 each task's verdict and why; a look that failed; each run's end, how it
 ended and what landed. Only a run's end holds the world's content (its
 view, what it made).
@@ -200,10 +203,6 @@ others see it, and a fetch can carry data out in its URL. So the shipped
 agent programs read, edit, search and fetch only. The guarantees above
 hold only for actions that are proposed.
 
-In Ponjo: an action is a plugin in `actions/` of the config folder, a
-program and a manifest; it gets its input on stdin and its id as
-`PONJO_ACTION_ID`; its record is `logs/actions.jsonl`.
-
 ## Security
 
 - Work starts only for people local vouches for, and a run's change lands
@@ -214,14 +213,29 @@ program and a manifest; it gets its input on stdin and its id as
   program must be kept by its own permissions from opening files outside
   its folder.
 
+## Ponjo
+
+Ponjo, a text editor where people and buddies co-author files, is a host.
+Its rules for a doc are in the [host spec](host-spec.md#buddies); what an
+agent program gets and returns, in [agent config](agent-config.md).
+
+| Here | In Ponjo |
+| --- | --- |
+| agent | a buddy |
+| agent program | an agent (`agents/`, run by `src/host/runner.js`) |
+| world | the doc world (`src/host/doc-world.js`); three games in `preview/` |
+| store | the doc's door (`src/host/doc-service.js`) |
+| local | the config folder: settings, watches, logs |
+| controller | `src/core/runtime.js`, given its runs, logs and settings by `src/host/buddy-runtime.js` |
+| an outside action | a plugin in `actions/` of the config folder, a program and a manifest; its input on stdin, its id as `PONJO_ACTION_ID`, its record in `logs/actions.jsonl` |
+
 ## Today
 
-The code (`src/core/runtime.js`, `src/core/due.js`) is the design before
-this one, and the doc world's rules in the [host spec](host-spec.md#buddies)
-follow it:
+Ponjo's code (`src/core/runtime.js`, `src/core/due.js`) is the design
+before this one, and so are its doc world's rules in the host spec:
 
 - The world is one object of five calls with I/O (`members`, `asks`,
-  `view`, `wait`, `propose`); the plan, who is due, is the runtime's
+  `view`, `wait`, `propose`); the plan, who is due, is the controller's
   (`due.js`), and the world adds `print`, `wakes`, `limits` and `settleMs`.
 - Who is due rests on notes in memory (asks given, failures, each watcher's
   last look, fingerprint and wake lines), and the doc world keeps in memory
@@ -229,11 +243,11 @@ follow it:
 - A run that makes nothing or fails commits nothing; a failure is noted in
   memory, with Retry.
 - Time is in the plan (`now`, people's pause) and in the breaker, kept by
-  the runtime; a look is set off from several places, one at a time.
+  the controller; a look is set off from several places, one at a time.
 - A run stops only when its agent is no longer due at all.
 - The doc world reads the comments, the settings and the actions from disk
   itself, beside its door.
 - The game worlds (`preview/poker-world.js`, `preview/werewolf-world.js`,
   `preview/spy-world.js`) change their table in place and read the clock.
-- One runtime per open doc (`src/host/open-doc.js`); it stops when the doc
-  closes.
+- One controller per open doc (`src/host/open-doc.js`); it stops when the
+  doc closes.
