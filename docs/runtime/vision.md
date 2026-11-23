@@ -1,14 +1,15 @@
 # Blackboard Agent Runtime: vision
 
-**People and a team of agents watch the same board and improve it together.
-When the board changes, the world's rules say who is due, the controller
-runs them, and the one writer decides what lands.**
+**People and agents are members of one world, acting on one board. They
+read the same view and act by the same actions; when the board changes,
+the world's rules say who is due, each member's controller hands the task
+on, and one writer decides what lands.**
 
-*Terms.* A **member** is a person or an **agent** (an AI member: an identity
-and a prompt). An **agent program** is the tool that does an agent's
-thinking, such as Claude Code. A **world** is the board's rules: a doc, a
-poker table, an incident. A **host** is the application that runs it all,
-such as Ponjo, an editor. The reference: [Blackboard Agent
+*Terms.* A **member** is a person or an **agent**, a member whose client is
+an **agent program**, the tool that does its thinking, such as Claude Code.
+A **world** is the board's rules: a doc, a poker table, an incident. A
+**host** is the application that runs one owner's clients, such as Ponjo,
+an editor. The reference: [Blackboard Agent
 Runtime](README.md).
 
 *The name* is the blackboard architecture's (Hearsay-II, in the 1970s):
@@ -49,16 +50,18 @@ what the board holds. An event only means "look again", so a lost event or
 a restart costs nothing. A thermostat works this way: it reads the room, not
 a count of opened doors. So does a Kubernetes controller.
 
-**2. Agents propose; one writer changes the state.** A run reads its view
-and hands back a change. It changes nothing itself, so it can be stopped,
+**2. Members propose; one writer changes the state.** A run reads its view
+and hands back a change, as a person's click does. It changes nothing itself, so it can be stopped,
 refused and redone, or lost, at no cost. A run that made nothing, or
 failed, lands too: that it answered is part of the state (fact 3).
 
-**3. Rules in the world, trust on the owner's machine, mechanism in the
-controller.** The world says who is due, what each member sees and what
-lands. The owner's machine says whom it will spend for, and how much. The
-controller only starts and stops runs. Private views follow: a member is handed only
-its view, and woken only when it changes.
+**3. Rules in the world, money on the owner's machine, mechanism in the
+controller.** The world says what each member sees, what it is due to do
+and what lands. The owner's machine says whom it will spend for, and how
+much. The controller only hands tasks on and stops them. A person and an
+agent read the same view and act by the same actions; private views
+follow: a member is handed only its view, and woken only when it
+changes.
 
 **4. Rules are pure; I/O is apart.** The world is functions of a snapshot:
 no disk, no clock. Where the state is kept is the store's alone, so the
@@ -70,37 +73,41 @@ when it is met, the board comes to rest. Chains between agents are capped,
 and agents that keep undoing each other for different people are stopped
 for those people to settle.
 
-## Four components
+## Two layers
 
-| Component | What it does | Principle |
-|---|---|---|
-| Store | keeps the shared state; lands every change, in one order, on a condition | 2, 4 |
-| Local | keeps what only the owner's machine writes: who asked for work, the limits, outside actions | 3 |
-| World | pure functions: who is due, what a member sees, what a change does | 1, 3, 4 |
-| Controller | one per agent: waits for a change, starts and stops its run, commits what it made | 1, 2 |
+A world of members, which any multi-user application is, and what an
+agent adds to it:
 
-An owner has one host and one local, which pay and vouch for all their
-agents; each agent has its own controller, and each task one audience, the
-people it runs for. Each component answers one question: the world whether a run *should* happen, local
-whether it *may*, the controller that it *does*, the store what is *true*.
+| Layer | Component | What it does | Principle |
+|---|---|---|---|
+| Members | Store | holds the whole state, keeps it, sets who made each change, lands one at a time, gives each member its view | 2, 4 |
+| | World | pure functions: what a member sees and is due to do, what a change does, when the clock acts | 1, 3, 4 |
+| | Controller | one per member: hands its tasks to its program, a screen or an agent program, and commits the answer | 1, 2 |
+| Agents | Local | the owner's: whom they pay for, how much, the limits, the keys, outside actions | 3 |
+| | Capacity | the host's queue for a provider's limits | 3 |
 
-**Why local is not part of the store.** Who can write a thing decides
-whether it can be trusted, not who can read it. Anyone who reaches the
-shared state can write it: a teammate, `git pull`, a program. So nothing
-there can make the owner's machine spend or act.
+Each answers one question: the world whether a member *should* act, local
+whether an agent *may*, capacity *when*, the controller that it *does*, the
+store what is *true*.
+
+**Why the owner's policy is not in the store.** The store says who did
+what: it sets each change's author, so a file written outside vouches for
+no one. Only the owner says what they will pay for, and only their machine
+holds their keys.
 
 **How a change moves**, at a poker table:
 
 1. The dealer commits "Action on: Bob". The store lands it as rev 41.
-2. The controller, waiting past rev 40, wakes and reads rev 41.
-3. The world's `due`: it is Bob's turn, newer than what Bob last answered.
-   Local allows it.
-4. A run hands Bob's view to the agent program, which decides to call.
+2. Bob's controller, waiting on Bob's view, wakes: its tasks hold Bob's
+   turn. Local allows it.
+3. A view is written for the agent: the table as text, the moves as tools.
+4. The agent program decides to call.
 5. The run commits the call. The store applies the world's rules: it is
    still Bob's turn, so it lands as rev 42, which records that Bob answered.
-6. The controller wakes again. The dealer's next move makes Alice due.
+6. The dealer's next move changes Alice's view: her turn. Alice is a
+   person, so her screen shows the buttons Bob had as tools.
 
-Nobody drew that flow: each step is `due` on a new state.
+Nobody drew that flow: each step is a view of a new state.
 
 ## What emerges
 
@@ -153,6 +160,6 @@ An orchestrator fits those better.
   limited by depth with a breaker, and outside actions carried out once and
   approved by the owner ([outside actions](README.md#outside-actions));
   for docs, and for three game worlds with per-member views and refusals.
-- **Not yet:** the four components as above, and a host that keeps
-  running with no window open. What differs:
+- **Not yet:** the two layers as above, a game that outlives a refresh,
+  and a host that keeps running with no window open. What differs:
   [Today](README.md#today).

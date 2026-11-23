@@ -1,289 +1,339 @@
 # Blackboard Agent Runtime
 
-How people and agents work on one shared state. Why it is built this way:
-[vision](vision.md). Ponjo is one application built on it
-([Ponjo](#ponjo)).
+A runtime for worlds where people and AI agents act on one shared state.
+Part 1 is a world of members, with no LLM in it: any multi-user
+application has this shape. Part 2 is what an agent adds. Why it is built
+this way: [vision](vision.md). Ponjo is one host ([Ponjo](#ponjo)).
+
+## Words
 
 | Word | Means |
 | --- | --- |
-| member | a person or an agent |
-| agent | an AI member: an id and a prompt |
-| agent program | the tool that does an agent's thinking |
-| owner | the person an agent works with the keys and money of; each agent belongs to one owner |
-| host | the application that runs the runtime for one owner: it gives it a store, local, a world and an agent program |
-| world | the rules: who is due, what each member sees, what a change does |
-| store | where the world's state is kept, and the one way it changes |
-| local | what only the owner's machine knows and allows |
-| controller | one agent's loop in one world: it waits for changes, and starts and stops the agent's run |
-| audience | the people a task runs for (`for`): the task's view, its rights and its cost are theirs |
-| task | one agent, due for one audience, given some things to answer |
+| member | one who acts in a world: a person or an agent |
+| client | what acts for a member: a controller and a program |
+| program | what a controller hands a task to: a person's screen, an agent program, a script |
+| seat | whom a change acts as (`as`): a member, or a role it plays; the world gives a seat its view and rights |
+| `for` | the people a task is done for: whose trust and money it spends |
+| owner | the person whose machine, keys and money an agent uses; each agent has one |
+| host | the application that runs one owner's clients |
+| store | where the state is kept, and the one way it changes |
+| world | the rules: three pure functions |
+| task | something a member is due to do: what it answers, as whom, for whom |
 | run | an agent program working once on a task |
+| presence | who is here and what they are doing; not part of the state |
 
-## Components
+# Part 1. A world of members
+
+Nothing in this part knows what an agent is. A person and an agent read
+the same view and act by the same actions, through the same writer; only
+their programs differ.
 
 ```mermaid
 flowchart LR
-  others(["People, outside programs, the host's clock"]) -- "commit" --> store
-  subgraph controller["Controller"]
-    loop["Loop"] -- "launch, stop" --> run["Run"]
+  subgraph clients["A client per member"]
+    person["Person: a screen"]
+    agent["Agent: an agent program"]
   end
-  loop -- "read, wait" --> store["Store"]
-  loop -- "due" --> world["World"]
-  loop -- "read, allow, changed" --> local["Local"]
-  run -- "view" --> world
-  run -- "files, prompt" --> program["Agent program"]
-  run -- "record, act" --> local
-  run -- "commit" --> store
-  store -- "apply" --> world
+  outside(["Outside programs: a dealer, the clock, git pull"])
+  clients -- "read(member), wait, commit, presence" --> store["Store"]
+  outside -- "commit" --> store
+  store -- "view, apply, deadlines" --> world["World"]
 ```
 
-| Component | Does | Never | Why it stands alone |
-| --- | --- | --- | --- |
-| Store | keeps the shared state; lands every change, one at a time | decides a rule | the state can move (a file, a database, a remote object) and no rule changes |
-| Local | keeps what only the owner's machine may say: who asked for work, what it may spend; carries out outside actions | keeps shared state | anyone who reaches the shared state can write it, so what makes this machine spend comes only from what this machine writes |
-| World | three pure functions: who is due, what a member sees, what a change does | does I/O or reads a clock | a rule is a function of the state: tested alone, the same answer at every look, safe to apply again |
-| Controller | for one agent in one world: waits, starts and stops its run, commits what it made | decides who is due | one mechanism for every world and every agent |
+## Members
 
-The agent program is the host's: the controller calls it, and knows only
-its answer.
+A member is an identity and a client. A person, a buddy that acts as
+itself, and an agent playing a person's seat while they are away are the
+same thing with different programs. A member acts in two ways:
 
-They nest by who pays and who runs:
-
-| Unit | One for each | Holds |
-| --- | --- | --- |
-| host and local | owner | the keys and money, what this machine vouches for, outside actions |
-| controller | agent of that owner, in each world it is in | the loop, and at most one run |
-| task | audience the agent is due for | what it is given, whom it runs for, at whose rights it lands |
-
-An agent runs only on its owner's host, so two hosts sharing a store never
-run the same agent. One local serves all its host's controllers, so the
-owner's limits are one decision for all their agents.
+- **On a task**, through its controller: what the world says it is due to
+  do (its turn, an ask).
+- **Of its own accord**, with no task: a person types, chats, resolves a
+  thread. Only people do; an agent acts only on a task, as every look costs.
 
 ## Store
 
 ```
-read()               → { rev, state }
-wait(rev, deadline)  → rev        once the state has moved past rev, or at deadline
-commit(change)       → { rev, actions } | { refused: why }
+read(member)              → { rev, view }     that member's projection: the world's view
+wait(member, rev)         → rev               once that member's view has changed after rev
+commit(change)            → { rev, actions } | { refused: why }
+presence(member, what)                        what the member is doing now, shown as the view says
 ```
 
-- `read` returns one snapshot: `state` is the state at `rev`, whole.
-- `commit` is the only way the state changes, for everyone: a person, an
-  outside program, a run, the host's clock. It applies the world's `apply`
-  to the newest state and lands the result only if the state has not moved
-  meanwhile; if it has, it reads again and applies again. Changes land one
-  at a time, each at a higher `rev`.
-- `rev` is kept with the state and only grows.
-- `wait` returns on any change after `rev`. Its return carries nothing:
-  the caller reads again, so a lost or doubled notice costs nothing.
+- **It alone holds the whole state.** A client, a person's or an agent's,
+  on this machine or another, gets only its projection. The host that runs
+  the store can read everything; no one else can.
+- **It keeps the state.** `{ rev, state }` outlives a refresh, a restart or
+  a crash; `rev` only grows. A store that forgets is not a store.
+- **It authenticates.** `commit` sets `by` from who sent the change, never
+  from the change. A file written outside, such as by `git pull`, is `by:
+  outside`, so it vouches for nothing.
+- **It stamps.** `commit` sets `at` from the store's clock.
+- **It lands one change at a time.** It applies the world's `apply` to the
+  newest state and keeps the result only if nothing landed meanwhile; else
+  it applies again. So `{ refused }` comes only from `apply`.
+- **It wakes only whom a change concerns.** `wait` returns when that
+  member's view has changed. Its return carries nothing: the client reads
+  again, so a lost or doubled notice costs nothing, and no one learns of a
+  change they may not see.
+- **It keeps the past by content.** What a view needs of an earlier state
+  (what changed since a member last answered) is looked up by hash, and
+  what a hash names never changes, so `view` stays pure.
 
-A change names who made it (`by`: a person, an agent or the world) and is
-otherwise the world's. A run's change is `{ by, for, given, depth, base,
-made }`: its audience, what it was given, its depth, the files it was
-given, and what it left (`made`), which may be nothing or `{ failed }`.
-
-*Why.* These four properties (one snapshot, a write on a condition, a
-growing version, a wait) are all the controller and the world need. So a
-store can be a file held by one process, a database (a transaction;
-`WHERE rev = ?`; notify or poll) or a remote object (its version; `If-Match`;
-a webhook or poll). Only the store changes when the truth moves.
-
-## Local
-
-```
-read()          → what this machine vouches for
-changed()       → once that changes, or a run ends
-allow(task)     → whether this machine lets the task start
-record(change)  → notes a change a run will commit, before it is committed
-act(actions)    → each action that landed: recorded, approved, carried out once
-```
-
-- Only this machine writes local. Nothing in the store can.
-- It holds what makes this machine spend or act: who turned on which watch,
-  which changes this machine's runs made and for whom, the settings, the
-  record of each outside action, and the limits.
-- `allow` is the limits. A task a person or the world set off has depth
-  0; one only an agent's change set off, that change's depth plus 1. Past
-  the depth limit nothing starts, so agents waking each other come to rest.
-  Past `pauseAfter` runs within `pauseWithin` minutes (the breaker),
-  standing tasks stop starting until a person resumes them, so a loop the
-  depth cannot see, such as a program that echoes an agent, stops too.
-- Writes come before what they cover: a run is counted before it starts,
-  and `record` comes before `commit`. A crash between the two leaves a run
-  counted that never ran, or a record of a change that never landed: both
-  harmless.
-
-*Why apart from the store.* Trust is about who can write, not who can
-read. A private part of the store is still written by whoever reaches the
-store: a teammate, `git pull`, an outside program. If a forged entry could
-make this machine spend or act, the entry belongs in local.
+*Why one holder.* Hidden information (a hand of cards, a role) is safe
+only if no client ever holds the whole state. One holder, and projections
+for everyone else, is the simplest way; a holder that plays in no seat (a
+server) is the same store, moved.
 
 ## World
 
 ```
-due(state, local, agent)     → [Task]    that agent's tasks, at most one per audience
-view(state, local, task)     → { files, prompt }
-apply(state, change, local)  → { state, actions } | { refused: why }
-
-Task  { agent, for, given, depth, standing, why }
+view(state, member, past)  → { content, actions, tasks, seen, rules }
+apply(state, change)       → { state, actions } | { refused: why }
+deadlines(state)           → [{ at, change }]
 ```
 
-`for` its audience; `given` the ids of what it answers
-(asks, a watch); `standing` whether only a person's standing request (a
-watch) makes it due; `why` in words, for the agent log.
+All three are pure: no I/O, no clock, no randomness of their own. What
+comes from outside comes in a change: a shuffled deck in the dealer's,
+the time in the store's stamp.
 
-- **Pure.** No I/O, no clock, no randomness of its own. What comes from
-  outside comes in a change: the time people paused, as a change the host's
-  clock commits; a dealt deck, as the dealer's change.
-- **From state.** `due` is a function of the state and local: the same
-  inputs, the same tasks. An agent is due while something it was given is
-  newer than what it last answered.
-- **Every run's change lands.** `apply` records each run's change, also one
-  that made nothing or failed, as what that agent has answered, so `due`
-  stops listing it. Nothing about who is due lives elsewhere: a restart
-  changes nothing.
-- **Policy from the state, trust from local.** `due` lists a task only for
-  people local vouches for: who may ask, who turned on the watch, which
-  agent's change asks on whose behalf. The shared state decides what is
-  due; it never decides whom this machine spends for.
-- **One task per audience.** What different audiences asked are different
-  tasks. A task's view holds only what every person of its audience may
-  see, and its change lands at the lowest rights among them: one person's
-  ask never lends another's rights, or shows another's private thread. The
-  ids in `given` stay the same from one look to the next.
-- **Disagreement is the world's.** When agents acting for different people
-  keep undoing each other, the world stops listing those tasks and asks
-  the people to settle it. Local's limits stop only what the world did not
-  see.
+### view
 
-*Why pure.* A rule that is a function of a snapshot can be tested with no
-host, gives the same verdict at every look, can be applied again when a
-commit meets a newer state, and does not care where the state is kept.
+| Field | Is | A screen shows | An agent gets |
+| --- | --- | --- | --- |
+| `content` | what the member may see, as data | the page | text, or files |
+| `actions` | what it may do now: `{ name, input, about }` | buttons, forms | tools |
+| `tasks` | what it is due to do | its inbox, "your turn" | what its run is for |
+| `seen` | whose presence it may see | cursors, "typing" | who is at work |
+| `rules` | how the world works, in words | the help | the system prompt |
 
-## Controller
+A view is the seat's. What a seat may see and do is the world's to say
+(a wolf sees the pack; a doc's reader its threads). One `view` serves a
+person's screen, an agent's prompt and another host alike, so they never
+disagree.
+
+### Tasks
 
 ```
-controller(agent):                         one for each agent of this host, in each world
+Task  { given, as, for, depth, at?, why }
+```
+
+`given` the ids of what it answers; `as` the seat; `for` the people it is
+done for; `depth` 0 when a person or the world set it off, else one more
+than the change that did; `at` when it is due by, if ever; `why` in words.
+
+- Tasks come from the state: who must act, who asked whom, who turned on a
+  watch. Each fact is a change whose `by` the store set, so a task names
+  only people who really asked.
+- The order of `tasks` is the world's priority.
+- What different seats or rights need are different tasks; what needs the
+  same seat and rights is one, whoever asked.
+
+### Answers
+
+Every run's change lands. `apply` records what it was given as answered,
+keyed by content (an ask's id and its latest comment, a text's hash), never
+by `rev`:
+
+| A run's change | `apply` records | The task |
+| --- | --- | --- |
+| accepted | answered | gone |
+| turned away (illegal, or the turn moved) | a try, and why, for its next view | due again; at the world's limit, the world plays its fallback |
+| `{ failed }` | failed | gone; a person may ask again |
+| nothing | answered | gone |
+
+A person's or an outside program's illegal or stale change is `{ refused
+}`: nothing lands, and they see why at once. Answers are in the state, so
+a restart, or another host on the same state, finds the same tasks.
+
+### Time
+
+`deadlines` says which changes the clock must commit, and when: a turn
+that expires, a pause that settles people's typing. The store's host
+commits each at its `at`, with the state it was made for as its base, so
+it lands only if still due. Time is a change like any; no rule reads a
+clock.
+
+### Disagreement
+
+When the agents of different people keep undoing each other, the world
+stops listing those tasks and gives the people a task to settle it.
+
+## Controllers
+
+One per member, on its owner's host:
+
+```
+client(member, program):
   forever:
-    { rev, state } = store.read()          on failure: wait(rev, now + backoff), 1 s up to 30 s
-    vouched = local.read()
-    tasks   = world.due(state, vouched, agent)
-    if its run is going and none of that run's given is in tasks: stop it
-    if no run is going: launch the first task local.allow lets start
-    wait until store.wait(rev) or local.changed() returns
-
-launch(task):
-  view   = world.view(state, vouched, task)
-  answer = program(task, view, signal)     ok (made) | failed | stopped
-  unless stopped: local.record(change); { actions } = store.commit(change); local.act(actions)
-  the run ends; local.changed() returns
+    { rev, view } = store.read(member)
+    stop a task going whose given is no longer in view.tasks
+    hand view.tasks to program                  a person's: all; an agent's: see Part 2
+    wait until store.wait(member, rev) returns
 ```
 
-- A controller has at most one run. Another audience's task, or a change
-  the run was not given, waits for its next run.
-- One `commit` lands all of a run's change, so no one sees half of it.
-- A run that is stopped commits nothing; the world still lists what it
-  was given, so it runs again when that is due again.
-- The loop waits on `rev` as it read it, so a change that lands while it
-  works makes the wait return at once.
-- It holds only its run. Losing it loses at most that run's work.
+- What the program returns is one change, committed at once. A task that
+  is stopped commits nothing; the world still lists it, so it is handed
+  again when it is due again.
+- A person's program shows every task and returns when they act; stopped,
+  it takes the prompt away and keeps what they had written.
+- A controller holds only what is going. Losing it loses at most that.
 
-The controller tells the host what it does, as events (`trace`): each look,
-each task's verdict and why; a look that failed; each run's end, how it
-ended and what landed. Only a run's end holds the world's content (its
-view, what it made).
+*Why a controller per member.* The member is what acts. One per member puts
+each on its owner's host, lets one wait or hang without holding up
+another, and makes a person and an agent the same loop.
 
-*Why so little.* Everything that differs from world to world (what an ask
-is, when a change is ready, what a member sees, what lands) is the world's;
-everything that must be trusted is local's. What is left is the same for
-every world: wait, start, stop, commit.
+## Presence
 
-*Why one per agent.* The agent is what runs, and the owner is who pays.
-One controller per agent makes "at most one run" a slot rather than a
-table, puts each agent on its owner's host, and keeps one agent's backoff
-or a run that hangs from holding up another. What all of an owner's agents
-share, the limits and the keys, is already in one place: local.
+Who is here, who is typing, who is thinking: told to the store with
+`presence`, shown to those the view's `seen` allows, kept nowhere. It is
+not state, so it never decides anything. It can say what the state hides
+(a seat at work at night has a role), so the world decides who sees it.
+
+## Outside programs
+
+A dealer, a narrator, the clock, `git pull`: each commits as itself. One
+that holds a secret (a deck) runs beside the store or keeps it, and lets it
+out only in its changes.
+
+# Part 2. Agent clients
+
+An agent is a member whose program is an agent program. Four things are
+its own: each look costs money; it acts for others; it fails in ways a
+person does not; it remembers nothing between runs.
+
+```
+agent client = controller + renderer + agent program, with local and capacity
+```
+
+## Renderers
+
+The same view, written for an agent:
+
+- **Tools**: `content` and `rules` as the prompt, `actions` as the tools it
+  may call, `tasks` as what this run is for.
+- **Files**, for a command-line agent program: `content` as files in a
+  private folder; after the run, what it changed is turned back into
+  actions.
+
+What a run answers is one change: its actions, its thinking, or nothing.
+
+## Local
+
+What only the owner's machine says, and only it writes:
+
+```
+allow(task)    → whether the owner lets this task start
+charge(task)   → counts a run against what it spends, before it starts
+act(actions)   → each outside action that landed: recorded, approved, carried out once
+```
+
+- **For whom.** The owner's policy: which people in `for` it does work for
+  (the room, the team).
+- **How much.** Each person's budget, charged to `for`.
+- **Runaway.** Past a depth limit, nothing starts, so agents waking each
+  other come to rest. Past N runs in a world since a person last acted
+  there, nothing starts until a person acts or resumes: a loop the depth
+  cannot see, such as a program that echoes an agent, stops too.
+- **Keys, settings, the record of each outside action.**
+
+An agent's controller hands its program at most one task, the first in
+`tasks` that `allow` lets start, as a run costs and its answer must be
+whole. Another task waits for the next run.
+
+*Why apart from the store.* The store says who did what. Only the owner
+says what they will pay for, and only their machine holds their keys.
+
+## Capacity
+
+A provider's limits (requests or tokens a minute, a 429) are the host's,
+not the world's:
+
+- One queue per provider and key, shared by every controller on the host.
+- Taken in the order of each task's priority.
+- Waiting is never failing: it is not an answer, not counted by the limits
+  above, and not timed by the run's timeout. A task that is no longer due
+  stops its run, waiting or not.
+- Only an error that waiting cannot outlast (a bad key, a missing model, a
+  500 that repeats) is `{ failed }`.
 
 ## Outside actions
 
 An action on the outside world (a message, a call to an API, a deploy) is
 part of a run's change, never something a run does itself.
 
-- **Proposed.** A run lists its actions in what it made, each with a name
-  and an input. Only actions the owner installed on this machine can be
-  named; the prompt lists them. Nothing in the store can install one.
+- **Proposed.** A run lists its actions among what it made, each with a
+  name and an input. Only actions the owner installed can be named; the
+  prompt lists them. Nothing in the store can install one.
 - **Carried out once, after it lands.** `apply` returns the actions of a
-  change that landed; a change that is refused, or a run that is stopped,
-  carries none. Local gives each an id and a record (proposed, approved,
-  started, then done or failed), never in the store.
-- **Never twice on its own.** An action that started and did not end is
-  shown as "may have run", with Retry for a person. It is given its id, so
-  a service that takes an idempotency key drops a second try.
-- **Approved first.** Each asks the owner first, by default. The owner may
-  let an action run without asking, and then only for tasks the owner alone
-  is `for`.
+  change that landed. Local gives each an id and a record (proposed,
+  approved, started, then done or failed), never in the store.
+- **Never twice on its own.** One that started and did not end shows as
+  "may have run", with Retry for a person. It is given its id, so a service
+  that takes an idempotency key drops a second try.
+- **Approved first.** Each asks the owner first, by default: a task local
+  gives the owner, not the world. The owner may let an action run unasked,
+  and then only for tasks they alone are `for`.
 - **Its result** is committed as the action's reply, one deeper than the
-  run that proposed it, so agents cannot loop through the outside world.
+  run that proposed it.
 - **Not undone.** Undo takes back the edits it came with, never the action.
 
 Reading stays with the agent program: what it reads can end up where
 others see it, and a fetch can carry data out in its URL. So the shipped
-agent programs read, edit, search and fetch only. The guarantees above
-hold only for actions that are proposed.
+agent programs read, edit, search and fetch only.
 
 ## Security
 
-- Work starts only for people local vouches for, and a run's change lands
-  at the lowest rights of its audience.
-- A run sees only its task's view and changes the state only through
-  `commit`.
-- Outside any view: whoever runs the host can read its files, and an agent
-  program must be kept by its own permissions from opening files outside
-  its folder.
-- **Influence follows the view, not the audience.** A run acts with its
-  audience's rights but reads what others wrote, and that text can try to
-  steer it. What bounds the harm: the lowest rights of its audience, the
+- The store sets who made each change; a file written outside vouches for
+  no one.
+- A run acts with its seat's rights (`as`), and starts only for people the
+  owner pays for (`for`).
+- No client holds the whole state. Whoever runs the store's host can read
+  it; a world whose players must not, needs a store that plays in no seat.
+- **Influence follows the view.** A run reads what others wrote, and that
+  text can try to steer it. What bounds the harm: its seat's rights, the
   owner's approval of each outside action, and a change that shows who
   made it and can be undone. Nothing stops the attempt.
+
+# Hosts
 
 ## Ponjo
 
 Ponjo, a text editor where people and buddies co-author files, is a host.
-Its rules for a doc are in the [host spec](../app/host-spec.md#buddies); what an
-agent program gets and returns, in [agent config](../app/agent-config.md).
+Its rules for a doc: [host spec](../app/host-spec.md#buddies); what an
+agent program gets and returns: [agent config](../app/agent-config.md).
+How each of its worlds implements this, as of the draft before this one:
+[doc](../app/worlds/doc.md), [poker](../app/worlds/poker.md),
+[werewolf](../app/worlds/werewolf.md), [spy](../app/worlds/spy.md).
 
 | Here | In Ponjo |
 | --- | --- |
 | agent | a buddy |
 | agent program | an agent (`agents/`, run by `src/host/runner.js`) |
 | world | the doc world (`src/host/doc-world.js`); three games in `preview/` |
-| store | the doc's door (`src/host/doc-service.js`) |
-| local | the config folder: settings, watches, logs |
+| store | the doc's door (`src/host/doc-service.js`); for a game, the page of the person who opened the table |
+| local | the config folder: settings, secrets, logs |
 | controller | `src/core/runtime.js`, given its runs, logs and settings by `src/host/buddy-runtime.js` |
-| an outside action | a plugin in `actions/` of the config folder, a program and a manifest; its input on stdin, its id as `PONJO_ACTION_ID`, its record in `logs/actions.jsonl` |
+| an outside action | a plugin in `actions/` of the config folder; its input on stdin, its id as `PONJO_ACTION_ID`, its record in `logs/actions.jsonl` |
 
 ## Today
 
-Ponjo's code (`src/core/runtime.js`, `src/core/due.js`) is the design
-before this one, and so are its doc world's rules in the host spec:
+Ponjo's code follows the design before this one:
 
 - The world is one object of five calls with I/O (`members`, `asks`,
-  `view`, `wait`, `propose`); the plan, who is due, is the controller's
-  (`due.js`), and the world adds `print`, `wakes`, `limits` and `settleMs`.
-- Who is due rests on notes in memory (asks given, failures, each watcher's
-  last look, fingerprint and wake lines), and the doc world keeps in memory
-  which comments its runs posted. A restart drops them: open asks run again.
-- A run that makes nothing or fails commits nothing; a failure is noted in
-  memory, with Retry.
-- Time is in the plan (`now`, people's pause) and in the breaker, kept by
-  the controller; a look is set off from several places, one at a time.
-- A run stops only when its agent is no longer due at all.
-- A buddy's run is given every thread that asks it, whoever asked, and every
-  member sees the whole doc. Buddies that undo each other are stopped only
-  by the limits.
-- The doc world reads the comments, the settings and the actions from disk
-  itself, beside its door.
-- The game worlds (`preview/poker-world.js`, `preview/werewolf-world.js`,
-  `preview/spy-world.js`) change their table in place and read the clock.
-- One controller per open doc, for all its buddies (`src/host/open-doc.js`);
-  it stops when the doc closes.
+  `view`, `wait`, `propose`); who is due is the runtime's plan
+  (`src/core/due.js`); a controller reads the whole state.
+- One controller per open doc or game, for all its agents; people have
+  none, and each game writes its own "your turn" and its own view for
+  people (poker's `share`).
+- Who is due rests on notes in memory; a run that makes nothing or fails
+  commits nothing; a failure waits for Retry, in memory.
+- The doc's `rev` starts again each time it opens; the comments are read
+  from disk beside the door; a run lands in several commits.
+- A game's table lives only in the memory of the page that opened it: a
+  refresh ends the game. The way there: keep `{ rev, state }` in that
+  browser's storage on each commit, then, if a game must outlive the page
+  or hide everything from its opener, a store on the relay.
+- Time is in page timers and in `stamp()`; tables change in place.
+- The breaker counts runs in a window; a busy API fails a run after one
+  retry ([Ponjo agent](../app/ponjo-agent.md)); runs share no queue.
