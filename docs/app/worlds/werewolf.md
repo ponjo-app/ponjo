@@ -28,18 +28,15 @@ Line  { id, by, text, to, depth, about, game, after, for? }
 
 ## Store
 
-The host's page holds `{ rev, Table }`, written to its browser's storage on
-each commit: a refresh resumes the game and its deadlines. Every client
-gets only `read(member)`, the AI seats on the same page too; friends' pages
-read, wait and commit over the relay (`preview/poker-share.js`). `by` is the
-member a peer joined as. `wait(member, rev)` wakes a seat only when its
-view changed: a wolf's pick wakes the pack, not the village.
+The table is a [room](rooms.md) on the relay. It holds `{ rev, Table }`,
+so a refresh resumes the game and its deadlines, and no player, the opener
+included, can read a role. Every client gets only `read(member)`; `by` is
+the member whose token sent the change. `wait(member, rev)` wakes a seat
+only when its view changed: a wolf's pick wakes the pack, not the village.
 
 An action's input has `at`, the `turn` it was made on; one made on a moment
 the game has left is stale. Votes in one vote do not move the turn, so none
-makes another stale; the last tallies in the same commit. Open: the store
-on the host's page, so the host, who plays, could read every role; or on
-the relay, playing no seat.
+makes another stale; the last tallies in the same commit.
 
 ## World
 
@@ -82,8 +79,8 @@ rules' `act`: the seat joins `acted`, and `settle` ends a phase once no one
 is due, so the barrier is the rules'. Turned away (illegal, stale, a turn
 with no action), it is a try on the turn it was made on, why in its next
 view, due again; at `MAX_TRIES` the rules' `fallback` plays for the seat.
-`{ failed }` or nothing: the task is gone, and the seat waits for the
-clock. Its thinking lands in its mind. A person's illegal or stale action
+`{ failed }` or nothing: the rules' `fallback` plays for the seat at
+once. Its thinking lands in its mind. A person's illegal or stale action
 is `{ refused }`. Of AI answers to one line to all, one lands.
 
 **Time.** `deadlines(state)`, each with its base (the turn, the call):
@@ -93,7 +90,8 @@ each night role called alive or not; the hellos, one each `HELLO_MS`.
 
 ## Members and controllers
 
-One per member, the AI seats' on the host's page. A person's program is
+One per member, an AI seat's in the room or in its owner's page
+([rooms](rooms.md)). A person's program is
 their page (a friend's, over the relay): it shows every task, with a ring.
 
 ## Presence
@@ -103,7 +101,7 @@ a seat sees itself and, a wolf, its pack, so who works at night tells no role.
 
 ## Outside programs
 
-The dealer, beside the store, commits `deal { roles }` on `start`, by
+The dealer, in the room, commits `deal { roles }` on `start`, by
 `crypto.getRandomValues`; `apply` checks it is a shuffle of `cast(size)`.
 The narrator has no program: its calls and the hellos are deadlines, which
 the clock, the store's host, commits at their `at`. The room commits `gone`

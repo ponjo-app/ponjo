@@ -3,8 +3,8 @@
 Who's the Spy on the [Blackboard Agent Runtime](../../runtime/README.md).
 Each seat gets a secret word, the spies a different one. A round: a clue
 from each living seat in order, a discussion, a vote of all at once; chat
-before and after. The page of whoever opened the table (the *table's
-host*, `HUMAN`) keeps the store; friends join by a link. Rules
+before and after. Whoever opened the table (the *table's host*,
+`HUMAN`) and friends who join by a link play at a [room](rooms.md). Rules
 `preview/spy-rules.js`, world `preview/spy-world.js`, page `preview/spy.js`.
 
 ## State
@@ -23,15 +23,10 @@ began the turn. `answered` is keyed by content: a turn, or a line's id.
 
 ## Store
 
-The host page. It alone holds `{ rev, state }`, and keeps it in the
-browser's storage on each commit. Every other client gets `read(member)`:
-a friend's page over the relay (`preview/poker-share.js`), and each AI seat
-on the same page. `wait(member, rev)` wakes a seat only when its view
-changed. `commit` sets `by` from the sender (a friend by their room's peer)
-and stamps `at`. No action is ever proposed.
-
-The table's host plays on the store's page, so could read every word.
-Open: accept it, or a store on the relay that plays in no seat.
+A [room](rooms.md) on the relay. It alone holds `{ rev, state }`; every
+client, people's pages and AI seats, gets `read(member)`. `wait(member,
+rev)` wakes a seat only when its view changed. `commit` sets `by` from the
+member's token and stamps `at`. No action is ever proposed.
 
 ## World
 
@@ -74,7 +69,7 @@ quiet table votes at once).
 | --- | --- | --- |
 | a clue, a line, a vote, a pass | answered | gone |
 | turned away: says its word, a wrong target, the turn moved | a try, why | due again; at 3, `fallback`: a silent clue, an abstention, a pass |
-| `{ failed }` | failed | gone; the seat waits for `expire` |
+| `{ failed }` | failed | on a turn, its `fallback` at once; else gone |
 | nothing | answered; on a turn, its `fallback` | gone |
 
 Its `thinking` lands too, as the seat's own. A person's illegal or stale
@@ -100,7 +95,7 @@ plays the `fallback` for their turns.
 
 ## Outside programs
 
-The dealer, on the host page, commits `start { size, dealt }`: the word
+The dealer, in the room, commits `start { size, dealt }`: the word
 pair, which word is the spies', the sides, the first speaker, drawn by
 `cryptoRandom`. The clock commits `deadlines`; it replaces the page's
 moderator. The room commits `join` and `leave` as the friend.
@@ -110,7 +105,7 @@ moderator. The room commits `join` and `leave` as the friend.
 The renderer is tools: `rules` and `content` as the prompt, `actions` as
 the `decide` tool. The persona (`PERSONAS`) is the agent's, not the
 world's. A run is one model call, then the seat's pace (`PACE`), shown as
-"typing". Local, on the host page: whom the table's host pays for
+"typing". Local, on its owner's host ([rooms](rooms.md)): whom the table's host pays for
 (themselves, friends at the table), the budget, the depth limit, the
 breaker, the key (`localStorage`, `preview/game-page.js`). Capacity: one
 queue to the provider, taken in task priority.

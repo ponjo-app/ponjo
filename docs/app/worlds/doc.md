@@ -8,9 +8,8 @@ and returns: [agent config](../agent-config.md).
 ## State
 
 ```
-State   { text, threads, record, watches, answers, settled, log }    at rev
+State   { text, threads, record, watches, settled, log }    at rev
 Watch   { by, seen (a text's hash), since (least depth of changes since), wake }
-Answer  { buddy, thread, last (the latest comment its run was given), failed? }
 ```
 
 `text` and `threads` are the doc and its [sidecar](../../../spec/SPEC.md).
@@ -21,8 +20,9 @@ door authenticated them, with its depth and, for a buddy's, its run's
 people last paused; `log` the last 1,000 operations, for `apply` to move a
 window's edit over. With a sidecar of another version, nothing is due.
 
-Open: whether a watch is a fact in the sidecar, which travels with the file
-but is `by: outside` anywhere else, or in the door's own state.
+A watch is the door's own, on this machine, never in the sidecar: it
+spends the owner's money, and in a file it would vouch for no one
+elsewhere.
 
 ## Store
 
@@ -81,13 +81,16 @@ meanwhile is dropped, with its edits. It sets the watch's `seen` to the
 hash of the text it lands, or of the text given if another member's change
 landed meanwhile, clears `since`, and keeps the run's `wake` lines. Each
 text change lowers the other watches' `since`. Nothing made is an answer;
-a failure is recorded `failed`, gone until a person asks again (Retry).
+so is a failure: each gets a comment written for it, below; Retry is a
+person asking again.
 It is turned away only when the sidecar became unwritable; due again once
 it is not. `{ refused }` is for people and outside programs alone.
 
-Open: how an answer that posted no comment is kept: in the sidecar (a
-SPEC change: an empty buddy reply, or `failed` again), where an outside
-write can remove it and ask again, or in the door's own state.
+Every answer to an ask is a comment. A run that posted none in a thread
+it was given gets one written for it ("Looked; nothing to change."); a
+failed one gets "Could not finish.", its why to the owner alone. So an ask
+is answered by the rule the sidecar already has, a buddy's comment after
+it, and needs no record of its own.
 
 Time. `deadlines(state)` holds `{ settled: rev }` 5 s (`SETTLE_MS`) after
 a person's latest text change; typing meanwhile keeps it from landing.

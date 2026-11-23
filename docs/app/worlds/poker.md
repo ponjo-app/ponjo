@@ -3,7 +3,7 @@
 The poker page (`preview/poker.js`): No-Limit Hold'em for the host person,
 AI players (`PERSONAS`), friends who join by a link, a dealer and chat. In
 the target design, a world of members on the [runtime](../../runtime/README.md):
-the host's page keeps the store; each AI seat is an agent client there.
+the table is a [room](rooms.md) on the relay; each AI seat is an agent client.
 
 ## State
 
@@ -17,14 +17,12 @@ hand  as in preview/poker-dealer.js, with no deck; answered: the watermarks
 
 ## Store
 
-The host's page holds `{ rev, state }`. Every client gets only
-`read(member)`: the host's screen, each AI seat, the dealer, friends' pages
-over the relay. `wait(member, rev)` returns once that member's view
-changed: a line between two seats wakes no third. `commit` sets `by` from
-the sender (a friend by its relay peer) and stamps `at`; the world checks
-`by` may play the seat in `as`. `past` is unused: the hand and the chat
-are in the state. The host's page can read every card; a table that must
-hide them from its opener needs the store on the relay.
+The table is a [room](rooms.md) on the relay. It holds `{ rev, state }`;
+every client, the host's screen, each AI seat, the dealer, friends' pages,
+gets only `read(member)`. `wait(member, rev)` returns once that member's
+view changed: a line between two seats wakes no third. `commit` sets `by`
+from the member's token and stamps `at`; the world checks `by` may play the
+seat in `as`. `past` is unused: the hand and the chat are in the state.
 
 ## World
 
@@ -70,14 +68,13 @@ Answers: `apply` keys `answered[seat]` by content: turn key, line ids, hand.
 - Turned away (illegal, or `n` moved since its base): a try and why in
   `tries`, due again; at `MAX_TRIES` (3) the world checks, else folds,
   `as` the seat, `forced`.
-- `{ failed }`: gone; the host may ask again, a change. Nothing: answered.
+- `{ failed }` on a turn: the world checks, else folds, for the seat at
+  once; on a line: gone. Nothing: answered.
 
 Only `apply` writes `thoughts`, from that seat's runs. A person's act
 carries the `base` their screen showed; stale or illegal, it is `{ refused }`.
 
 - Open: with a turned-away action, its line lands (today) or waits.
-- Open: a failed or hung AI turn: the fallback at once, the 30 s timer as
-  for a person, or wait for Retry.
 
 Time. `deadlines`: `timeout { base: turn }` at a person's turn `at`, which
 plays the fallback if that is still the turn; once the host sits down, each
@@ -86,8 +83,9 @@ commits each, stamped by the store. No rule reads a clock.
 
 ## Members and controllers
 
-One controller per member, on its owner's host: the AI seats and the host
-on the host's page, each friend on their page, the dealer a script. A
+One controller per member, on its owner's host: an AI seat in the room or
+in its owner's page ([rooms](rooms.md)), each person on their page, the
+dealer a script in the room. A
 person's program is the screen, showing every task ("your turn", with its
 timer); people also act unasked: chat, react, buy in, leave, `next`.
 
@@ -99,7 +97,7 @@ its view), then `typing` for its line, then commits all in one change.
 
 ## Outside programs
 
-The dealer keeps the deck beside the store: on `deal` it commits the hole
+The dealer keeps the deck in the room: on `deal` it commits the hole
 cards and the hand, on `board` the street's cards. `act` (legal moves,
 pots, the showdown) stays pure, in `apply`, and deals from no deck.
 

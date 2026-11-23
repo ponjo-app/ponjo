@@ -76,9 +76,11 @@ presence(member, what)                        what the member is doing now, show
   member's view has changed. Its return carries nothing: the client reads
   again, so a lost or doubled notice costs nothing, and no one learns of a
   change they may not see.
-- **It keeps the past by content.** What a view needs of an earlier state
-  (what changed since a member last answered) is looked up by hash, and
-  what a hash names never changes, so `view` stays pure.
+- **It keeps the past by content.** What `view` or `apply` needs of an
+  earlier state (what changed since a member last answered, the edits a
+  late change must move over) is looked up by hash, and what a hash names
+  never changes, so both stay pure. A past the store no longer keeps is
+  missing, never wrong: a view without it is a first look.
 
 *Why one holder.* Hidden information (a hand of cards, a role) is safe
 only if no client ever holds the whole state. One holder, and projections
@@ -88,8 +90,8 @@ server) is the same store, moved.
 ## World
 
 ```
-view(state, member, past)  → { content, actions, tasks, seen, rules }
-apply(state, change)       → { state, actions } | { refused: why }
+view(state, member, past)    → { content, actions, tasks, seen, rules }
+apply(state, change, past)   → { state, actions } | { refused: why }
 deadlines(state)           → [{ at, change }]
 ```
 
@@ -115,12 +117,14 @@ disagree.
 ### Tasks
 
 ```
-Task  { given, as, for, depth, at?, why }
+Task  { given, as, for, depth, standing, at?, why }
 ```
 
 `given` the ids of what it answers; `as` the seat; `for` the people it is
 done for; `depth` 0 when a person or the world set it off, else one more
-than the change that did; `at` when it is due by, if ever; `why` in words.
+than the change that did; `standing` whether only a standing request (a
+watch, an open channel) makes it due, not the world's rules (a turn); `at`
+when it is due by, if ever; `why` in words.
 
 - Tasks come from the state: who must act, who asked whom, who turned on a
   watch. Each fact is a change whose `by` the store set, so a task names
@@ -139,7 +143,7 @@ by `rev`:
 | --- | --- | --- |
 | accepted | answered | gone |
 | turned away (illegal, or the turn moved) | a try, and why, for its next view | due again; at the world's limit, the world plays its fallback |
-| `{ failed }` | failed | gone; a person may ask again |
+| `{ failed }` | failed | an ask: gone, a person may ask again; a turn: the world plays its fallback at once |
 | nothing | answered | gone |
 
 A person's or an outside program's illegal or stale change is `{ refused
@@ -167,13 +171,14 @@ One per member, on its owner's host:
 client(member, program):
   forever:
     { rev, view } = store.read(member)
-    stop a task going whose given is no longer in view.tasks
+    stop the task going if none of its given is in view.tasks
     hand view.tasks to program                  a person's: all; an agent's: see Part 2
     wait until store.wait(member, rev) returns
 ```
 
-- What the program returns is one change, committed at once. A task that
-  is stopped commits nothing; the world still lists it, so it is handed
+- A task goes on while any of its `given` is still listed. What the
+  program returns is one change, committed at once. A task that is stopped
+  commits nothing; the world still lists it, so it is handed
   again when it is due again.
 - A person's program shows every task and returns when they act; stopped,
   it takes the prompt away and keeps what they had written.
@@ -187,14 +192,17 @@ another, and makes a person and an agent the same loop.
 
 Who is here, who is typing, who is thinking: told to the store with
 `presence`, shown to those the view's `seen` allows, kept nowhere. It is
-not state, so it never decides anything. It can say what the state hides
-(a seat at work at night has a role), so the world decides who sees it.
+not state, so it never decides anything; a program that watches it may
+commit a change (a player gone too long leaves their seat). It can say what
+the state hides (a seat at work at night has a role), so the world decides
+who sees it. A screen may type a fresh line out: the line has landed.
 
 ## Outside programs
 
-A dealer, a narrator, the clock, `git pull`: each commits as itself. One
-that holds a secret (a deck) runs beside the store or keeps it, and lets it
-out only in its changes.
+The clock, `git pull`, a room that sees a player gone: each commits as
+itself. One that must also be handed tasks, such as a dealer, is a member
+whose program is a script. One that holds a secret (a deck) runs beside the
+store, and lets it out only in its changes.
 
 # Part 2. Agent clients
 
@@ -229,12 +237,15 @@ act(actions)   → each outside action that landed: recorded, approved, carried 
 ```
 
 - **For whom.** The owner's policy: which people in `for` it does work for
-  (the room, the team).
-- **How much.** Each person's budget, charged to `for`.
+  (the room, the team). If it pays for some of them only, the run is given
+  only what they asked; the rest stays listed, unpaid.
+- **How much.** Each person's budget; a run's cost is split among those it
+  is done for.
 - **Runaway.** Past a depth limit, nothing starts, so agents waking each
-  other come to rest. Past N runs in a world since a person last acted
-  there, nothing starts until a person acts or resumes: a loop the depth
-  cannot see, such as a program that echoes an agent, stops too.
+  other come to rest. Past N standing runs in a world since a person last
+  acted there, no standing task starts until a person acts or resumes: a
+  loop the depth cannot see, such as a program that echoes an agent, stops
+  too. Turns are not counted: the world's rules bring a game to its end.
 - **Keys, settings, the record of each outside action.**
 
 An agent's controller hands its program at most one task, the first in
@@ -256,6 +267,9 @@ not the world's:
   stops its run, waiting or not.
 - Only an error that waiting cannot outlast (a bad key, a missing model, a
   500 that repeats) is `{ failed }`.
+- Only calls made through the host are queued. An agent program that calls
+  its provider itself, such as a command-line agent, waits on its own, and
+  its waiting counts in the run's time.
 
 ## Outside actions
 
@@ -302,16 +316,17 @@ agent programs read, edit, search and fetch only.
 Ponjo, a text editor where people and buddies co-author files, is a host.
 Its rules for a doc: [host spec](../app/host-spec.md#buddies); what an
 agent program gets and returns: [agent config](../app/agent-config.md).
-How each of its worlds implements this, as of the draft before this one:
-[doc](../app/worlds/doc.md), [poker](../app/worlds/poker.md),
-[werewolf](../app/worlds/werewolf.md), [spy](../app/worlds/spy.md).
+How each of its worlds implements this: [doc](../app/worlds/doc.md),
+[poker](../app/worlds/poker.md), [werewolf](../app/worlds/werewolf.md),
+[spy](../app/worlds/spy.md); the games' tables:
+[rooms](../app/worlds/rooms.md).
 
 | Here | In Ponjo |
 | --- | --- |
 | agent | a buddy |
 | agent program | an agent (`agents/`, run by `src/host/runner.js`) |
 | world | the doc world (`src/host/doc-world.js`); three games in `preview/` |
-| store | the doc's door (`src/host/doc-service.js`); for a game, the page of the person who opened the table |
+| store | the doc's door (`src/host/doc-service.js`); for a game, a [room](../app/worlds/rooms.md) on the relay |
 | local | the config folder: settings, secrets, logs |
 | controller | `src/core/runtime.js`, given its runs, logs and settings by `src/host/buddy-runtime.js` |
 | an outside action | a plugin in `actions/` of the config folder; its input on stdin, its id as `PONJO_ACTION_ID`, its record in `logs/actions.jsonl` |
@@ -331,9 +346,8 @@ Ponjo's code follows the design before this one:
 - The doc's `rev` starts again each time it opens; the comments are read
   from disk beside the door; a run lands in several commits.
 - A game's table lives only in the memory of the page that opened it: a
-  refresh ends the game. The way there: keep `{ rev, state }` in that
-  browser's storage on each commit, then, if a game must outlive the page
-  or hide everything from its opener, a store on the relay.
+  refresh ends the game, and that page can read every card. The way there:
+  a [room](../app/worlds/rooms.md) on the relay.
 - Time is in page timers and in `stamp()`; tables change in place.
 - The breaker counts runs in a window; a busy API fails a run after one
   retry ([Ponjo agent](../app/ponjo-agent.md)); runs share no queue.
