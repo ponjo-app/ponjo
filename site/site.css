@@ -150,9 +150,9 @@ a { color: var(--accent); }
   .arch-heading { font-size: 24px; }
   .arch-say { min-height: 0; font-size: 16px; line-height: 1.5; }
   .arch-stage.arch-api { max-width: none; aspect-ratio: auto; }
-  .arch-calls { grid-template-columns: minmax(0, 1fr); gap: 4px; }
-  .arch-calls dt { font-size: 14px; }
-  .arch-calls dd { margin-bottom: 12px; font-size: 15px; }
+  .arch-api .arch-calls { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+  .arch-api .arch-calls dt { font-size: 14px; }
+  .arch-api .arch-calls dd { margin-bottom: 12px; font-size: 15px; }
 }
 
 /* the cover: Clippy, the title and what the story is about */
@@ -281,7 +281,7 @@ a { color: var(--accent); }
 .arch-card { width: 18px; height: 26px; border-radius: 3px; background: var(--chalk); opacity: 0.5; }
 .arch-card.arch-up { background: var(--buddy); opacity: 1; }
 .arch-sketch .arch-village .pj-avatar { --size: 24px; }
-/* the world's five calls: each call, in code, and what it answers */
+/* the store, the world and a controller: each call, in code, and what it does */
 .arch-stage.arch-api { gap: 16px; }
 .arch-calls { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 14px 24px; max-width: 880px; margin: 0; }
 .arch-calls dt { font-family: var(--mono); font-size: 18px; font-weight: 600; }

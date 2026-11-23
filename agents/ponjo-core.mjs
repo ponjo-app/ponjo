@@ -82,7 +82,7 @@ const TOOLS = [
  * each comment with edits, { comment (its place among the lines), doc (the
  * doc after its edits) } (docs/app/agent-config.md, PONJO_GROUPS), `actions`,
  * { comment, action, input } for each action a comment proposes
- * (docs/runtime/README.md#outside-actions), and what
+ * (docs/runtime/README.md#effects), and what
  * the model wrote in that last step. Throws when the turn fails.
  *
  * The messages are in one form for every provider: { role: 'user', content },

@@ -68,6 +68,28 @@ test('Undo on a reply removes that buddy\'s edit and keeps later edits, yours an
   });
 });
 
+test('a window that reads the doc the moment it hears a buddy\'s edit finds the reply and its receipt, whose Undo takes that edit back', { timeout: 30_000 }, async () => {
+  const docPath = await tempDoc();
+  const settingsDir = await fakeConfig();
+  const heard = [];
+  let opened;
+  // As a page does: its threads read again as the run's edit is told.
+  const emit = (name, data) => {
+    if (name === 'ops' && data.reply) heard.push(opened.state().then((now) => ({ reply: data.reply, now })));
+  };
+  opened = await openTestDoc(docPath, { settingsDir, buddies: { Ada: '\n' }, emit });
+  try {
+    await opened.call('comment', { anchor: null, body: '@Ada replace "extra load" with "extra peak load"' });
+    await until(() => heard.length, 'the run\'s edit');
+    const { reply, now } = await heard[0];
+    assert.ok(now.threads.some((t) => t.comments.some((c) => c.id === reply)), 'the reply is read with its edit');
+    await opened.call('undo', { id: now.edits[reply].version });
+    assert.match(await readFile(docPath, 'utf8'), /the extra load\./);
+  } finally {
+    await opened.doc.close();
+  }
+});
+
 test('Redo on an undone reply puts the buddy\'s edit back, keeps edits made since, and can be undone again', { timeout: 30_000 }, async () => {
   await withDoc(async ({ call, state, ask, type, disk, versions, undoReply }) => {
     const ada = await ask('@Ada replace "extra load" with "extra peak load"');

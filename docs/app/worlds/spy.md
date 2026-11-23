@@ -106,7 +106,7 @@ their turns takes its `fallback`.
 The dealer, a script in the room, has a `deal:<gameNo>` task on the
 opener's `start { size }` and commits `dealt`: the word pair, which is the
 spies', the sides, the first speaker, by `cryptoRandom`. The clock, the
-room's alarm, commits its tasks at their `at`, in place of page timers.
+room's alarm, commits its tasks at their `at`.
 The hello lines come in `start`, from each AI seat's persona; the clock
 commits each `by` itself, `as` that seat.
 
@@ -122,24 +122,9 @@ The wallet is the key owner's: Ponjo's, or a visitor's kept in the room
 (the opener, friends at the table), with the room's budget and rate.
 Capacity: one queue per provider and key, in task priority.
 
-## Today
+## Differs
 
-- The store is the table's room on the relay (`relay/table.js`, a `Table`
-  Durable Object at infer.ponjo.app, [rooms](rooms.md)), which runs this
-  world (`preview/spy-world.js`, through `preview/game-tables.js`). Each
-  page (`preview/spy.js`) is one seat's client (`sit`,
-  `preview/game-kit.js`): it draws the view the room sends it and sends
-  what its person does; no page holds the state.
-- The room sends a page its whole view each time it changes, with the
-  presence it may see, instead of a notice to read again; there is no
-  `wait` and no `past`.
-- The AI seats, the clock and the wallet run in the room: the limits
-  (depth 10, N 30), in memory; the table's model calls an hour, on Ponjo's
-  key or the opener's own; no queue per provider. The opener's own key is
-  held in memory only, not kept in storage ([rooms](rooms.md#today)).
-- The room deals, in the opener's `start`: there is no dealer member.
-- An AI seat's program waits its persona's pace (`game-tables.js`) after
-  the model answers, so its change lands that much later.
-- What the three games share is in `preview/game-kit.js`: lines, the
-  clock's tasks, thoughts, the AI seats' program, a fresh line typed out,
-  and a page's seat at the table.
+- Its room's ([rooms](rooms.md#differs)).
+- There is no dealer member: the room deals in the opener's `start`.
+- An AI seat's program waits its persona's pace (`preview/game-tables.js`)
+  after the model answers, so its change lands that much later.

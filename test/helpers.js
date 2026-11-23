@@ -61,16 +61,16 @@ let edits = 0;
  * `edit(next, from)` types the doc's text into `next` from state `from`
  * (default: the doc as it is now), landed and written once it resolves.
  * With `buddies` ({ name: file text }), the doc's folder is a project
- * holding them.
+ * holding them. `emit(name, data)` hears each event as it is said.
  */
-export async function openTestDoc(docPath, { buddies = null, ...options } = {}) {
+export async function openTestDoc(docPath, { buddies = null, emit = () => {}, ...options } = {}) {
   const events = [];
   if (buddies) {
     options.folder ??= dirname(docPath);
     await mkdir(join(options.folder, '.ponjo', 'buddies'), { recursive: true });
     for (const [name, text] of Object.entries(buddies)) await writeFile(join(options.folder, '.ponjo', 'buddies', `${name}.md`), text);
   }
-  const doc = await openDoc(docPath, { ...options, emit: (name, data) => events.push([name, data]) });
+  const doc = await openDoc(docPath, { ...options, emit: (name, data) => { events.push([name, data]); emit(name, data); } });
   // Given `from`, the edit is in the doc's queue before the caller's next
   // line, so a file changed outside just after it is found after it.
   const owner = await doc.owner();

@@ -1,9 +1,10 @@
 # Poker table
 
 The poker page (`preview/poker.js`): No-Limit Hold'em with the opener, AI
-players (`PERSONAS`), friends who join by a link, a dealer and chat; in the
-target design, a world of members on the [runtime](../../runtime/README.md),
-stored in a [room](rooms.md) where the AI seats, dealer and clock run.
+players (`PERSONAS`), friends who join by a link, a dealer and chat: a
+world of members on the [runtime](../../runtime/README.md)
+(`preview/poker-world.js`), stored in a [room](rooms.md) where the AI
+seats, dealer and clock run.
 
 ## State
 
@@ -16,6 +17,7 @@ hand  as in preview/poker-dealer.js, with no deck
 
 `thoughts` is the seat's state, written by `apply` from its own runs. The
 answer ledger (answered, tries, why) is the runtime wrapper's, in the state.
+A visitor's bankroll is their browser's, apart from the table.
 
 ## Store
 
@@ -36,7 +38,7 @@ fallback(state, task, at)    → state         a check, else a fold; for other t
 tries                        3
 ```
 
-One `view` for every seat; `share` and `prompt` go:
+One `view` for every seat:
 
 - `content`: the table, this hand's actions and reactions, the last 24
   lines; its own hole cards, others' at a showdown; for people, the AI
@@ -65,10 +67,12 @@ controller batches them into one run and one change. `talk`: a line task is
 listed always for a person's line, else when a roll falls under the
 persona's `talk`.
 
-- Open: the roll: a hash of the seat and `given`, or a seed in `deal`.
+- Open: the roll: a hash of the seat and `given`, as in the code
+  (`rolls`), or a seed in `deal`.
 - Open: who gets a person's whole-table line: the next AI seat after the
-  speaker, or one picked by the roll.
-- Open: a person alone with AI seats: 30 s too, or a longer `at`.
+  speaker, as in the code (its `next`), or one picked by the roll.
+- Open: a person alone with AI seats: 30 s too, or a longer `at`. In the
+  code, none.
 
 Answers. `apply` lands a move only if `base` is still the turn and the
 dealer says it is legal; a stale or illegal change is refused, whoever
@@ -79,8 +83,8 @@ nothing: not its line, not its reaction, not its thinking. A move that lands
 takes its reaction and its line with it.
 
 Time. The clock's `timeout`, with its base still the turn, plays the
-seat's `fallback`; stale, it is refused. No rule reads a clock: `stamp()`
-and `turnAt` give way to the store's `at` and the ledger.
+seat's `fallback`; stale, it is refused. No rule reads a clock: the time
+is the store's `at`.
 
 ## Members and controllers
 
@@ -92,8 +96,7 @@ in, leave, `next`. The opener's `sit` lands the AI seats' hellos as lines.
 ## Presence
 
 `thinking` is presence while a run goes, seen by all, never state. A run
-commits as soon as it ends; `PACE` and the `typing` wait go. A screen may
-type a fresh line out.
+commits as soon as it ends. A screen may type a fresh line out.
 
 ## System members
 
@@ -107,40 +110,19 @@ deals from no deck. The clock wakes on the room's alarm at its next task's
 
 AI seats run in the room, beside the store, with their wallets. The
 renderer gives the world's actions as the only tools, and `thinking` as
-text. A seat uses Ponjo's key, or that of the visitor who brought it, kept
-in the room's storage apart from the state. The owner always pays; the
+text. A seat uses Ponjo's key, or that of the visitor who brought it, held
+by the room as [rooms](rooms.md) says. The owner always pays; the
 wallet's policy on `from` says whose lines start a run. A turn it will not
 start is answered as not started and falls back; the breaker counts no
 turns. Capacity: one queue per key in the room, turns before lines.
 
-## Today
+## Differs
 
-- The store is the table's room on the relay (`relay/table.js`, a `Table`
-  Durable Object at infer.ponjo.app, [rooms](rooms.md)), which runs this
-  world (`preview/poker-world.js`, through `preview/game-tables.js`). Each
-  page (`preview/poker.js`) is one seat's client (`sit`,
-  `preview/game-kit.js`): it draws the view the room sends it and sends
-  what its person does; no page holds the state.
-- The room sends a page its whole view each time it changes, with the
-  presence it may see, instead of a notice to read again; there is no
-  `wait` and no `past`.
-- The AI seats, the clock and the wallet run in the room: the limits
-  (depth 10, N 30), in memory; the table's model calls an hour, on Ponjo's
-  key or the opener's own; no queue per provider. The opener's own key is
-  held in memory only, not kept in storage ([rooms](rooms.md#today)).
-- The bankroll stays in the visitor's browser, apart from the table.
-- The dealer is a system member of the room: for `deal` and `board` it
-  draws the cards from a fresh shuffle of those not yet out (`draw`,
-  `preview/poker-dealer.js`), so no deck is kept anywhere; its view lists
-  every card out. `apply` checks its cards are new and enough. Its task is
-  `deal:<n>`, `n` counting deals, a hand or none for want of chips; the
-  first carries an `at`, once the hellos are said.
-- The room commits `leave` for a friend not back within `RECONNECT_MS`, or
-  sent away by the host; mid-hand, they are checked or folded for, and out
-  at the next deal.
-- The roll is a hash of the seat and `given` (`rolls`); a person's line to
-  the whole table asks the next AI seat after the speaker (its `next`); a
-  person alone with AI seats has no `at`, as before.
-- An AI seat's program waits its persona's pace (`game-tables.js`) after
-  the model answers, so its change lands that much later; each page types
-  a fresh line out after.
+- Its room's ([rooms](rooms.md#differs)).
+- The dealer keeps no deck: for `deal` and `board` it draws from a fresh
+  shuffle of the cards not yet out (`draw`, `preview/poker-dealer.js`); its
+  view lists every card out, and `apply` checks its cards are new and
+  enough. Its task is `deal:<n>`, `n` counting deals, a hand or none for
+  want of chips; the first has an `at`, once the hellos are said.
+- An AI seat's program waits its persona's pace (`preview/game-tables.js`)
+  after the model answers, so its change lands that much later.

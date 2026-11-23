@@ -20,7 +20,7 @@ flowchart LR
   person(["People<br>windows, teammates' pages"]) -- "edits, comments" --> door
   outside(["Other programs<br>git pull, editors"]) -. "the file changed" .-> door
   subgraph host["Doc host"]
-    door["Doc<br>the one writer"] -- "the log" --> ctl["Controller<br>one per doc"]
+    door["Doc<br>the one writer"] -- "views" --> ctl["Controllers<br>one per buddy"]
     ctl -- "a buddy's changes" --> door
     ctl -- "a run" --> agent["Agent<br>on copies"]
   end
@@ -135,8 +135,9 @@ below: `{ epoch, rev, ops, id, by: { id, kind }, reply?, comments? }`, a
 change to the comments with `comments: true`, and with no `ops` but a
 run's), `saved`
 (whether the file holds what was told, and why not),
-`cursors`, `missing` (the file gone), `renamed`, and from the controller
-`buddies` (who is here, running, watching, failed; whether the watches are paused).
+`cursors`, `missing` (the file gone), `renamed`, and from the controllers
+`agents` (who is here, running, watching, failed), `watches` (whether they
+are paused) and, to the owner, `runtime` (for the runtime panel).
 
 ### The log
 
@@ -438,7 +439,7 @@ again. Both are this machine's, in memory.
    edits; a line that would resolve is ignored, as only people resolve. In
    a thread that asked it, its comments come just after the last comment
    it was given, so one written meanwhile is after them, still to answer.
-   The doc world applies the changes through the door, as the buddy.
+   The doc's store lands them in one door call, as the buddy.
 4. The private folder is deleted, and the run gets a line in
    `logs/runs.jsonl`: its id, doc, buddy, threads, the comments it posted,
    start, duration, outcome (`ok`, `failed`, `timedOut`, `stopped`) and
@@ -480,7 +481,7 @@ not run again on its own, for it may well fail again at the same cost, nor
 after a restart: it runs again when someone writes in the thread. Retry,
 on that comment while it is the thread's latest, for whoever may ask, is
 that: it posts their reply `@<buddy> try again.`. A failed watch run is
-noted in the buddy's `failed`, in memory, and shown on the buddy with
+noted on the buddy (`watchFailed`), in memory, and shown on it with
 Retry (`retry({ buddy })`), why to the owner alone; it runs again on
 Retry, when the agent, its settings or its secrets change, and on the
 doc's next change. Errors an agent can outlast, such as a busy API, it retries
@@ -563,7 +564,7 @@ flowchart TD
     views["Views<br>web/views/"]
   end
   shell["Shell<br>desktop/"]
-  host["Doc, Controller, Executor,<br>ProjectService, Room<br>src/host/"]
+  host["Doc, Doc store, Controllers,<br>Executor, ProjectService, Room<br>src/host/"]
   store["Store<br>src/store/"]
   core["Core<br>src/core/"]
   shell --> host & store & core
@@ -610,9 +611,9 @@ declaration, listed in `VIEWS`, passing the contract test.
 | Store | `src/store/` | read, write, watch and move files: docs, comments, history, settings, buddies, agents, logs | `read`, `write`, `watch`, `move`, each file's parser |
 | Doc | `src/host/doc-service.js` | order every change to one doc, and write it | the door above; `door`, `subscribe(fn)` |
 | Opener | `src/host/open-doc.js` | join a doc and its buddies | `openDoc` |
-| Controllers | `src/host/buddy-runtime.js` | a controller per buddy of the doc, and the clock's (`src/core/controller.js`), with this machine's runs, logs, settings and limits | `watch`, `retry`, `resume`; event `buddies` |
+| Controllers | `src/host/buddy-runtime.js` | a controller per buddy of the doc, and the clock's (`src/core/controller.js`), with this machine's runs, logs, settings and limits | `watch`, `retry`, `resume`; events `agents`, `watches`, `runtime` |
 | Doc store | `src/host/doc-store.js` | the doc world's state beside the door, each member's view and `wait`, and a run's answer landed in one door call | `client(member)`: `read`, `wait`, `commit` |
-| Executor | `src/host/runner.js` | run the agent once on copies | `run(task, copies)` |
+| Executor | `src/host/runner.js` | run the agent once on copies | `execute` |
 | ProjectService | `src/host/project-service.js` | the project's files, the same for everyone | `list`, `read`, `open` |
 | Room | `src/host/room.js` | who is in the room and at what level | the owner's `openRoom`, `closeRoom`, `lockRoom`, `setLevel`, `kick`, `room` |
 | Shell | `desktop/` | windows, menus, dialogs, recent docs; the owner's file changes; starts the doc host; the keychain | IPC |

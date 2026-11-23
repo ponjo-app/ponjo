@@ -292,7 +292,7 @@ for (const [prefix, teammate] of [['', false], ['through the relay: ', true]]) {
   });
 }
 
-// Measured, with no bar (docs/app/markdown-view.md, The prototype).
+// Measured, with no bar (docs/app/markdown-view.md, Many writers).
 
 test('measure: how often merges break bold, links or tables', MEASURE, async () => {
   const count = () => run(`['.pj-md-strong', '.pj-md-link', '.pj-md-table', 'tr', 'td', 'th'].map((s) => document.querySelector('.pj-md').querySelectorAll(s).length).join()`);

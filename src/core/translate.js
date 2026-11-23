@@ -1,4 +1,4 @@
-// What a buddy's run comes to (docs/runtime/README.md, A run): from the copies
+// What a buddy's run comes to (docs/app/host-spec.md, A run): from the copies
 // its agent left, the comments to post and the edits each carries, with no
 // file or clock of its own.
 

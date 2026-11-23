@@ -1171,21 +1171,27 @@ async function worlds(scene) {
   await scene.wait(1800);
 }
 
-// The world's five calls, each with what it answers, and where the code is.
+// The store, the world's two functions and a member's controller, each
+// with what it does, and where the code is.
 const CALLS = [
-  ['members()', 'Who is here: people and agents.'],
-  ['asks()', 'Who has been asked to act, and has not yet.'],
-  ['view(member)', 'What this member may see, and nothing more.'],
-  ['wait(version)', 'Returns once the board has changed since this version.'],
-  ['propose(member, version, change)', 'Writes the change to the board, or refuses it, by the app’s rules.'],
+  ['store.commit(change)', 'Lands one change at a time on the board, or refuses it.'],
+  ['store.wait(member, rev)', 'Returns once this member’s view has changed.'],
+  ['world.view(state, member)', 'What this member may see and do, and what it is due to do.'],
+  ['world.apply(state, change)', 'The board after the change, or why not, by the app’s rules.'],
+  ['control(client, { program })', 'One per member: hands its tasks to its program, a person’s screen or an agent.'],
 ];
+const SOURCES = ['src/core/store.js', 'src/core/controller.js', 'src/core/ledger.js'];
 function calls(scene) {
   scene.stage.classList.add('arch-api');
   const list = el('dl', 'arch-calls');
   for (const [call, what] of CALLS) list.append(el('dt', '', call), el('dd', '', what));
-  const source = el('a', 'arch-source', 'src/core/runtime.js');
-  source.href = 'https://github.com/ponjo-app/ponjo/blob/main/src/core/runtime.js';
-  scene.stage.append(list, source);
+  const sources = el('span', 'arch-source');
+  for (const [i, file] of SOURCES.entries()) {
+    const source = el('a', 'arch-source', file);
+    source.href = `https://github.com/ponjo-app/ponjo/blob/main/${file}`;
+    sources.append(...(i ? [' · '] : []), source);
+  }
+  scene.stage.append(list, sources);
 }
 calls.once = true;
 
@@ -1301,7 +1307,7 @@ const CHAPTERS = [
   ['How it is built', 'Event-triggered, the common way', 'The state is in messages and agents’ memories. Lose one, lose the work.', eventsArchitecture, 'problem'],
   ['How it is built', 'Blackboard', 'The board is the only state. The runtime reads it and starts whoever is due.', architecture, 'solution'],
   ['How it is built', 'One runtime, many worlds', 'The same runtime, whatever the app.', worlds],
-  ['How it is built', 'The world’s five calls', 'Answer these, and the runtime runs agents in your app.', calls],
+  ['How it is built', 'A store, a world, a controller', 'Write the world’s two functions, and the runtime runs agents in your app.', calls],
   ['Compared', 'Orchestrator or controller', '', summary],
   ['Outcome', 'What you get', '', outcome],
 ];

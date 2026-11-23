@@ -155,12 +155,11 @@ An orchestrator fits those better.
 
 ## Status
 
-- **Built**, in the design before this one, with Ponjo as its host:
-  deciding from state through one blocking wait, one writer, asks and
-  watches woken by a view's change, stateless agents, the agent log, chains
-  limited by depth with a breaker, and outside actions carried out once and
-  approved by the owner ([outside actions](README.md#outside-actions));
-  for docs, and for three game worlds with per-member views and refusals.
-- **Not yet:** the two layers as above, a game that outlives a refresh,
-  and a host that keeps running with no window open. What differs:
-  [Today](README.md#today).
+- **Built**, with Ponjo as its host: the two layers as above, one writer,
+  deciding from state through one blocking wait, asks and watches,
+  stateless agents, the agent log, chains limited by depth with a breaker,
+  and effects carried out once and approved by the owner
+  ([effects](README.md#effects)); for docs, and for three games whose
+  tables are rooms on the relay that outlive a refresh or the opener's page.
+- **Not yet:** a doc host that keeps running with no window open. What
+  differs: [Differs](README.md#differs).
