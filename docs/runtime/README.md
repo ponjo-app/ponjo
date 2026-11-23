@@ -361,16 +361,20 @@ How each of its worlds implements this: [doc](../app/worlds/doc.md),
 | agent | a buddy |
 | agent program | an agent (`agents/`, run by `src/host/runner.js`) |
 | world | the doc world (`src/host/doc-world.js`); three games in `preview/` |
-| store | the doc's door (`src/host/doc-service.js`); for a game, a [room](../app/worlds/rooms.md) on the relay |
+| store | the doc's door (`src/host/doc-service.js`); for a game, a [room](../app/worlds/rooms.md) on the relay, holding a store in memory (`src/core/store.js`) |
+| answers | the ledger, a wrapper around a world (`src/core/ledger.js`) |
 | wallet | the config folder: settings, secrets, logs; for a game, the room, for the key's owner |
-| controller | `src/core/runtime.js`, given its runs, logs and settings by `src/host/buddy-runtime.js` |
+| controller | `src/core/controller.js`, with the wallet's limits and the clock's program; the doc's, `src/core/runtime.js`, given its runs, logs and settings by `src/host/buddy-runtime.js` |
 | an effect | a plugin in `actions/` of the config folder; its input on stdin, its id as `PONJO_ACTION_ID`, its record in `logs/actions.jsonl` |
 
 Open: Ponjo's limits. Proposed: a depth limit of 10, and N = 30.
 
 ## Today
 
-Ponjo's code follows the design before this one:
+Who's the Spy runs on this design's core (`src/core/store.js`,
+`ledger.js`, `controller.js`), with its store in the opener's page
+([spy](../app/worlds/spy.md#today)). The doc, poker and werewolf follow
+the design before this one:
 
 - The world is one object of five calls with I/O (`members`, `asks`,
   `view`, `wait`, `propose`), and the doc's sixth, `failed`; who is due is
@@ -379,17 +383,21 @@ Ponjo's code follows the design before this one:
   none, and each game writes its own "your turn" and its own view for
   people (poker's `share`).
 - Who is due rests on notes in memory. In a game, a run that makes nothing
-  or fails commits nothing, and a failure waits for Retry, in memory; the
+  or fails commits nothing, and a failed run waits for Retry, in memory; the
   doc answers each ask with a comment instead. Each game keeps its own
   tries and fallback.
 - The doc's `rev` starts again each time it opens; the comments are read
   from disk beside the door; a run lands in several commits.
 - A game's table lives only in the memory of the page that opened it: a
-  refresh ends the game, and that page can read every card.
+  refresh ends the game, and that page can read every card. Spy's is kept
+  in that page's storage, so a refresh goes on with it; that page can read
+  every word.
 - Time is in page timers and in `stamp()`; tables change in place.
 - The breaker counts runs in a window; the depth limit is 1,000; a busy
   API fails a run after one retry ([Ponjo agent](../app/ponjo-agent.md));
-  runs share no queue.
+  runs share no queue. Spy's wallet has the proposed limits, in its page.
+- The ledger hands `fallback` the change's `at` as well, which spy needs to
+  time the next turn from.
 
 ## Migration
 
