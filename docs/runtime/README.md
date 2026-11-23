@@ -392,19 +392,5 @@ Ponjo's code follows the design before this one:
 
 ## Migration
 
-In this order, each step its own change, each with its tests:
-
-1. **The doc's store.** The door keeps `{ rev, state }` durably, holds the
-   comments in memory, sets `by` and `at`, lands a run in one commit, and
-   wakes each member on its view.
-2. **The doc's world.** `view` and `apply` as pure functions, the answer
-   ledger, asks answered by comments, watches in the door's own state.
-   `due.js` and the runtime's notes go.
-3. **Controllers.** One per member, the wallet, the capacity queue. The
-   five-call world is served through an adapter until the games move.
-4. **Game rooms.** One room per table on the relay, with the games' rules
-   as `view` and `apply`, AI seats and their wallets beside the store, and
-   one kit for what the three games share. The adapter goes.
-
-Each format kept on disk (the door's state, the wallet's records) carries a
-version, and a step that changes one reads the one before.
+How Ponjo's code gets there, in six steps, each with its tests and its
+design gate: [runtime migration](../app/runtime-migration.md).
