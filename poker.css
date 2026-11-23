@@ -160,10 +160,6 @@ body:is(.pk-setting-up, .pk-buying-in) .pk-page { filter: blur(1px); opacity: 0.
 .pk-sizing { width: 100%; text-align: center; }
 .pk-turn { margin: 0; font-size: var(--big); font-weight: 600; text-align: center; }
 .pk-turn:empty, .pk-phase:empty { display: none; }
-.pk-recovery { display: flex; align-items: baseline; justify-content: center; flex-wrap: wrap; gap: 8px 16px; max-width: 100%; }
-.pk-recovery summary { cursor: pointer; color: var(--text-soft); font-size: 14px; }
-.pk-recovery details[open] { flex-basis: 100%; }
-.pk-recovery details p { margin: 6px 0 0; font-size: 13px; color: var(--text-soft); overflow-wrap: anywhere; }
 .pk-act { max-width: 100%; }
 .pk-controls { display: flex; flex-direction: column; align-items: center; gap: 8px; }
 .pk-buttons { display: flex; gap: 8px; }
@@ -294,7 +290,6 @@ body:is(.pk-setting-up, .pk-buying-in) .pk-page { filter: blur(1px); opacity: 0.
   .pk-act { min-width: 0; width: 100%; }
   .pk-me { gap: 12px; padding: 12px; }
   .pk-mine { width: 100%; justify-content: center; }
-  .pk-recovery button { min-height: 44px; }
   .pk-strength { min-width: 0; }
   .pk-controls { width: 100%; }
   .pk-sizes { width: 100%; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
