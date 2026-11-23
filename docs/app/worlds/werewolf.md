@@ -1,130 +1,140 @@
 # Werewolf world
 
-Werewolf for people and AI players on the [Blackboard Agent
-Runtime](../../runtime/README.md), in the host's browser page. By night two
-wolves who know each other pick a kill, the seer checks, the witch saves or
-poisons; by day each living seat speaks in turn, then all vote at once.
-Rules `preview/werewolf-rules.js`, world `preview/werewolf-world.js`, page
-`preview/werewolf.js`.
+The werewolf page (`preview/werewolf.js`): a person, friends who join by a
+link, and AI players round one table, on the [runtime](../../runtime/README.md).
+By night two wolves who know each other pick a kill, the seer checks, the
+witch saves or poisons; by day each living seat speaks in turn, then all
+vote at once. Rules `preview/werewolf-rules.js`, world `werewolf-world.js`.
 
 ## State
 
 ```
-{ rev,
-  table:    { players, names, no }         seat ids, people's names, the game's number
-  game:     { seats: [{ role, alive }], day, phase, step, round, picks, victim,
-              saved, poisoned, potions, speaker, order, votes, acted, log, winner }
-  lines:    [Line]                         the chat (preview/table-talk.js)
-  tries:    { agent → { turn, n, why } }   actions turned away on one turn
-  thoughts: { agent → [Thought] }          each AI player's own reasoning
-  called:   { day, step } }                how far the narrator has called the night
+Table { rev, people, names, no, lines, answered, game }
+Game  { players, seats: [{ role, alive }], day, phase, step, round, picks, victim,
+        saved, poisoned, potions, speaker, order, votes, acted, log, winner,
+        since, called: { step, at }, minds: [{ thoughts, tries: { turn, n, why } }] }
+Line  { id, by, text, to, depth, about, game, after, for? }
 ```
 
-A `log` entry's `to` is the seats that may see it; none, all. `turn(game)`
-is the moment (`day:phase:step round`, or the speaker): during a vote or
-the wolves' pick it stays the same while the actions come in. Open: one
-world for the table, games and chat; or one per game, the chat carried on.
+- The table is the world; a game is a change, the dealer's `deal`. `game`
+  is the last one, kept once over for the chat about it. People, chat and
+  controllers outlive a game.
+- A `log` entry's `to` is the seats that may see it; none, all. The pack,
+  `to: wolves(game)`, is seats, people and agents alike: not an audience.
+- `turn(game)` is the moment (`day:phase:step round`, or the speaker),
+  the same through a vote or the wolves' pick; `since`, the stamp of its
+  first change. `called`: how far the narrator has called the night, and
+  when. `minds[seat]`: thinking, tries. `answered[member]`: lines answered.
 
 ## Store
 
-The host's page holds `{ rev, state }` in memory; `commit` runs `apply`,
-one change at a time. A friend's page never reads it: the host's page sends
-it its seat's `view` over the relay (`preview/poker-share.js`) and commits
-what it sends as that friend's change.
+The host's page holds `{ rev, Table }`, written to its browser's storage on
+each commit: a refresh resumes the game and its deadlines. Every client
+gets only `read(member)`, the AI seats on the same page too; friends' pages
+read, wait and commit over the relay (`preview/poker-share.js`). `by` is the
+member a peer joined as. `wait(member, rev)` wakes a seat only when its
+view changed: a wolf's pick wakes the pack, not the village.
 
-The store's condition is `rev`; the game's is the moment. An action carries
-`at`, the `turn` it was made on; `apply` takes it only while
-`at === turn(game)`, so a vote or kill on a phase the game has left is
-stale. Votes in one vote are not stale to each other; the last one tallies
-in the same commit. Open: the host plays and its page holds every role; a
-store no player reads, or roles hidden from friends only.
-
-## Local
-
-The host's page: the model and key (`ponjo-poker` in `localStorage`); whom
-it vouches for (the host, and friends who sat: `people`); the chat's depth
-limit (`DEPTH`). No watches, breaker or outside actions.
+An action's input has `at`, the `turn` it was made on; one made on a moment
+the game has left is stale. Votes in one vote do not move the turn, so none
+makes another stale; the last tallies in the same commit. Open: the store
+on the host's page, so the host, who plays, could read every role; or on
+the relay, playing no seat.
 
 ## World
 
 ```
-due(state, local, agent)     → [Task]
-view(state, local, task)     → { files: { at, kind, about }, prompt: { rules, situation } }
-apply(state, change, local)  → { state, actions: [] } | { refused: why }
+view(state, member, past)  → { content, actions, tasks, seen, rules }
+apply(state, change)       → { state, actions: [] } | { refused: why }
+deadlines(state)           → [{ at, change }]
 ```
 
-**`due`.** In a game: one task while the agent's seat is in the rules'
-`due(game)` and its `tries` this turn are under `MAX_TRIES`; `given`
-`['turn:<turn>']`, depth 0. `acted` is the watermark: a seat in it is not
-due. After the game: a task per audience for the lines that concern the
-agent (named, or a person's line to all); `given` `['chat:<no>:<line>']`.
-People are never tasks: a person's seat in the rules' `due` is `view.due`,
-and holds the phase until they act or the clock expires it.
+**`view`** is the seat's. `content` is the rules' `view(game, seat)`: its
+role; for a wolf, the pack, its picks, lines and kill; the seer's checks;
+the witch's potions and, while she has the save, whom the wolves attacked;
+who is alive; who has voted, and its own vote; a death at dawn as "died in
+the night", how only to the pack and the witch. The night's step is
+`called`, not the rules' step. Then its mind and the chat; once over, all.
+A member with no seat sees what all see. `past` is unused: the log keeps
+what happened. `rules` is `RULES`; a persona is its agent's prompt.
+`actions`: what the rules' `due` lets the seat do now; `say` outside a
+game; `sit`, `leave` between games; `start { size }` for the host.
 
-**`view`.** The rules' `view(game, seat)`: its role; for a wolf, the pack,
-its picks, lines and kill; the seer's checks; the witch's potions and,
-while she has the save, whom the wolves attacked; who is alive; who has
-voted, not for whom, until the tally. A death shows at dawn as "died in the
-night"; how stays with the pack and the witch until the game is over, when
-all shows. Added: the agent's last `THOUGHTS_SHOWN` thoughts and why its
-last action was turned away. A watcher (seat -1) sees what all see.
-
-**`apply`.**
+**Tasks.**
 
 ```
-run      { by, for, given, depth, base: { at, kind, about }, made: { thinking, action, say } | { failed } }
-person   { by, action, say, at }
-world    { by: world, deal: roles | call: step | expire: turn | gone: id }   dealer, narrator, clock, room
+turn  { given: ['turn:<turn>'], as: seat, for: [host], depth: 0, at: since + TURN }
+line  { given: ['line:<id>', …], as: member, for: the lines' people, depth: the line's }
 ```
 
-- A legal action goes through the rules' `act`; `settle` ends a phase once
-  no one is due: the barrier is the rules'. A run's illegal or stale action
-  lands as a try on its own turn (`base.at`), with why; at `MAX_TRIES`,
-  `fallback` plays for the seat. Its thinking always lands. A person's
-  illegal action is refused.
-- `expire` lands only while its turn is the game's: all still due do
-  nothing; `gone`, one person, each turn. After the game a line lands in
-  `lines`; of AI answers to a person's line to all, one lands.
-- Open: a failed run: a try, the fallback at once, or wait for the clock.
+A turn task while a seat is in the rules' `due(game)`, a person's as an
+agent's: a person's is their "your turn", its `at` the ring. `for` is the
+host, whose key and money; `as` the seat, its view and rights, so a wolf's
+task for a host who is a villager still sees the pack. A line task while a
+line names the member, or a person says it to all, under `DEPTH`, not in
+`answered`; the host's and a friend's lines to one agent are one task, `for`
+both. A turn comes first. Open: chat before a game wakes AI players, or, as
+today, only after one. Open: a person's line to all asks every AI player
+and one answer lands (as today), or the world picks one to ask.
 
-**Audiences.** In the runtime `for` bounds a task's view and rights. Here
-both are the seat's: the pack (`to: wolves(game)`) is a group of seats that
-may hold the host, a friend and AI players, and `act(game, seat, …)` checks
-the seat. A wolf's task for a host who is a villager must still see the
-pack. Open: a turn task's `for`: the host, bounding only cost and trust; no
-one (the rules ask); or the seat as its own audience.
+**Answers.** A run's change always lands. Accepted, it goes through the
+rules' `act`: the seat joins `acted`, and `settle` ends a phase once no one
+is due, so the barrier is the rules'. Turned away (illegal, stale, a turn
+with no action), it is a try on the turn it was made on, why in its next
+view, due again; at `MAX_TRIES` the rules' `fallback` plays for the seat.
+`{ failed }` or nothing: the task is gone, and the seat waits for the
+clock. Its thinking lands in its mind. A person's illegal or stale action
+is `{ refused }`. Of AI answers to one line to all, one lands.
 
-**Outside programs**, on the host's page: the dealer
-(`crypto.getRandomValues`); the narrator, which calls each night role,
-alive or not, for at least a set time, so a call's length tells nothing;
-the clock, which expires a turn after `TURN` (90 s); the room, when a
-friend leaves. Open: whether AI players wait for the narrator's call; the
-deadline in the state, for views, or the clock's alone.
+**Time.** `deadlines(state)`, each with its base (the turn, the call):
+`expire { turn }` at `since + TURN` (90 s), and all still due take the
+fallback; `call { step }` at `called.at + CALL_MS`, up to the rules' step,
+each night role called alive or not; the hellos, one each `HELLO_MS`.
 
-## Controllers
+## Members and controllers
 
-One per AI seat, on the host's page, all the host's. A run: a model call,
-the player's thinking time, a speech's typing time, then commit; stopped
-once its turn leaves `due`. A person has no controller: the page commits
-what they do; a friend's page sends it there.
+One per member, the AI seats' on the host's page. A person's program is
+their page (a friend's, over the relay): it shows every task, with a ring.
+
+## Presence
+
+Running, thinking, typing, shown as `seen` allows: by day to all; at night
+a seat sees itself and, a wolf, its pack, so who works at night tells no role.
+
+## Outside programs
+
+The dealer, beside the store, commits `deal { roles }` on `start`, by
+`crypto.getRandomValues`; `apply` checks it is a shuffle of `cast(size)`.
+The narrator has no program: its calls and the hellos are deadlines, which
+the clock, the store's host, commits at their `at`. The room commits `gone`
+for a friend not back within `RECONNECT_MS`; `apply` takes them from
+`people` and plays the fallback on their turns. Open: the narrator's call
+gates AI players (a task once its step is called), or only paces views.
+
+## Agent clients
+
+Tools: `content`, `rules` and the persona as the prompt, `actions` as tools
+(today one, `DECIDE`). A run: a model call, the player's thinking time (at
+night at most `NIGHT_THINK`), a speech's typing time, told as presence.
+Local: the model and key (`ponjo-poker`, or Ponjo's), for whom (the people
+at the table), `DEPTH`, the breaker. Capacity: one queue, turns first.
 
 ## Today
 
-- Five calls with I/O (`werewolf-world.js:229-290`), the plan in
-  `src/core/due.js`; a turn is an ask from the host (`werewolf-world.js:258`).
-- The table changes in place (`werewolf-world.js:137-141`, `171`;
-  `table-talk.js:32`) and reads the clock (`stamp()`, `table-talk.js:16`,
-  at `werewolf-world.js:132`, `183`; `performance.now()`, `:270`).
-  `asks` reads the page (`werewolf-world.js:253`, `werewolf.js:181`);
-  `propose` waits out the typing (`werewolf-world.js:284`).
-- What an agent was given is in memory (`due.js:57`); a failed run commits
-  nothing (`src/core/runtime.js:277`, `werewolf.js:51`, `194`). A stale
-  action is a try on the new turn (`werewolf-world.js:178-180`); a run stops
-  only once its agent is due for nothing (`due.js:136-137`).
-- The deal is random in `newGame` (`werewolf-world.js:111`); the clock, the
-  narrator, hellos and leaving are the page's (`werewolf.js:69-117`, `233-253`).
-- `view.step` is the rules' (`werewolf-rules.js:294`) and friends get who
-  runs (`werewolf.js:992`): at night both tell who holds a role. A seat's
-  own vote is the page's (`werewolf-rules.js:297`, `werewolf.js:54`, `647`).
-- One world and runtime per game (`werewolf.js:172-199`); the chat outlives
-  it (`werewolf.js:46`); chat before a game has no writer (`:623-624`).
+- Five calls with I/O (`werewolf-world.js:229-290`); a prompt is built from
+  the whole table (`:386-416`); friends get a view plus every seat's runs
+  and failures (`werewolf.js:988-993`).
+  One runtime per game, for its agents (`werewolf.js:172-199`); people have
+  none; the page writes their "your turn" (`werewolf.js:323-334`).
+- The table lives in the page's memory (`werewolf.js:40`), changes in place
+  (`werewolf-world.js:137-141`, `171`; `table-talk.js:32`) and is stamped by
+  `stamp()` (`table-talk.js:16`). Given asks are in memory (`due.js:57`); a
+  failed run commits nothing (`src/core/runtime.js:277`); a stale action is
+  a try on the new turn (`werewolf-world.js:178-180`).
+- The deal is random in `newGame` (`werewolf-world.js:111`); the clock,
+  narrator, hellos and leaving are page timers (`werewolf.js:69-117`,
+  `233-253`, `955-965`); `asks` reads the page (`werewolf-world.js:253`);
+  chat before a game has no writer (`werewolf.js:623-624`).
+- `view.step` is the rules' (`werewolf-rules.js:294`); a seat's own vote is
+  the page's (`werewolf.js:54`, `647`). A friend's id is what their page
+  claims (`werewolf.js:948-950`). There is no breaker (`werewolf.js:186`).
