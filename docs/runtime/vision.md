@@ -67,7 +67,8 @@ truth can move from a file to a database and no rule changes.
 **5. People declare; agents reconcile.** Only people say what they want: a
 request, a watch, a standing intent. Agents work the board toward it, and
 when it is met, the board comes to rest. Chains between agents are capped,
-and agents that keep running are stopped for a person to settle.
+and agents that keep undoing each other for different people are stopped
+for those people to settle.
 
 ## Four components
 
@@ -76,9 +77,11 @@ and agents that keep running are stopped for a person to settle.
 | Store | keeps the shared state; lands every change, in one order, on a condition | 2, 4 |
 | Local | keeps what only the owner's machine writes: who asked for work, the limits, outside actions | 3 |
 | World | pure functions: who is due, what a member sees, what a change does | 1, 3, 4 |
-| Controller | waits for a change, starts and stops runs, commits what they made | 1, 2 |
+| Controller | one per agent: waits for a change, starts and stops its run, commits what it made | 1, 2 |
 
-Each answers one question: the world whether a run *should* happen, local
+An owner has one host and one local, which pay and vouch for all their
+agents; each agent has its own controller, and each task one audience, the
+people it runs for. Each component answers one question: the world whether a run *should* happen, local
 whether it *may*, the controller that it *does*, the store what is *true*.
 
 **Why local is not part of the store.** Who can write a thing decides
