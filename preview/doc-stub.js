@@ -552,7 +552,7 @@ merges their changes.
 | Shell | \`desktop/\` | Electron main: windows, menus, dialogs, the keychain; starts the doc host |
 | Pages | \`web/\` | the editor; turn typing into operations and back |
 | Doc host | \`src/host/\`, \`desktop/doc-host.js\` | holds open docs, does every write |
-| Relay | \`relay/\` | a Cloudflare Worker that forwards messages between the host and teammates' pages; stores nothing |
+| Relay | \`relay/\` | a Cloudflare Worker that forwards messages between the host and teammates' pages, storing nothing of a doc; deployed again at infer.ponjo.app, it keeps the game pages' tables, each in a room with its state ([rooms](worlds/rooms.md)) |
 
 ## Components in the doc host
 
@@ -2038,7 +2038,7 @@ relay runs on.
 
 Done when: a game goes on with the opener's page closed; a refresh is
 back in the same seat; a page receives no view but its own seat's (a test
-reads every frame); a page cannot act as another seat; \`test/relay.test.js\`
+reads every frame); a page cannot act as another seat; \`test/tables.test.js\`
 covers rooms with state.
 
 ## 5. The doc on the new core
