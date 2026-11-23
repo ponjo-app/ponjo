@@ -100,7 +100,7 @@ export function newComment({ thread, anchor = null, body, resolved }, { by, at }
 
 /**
  * What a buddy's run appended to its copy of the sidecar
- * (docs/agent-config.md, Comments): lines in `after` that were not in
+ * (docs/app/agent-config.md, Comments): lines in `after` that were not in
  * `before` and have no `id` (a changed comment has one), each with `line`,
  * its place among them from 0 (PONJO_GROUPS names a comment by it). They
  * are the lines `{ anchor: { exact }, body }`, `{ body }` or `{ thread, body }`,
@@ -223,7 +223,7 @@ export function threadsOf(comments, mentionable = [], text = null) {
  * comment there: X's comment answers it. A comment asks whom it @mentions;
  * one that mentions no one asks the thread's others: the one that opened it
  * and each that an asker @mentioned there before, never an asker. An empty
- * one (it reopened the thread) asks no one (docs/host-spec.md, Asks
+ * one (it reopened the thread) asks no one (docs/app/host-spec.md, Asks
  * and watches). Resolving drops what was asked before it, so reopening asks no one.
  */
 export function askedOf(thread, askers) {

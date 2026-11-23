@@ -48,7 +48,7 @@ project by the path alone.
 ## Comments
 
 The sidecar copy holds every thread of the doc
-([SPEC](../spec/SPEC.md)). To comment, the agent appends lines; the
+([SPEC](../../spec/SPEC.md)). To comment, the agent appends lines; the
 app fills in `id`, `by` and `at`.
 
 | Line | Makes |
@@ -100,7 +100,7 @@ whatever they say.
 ### Actions
 
 An agent acts outside the doc only by proposing an action with one of its
-comments ([outside actions](agent-runtime.md#outside-actions)). The prompt
+comments ([outside actions](../runtime/README.md#outside-actions)). The prompt
 lists the actions installed here, each with what it does and the input it
 takes. In `PONJO_ACTIONS`, a line for each:
 `{"comment":<its comment's place among the lines it appended, from
@@ -192,7 +192,7 @@ at the user's own risk, under the CLI's own permissions.
 
 The shipped scripts give an agent no way to act on the outside world: an
 action there would skip the writer, and could be done twice or by no one's
-leave ([agent runtime](agent-runtime.md#outside-actions)). Claude Code gets
+leave ([agent runtime](../runtime/README.md#outside-actions)). Claude Code gets
 only its tools to read, edit, search and fetch (`--tools`), and none of
 the user's MCP servers (`--strict-mcp-config`). Codex reads and edits only:
 it loads no `~/.codex/config.toml` (`--ignore-user-config`), so none of its

@@ -1,5 +1,5 @@
 #!/bin/sh
-# Runs a buddy on Claude Code (docs/agent-config.md): the prompt on stdin,
+# Runs a buddy on Claude Code (docs/app/agent-config.md): the prompt on stdin,
 # the copies of the doc and its comments in the working folder, which it
 # edits and appends its comments to. Yours to change.
 # The project is read only: its files are the user's, not the copy.
@@ -7,7 +7,7 @@
 # @"…" attaches the copy as read, so Claude edits it without reading it first.
 # The prompt's paths are the project's: the system prompt says where each is.
 # It reads, edits, searches and fetches; no shell and none of your MCP
-# servers: an action on the outside world is a proposal (docs/agent-runtime.md).
+# servers: an action on the outside world is a proposal (docs/runtime/README.md).
 exec claude -p "@\"$PONJO_DOC\"" --permission-mode acceptEdits --no-session-persistence \
   --tools Read,Edit,Write,Glob,Grep,WebSearch,WebFetch --strict-mcp-config \
   ${PONJO_SETTING_MODEL:+--model "$PONJO_SETTING_MODEL"} \

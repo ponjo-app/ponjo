@@ -1,7 +1,7 @@
 # Architecture
 
 How the Ponjo app is built. How buddies run is a separate design that sits
-on top of it: [agent runtime](agent-runtime.md). Every rule, limit and call
+on top of it: [agent runtime](../runtime/README.md). Every rule, limit and call
 is in the [host spec](host-spec.md).
 
 ## Principles
@@ -45,7 +45,7 @@ merges their changes.
 | Component | Owns | Interface |
 | --- | --- | --- |
 | Doc (`doc-service.js`) | one open doc: its text, comments and change log, in memory | the door (below) |
-| Opener (`open-doc.js`) | joins a doc, as a world (`doc-world.js`), to its [agent runtime](agent-runtime.md): the runtime hears each change, and the world lands what runs leave through the door | `openDoc` |
+| Opener (`open-doc.js`) | joins a doc, as a world (`doc-world.js`), to its [agent runtime](../runtime/README.md): the runtime hears each change, and the world lands what runs leave through the door | `openDoc` |
 | History | the doc's versions on disk | `record`, `list`, `read` |
 | Store | reading, writing and watching files | `read`, `write`, `watch`, `move` |
 | ProjectService | the project's file tree, as everyone sees it | `list`, `read`, `open` |

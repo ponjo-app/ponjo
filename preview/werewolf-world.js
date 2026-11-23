@@ -1,5 +1,5 @@
 // The werewolf game (site/werewolf.html) as a world for Ponjo's agent
-// runtime (src/core/runtime.js, the contract; docs/agent-runtime.md), as
+// runtime (src/core/runtime.js, the contract; docs/runtime/README.md), as
 // the poker table is (preview/poker-world.js): one game everyone shares,
 // with a change log; who is asked, as the rules say (`due`); `prompt`, what
 // a player is shown, built from its seat's `view` alone; and `land`, the

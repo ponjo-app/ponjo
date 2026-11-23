@@ -1,4 +1,4 @@
-// What the door of a doc checks (docs/architecture.md, The door): the level
+// What the door of a doc checks (docs/app/architecture.md, The door): the level
 // a call needs, and how a refusal says why.
 
 /**

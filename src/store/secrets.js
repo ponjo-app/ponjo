@@ -1,4 +1,4 @@
-// The agents' secret settings, such as API keys (docs/agent-config.md#settings):
+// The agents' secret settings, such as API keys (docs/app/agent-config.md#settings):
 // `secrets.bin` in the config folder, all of them as one JSON object
 // ({ <agent>: { <key>: value } }) encrypted with the system keychain. Never in
 // settings.json or a log. `cipher` encrypts and decrypts: Electron's

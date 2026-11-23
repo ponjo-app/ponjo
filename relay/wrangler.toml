@@ -1,4 +1,4 @@
-# The relay and the teammate's page (docs/architecture.md, Sharing), at
+# The relay and the teammate's page (docs/app/architecture.md, Sharing), at
 # https://share.ponjo.app. Deploy from here with `npm run deploy`, which
 # builds the page first (README.md, Deploying the relay).
 # The tests run it locally with wrangler (test/relay/harness.js).

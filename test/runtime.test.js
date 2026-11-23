@@ -1,5 +1,5 @@
 // The runtime (src/core/runtime.js) on a world that refuses
-// (docs/agent-runtime.md, Refused and failed): a turn-based game, small.
+// (docs/runtime/README.md, Refused and failed): a turn-based game, small.
 // A refusal is the world's own change: it says why in the player's next
 // view and asks again, a step deeper, or plays its fallback. The runtime
 // knows nothing of it, and still comes to rest.

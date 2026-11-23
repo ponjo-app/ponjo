@@ -1,5 +1,5 @@
 @echo off
-rem Runs a buddy on the Ponjo agent (docs/ponjo-agent.md): ponjo.mjs,
+rem Runs a buddy on the Ponjo agent (docs/app/ponjo-agent.md): ponjo.mjs,
 rem next to this script, on your own node. Yours to change.
 where node >nul 2>nul
 if errorlevel 1 (

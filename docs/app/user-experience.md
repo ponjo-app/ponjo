@@ -328,5 +328,5 @@ and 30 days, and by model.
   row onto a folder to move it. A file's comments go with it when it is
   renamed, moved or deleted here.
 - **Comments** are in `X.md.comments.jsonl` next to the doc, one per line, so
-  they merge in git ([format](../spec/SPEC.md)). Moving a doc outside the app,
+  they merge in git ([format](../../spec/SPEC.md)). Moving a doc outside the app,
   move this file with it.

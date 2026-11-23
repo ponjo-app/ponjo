@@ -2,9 +2,9 @@
 
 Every rule, limit and call of the doc host, for building and checking it.
 For the design and its principles, read [architecture](architecture.md)
-and [agent runtime](agent-runtime.md) first. Product: [product vision](product-vision.md); what a
+and [agent runtime](../runtime/README.md) first. Product: [product vision](product-vision.md); what a
 person sees and does: [user experience](user-experience.md); the comment
-format: [SPEC](../spec/SPEC.md); tests: [testing](testing-ci.md).
+format: [SPEC](../../spec/SPEC.md); tests: [testing](testing-ci.md).
 
 
 ## Overview
@@ -83,8 +83,8 @@ The code says turn nowhere: a buddy answering is a run.
 | File | Where | Holds | Is |
 | --- | --- | --- | --- |
 | a doc | anywhere; in a project, under its folder | the text | shared truth |
-| its comments | beside it, `<doc>.comments.jsonl` ([SPEC](../spec/SPEC.md)) | threads, anchored on the text | shared truth |
-| a project's buddies | `.ponjo/buddies/<name>.md` in the project ([PROJECT](../spec/PROJECT.md)) | each buddy: its id, its persona | shared truth |
+| its comments | beside it, `<doc>.comments.jsonl` ([SPEC](../../spec/SPEC.md)) | threads, anchored on the text | shared truth |
+| a project's buddies | `.ponjo/buddies/<name>.md` in the project ([PROJECT](../../spec/PROJECT.md)) | each buddy: its id, its persona | shared truth |
 | the user's buddies | `buddies/` in the config folder | the same, for every doc | this user's |
 | `settings.json` | config folder | the user's id and name, editor and views' settings, the agent picked and its settings | this user's |
 | `agents/` | config folder | each agent: a program and its manifest ([agent config](agent-config.md#agents)) | this user's |
@@ -107,7 +107,7 @@ is doc mode: one doc, the user's buddies, no room. A folder opened from the
 home page is project mode: a file tree, the user's buddies and the
 project's, and a room to share. A project's buddy wins over one of the
 user's with its name; name, face and color follow one rule ([PROJECT
-§2](../spec/PROJECT.md)). The first start writes the user's first buddy,
+§2](../../spec/PROJECT.md)). The first start writes the user's first buddy,
 Clippy.
 
 ## The doc
@@ -142,7 +142,7 @@ change to the comments with no `ops` and `comments: true`), `saved`
 Every change to a doc is a line in one ordered log, in memory: `{ rev, by:
 { id, kind: person | buddy | outside }, at, edit? | comment?, group? }`.
 An `edit` is insert and delete operations, offsets in UTF-16 code units of
-the doc's text; a `comment` is a comment line ([SPEC](../spec/SPEC.md));
+the doc's text; a `comment` is a comment line ([SPEC](../../spec/SPEC.md));
 `group` the comment an edit hangs on, to undo with it. `rev` counts the
 changes since the host opened the doc, which `epoch` names; one `rev`
 versions the text and the comments, so whether anything changed since a
@@ -332,7 +332,7 @@ is answered, so typing reaches others while it goes on.
 
 A buddy runs only on docs open on this machine, and only for a person: on
 an ask, or while a person has it watch the doc. When it runs is the
-[agent runtime](agent-runtime.md)'s to decide; this section is the doc's
+[agent runtime](../runtime/README.md)'s to decide; this section is the doc's
 side: who may ask, what asks and wakes a buddy, what a run is given, and
 how what it returns lands. The runtime reaches the doc only through its
 door, writing as the buddy, as a window writes as a person. A run
@@ -562,7 +562,7 @@ between processes. The doc host is the app's utility process. A page talks
 to it through `{ call, onEvent }`: in the app a message port, in a browser
 the relay (`web/relay.js`); the host serves both the same way (`serve` in
 `desktop/doc-host.js`), adding `who`. `team.html` is the doc page on the
-relay; in the [preview](../preview/) `doc-stub.js` plays the host, and runs
+relay; in the [preview](../../preview/) `doc-stub.js` plays the host, and runs
 its buddies' runs in the page through the relay's model door
 (`infer.ponjo.app`).
 
@@ -593,7 +593,7 @@ declaration, listed in `VIEWS`, passing the contract test.
 | Doc | `src/host/doc-service.js` | order every change to one doc, and write it | the door above; `door`, `subscribe(fn)` |
 | Opener | `src/host/open-doc.js` | join a doc and its buddies | `openDoc` |
 | Controller | `src/host/buddy-runtime.js` | run the doc's buddies as the rules say, reaching the doc through its world: the loop (`src/core/runtime.js`) with this machine's runs, logs and settings | `watch`, `retry`, `resume`; event `buddies` |
-| Doc world | `src/host/doc-world.js` | the doc as the runtime sees it: members, asks, views, waiting, and landing what a run left | the [five calls](agent-runtime.md#the-worlds-five-calls) |
+| Doc world | `src/host/doc-world.js` | the doc as the runtime sees it: members, asks, views, waiting, and landing what a run left | the five calls ([agent runtime, Today](../runtime/README.md#today)) |
 | Executor | `src/host/runner.js` | run the agent once on copies | `run(task, copies)` |
 | ProjectService | `src/host/project-service.js` | the project's files, the same for everyone | `list`, `read`, `open` |
 | Room | `src/host/room.js` | who is in the room and at what level | the owner's `openRoom`, `closeRoom`, `lockRoom`, `setLevel`, `kick`, `room` |

@@ -1,4 +1,4 @@
-// The Ponjo agent's turn (docs/ponjo-agent.md), with no I/O of its own:
+// The Ponjo agent's turn (docs/app/ponjo-agent.md), with no I/O of its own:
 // the tools, the loop, the check of a proposal and each provider's infer.
 // Imports nothing, so it runs in Node, next to ponjo.mjs, and in a browser
 // (preview/doc-stub.js). Yours to change.
@@ -80,9 +80,9 @@ const TOOLS = [
  * sidecar, groups, actions, text }: the copies' new texts, the doc with every comment's
  * edits and the sidecar with a line for each comment, and `groups`, for
  * each comment with edits, { comment (its place among the lines), doc (the
- * doc after its edits) } (docs/agent-config.md, PONJO_GROUPS), `actions`,
+ * doc after its edits) } (docs/app/agent-config.md, PONJO_GROUPS), `actions`,
  * { comment, action, input } for each action a comment proposes
- * (docs/agent-runtime.md#outside-actions), and what
+ * (docs/runtime/README.md#outside-actions), and what
  * the model wrote in that last step. Throws when the turn fails.
  *
  * The messages are in one form for every provider: { role: 'user', content },

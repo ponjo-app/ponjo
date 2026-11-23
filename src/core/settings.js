@@ -131,14 +131,14 @@ export const viewSettings = (settings, view) => declared(settings.views[view.id]
  * valid, else its default; a secret from `secrets`, the agent's decrypted
  * ones, else none.
  */
-/** Whether action `id` asks the owner first (docs/agent-runtime.md#outside-actions): unless its `ask` is set false. */
+/** Whether action `id` asks the owner first (docs/runtime/README.md#outside-actions): unless its `ask` is set false. */
 export const asksFirst = (settings, id) => objectOr(settings.actions[id]).ask !== false;
 
 export const agentSettings = (settings, agent, secrets = {}) => values(objectOr(settings.agents[agent.id]), agent.settings, secrets);
 
 /**
  * Agent `id` (a program's file name) as its manifest `{ name, about,
- * settings }` declares it (docs/agent-config.md#agents), its `settings` as a
+ * settings }` declares it (docs/app/agent-config.md#agents), its `settings` as a
  * view's fields with the types `text` and `secret` too: `{ id, name, about,
  * settings }`. With no manifest, or one that is not valid, it is its file
  * name, with no settings.

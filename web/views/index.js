@@ -17,7 +17,7 @@
 // VIEWS. A doc opens in the view that is on and claims its extension, else in
 // the Plain text view, for any text file.
 //
-// A view keeps its latency promise (docs/host-spec.md, Editing) only up to
+// A view keeps its latency promise (docs/app/host-spec.md, Editing) only up to
 // a size, its `limits`: { chars, the doc's length }. A doc past them opens in the
 // Plain text view, unless the person chooses the view anyway; past the Plain
 // text view's limits too, it opens read-only. The Plain text view colours
@@ -31,7 +31,7 @@ const CLAIMING = [markdown];
 
 /**
  * The latency promise every view keeps for a doc within its `limits`, while
- * a teammate types too (docs/host-spec.md, Editing, B), in milliseconds:
+ * a teammate types too (docs/app/host-spec.md, Editing, B), in milliseconds:
  * from the text to an editable view (B1); from a key to its character on
  * screen (B2) and in the file (B3, `saved`); from another writer's edit
  * arriving to it shown, the network aside (B4); from a key to its character

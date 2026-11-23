@@ -1,4 +1,4 @@
-// The Markdown view's live preview (docs/markdown-view.md, #358), checked in
+// The Markdown view's live preview (docs/app/markdown-view.md, #358), checked in
 // Electron: what each piece of Markdown shows with the selection away and on
 // its lines; what each key and tool does to the text and the selection;
 // where a click puts the caret; and invariants that hold under random

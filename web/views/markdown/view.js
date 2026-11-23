@@ -2,7 +2,7 @@
 // (web/views/codemirror.js), drawn formatted as it is typed (preview.js), its
 // syntax showing on the lines being edited. Its text is the file's: what it
 // shows is what is saved, and nothing but the person's typing changes it.
-// Its tools type the syntax (chrome.js). See docs/markdown-view.md.
+// Its tools type the syntax (chrome.js). See docs/app/markdown-view.md.
 
 import { EditorSelection, Prec } from '@codemirror/state';
 import { EditorView, keymap } from '@codemirror/view';

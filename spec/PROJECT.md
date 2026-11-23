@@ -3,7 +3,7 @@
 A **buddy** is someone you @mention in a doc: a name and who it is, in a
 markdown file. What does the work is an agent CLI
 (Claude Code, Codex) chosen on each machine
-([agent config](../docs/agent-config.md)); a buddy only says who it is.
+([agent config](../docs/app/agent-config.md)); a buddy only says who it is.
 
 The **user's** buddies are in `buddies/` in their config folder and in
 every doc. A **project's** buddies are in its `.ponjo/buddies/`, in its
@@ -64,4 +64,4 @@ with, and comments there as a member does: new threads and replies; only
 people resolve. Each comment's edits can be undone on their own. On the machine, it
 does whatever its agent CLI's own config allows; Ponjo only tells it
 where the project folder is
-([agent config](../docs/agent-config.md#permissions)).
+([agent config](../docs/app/agent-config.md#permissions)).

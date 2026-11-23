@@ -41,8 +41,8 @@ for (const entry of await readdir(demo, { recursive: true, withFileTypes: true }
   if (type) DEMO.images[path] = { type, data: (await readFile(file)).toString('base64') };
   else DEMO.files[path] = await readFile(file, 'utf8');
 }
-for (const name of await readdir(join(root, 'docs'))) {
-  if (name.endsWith('.md')) DEMO.files[`ponjo-docs/${name}`] = await readFile(join(root, 'docs', name), 'utf8');
+for (const name of await readdir(join(root, 'docs', 'app'))) {
+  if (name.endsWith('.md')) DEMO.files[`ponjo-docs/${name}`] = await readFile(join(root, 'docs', 'app', name), 'utf8');
 }
 
 const stub = (name, format, define) => build({

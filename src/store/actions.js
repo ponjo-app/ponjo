@@ -1,4 +1,4 @@
-// Actions (docs/agent-runtime.md#outside-actions): what an agent may propose
+// Actions (docs/runtime/README.md#outside-actions): what an agent may propose
 // to do on the outside world, in the config folder's `actions/`: the
 // program `<name>` (`<name>.cmd` on Windows) and its manifest `<name>.json`
 // ({ name, about, input }), as an agent's. None ship: the owner installs

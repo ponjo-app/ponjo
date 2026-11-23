@@ -1,4 +1,4 @@
-// The agent runtime of one open doc (docs/agent-runtime.md): the loop
+// The agent runtime of one open doc (docs/runtime/README.md): the loop
 // (src/core/runtime.js) on this machine. What only the doc host can do is
 // here: a run is the agent program once on its view (execute, runner.js),
 // what the loop does and why is written to this machine's agent log

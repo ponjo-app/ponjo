@@ -1,5 +1,5 @@
 #!/bin/sh
-# Runs a buddy on Codex (docs/agent-config.md): the prompt on stdin, the
+# Runs a buddy on Codex (docs/app/agent-config.md): the prompt on stdin, the
 # copies of the doc and its comments in the working folder, which it edits
 # and appends its comments to; its last message on stdout, for the trace.
 # Yours to change.
@@ -11,7 +11,7 @@ task=-
 [ -n "$PONJO_PROJECT" ] && task="The task is in the stdin block. Its paths are the project's: your copies of the doc and its comments are at those paths in your working folder, and the project's other files at those paths in $PONJO_PROJECT, read only."
 # It reads and edits only: your config.toml (its MCP servers, hooks), apps
 # and plugins are not loaded, and its commands have no network. An action
-# on the outside world is a proposal (docs/agent-runtime.md).
+# on the outside world is a proposal (docs/runtime/README.md).
 reply="$(mktemp)"
 codex exec --sandbox workspace-write --skip-git-repo-check \
   --ignore-user-config --disable apps --disable plugins \

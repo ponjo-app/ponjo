@@ -1,7 +1,7 @@
-// The Ponjo agent (docs/ponjo-agent.md): a model reads and comments, and
+// The Ponjo agent (docs/app/ponjo-agent.md): a model reads and comments, and
 // this program checks each comment and applies it to the copies. Run by
 // `ponjo` (`ponjo.cmd` on Windows) next to it, on your own node, under
-// the contract of docs/agent-config.md; its settings (ponjo.json) come
+// the contract of docs/app/agent-config.md; its settings (ponjo.json) come
 // as PONJO_SETTING_*. The turn itself is ponjo-core.mjs; this is its I/O.
 // Plain fetch, no SDK: it runs from the config folder, with no
 // node_modules. Yours to change.

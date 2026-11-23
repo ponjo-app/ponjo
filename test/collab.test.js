@@ -1,4 +1,4 @@
-// Many writers (docs/markdown-view.md, Many writers): two Markdown views of
+// Many writers (docs/app/markdown-view.md, Many writers): two Markdown views of
 // one doc, each with the page's client, joined to a DocService 150 ms away,
 // typed into over the DevTools protocol as test/views.test.js does. Each
 // test is a must-pass case of plan A, or a measurement it logs.
@@ -292,7 +292,7 @@ for (const [prefix, teammate] of [['', false], ['through the relay: ', true]]) {
   });
 }
 
-// Measured, with no bar (docs/markdown-view.md, The prototype).
+// Measured, with no bar (docs/app/markdown-view.md, The prototype).
 
 test('measure: how often merges break bold, links or tables', MEASURE, async () => {
   const count = () => run(`['.pj-md-strong', '.pj-md-link', '.pj-md-table', 'tr', 'td', 'th'].map((s) => document.querySelector('.pj-md').querySelectorAll(s).length).join()`);
