@@ -1,219 +1,239 @@
 # Agent runtime
 
 How agents run against a world. Why it is built this way: [runtime
-vision](runtime-vision.md). Ponjo's doc world: [host spec](host-spec.md#buddies).
-What an agent program gets and returns: [agent config](agent-config.md).
+vision](runtime-vision.md). What an agent program gets and returns: [agent
+config](agent-config.md).
 
 | Word | Means | In Ponjo |
 | --- | --- | --- |
 | member | a person or an agent | |
 | agent | an AI member: an id and a prompt | a buddy |
 | agent program | the tool that does an agent's thinking | an agent |
-| world | the state the members share, and its rules | a doc and its comments |
-| writer | the only part of a world that changes its state | the doc's door |
-| ask | a request from a person that names an agent, open until it answers | a comment that @mentions a buddy |
-| watch | a person's standing request: run this agent when its view changes | Watch this doc |
-| run | an agent program working once for one agent | |
+| world | the rules: who is due, what each member sees, what a change does | the doc world |
+| store | where the world's state is kept, and the one way it changes | the doc's door |
+| local | what only the owner's machine knows and allows | the config folder |
+| task | one agent, due for some people, given some things to answer | |
+| run | an agent program working once on a task | |
 
-## Parts
+## Components
 
 ```mermaid
 flowchart LR
+  others(["People, outside programs, the host's clock"]) -- "commit" --> store
   subgraph runtime["Runtime"]
-    loop["Loop"] -- "state" --> plan["Plan"]
-    plan -- "start, stop" --> loop
-    loop -- "start" --> run["Run"]
-    run -- "ended" --> loop
+    loop["Loop"] -- "launch, stop" --> run["Run"]
   end
-  loop -- "wait, members, asks" --> world["World and its writer"]
-  run -- "view, propose" --> world
+  loop -- "read, wait" --> store["Store"]
+  loop -- "due" --> world["World"]
+  loop -- "read, allow, changed" --> local["Local"]
+  run -- "view" --> world
   run -- "files, prompt" --> program["Agent program"]
+  run -- "record, act" --> local
+  run -- "commit" --> store
+  store -- "apply" --> world
 ```
 
-| Part | Does | Never |
-| --- | --- | --- |
-| Loop | waits until the world changes, a run ends or a deadline passes; reads the world; applies the plan | decides who runs |
-| Plan | a pure function: state → whom to start and stop, when to look again, and why for each agent | reads a file or a clock |
-| Run | one agent, once: its view in, the agent program, a proposal out | changes the world, or starts a run |
-| World | answers the five calls below, and says how its views compare and settle | knows about runs |
+| Component | Does | Never | Why it stands alone |
+| --- | --- | --- | --- |
+| Store | keeps the shared state; lands every change, one at a time | decides a rule | the state can move (a file, a database, a remote object) and no rule changes |
+| Local | keeps what only the owner's machine may say: who asked for work, what it may spend; carries out outside actions | keeps shared state | anyone who reaches the shared state can write it, so what makes this machine spend comes only from what this machine writes |
+| World | three pure functions: who is due, what a member sees, what a change does | does I/O or reads a clock | a rule is a function of the state: tested alone, the same answer at every look, safe to apply again |
+| Runtime | waits, starts and stops runs, commits what they made | decides who is due | one mechanism for every world |
 
-## The world's five calls
+The agent program is the host's: the runtime calls it, and knows only its
+answer.
+
+## Store
 
 ```
-members()                           who is here: id, name, person or agent, may ask
-asks()                              open asks: id, agent, from whom, when it asked, when it last
-                                    changed; an agent's ask also for whom and how deep
-view(member, { since, asks })       what this member sees: files, a prompt, the version
-wait(version, deadline)             block until something changed after version, or the deadline;
-                                    → the new version and the log since: version, author (a person,
-                                      an agent or the world itself), time, whether only what is
-                                      asked changed, whether it leaves watch runs stale
-propose(member, version, old, new)  → landed, or refused because …
+read()               → { rev, state }
+wait(rev, deadline)  → rev        once the state has moved past rev, or at deadline
+commit(change)       → { rev, actions } | { refused: why }
 ```
 
-And what only the world can say of its views: a view's fingerprint
-(`print`), whether a view holds what a run said wakes it (`wakes`), how
-deep agents may wake each other (`limits`) and how long people's changes
-pause before a watcher runs (`settleMs`). The contract, each value's
-fields: the top of `src/core/runtime.js`.
+- `read` returns one snapshot: `state` is the state at `rev`, whole.
+- `commit` is the only way the state changes, for everyone: a person, an
+  outside program, a run, the host's clock. It applies the world's `apply`
+  to the newest state and lands the result only if the state has not moved
+  meanwhile; if it has, it reads again and applies again. Changes land one
+  at a time, each at a higher `rev`.
+- `rev` is kept with the state and only grows.
+- `wait` returns on any change after `rev`. Its return carries nothing:
+  the caller reads again, so a lost or doubled notice costs nothing.
 
-- `wait` is the only place the runtime waits. It takes no callbacks, so no
-  event can be lost: it asks what changed after a version, and the log
-  answers.
-- `view` is all a run is given. The prompt is built from the view alone.
-- `propose` is the only way a run changes the world. The writer lands it
-  under the world's rules (a doc merges; a game refuses a stale move), in
-  order with every other change.
-- Who may ask is the world's to say (`mayAsk`), and what an ask is: a
-  comment that @mentions a buddy, a player's turn. The runtime knows no
-  levels; it starts work only for those the world says may ask.
+A change names who made it (`by`: a person, an agent or the world) and is
+otherwise the world's. A run's change is `{ by, for, given, depth, base,
+made }`: the people it ran for, what it was given, its depth, the files it
+was given, and what it left (`made`), which may be nothing or `{ failed }`.
 
-## How the plan decides
+*Why.* These four properties (one snapshot, a write on a condition, a
+growing version, a wait) are all the runtime and the world need. So a
+store can be a file held by one process, a database (a transaction;
+`WHERE rev = ?`; notify or poll) or a remote object (its version; `If-Match`;
+a webhook or poll). Only the store changes when the truth moves.
 
-An agent is due when it is not running and either:
+## Local
 
-- **Asked:** an ask names it that is newer than the last one it was given,
-  and has not failed. An agent's ask to another agent counts against the
-  chain limit and runs for the person who started the chain.
-- **Watching:** a person's watch is on, its view changed since its last
-  run started, and the change is ready: a person's once they pause (the
-  world's `settleMs`), the world's own at once, another agent's once that
-  agent's run has ended. Its own change never counts. A run may name what
-  it waits for (in Ponjo, lines of the doc); until its next run, only
-  those wake it.
+```
+read()          → what this machine vouches for
+changed()       → once that changes, or a run ends
+allow(task)     → whether this machine lets the task start
+record(change)  → notes a change a run will commit, before it is committed
+act(actions)    → each action that landed: recorded, approved, carried out once
+```
 
-A change the world calls stale ends the runs only a watch started: they
-saw an old view. In Ponjo a person's edit is stale, a file written outside
-the app is not.
+- Only this machine writes local. Nothing in the store can.
+- It holds what makes this machine spend or act: who turned on which watch,
+  which changes this machine's runs made and for whom, the settings, the
+  record of each outside action, and the limits.
+- `allow` is the limits. A task a person or the world set off has depth
+  0; one only an agent's change set off, that change's depth plus 1. Past
+  the depth limit nothing starts, so agents waking each other come to rest.
+  Past `pauseAfter` runs within `pauseWithin` minutes (the breaker),
+  standing tasks stop starting until a person resumes them, so a loop the
+  depth cannot see, such as a program that echoes an agent, stops too.
+- Writes come before what they cover: a run is counted before it starts,
+  and `record` comes before `commit`. A crash between the two leaves a run
+  counted that never ran, or a record of a change that never landed: both
+  harmless.
 
-**Limits** keep the board coming to rest. A change by a person or the world
-has depth 0; a run woken by an agent's change has that change's depth plus
-1, and past a limit nothing wakes. Past a number of runs in a window, the
-runtime pauses the board's watches and tells a person.
+*Why apart from the store.* Trust is about who can write, not who can
+read. A private part of the store is still written by whoever reaches the
+store: a teammate, `git pull`, an outside program. If a forged entry could
+make this machine spend or act, the entry belongs in local.
 
-## A run
+## World
 
-1. Get the agent's view, and note that it looked at this version.
-2. Give the files and the prompt to the agent program, in a private folder.
-3. Propose what it left behind, based on the version it saw.
-4. Note how it ended. The loop looks again.
+```
+due(state, local)            → [Task]
+view(state, local, task)     → { files, prompt }
+apply(state, change, local)  → { state, actions } | { refused: why }
 
-A run changes nothing itself, so it can be stopped, refused or lost at no
-cost. An action on the outside world (a message, a deploy) belongs in the
-proposal, for the world to carry out once ([outside
-actions](#outside-actions)).
+Task  { agent, for, given, depth, standing, why }
+```
 
-## Refused and failed
+`for` the people the task runs for; `given` the ids of what it answers
+(asks, a watch); `standing` whether only a person's standing request (a
+watch) makes it due; `why` in words, for the agent log.
 
-- **Refused:** the world turned the proposal away (the board moved on, or
-  the move is not allowed), and nothing landed. The refusal is the world's
-  own change, and what comes of it is the world's: it says why in the
-  agent's next view and asks again, or plays its fallback (a game, a
-  default move after 3 refusals). An ask made again because of a run's
-  proposal carries that run's depth, so a world that keeps refusing comes
-  to rest at its depth limit. The runtime has no notion of a refusal: the
-  ask again is newer than the one the run was given, so the agent is due.
-- **Failed:** the program exited with an error, timed out or could not
-  start. Nothing lands. It is shown with Retry and never run again on its
-  own: an agent is slow and costs money.
-- **A failed read of the world** is tried again, later each time (1 s up to
-  30 s).
+- **Pure.** No I/O, no clock, no randomness of its own. What comes from
+  outside comes in a change: the time people paused, as a change the host's
+  clock commits; a dealt deck, as the dealer's change.
+- **From state.** `due` is a function of the state and local: the same
+  inputs, the same tasks. An agent is due while something it was given is
+  newer than what it last answered.
+- **Every run's change lands.** `apply` records each run's change, also one
+  that made nothing or failed, as what that agent has answered, so `due`
+  stops listing it. Nothing about who is due lives elsewhere: a restart
+  changes nothing.
+- **Policy from the state, trust from local.** `due` lists a task only for
+  people local vouches for: who may ask, who turned on the watch, which
+  agent's change asks on whose behalf. The shared state decides what is
+  due; it never decides whom this machine spends for.
+- One task per agent, and the ids in `given` stay the same from one look
+  to the next.
+
+*Why pure.* A rule that is a function of a snapshot can be tested with no
+host, gives the same verdict at every look, can be applied again when a
+commit meets a newer state, and does not care where the state is kept.
+
+## Runtime
+
+```
+loop:
+  { rev, state } = store.read()            on failure: wait(rev, now + backoff), 1 s up to 30 s
+  vouched = local.read()
+  tasks   = world.due(state, vouched), each one local.allow lets start
+  stop each run none of whose given is in tasks
+  launch each task whose agent is not running
+  wait until store.wait(rev) or local.changed() returns
+
+launch(task):
+  view   = world.view(state, vouched, task)
+  answer = program(task, view, signal)     ok (made) | failed | stopped
+  unless stopped: local.record(change); { actions } = store.commit(change); local.act(actions)
+  the run ends; local.changed() returns
+```
+
+- An agent has at most one run. A change it was not given waits for its
+  next run.
+- A run that is stopped commits nothing; the world still lists what it
+  was given, so it runs again when that is due again.
+- The loop waits on `rev` as it read it, so a change that lands while it
+  works makes the wait return at once.
+- It holds only the runs going. Losing them loses at most their work.
+
+The runtime tells its host what it does, as events (`trace`): each look,
+each task's verdict and why; a look that failed; each run's end, how it
+ended and what landed. Only a run's end holds the world's content (its
+view, what it made).
+
+*Why so little.* Everything that differs from world to world (what an ask
+is, when a change is ready, what a member sees, what lands) is the world's;
+everything that must be trusted is local's. What is left is the same for
+every world: wait, start, stop, commit.
 
 ## Outside actions
 
 An action on the outside world (a message, a call to an API, a deploy) is
-part of a proposal, never something a run does itself.
+part of a run's change, never something a run does itself.
 
-- **Proposed.** A run lists its actions next to its other changes, each
-  with the action's name and its input. Only actions the owner installed on
-  this machine can be named; the prompt lists them. Nothing in the world
-  can install one.
-- **Carried out once, after it lands.** An action exists only once its
-  proposal lands; a run that is refused, redone, stopped or failed leaves
-  none. Each landed action gets an id and a record on this machine:
-  proposed, approved, started, then done or failed. The record is never in
-  the world's shared state: shared state is data.
-- **Never twice on its own.** An action that started and did not end (the
-  host stopped) is not started again: it shows as "may have run", with
-  Retry for a person. The action is given its id, so a service that takes
-  an idempotency key drops a second try.
-- **Approved first.** Each action asks the owner first, by default. Only the
-  owner approves, as it runs on the owner's machine with the owner's keys;
-  others see it waiting. The owner may set an action to run without asking,
-  and then only for runs the owner started. Who approved and when is
-  recorded with the action.
-- **Its result** joins the world as the action's reply, at the depth of the
-  run that proposed it plus 1, so agents cannot loop through the outside
-  world.
-- **Not undone.** Undo takes back the edits the action came with, never the
-  action.
+- **Proposed.** A run lists its actions in what it made, each with a name
+  and an input. Only actions the owner installed on this machine can be
+  named; the prompt lists them. Nothing in the store can install one.
+- **Carried out once, after it lands.** `apply` returns the actions of a
+  change that landed; a change that is refused, or a run that is stopped,
+  carries none. Local gives each an id and a record (proposed, approved,
+  started, then done or failed), never in the store.
+- **Never twice on its own.** An action that started and did not end is
+  shown as "may have run", with Retry for a person. It is given its id, so
+  a service that takes an idempotency key drops a second try.
+- **Approved first.** Each asks the owner first, by default. The owner may
+  let an action run without asking, and then only for tasks the owner alone
+  is `for`.
+- **Its result** is committed as the action's reply, one deeper than the
+  run that proposed it, so agents cannot loop through the outside world.
+- **Not undone.** Undo takes back the edits it came with, never the action.
 
-Reading stays with the agent program: its folder, the project, the web.
-What it reads can end up where others see it, and a fetch can carry data
-out in its URL. So the shipped agent programs are set to read, edit, search
-and fetch only: no shell and none of the person's own tool servers.
-Whatever a person adds to their script or their program's config can act
-outside unchecked, and the guarantees above hold only for actions that are
-proposed.
+Reading stays with the agent program: what it reads can end up where
+others see it, and a fetch can carry data out in its URL. So the shipped
+agent programs read, edit, search and fetch only. The guarantees above
+hold only for actions that are proposed.
 
 In Ponjo: an action is a plugin in `actions/` of the config folder, a
-program and a manifest, as an agent is; it gets its input on stdin and its
-id as `PONJO_ACTION_ID`. A run lists its actions in `PONJO_ACTIONS`, each
-on one of its comments, and the record is in `logs/actions.jsonl`. The
-action shows under its comment with what it does, its input, and Approve
-and Decline for the owner; its result is a reply in that thread. Settings >
-Actions lists them, each with Ask first (on by default).
-
-## State
-
-All in memory on this machine; nothing in a shared file, so no shared file
-can make this machine run anything. Per agent: the asks it was given, the
-version it last looked at, its view's fingerprint then, what wakes it,
-failures, and its watch (also kept in the config folder). Per world: the
-runs going and the limits. A restart clears it: open asks run again.
-
-## Agent log
-
-The runtime tells its host what it does as events (`trace`), one format
-for every world: each look, what set it off and each agent's verdict and
-why (asked in which ask, whose change, still typing, at the limit, already
-running), and which runs it started; a look that failed; each run's end,
-how it ended and what landed; the breaker tripping. Only a run's end holds
-the world's content (its view, what it made); the host keeps and shows the
-rest as names, versions and ids. The fields: Event in `src/core/runtime.js`.
-In Ponjo the host writes them as the agent log (Settings > Agents > Agent
-log), and each run's end to the runs' log; it keeps the newest 500, a run's
-end without the doc, and tells them to the owner's windows, whose runtime
-panel (`web/runtime-panel.js`) shows them, as the game pages' do with
-`?debug`.
+program and a manifest; it gets its input on stdin and its id as
+`PONJO_ACTION_ID`; its record is `logs/actions.jsonl`.
 
 ## Security
 
-What the runtime holds to in every world. Who may ask, and what asks, is
-each world's (in Ponjo: [host spec](host-spec.md#buddies)).
-
-- Work starts only for a member who may ask: their ask, an agent's ask for
-  them, or a watch they turned on. A run is proposed for them, and the
-  world lands it as they may.
-- A run sees only its member's view and changes only through `propose`.
+- Work starts only for people local vouches for, and a run's change lands
+  as they may.
+- A run sees only its task's view and changes the state only through
+  `commit`.
 - Outside any view: whoever runs the host can read its files, and an agent
   program must be kept by its own permissions from opening files outside
   its folder.
 
 ## Today
 
-What the code does differently from the runtime above:
+The code (`src/core/runtime.js`, `src/core/due.js`) is the design before
+this one, and the doc world's rules in the [host spec](host-spec.md#buddies)
+follow it:
 
+- The world is one object of five calls with I/O (`members`, `asks`,
+  `view`, `wait`, `propose`); the plan, who is due, is the runtime's
+  (`due.js`), and the world adds `print`, `wakes`, `limits` and `settleMs`.
+- Who is due rests on notes in memory (asks given, failures, each watcher's
+  last look, fingerprint and wake lines), and the doc world keeps in memory
+  which comments its runs posted. A restart drops them: open asks run again.
+- A run that makes nothing or fails commits nothing; a failure is noted in
+  memory, with Retry.
+- Time is in the plan (`now`, people's pause) and in the breaker, kept by
+  the runtime; a look is set off from several places, one at a time.
+- A run stops only when its agent is no longer due at all.
+- The doc world reads the comments, the settings and the actions from disk
+  itself, beside its door.
+- The game worlds (`preview/poker-world.js`, `preview/werewolf-world.js`,
+  `preview/spy-world.js`) change their table in place and read the clock.
 - One runtime per open doc (`src/host/open-doc.js`); it stops when the doc
   closes.
-- Every member sees the whole doc and every thread; in project mode the
-  agent program may read the project folder.
-
-Code: the loop is `src/core/runtime.js`, which reaches nothing but the world
-and what its host gives it, so it can run in a Worker too; the plan
-`src/core/due.js`. On the doc host, `src/host/buddy-runtime.js` gives it the
-run (`src/host/runner.js`), the logs and the settings; the doc world `src/host/doc-world.js`, its
-asks `asksIn` (`src/core/comments.js`) and its prompt `src/core/prompt.js`.
-Three more worlds, which refuse: the poker table (`preview/poker-world.js`),
-the werewolf game (`preview/werewolf-world.js`) and the spy table
-(`preview/spy-world.js`), whose pages run the same runtime in the browser.

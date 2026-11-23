@@ -593,7 +593,7 @@ declaration, listed in `VIEWS`, passing the contract test.
 | Doc | `src/host/doc-service.js` | order every change to one doc, and write it | the door above; `door`, `subscribe(fn)` |
 | Opener | `src/host/open-doc.js` | join a doc and its buddies | `openDoc` |
 | Controller | `src/host/buddy-runtime.js` | run the doc's buddies as the rules say, reaching the doc through its world: the loop (`src/core/runtime.js`) with this machine's runs, logs and settings | `watch`, `retry`, `resume`; event `buddies` |
-| Doc world | `src/host/doc-world.js` | the doc as the runtime sees it: members, asks, views, waiting, and landing what a run left | the [five calls](agent-runtime.md#the-worlds-five-calls) |
+| Doc world | `src/host/doc-world.js` | the doc as the runtime sees it: members, asks, views, waiting, and landing what a run left | the five calls ([agent runtime, Today](agent-runtime.md#today)) |
 | Executor | `src/host/runner.js` | run the agent once on copies | `run(task, copies)` |
 | ProjectService | `src/host/project-service.js` | the project's files, the same for everyone | `list`, `read`, `open` |
 | Room | `src/host/room.js` | who is in the room and at what level | the owner's `openRoom`, `closeRoom`, `lockRoom`, `setLevel`, `kick`, `room` |
