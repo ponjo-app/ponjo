@@ -142,14 +142,18 @@ person's or the world's own, one more than an agent's; `at` when it is due
 by; `why` in words.
 
 - Tasks come from the state alone: who must act, who asked whom, who
-  turned on a watch. Each fact is a change whose `by` the store set, so a
+  turned on a watch. A `watch` task's `given` names the watch and what it
+  last saw, so any answer to it, a failed one too, moves it on, and only a
+  later change makes a new one. Each fact is a change whose `by` the store set, so a
   task names only people who really asked.
 - The order of `tasks` is the world's priority.
 - Where one answer is wanted from several (a line said to the whole
   table), the world lists the task for one member, by a rule of the state.
-- **A task a person waits on has an `at`,** unless a system member, which
-  acts at once, answers it. The rules decide what happens when it passes;
-  no person waits for ever.
+- **A task that holds up a person has an `at`:** a turn they cannot play
+  until it is answered. A system member, which acts at once, needs none.
+  The rules decide what happens when it passes. A task that holds no one
+  up, such as an ask, needs none either: its run, if it hangs, fails at
+  the run's timeout.
 
 ### Answers
 
@@ -158,12 +162,14 @@ kept in the state by a pure wrapper around its `apply`:
 
 | A run's change | The ledger | The task |
 | --- | --- | --- |
-| accepted | answered | gone |
+| accepted, whole or in part | answered | gone |
 | refused by `apply` | a try, and why, shown in the seat's next view | due again; at the world's limit of tries, its `fallback` |
-| `{ failed }`, or not started by the wallet | failed | `turn`: its `fallback` at once; `ask`, `watch`: gone, a person may ask again |
+| `{ failed }`, or not started by the wallet | failed | `turn`: its `fallback` at once; `ask`: gone, a person may ask again; `watch`: gone until its view changes |
 | nothing | answered | `turn`: its `fallback` at once; `ask`, `watch`: gone |
 
-A refused run still writes the ledger: that write takes a `rev`, and
+`apply` may land part of a change and drop what no longer applies (a
+reply in a thread resolved meanwhile). A refused run still writes the
+ledger: that write takes a `rev`, and
 wakes only the seat whose view it changes. A world gives only `apply`,
 `fallback(state, task)` and its limit of tries. A person's or an outside member's refused change lands nothing:
 they see why at once. Answers are in the state, keyed by `given`, never by
