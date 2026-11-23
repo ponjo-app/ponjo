@@ -1,10 +1,11 @@
-// The runtime panel (site/design.html, Runtime panel): what Ponjo's agent
-// runtime (src/core/runtime.js) does, as Chrome's DevTools shows a page,
-// docked on the right. It knows no world: it shows the events the runtime
-// traces (look, look.failed, run.end, watches.paused) and the agents'
-// statuses, as its host hands them over. Looks: why each look came and each
-// agent's verdict. Runs: each run, what it came to, and opened, what it was
-// given, made and landed. Agents: what each runs now, and what failed.
+// The runtime panel (site/design.html, Runtime panel): what the agents'
+// controllers (src/core/controller.js) do, as Chrome's DevTools shows a
+// page, docked on the right. It knows no world: it shows the events its host
+// traces (look, run.end, watches.paused) and the agents' statuses, as its
+// host hands them over. Looks: what changed and each agent's verdict: a run
+// started, stopped or not started. Runs: each run, what it came to, and
+// opened, what it was given, made and landed. Agents: what each runs now,
+// and what failed.
 
 import { icon } from './icons.js';
 
@@ -30,9 +31,9 @@ function cameTo(end) {
  * world names them; `retry(id)` runs an agent's failed asks again;
  * `detail(run)`, if given, resolves to what the host keeps of a run (a
  * trace), as nodes, or null, shown in place of the event's; `onClose()`
- * once it is closed. Returns { add(event, at) (an event the runtime traced,
+ * once it is closed. Returns { add(event, at) (an event its host traced,
  * at `at`, ms since the epoch: a run's end with no look before it is a run
- * from before), agents(statuses) (as the runtime's `agents` emit has them),
+ * from before), agents(statuses) (as its host's `agents` emit has them),
  * show(run) (opens a run), close() }.
  */
 export function createRuntimePanel({ where, faceOf, askText = (id) => id, retry, detail, onClose = () => {} }) {
@@ -169,12 +170,12 @@ export function createRuntimePanel({ where, faceOf, askText = (id) => id, retry,
   function drawLooks(looks) {
     const name = who.value;
     const shown = looks.filter((e) => e.type !== 'look' || e.verdicts.some((v) => (!name || v.name === name) && (!only.checked || v.run)));
-    if (!shown.length) return [el('p', 'pj-runtime-empty', only.checked ? 'No look has started a run yet.' : 'No looks yet. The runtime looks each time the world changes or a run ends.')];
+    if (!shown.length) return [el('p', 'pj-runtime-empty', only.checked ? 'No look has started a run yet.' : 'No looks yet. An agent looks each time what it sees changes.')];
     return shown.slice().reverse().map((e) => {
       const look = el('details', 'pj-runtime-look');
       const sum = el('summary');
-      if (e.type !== 'look') { // a look that failed, or the breaker
-        sum.append(stamp(e.at), el('span', 'pj-runtime-why', e.type === 'look.failed' ? `The look failed: ${e.error}; again in ${e.againMs / 1000} s` : `Watches paused: ${e.runs} runs in ${e.within} min`), el('span'));
+      if (e.type !== 'look') { // the watches paused
+        sum.append(stamp(e.at), el('span', 'pj-runtime-why', `Watches paused: ${e.runs} runs in ${e.within} min`), el('span'));
         look.append(sum);
         return look;
       }

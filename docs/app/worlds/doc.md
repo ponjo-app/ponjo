@@ -140,22 +140,23 @@ command-line agent calls its provider itself and waits on its own.
 
 ## Today
 
-- The world is six calls with I/O (`src/host/doc-world.js:80-236`), the
-  plan the controller's (`src/core/due.js:44`); one controller per open doc,
-  for all its buddies (`src/host/open-doc.js:42`), none for people.
-- Answers are comments, but notes in memory hold them too (`seen`,
-  `src/core/runtime.js:92-93`); `taken`, a buddy's comments' askers and
-  depth (`posted`, `doc-world.js:38`) and a watch with its print and wake
-  are the config folder's (`src/store/history.js:149-213`).
-- A watch run that makes nothing commits nothing (`doc-world.js:194`); a
-  failed watch waits for Retry in memory (`runtime.js:278`), and runs again
-  when the agent changes (`open-doc.js:52`).
-- `rev` starts again at each opening (`doc-service.js:94-96`); comments are
-  read from disk at each call (`doc-service.js:389-392`); a run lands in a
-  commit per group and comment (`doc-world.js:181-206`), so a watcher
-  counts a buddy's change once its run ended (`due.js:84-89`).
-- People's pause is the controller's timer (`due.js:90-91`); `at` is
-  `Date.now()` (`doc-service.js:442`); a window's edit moves over a log of
-  1,000 (`doc-service.js:774`); the depth limit is 1,000
-  (`doc-world.js:19`); the breaker counts 300 runs in 10 min
-  (`runtime.js:298-304`); runs share no queue.
+The world is `src/core/doc-world.js`; its store the door with
+`src/host/doc-store.js` beside it; a controller per buddy per open doc,
+and the clock's (`src/host/buddy-runtime.js`). What differs:
+
+- People have no controllers. Typing, comments, undo and outside files
+  land at the door of its own accord; what they do to the watches and the
+  typing to settle is the world's `noted`, not `apply`.
+- `record` is the history's `taken.json` and `posted.json`, a watch's
+  `seen` is `print` in `watching.json`, and its `since` is set again on
+  opening; `rev` starts again at each opening, and the ledger is in memory.
+- `wait` wakes a member when its tasks or the door's rev change, not on a
+  hash of its whole view.
+- Why a watch run failed, and what a watcher is told is new since its last
+  run (`newSince`), are in memory: after a restart it is a first look.
+- The limits: a depth limit of 1,000 (`buddy-runtime.js`), and N is
+  Settings > Agents' `pauseAfter` runs within `pauseWithin` minutes since a
+  person last acted; capacity is one run per buddy per doc, and runs share
+  no queue.
+- `at` is `Date.now()`; a window's edit moves over a log of 1,000
+  (`doc-service.js`).

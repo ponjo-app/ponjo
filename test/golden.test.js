@@ -1,8 +1,8 @@
-// Golden agent logs (docs/runtime/README.md, Agent log): fixed scenarios run
+// Golden agent logs (docs/app/host-spec.md, Buddies): fixed scenarios run
 // on a fake clock against a real doc and the fake agent
 // (test/fixtures/fake-agent.js), and the agent log each writes is compared
 // line by line with the one recorded in test/fixtures/golden/. A change to
-// the runtime that is meant to keep its behaviour keeps these logs.
+// the buddies' controllers that is meant to keep their behaviour keeps these logs.
 // GOLDEN=record writes them anew.
 
 import { test } from 'node:test';
@@ -62,17 +62,14 @@ fs.watch = () => ({ on() { return this; }, close() {} });
 // File operations one at a time, each one's callers going on before the
 // next begins, and what they ask for next before what was asked earlier: a
 // chain of reads and writes runs to its end before another goes on, as on
-// a fast disk, and of those asked for together a look's first (the runtime
-// reads the world as soon as it hears of a change). Two things reading and
-// writing at once then go in the same order each time, however many
-// operations each takes.
-Error.stackTraceLimit = 100;
+// a fast disk. Two things reading and writing at once then go in the same
+// order each time, however many operations each takes.
 let queue = [];
 let fresh = null; // what the callers of the operation just done ask for
 let pumping = false;
 const oneAtATime = (fn) => function (...args) {
   return new Promise((resolve, reject) => {
-    (fresh ?? queue).push({ run: () => fn.apply(this, args), resolve, reject, look: /\blookOnce\b/.test(new Error().stack) });
+    (fresh ?? queue).push({ run: () => fn.apply(this, args), resolve, reject });
     pump();
   });
 };
@@ -88,7 +85,7 @@ async function pump() {
       job.reject(error);
     }
     await new Promise((resolve) => setImmediate(resolve));
-    queue = [...fresh.filter((job) => job.look), ...fresh.filter((job) => !job.look), ...queue];
+    queue = [...fresh, ...queue];
     fresh = null;
   }
   pumping = false;

@@ -8,7 +8,7 @@ import { appendedComments, newComment } from './comments.js';
 const EDITED = 'Edited the doc.';
 /** What a buddy says in a thread that asked it where its run posted nothing. */
 export const LOOKED = 'Looked; nothing to change.';
-/** What a buddy says in each thread that asked it where its run failed (src/host/doc-world.js). */
+/** What a buddy says in each thread that asked it where its run failed (src/host/doc-store.js). */
 export const COULD_NOT_FINISH = 'Could not finish.';
 // How long a comment may be (src/core/prompt.js).
 const MOST = 280;

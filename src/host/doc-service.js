@@ -1,26 +1,25 @@
 // DocService (docs/app/host-spec.md, The doc): orders every edit to one doc, as text
 // operations on a revision, and writes the doc and its sidecar, one at a
-// time; changes made outside the app; versions. It runs the buddies
-// @mentioned in the doc's comments (runner.js) and lands what each run
-// changed when it ends. It lives in the doc host; windows call it over a
-// message port (desktop/doc-host.js) and hear its events (ops, sidecar,
-// agents, settings, history, renamed, missing, room). In project mode its
-// project's files are read through ProjectService, and its room run
-// through Room (room.js), at the same door.
+// time, holding both in memory; changes made outside the app; versions. A
+// buddy's run lands through it whole (`door.land`). It lives in the doc
+// host; windows call it over a message port (desktop/doc-host.js) and hear
+// its events (ops, sidecar, agents, settings, history, renamed, missing,
+// room). In project mode its project's files are read through
+// ProjectService, and its room run through Room (room.js), at the same door.
 
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, stat } from 'node:fs/promises';
 import { basename, dirname, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createAnchor, locate } from '../core/anchor.js';
-import { COMMENT_ID, newComment, newId, parseSidecar, peopleOf, serializeSidecar, threadsOf, validAnchor } from '../core/comments.js';
+import { COMMENT_ID, movedAnchor, newComment, newId, parseSidecar, peopleOf, serializeSidecar, threadsOf, validAnchor } from '../core/comments.js';
 import { sameName } from '../core/mentions.js';
 import { DEFAULT_SETTINGS, SettingsError } from '../core/settings.js';
 import { merge3 } from '../core/diff.js';
 import { apply, diffOps, mapOffset, transform } from '../core/ot.js';
 import { PROTOCOL } from '../core/protocol.js';
 import { StoreError, formFor, hashText, moveDoc, readDoc, readSidecarText, sidecarPath, writeDoc, writeSidecar } from '../store/files.js';
-import { VERSION_ID, moveHistory, noteTaken, noteWritten, readHistory, readVersion, recordVersion, writtenEdits } from '../store/history.js';
+import { VERSION_ID, moveHistory, noteWritten, readHistory, readVersion, recordVersion, takenComments, writtenEdits } from '../store/history.js';
 import { configDir, defaultName, ownerOf, readSettings, updateSettings, watchSettings } from '../store/settings.js';
 import { buddiesFor, firstBuddies } from '../store/buddies.js';
 import { secretTails } from '../store/secrets.js';
@@ -61,7 +60,13 @@ export async function openDocService(docPath, { folder = null, room = null, sett
   // Who hears every change as it lands (subscribe): the doc's buddies.
   const listeners = new Set();
   const tell = (event) => { for (const fn of listeners) fn(event); };
+  // The sidecar as the door holds it (parseSidecar: its lines, the lines it
+  // could not read, and the `problem` that makes it read-only), and the hash
+  // of the file as it last wrote or read it: a file that is not that was
+  // written outside, and is taken as such (takeSidecar).
+  let sidecar = null;
   let lastSidecarHash = null;
+  const taken = await takenComments(() => docPath, settingsDir); // the comments the door took: only they ask
   let lastSettings = null;
   let missing = false; // the doc was moved or deleted on disk while open
   // Writes to the doc and its sidecar, and the edits landing, run one at a
@@ -124,10 +129,12 @@ export async function openDocService(docPath, { folder = null, room = null, sett
   let notSaved = null; // why the file does not hold the doc as windows were told, or null
 
   // Edit `ops` lands on the text, from a window (`id`, the window's name for
-  // it) or from here, merged already (merge3): a buddy's turn (buddy `by`,
-  // and its `reply`), an outside change, an undo.
-  function land(ops, meta) {
-    const event = { epoch, rev: rev + 1, ops, id: meta.id ?? null, by: meta.by, ...(meta.reply ? { reply: meta.reply } : {}) };
+  // it) or from here, merged already (merge3): a buddy's run (buddy `by`,
+  // its last group's `reply`, and `comments` when it posted any), an outside
+  // change, an undo. Its listeners hear it at once, unless `heard` is false:
+  // then the caller tells them; returns its event.
+  function land(ops, meta, heard = true) {
+    const event = { epoch, rev: rev + 1, ops, id: meta.id ?? null, by: meta.by, ...(meta.reply ? { reply: meta.reply } : {}), ...(meta.comments ? { comments: true } : {}) };
     log.push({ ops, id: meta.id, event, at: performance.now() });
     if (meta.id) landedRevs.set(meta.id, rev + 1);
     if (log.length > LOG_SIZE) {
@@ -137,22 +144,13 @@ export async function openDocService(docPath, { folder = null, room = null, sett
     text = apply(text, ops);
     rev++;
     told.push(event);
-    tell(event);
+    if (heard) tell(event);
+    return event;
   }
   // The comments changed, by `by`: a change in the log too, with no
   // operations on the text, told to every window as the next commit tells
   // its edits.
-  function changedComments(by) {
-    const event = { epoch, rev: rev + 1, ops: [], id: null, by, comments: true };
-    log.push({ ops: [], event, at: performance.now() });
-    if (log.length > LOG_SIZE) {
-      log.shift();
-      logStart++;
-    }
-    rev++;
-    told.push(event);
-    tell(event);
-  }
+  const changedComments = (by) => land([], { by, comments: true });
 
   // Write what landed, then tell every window: what a window has heard of is
   // in the file. A file changed outside since it was last written is merged
@@ -384,11 +382,18 @@ export async function openDocService(docPath, { folder = null, room = null, sett
 
   // ---- comments (spec/SPEC.md) ----
 
-  // The sidecar as it is on disk: its lines, the lines it could not read,
-  // and the `problem` that makes it read-only (parseSidecar).
-  async function readComments() {
+  // The sidecar as the door holds it.
+  const readComments = () => sidecar;
+
+  // The sidecar on disk, taken as written outside when it is not as the door
+  // last wrote or read it: a change in the log, by `outside`. Run in `serial`.
+  async function takeSidecar() {
+    const hash = await fileHash(sidecarPath(docPath));
+    if (hash === lastSidecarHash) return;
     const text = await readSidecarText(docPath);
-    return text === null ? { lines: [], bad: [], problem: null } : parseSidecar(text);
+    sidecar = text === null ? { lines: [], bad: [], problem: null } : parseSidecar(text);
+    lastSidecarHash = hash;
+    changedComments(OUTSIDE);
   }
 
   // The threads as a window shows them: each anchor where it is now in the
@@ -408,18 +413,35 @@ export async function openDocService(docPath, { folder = null, room = null, sett
     return { threads, people: peopleOf(comments), edits: await replyEdits(), readOnly: problem, notice };
   }
 
-  // Add or remove lines of the sidecar, written whole, as `by`. Run in
-  // `serial`. The comments as `change` makes them, a change in the log;
-  // then the buddies look at what is asked.
-  async function changeComments(change, by) {
-    const current = await readComments();
+  // Add lines to the sidecar, written whole, as `by`, with the edit `ops`
+  // (none: a change to the comments alone, in the log). Run in `serial`.
+  // What was written outside first is taken; the comments as `change` makes
+  // them from its lines, a change in the log with the edit, held once the
+  // doc is written.
+  async function changeComments(change, by, ops = []) {
+    await takeSidecar();
+    const current = sidecar;
     if (current.problem) throw new DocError('read_only', `${basename(sidecarPath(docPath))} is read-only here, so it is not changed`);
     const next = await change(current.lines);
     if (next === current.lines) return;
     await writeSidecar(docPath, serializeSidecar(next));
     lastSidecarHash = await fileHash(sidecarPath(docPath)); // this service's own write
-    changedComments(by);
+    const event = land(ops, { ...by, comments: true }, false);
     await commit().catch(() => {}); // the doc not saved holds the telling; it is tried again
+    sidecar = { ...current, lines: next };
+    tell(event);
+  }
+
+  // Comment `added` among `lines`, at the time a comment takes there (`at`
+  // given: just after it), `who`'s: noted as taken before it is written.
+  async function added(lines, { thread, after }, comment) {
+    // A reply is after every comment in its thread, though written in the
+    // same millisecond: a thread is ordered by `at` (SPEC §4).
+    const at = thread === undefined ? Date.now() : after !== undefined ? Date.parse(after) + 1 : lines.reduce((last, { comment: c }) => (
+      c && (c.id === thread || c.thread === thread) ? Math.max(last, Date.parse(c.at) + 1) : last), Date.now());
+    const made = { ...comment, at: new Date(at).toISOString() };
+    if (made.body.trim() !== '') await taken.note(made, lines.map((l) => l.comment?.id));
+    return made;
   }
 
   // A comment by `who`: a first comment (`anchor` on the doc's text, or
@@ -436,20 +458,74 @@ export async function openDocService(docPath, { folder = null, room = null, sett
     if (anchor !== null && !validAnchor(anchor)) throw new DocError('bad_input', 'invalid anchor');
     if (resolved === true && thread === undefined) throw new DocError('bad_input', 'only a reply can resolve');
     if ((id !== undefined && !COMMENT_ID.test(id)) || (after !== undefined && (thread === undefined || Number.isNaN(Date.parse(after))))) throw new DocError('bad_input', 'expected { id?, thread, after? }');
-    let added;
+    let made;
     await serial(() => changeComments(async (lines) => {
-      added = id !== undefined && lines.find((l) => l.comment?.id === id)?.comment;
-      if (added) return lines;
+      made = id !== undefined && lines.find((l) => l.comment?.id === id)?.comment;
+      if (made) return lines;
       if (thread !== undefined && !lines.some((l) => l.comment?.id === thread && l.comment.thread === undefined)) throw new DocError('not_found', 'no such thread');
-      // A reply is after every comment in its thread, though written in the
-      // same millisecond: a thread is ordered by `at` (SPEC §4).
-      const at = thread === undefined ? Date.now() : after !== undefined ? Date.parse(after) + 1 : lines.reduce((last, { comment: c }) => (
-        c && (c.id === thread || c.thread === thread) ? Math.max(last, Date.parse(c.at) + 1) : last), Date.now());
-      added = { ...newComment({ thread, anchor, body, resolved }, { by: byOf(who), at: new Date(at).toISOString() }), ...(id !== undefined ? { id } : {}), ...(thread !== undefined && anchor !== null ? { anchor } : {}) };
-      if (body.trim() !== '') await noteTaken(docPath, settingsDir, added, lines.map((l) => l.comment?.id));
-      return [...lines, { comment: added }];
-    }, authorOf(who)));
-    return { ...(await commentsView(text)), id: added.id, at: added.at };
+      made = await added(lines, { thread, after }, { ...newComment({ thread, anchor, body, resolved }, { by: byOf(who), at: '' }), ...(id !== undefined ? { id } : {}), ...(thread !== undefined && anchor !== null ? { anchor } : {}) });
+      return [...lines, { comment: made }];
+    }, { by: authorOf(who) }));
+    return { ...(await commentsView(text)), id: made.id, at: made.at };
+  }
+
+  // A buddy's run, landed whole as `who`, at one rev: each of `groups` ({
+  // comment, doc: the text after its edits on `base` }) merged by line with
+  // the doc as it is (merge3, the doc's lines winning), each a version of
+  // its own hung on its comment, and a reply whose edits rewrote its
+  // thread's text moving the thread (SPEC §3); then `comments` ({ id,
+  // thread?, anchor, body }, each reply just after `after[thread]`, the latest
+  // comment the run was given there). A doc gone takes no edit; comments
+  // that cannot be written leave the edits to land alone. Resolves to {
+  // before, after (the text around it), comments (as posted), conflict,
+  // error (why its comments were not posted) }, or nothing once closed.
+  async function landRun({ base, groups = [], comments = [], after = {} }, who) {
+    return serial(async () => {
+      await flushTyping();
+      const before = text;
+      const anchors = new Map(threadsOf(sidecar.lines.map((l) => l.comment).filter(Boolean), [], before).map((t) => [t.id, t.anchor]));
+      const versions = [];
+      let prev = base;
+      let now = text;
+      let conflict = false;
+      for (const { comment, doc } of groups) {
+        if (!missing && doc !== prev) {
+          const merged = merge3(prev, now, doc);
+          conflict ||= merged.conflicts > 0;
+          const anchor = comment.thread !== undefined && movedAnchor(anchors.get(comment.thread), prev, doc, merged.text);
+          if (anchor) comment.anchor = anchor;
+          now = merged.text;
+          versions.push([now, { kind: 'edit', author: { ...byOf(who), kind: 'agent' }, thread: comment.thread ?? comment.id, reply: comment.id, ...(merged.conflicts > 0 ? { conflict: true } : {}) }]);
+        }
+        prev = doc;
+      }
+      for (const [version, change] of versions) await noteVersion(version, change);
+      const latest = { ...after };
+      const posted = [];
+      const ops = diffOps(before, now);
+      const by = { by: authorOf(who), reply: versions.at(-1)?.[1].reply };
+      let error = null;
+      if (comments.length) {
+        await changeComments(async (lines) => {
+          let next = lines;
+          for (const c of comments) {
+            const made = await added(next, { thread: c.thread, after: c.thread !== undefined ? latest[c.thread] : undefined }, { ...newComment({ thread: c.thread, anchor: c.anchor ?? null, body: c.body }, { by: byOf(who), at: '' }), id: c.id, ...(c.thread !== undefined && c.anchor ? { anchor: c.anchor } : {}) });
+            if (c.thread !== undefined && latest[c.thread] !== undefined) latest[c.thread] = made.at;
+            posted.push(made);
+            next = [...next, { comment: made }];
+          }
+          return next;
+        }, by, ops).catch((why) => {
+          error = why.message;
+          posted.length = 0;
+        });
+      }
+      if ((!comments.length || error) && ops.length) {
+        land(ops, by);
+        await commit().catch(() => {}); // landed: windows hear it is not saved
+      }
+      return { before, after: text, comments: posted, conflict, error };
+    });
   }
 
   // ---- the doc's buddies ----
@@ -519,14 +595,11 @@ export async function openDocService(docPath, { folder = null, room = null, sett
   async function onFilesChanged() {
     try {
       if (!(await serial(onDocChanged))) return;
-      const sidecarHash = await fileHash(sidecarPath(docPath));
-      if (sidecarHash !== lastSidecarHash) {
-        lastSidecarHash = sidecarHash;
-        await serial(async () => {
-          changedComments(OUTSIDE);
-          await commit().catch(() => {});
-        });
-      }
+      await serial(async () => {
+        const was = rev;
+        await takeSidecar();
+        if (rev !== was) await commit().catch(() => {});
+      });
     } catch (error) {
       if (!(error instanceof StoreError)) console.error(error);
     }
@@ -597,6 +670,8 @@ export async function openDocService(docPath, { folder = null, room = null, sett
   await firstBuddies(settingsDir).catch((error) => console.error('Could not write the first buddy:', error));
   await noteVersion(text, { kind: 'external', author: null }); // the doc as first seen, or as changed while it was not open
   lastSidecarHash = await fileHash(sidecarPath(docPath));
+  const first = await readSidecarText(docPath);
+  sidecar = first === null ? { lines: [], bad: [], problem: null } : parseSidecar(first);
   lastSettings = JSON.stringify((await readSettings(settingsDir)).settings);
   let stopWatching = watchDoc(docPath, onFilesChanged);
   const stopWatchingSettings = watchSettings(onSettingsChanged, settingsDir);
@@ -700,18 +775,17 @@ export async function openDocService(docPath, { folder = null, room = null, sett
 
   const api = {
     /**
-     * The doc for a client in this process (the doc world): its text, rev,
-     * epoch, whether it is missing, the changes after rev `since` that the
-     * log still holds (changes: [{ rev, by, at, comments }], `comments`
-     * when only the comments changed), its comments as read
-     * (readComments), and `submit` and `comment` through the door.
+     * The doc for a client in this process (the doc's store): its text, rev,
+     * its sidecar as held (readComments), whether this door took a comment
+     * as it now reads (`took`), `comment` through the door, and `land`, a
+     * buddy's run whole (landRun).
      */
     door: {
-      text: () => text, rev: () => rev, epoch: () => epoch, missing: () => missing,
-      changes: (since) => log.slice(Math.max(0, since - logStart)).map(({ event, at }) => ({ rev: event.rev, by: event.by, at, comments: event.comments === true })),
-      readComments: () => readComments(),
-      submit: (arg, who) => api.call('submit', arg, who),
+      text: () => text, rev: () => rev,
+      comments: readComments,
+      took: taken.took,
       comment: (arg, who) => api.call('comment', arg, who),
+      land: landRun,
     },
     /** `fn(change)` hears each change as it lands, its `ops` event (land); returns how to stop. */
     subscribe(fn) {

@@ -598,19 +598,15 @@ window.addEventListener('beforeunload', (event) => {
 
 // Others' changes landed and the view's text is now `text` (web/client.js).
 // Comments changed: the threads are read again. A person's typing (an edit
-// with an `id`) shows by their cursor alone; anything else glows.
+// with an `id`) shows by their cursor alone; anything else glows. A buddy's
+// run lands its edits and its comments at once.
 function showLanded(text, ops, event) {
-  if (event?.comments) {
-    afterTyping('sidecar', refreshThreads);
-    return;
+  if (!event?.comments || ops.length) {
+    editor.applyText(text, { glow: event?.by?.kind === 'buddy' || !event?.id, ops });
+    paintMarks();
   }
-  const reply = event?.reply;
-  editor.applyText(text, { glow: event?.by?.kind === 'buddy' || !event?.id, ops });
-  paintMarks();
-  if (reply) {
-    runLanded = reply;
-    afterTyping('sidecar', refreshThreads);
-  }
+  if (event?.reply) runLanded = event.reply;
+  if (event?.comments || event?.reply) afterTyping('sidecar', refreshThreads);
 }
 
 // Run `fn` once the human pauses typing (or WAIT_FOR_PAUSE_MS after it was
@@ -646,8 +642,8 @@ async function refreshRuns() {
   repaintThreads(); // a reply's Trace link shows from them
 }
 
-// The statuses as the runtime has them (runtime.js): asks, not threads; a
-// failed ask is answered in its thread, so none is noted.
+// The statuses as the panel takes them (runtime-panel.js): asks, not
+// threads; a failed ask is answered in its thread, so none is noted.
 const runtimeStatuses = (list) => list.map(({ threadIds, ...a }) => ({ ...a, asks: threadIds, failed: [] }));
 
 // Opens the panel, on run `run` if given: the runs traced before, then what
@@ -801,7 +797,7 @@ noticeBanner.querySelector('[data-action="any-size"]').addEventListener('click',
 });
 
 // The threads in the margin: a buddy's "Could not finish." is its failed
-// run's answer (src/host/doc-world.js, failed), shown failed, the latest in
+// run's answer (src/host/doc-store.js, land), shown failed, the latest in
 // its thread with Retry for whoever may ask; one new since the last time
 // makes its buddy flinch.
 let failedShown = null; // ids of the failed replies on screen; null until the first update
@@ -821,6 +817,7 @@ function applyComments({ threads, people: writers, edits, notice, readOnly }) {
   shownComments = json;
   comments = { threads, people: writers, edits, notice, readOnly };
   showReadOnly(readOnly);
+  standAtWork(agents);
   paintMarks();
   people?.render({ people: writers }); // first: who is here sets the colours
   paintThreads();
@@ -989,6 +986,7 @@ async function undoAs(what, version) {
 // the text; it goes with the page, and with the buddy once it is no longer here.
 const cursors = new Map(); // buddy id -> anchor of the character before its cursor
 let working = new Set();
+const placed = new Set(); // the buddies at work whose cursor stands at their passage
 // People's cursors are the host's (client.cursorsShown), shown while they
 // move or type and for a few seconds after. One cursor each, with no name.
 let settleCarets = null;
@@ -997,11 +995,16 @@ function standAtWork(statuses) {
   const ids = new Set(statuses.map((a) => a.id));
   for (const id of cursors.keys()) if (!ids.has(id)) cursors.delete(id);
   const now = new Set(statuses.filter((a) => modeOf(a) === 'working').map((a) => a.id));
+  for (const id of placed) if (!now.has(id)) placed.delete(id);
   for (const a of statuses) {
-    // Of the threads it works on, the one with the latest comment: most likely the one it acts on.
-    const thread = !working.has(a.id) && now.has(a.id) && comments?.threads.filter((t) => a.threadIds.includes(t.id) && t.anchor && !t.detached)
+    // Of the threads it works on, the one with the latest comment: most
+    // likely the one it acts on; once the page has it, as it may hear of
+    // the run first.
+    const thread = !placed.has(a.id) && now.has(a.id) && comments?.threads.filter((t) => a.threadIds.includes(t.id) && t.anchor && !t.detached)
       .reduce((latest, t) => (!latest || t.comments.at(-1).at > latest.comments.at(-1).at ? t : latest), null);
-    if (thread) cursors.set(a.id, thread.anchor);
+    if (!thread) continue;
+    cursors.set(a.id, thread.anchor);
+    placed.add(a.id);
   }
   working = now;
 }

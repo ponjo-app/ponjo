@@ -17,8 +17,9 @@ export const SETTINGS_VERSION = 3;
  * one not there takes the default its declaration gives (viewSettings,
  * agentSettings). `trace` keeps each run's trace (src/store/runs.js
  * logRun), to read in a doc's Runs. A doc's watches pause once its buddies
- * run `pauseAfter` times within `pauseWithin` minutes, until someone
- * resumes them (src/core/runtime.js, the breaker).
+ * run `pauseAfter` times within `pauseWithin` minutes since a person last
+ * acted, until someone does or resumes them (src/host/buddy-runtime.js,
+ * the wallet's limits).
  */
 export const DEFAULT_SETTINGS = Object.freeze({
   id: null,

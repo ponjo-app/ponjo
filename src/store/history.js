@@ -7,7 +7,7 @@
 // so it never shows up in the doc's folder or in git:
 //   <config>/history/<key>/index.json   the versions, oldest first
 //   <config>/history/<key>/<sha256>.md  each version's text, by content
-//   <config>/history/<key>/taken.json   the comments this host took (noteTaken)
+//   <config>/history/<key>/taken.json   the comments this host took (takenComments)
 //   <config>/history/<key>/posted.json  the comments runs here posted (notePosted)
 //   <config>/history/<key>/watching.json the buddies watching the doc here (noteWatching)
 // `key` is derived from the doc's absolute path; renaming a doc in Ponjo
@@ -141,23 +141,25 @@ export async function writtenEdits(docPath, root, hash) {
 }
 
 /**
- * Note, before the sidecar is written, that this host took `comment`, a
- * person's: only such a comment asks a buddy (src/host/doc-service.js,
- * asks). `ids` are the comments the sidecar holds; the notes of others are
- * dropped.
+ * The comments this host took, a person's or a buddy's: only such a comment
+ * asks a buddy (src/host/doc-service.js, comment). `docPath()` is where the
+ * doc is now. Returns { took(comment) (whether this host took it as it now
+ * reads: its thread, author and body unchanged), note(comment, ids) (notes
+ * one, before the sidecar is written; `ids` are the comments the sidecar
+ * holds, and the notes of others are dropped) }.
  */
-export async function noteTaken(docPath, root, comment, ids) {
-  const dir = historyDir(docPath, root);
-  const kept = new Set(ids);
-  const taken = Object.fromEntries(Object.entries(await readTakenFile(dir)).filter(([id]) => kept.has(id)));
-  await mkdir(dir, { recursive: true });
-  await writeAtomic(join(dir, 'taken.json'), JSON.stringify({ ...taken, [comment.id]: takenHash(comment) }));
-}
-
-/** A check of whether this host took a comment as it now reads: its thread, author and body unchanged. */
-export async function readTaken(docPath, root) {
-  const taken = await readTakenFile(historyDir(docPath, root));
-  return (comment) => taken[comment.id] === takenHash(comment);
+export async function takenComments(docPath, root) {
+  let taken = await readTakenFile(historyDir(docPath(), root));
+  return {
+    took: (comment) => taken[comment.id] === takenHash(comment),
+    async note(comment, ids) {
+      const dir = historyDir(docPath(), root);
+      const kept = new Set(ids);
+      taken = { ...Object.fromEntries(Object.entries(taken).filter(([id]) => kept.has(id))), [comment.id]: takenHash(comment) };
+      await mkdir(dir, { recursive: true });
+      await writeAtomic(join(dir, 'taken.json'), JSON.stringify(taken));
+    },
+  };
 }
 
 async function readTakenFile(dir) {
@@ -172,7 +174,7 @@ const takenHash = (c) => hashText(JSON.stringify([c.thread ?? null, c.by.id, c.b
 
 /**
  * The comments runs on this host posted, for a restart: `posted` maps each
- * to { for, depth } (src/host/doc-world.js); only those of `ids`, the
+ * to { for, depth } (src/core/doc-world.js); only those of `ids`, the
  * comments the sidecar holds, are kept. Only such a buddy's comment asks
  * the buddies it @mentions.
  */
@@ -180,23 +182,24 @@ export async function notePosted(docPath, root, posted, ids) {
   const dir = historyDir(docPath, root);
   const kept = new Set(ids);
   await mkdir(dir, { recursive: true });
-  await writeAtomic(join(dir, 'posted.json'), JSON.stringify(Object.fromEntries([...posted].filter(([id]) => kept.has(id)))));
+  await writeAtomic(join(dir, 'posted.json'), JSON.stringify(Object.fromEntries(Object.entries(posted).filter(([id]) => kept.has(id)))));
 }
 
-/** The comments noted by notePosted, as a Map, or none. */
+/** The comments noted by notePosted, or none. */
 export async function readPosted(docPath, root) {
   try {
-    return new Map(Object.entries(JSON.parse(await readFile(join(historyDir(docPath, root), 'posted.json'), 'utf8')) ?? {}));
+    return JSON.parse(await readFile(join(historyDir(docPath, root), 'posted.json'), 'utf8')) ?? {};
   } catch {
-    return new Map();
+    return {};
   }
 }
 
 /**
  * The buddies watching the doc on this host, for a restart: { <buddy>: {
- * by, print, wake } } (src/core/runtime.js): who set it, and what its last
- * run saw and named. Kept here, never in the sidecar: what makes a buddy
- * run on this machine is this machine's.
+ * by, print, wake } } (src/core/doc-world.js, a watch: its `seen` as
+ * `print`): who set it, and what its last run saw and named. Kept here,
+ * never in the sidecar: what makes a buddy run on this machine is this
+ * machine's.
  */
 export async function noteWatching(docPath, root, watching) {
   const dir = historyDir(docPath, root);
