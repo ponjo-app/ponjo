@@ -1,33 +1,35 @@
-// The poker page (site/poker.html): a person and three AI players at one
+// The poker page (site/poker.html): a person and AI players at one
 // No-Limit Hold'em table, chatting while they play. The dealer
-// (poker-dealer.js) owns what must be exact; the players decide the rest
-// from the rules and what they can see (poker-world.js). Ponjo's agent
-// runtime (src/core/runtime.js) runs them on the table as a world. Here: a
-// run, one call of the visitor's model (game-page.js, which this page
-// shares with the werewolf page, with its log's messages); and the table
-// drawn with the app's classes and faces. The person may invite friends
-// (poker-share.js): their pages join by a link, and this page, the host's,
-// sends each what its player may see and lands what they do through the
-// same writer. A friend's page, opened at `#join=<room>`, only draws.
-// preview/build.js bundles it into dist/preview, as the site serves it.
+// (poker-dealer.js) owns what must be exact; the table is a world
+// (poker-world.js) on the runtime's core (src/core/): a store in this
+// page, kept in the browser's storage on each change (game-kit.js), so a
+// refresh goes on with the hand. Each member has a controller: an AI
+// player's program is one call of the visitor's model (game-page.js, with
+// the log's messages); the person's is this screen, which draws their
+// seat's view and lands what they do; the dealer's deals each hand and
+// street from a deck the table never holds; the clock's waits for each
+// turn's deadline. The person may invite friends (poker-share.js): their
+// pages join by a link, and this page, the host's, sends each its seat's
+// view and lands what they do. A friend's page, opened at `#join=<room>`,
+// only draws. preview/build.js bundles it into dist/preview, as the site serves it.
 
 /* global document, location, matchMedia, innerWidth, innerHeight, HTMLDialogElement */
 
-import { $, el, load, message, models, notice, store, typingMessage } from './game-page.js';
+import { $, el, message, models, notice, typingMessage } from './game-page.js';
+import { agent, friends, keep, load, openTable, typer } from './game-kit.js';
 import { agentFace, personFace, setBuddies, setOwner } from '../web/faces.js';
 import { icon } from '../web/icons.js';
-import { handName, legal } from './poker-dealer.js';
-import { DECIDE, HUMAN, MAX_SEATS, PERSONAS, STACK, addPlayer, createWorld, force, freeSeats, intros, introduce, isPerson, lineup, react, removePlayer, deal, land, leave, myChips, newTable, say, seatFriend, topUp } from './poker-world.js';
-import { createRuntime } from '../src/core/runtime.js';
+import { clock, control } from '../src/core/controller.js';
+import { draw as cards, handName } from './poker-dealer.js';
+import { CLOCK, DEALER, DECIDE, HUMAN, MAX_BUY, MAX_SEATS, MIN_BUY, PERSONAS, STACK, decided, freeSeats, isPerson, lineup, myChips, newTable, prompt, world } from './poker-world.js';
 import { createRuntimePanel } from '../web/runtime-panel.js';
-import { RECONNECT_MS, guestId, host, join } from './poker-share.js';
+import { guestId, join } from './poker-share.js';
 
 const WALLET = 'ponjo-poker-bankroll';
+const TABLE = 'ponjo-poker-table'; // the table the host's page holds: { rev, state }, as its store last saved it
 const BANKROLL = 1000; // play dollars a new player starts with, and starts again with
-const [MIN_BUY, MAX_BUY] = [200, 1000];
 const money = (n) => `$${n.toLocaleString('en')}`;
 const SLOTS = ['bottom', 'left', 'top-left', 'top', 'top-right', 'right']; // the six seats round the table, from the one this page sits in
-const TURN = 30_000; // ms a person has to act while friends are at the table; then the dealer checks or folds
 const NAME = 'ponjo-poker-name';
 const SUIT = { s: '♠', h: '♥', d: '♦', c: '♣' };
 
@@ -36,140 +38,82 @@ setOwner(HUMAN);
 
 const ROOM = new URLSearchParams(location.hash.slice(1)).get('join'); // a friend's page: the room of the table it joins
 const me = ROOM ? guestId(ROOM) : HUMAN; // who this page plays as
-let table = newTable(0); // the person sits down with a buy-in; a friend's page, the table as the host sends it
-const running = new Set(); // players with a run going
-const typing = new Set(); // players typing a line, shown in the chat
-let failed = new Map(); // players whose run failed → why, until Retry
+let shown = null; // this page's seat's view: the host's, as its controller last read it; a friend's, as the host last sent it
+let present = {}; // a friend's page: the presence the host last sent
+const EMPTY = { content: { ...newTable(), players: [], hand: null, legal: null, moment: '', ends: 0 }, tasks: [] };
+let table = EMPTY.content; // the table as this page's seat sees it
 
 // ---- what the visitor keeps in this browser: their bankroll ----
 
-// The bankroll, with what was on the table when they last left the page: it comes back to them.
-const wallet = (({ bankroll = BANKROLL, onTable = 0, restarts = 0 } = {}) => ({ bankroll: bankroll + onTable, restarts }))(load(WALLET) ?? undefined);
+// The bankroll, with what was on the table when they last left the page: it
+// comes back to them, unless the table is still here, chips and all.
+const kept = !ROOM && load(TABLE);
+const wallet = (({ bankroll = BANKROLL, onTable = 0, restarts = 0 } = {}) => ({ bankroll: bankroll + (kept ? 0 : onTable), restarts }))(load(WALLET) ?? undefined);
 const session = { bought: 0, hands: 0, biggest: 0, cashed: 0 };
 const chipsOfMine = () => (turnedAway ? 0 : myChips(table, me));
-const saveWallet = () => store({ ...wallet, onTable: chipsOfMine() }, WALLET);
+const saveWallet = () => keep({ ...wallet, onTable: chipsOfMine() }, WALLET);
 let turnedAway = false; // a friend's page the host asked to leave: its chips are back in its bankroll
 // A friend's page, reloaded: the chips it had on the table, put back in the
 // bankroll above, go back on the table if the host still has it seated.
 let reclaim = ROOM ? load(WALLET)?.onTable ?? 0 : 0;
-// The players' model. Once the visitor picks another, what failed is tried again.
-const ai = models(() => {
-  runtime?.retry();
-  changed();
-});
+const ai = models(() => draw()); // the players' model
 
-// ---- the controller ----
+// ---- the store and its members, on the host's page ----
 
-// Every change: draw it, and tell the world, whose runtime looks again
-// and starts the runs that are due; time a person's turn, and send
-// friends the table. A friend's page only draws.
-function changed() {
-  if (!table.hand || table.hand.street === 'done') for (const id of gone) if (gone.delete(id) && seatedNow(id)) leave(table, id);
+// The store, kept in this browser on each change. Its members' presence
+// (who is at work, whose run failed) is drawn here and sent to friends.
+const store = ROOM ? null : openTable(world, TABLE, newTable, () => {
   draw();
-  if (ROOM) return;
-  world.changed();
-  runtime?.sync(); // who is at the table may have changed
-  timeTurn();
-  share();
-}
+  guests.shown();
+});
+const presence = () => (ROOM ? present : store.client(HUMAN).present());
 const seatedNow = (id) => lineup(table).some((p) => p.id === id && !p.leaving);
 const seatOf = (id) => (table.hand ? table.hand.seats : table.players).findIndex((p) => p.id === id);
+const myTurn = () => (shown?.tasks ?? []).some((t) => t.given.startsWith('turn:'));
+setInterval(() => table.ends && draw(), 1000);
 
-// While friends are at the table, a person has TURN to act.
-let clock = { key: '', ends: 0 };
-function timeTurn() {
-  const hand = table.hand;
-  const id = hand && hand.street !== 'done' && hand.toAct !== null ? hand.seats[hand.toAct].id : null;
-  if (gone.has(id)) { // their page went: no one to wait for
-    force(table, id);
-    return changed();
-  }
-  const key = id && isPerson(id) && lineup(table).some((p) => p.id !== HUMAN && isPerson(p.id)) ? `${hand.id}:${hand.n}` : '';
-  if (key === clock.key) return;
-  clearTimeout(clock.timer);
-  clock = { key, ends: key ? Date.now() + TURN : 0, timer: key && setTimeout(() => {
-    force(table, id);
-    changed();
-  }, TURN) };
-}
-setInterval(() => clock.ends && draw(), 1000);
-
-// One run of a player: what it is due for counts as seen, one model call, and its proposal to the writer.
 // A model answers in a second or two, faster than a person can follow: a
-// player takes at least its own time to think (more facing a bet, less
-// to answer in the chat), and its line comes after it is seen typing it.
+// player takes at least its own time to think (more facing a bet, less to
+// answer in the chat). Its line lands with its move; each page types it out after.
 const PACE = { Gary: [1200, 2600], Duke: [700, 1600], Penny: [1800, 3600], Mabel: [1600, 3200], Lex: [800, 1800], Hank: [1000, 2200] }; // ms a player thinks on its turn, from and to
-const wait = (ms) => new Promise((resolve) => setTimeout(resolve, Math.max(0, ms)));
-function thinkTime(id, due) {
-  const [from, to] = PACE[id] ?? [1000, 2000];
+function thinkTime(id, tasks, view) {
+  const [from, to] = PACE[id];
   const ms = from + Math.random() * (to - from);
-  if (!due.turn) return ms / 2;
-  const s = table.hand.seats[table.players.findIndex((p) => p.id === id)];
-  return ms + (table.hand.currentBet > s.bet ? 600 : 0);
+  if (!tasks.some((t) => t.given.startsWith('turn:'))) return ms / 2;
+  return ms + (view.content.legal?.toCall ? 600 : 0);
 }
 const typeTime = (text) => Math.min(3000, Math.max(700, text.length * 35));
 
-// A run: one call of the model on what the player sees, then the player's
-// own time to think; its proposal goes to the world, which lands the action
-// and then, once the player is seen typing it, the line. A run woken only
-// to talk, on a turn it stays quiet, calls no model.
-async function run({ agent }, { files: basis, prompt: { rules, situation } }) {
-  const at = Date.now();
-  const started = performance.now();
-  if (!basis.turn && !basis.talk) return { at, ms: 0, outcome: 'ok', made: null };
-  try {
-    const { calls, text, usage } = await ai.infer()([{ role: 'user', content: rules, cache: true }, { role: 'user', content: situation }], [DECIDE]);
-    let args = {};
-    try {
-      args = JSON.parse(calls.find((c) => c.name === 'decide')?.args ?? '{}');
-    } catch {}
-    await wait(thinkTime(agent.id, basis) - (performance.now() - started));
-    return { at, ms: performance.now() - started, outcome: 'ok', usage, made: { thinking: args.thinking ?? text, action: args.action ?? null, react: args.react, say: args.say } };
-  } catch (error) {
-    return { at, ms: performance.now() - started, outcome: 'failed', body: String(error.message).split('\n')[0] };
-  }
-}
-
-// With ?debug, the host's page shows what the runtime does (the runtime
+// With ?debug, the host's page shows each AI player's runs (the runtime
 // panel): every player's cards and thinking, so only on asking.
 const ASKS = { turn: (hand) => `Turn, hand ${hand}`, line: (n) => `Chat line ${n}`, react: (hand) => `After hand ${hand}` };
 const panel = !ROOM && new URLSearchParams(location.search).has('debug') ? createRuntimePanel({
-  where: 'this table', faceOf, retry: (id) => runtime.retry(id),
+  where: 'this table', faceOf,
   askText: (id) => ASKS[id.split(':')[0]]?.(id.split(':')[1]) ?? id,
 }) : null;
 
-// The table as a world, and on the host's page, Ponjo's runtime on it. What
-// it says of the players (statuses): who is at work, and whose run failed.
-const world = createWorld(() => table, {
-  async typing(id, text) {
-    typing.add(id);
-    draw();
-    share();
-    await wait(typeTime(text));
-    typing.delete(id);
-  },
-});
-const runtime = ROOM ? null : await createRuntime({
-  world, run,
-  breaker: async () => ({ pauseAfter: Infinity, pauseWithin: 10 }), // the table has no watches to pause
-  watching: { read: async () => ({}), note: () => {} },
-  trace: (event) => panel?.add(event),
-  emit(type, statuses) {
-    if (type !== 'agents') return;
-    panel?.agents(statuses);
-    running.clear();
-    for (const s of statuses) if (s.asks.length) running.add(s.id);
-    failed = new Map(statuses.filter((s) => s.failed.length).map((s) => [s.id, s.failed.at(-1).why]));
-    draw();
-    share();
-  },
+// AI player `id`'s program: a run is one call of the model on what its
+// seat sees, then the player's own time to think; what it decided lands at once.
+const think = (id) => agent({ client: store.client(id), id, infer: ai.infer, tool: DECIDE, prompt, panel, decide: decided, pace: (tasks, view) => thinkTime(id, tasks, view) });
+
+// The dealer's program: on its task, the cards it is to deal, from the
+// rest of a shuffled deck: the table holds no deck. The first hand waits
+// for the players' hellos.
+const dealer = ([task], view, signal) => new Promise((resolve) => {
+  const timer = setTimeout(() => resolve({ body: { cards: cards(view.content.out, view.content.need) } }), (task.at ?? 0) - Date.now());
+  signal.addEventListener('abort', () => clearTimeout(timer));
 });
 
-function nextHand() {
-  if (!deal(table)) return buyIn('rebuy');
-  session.hands++;
-  changed();
+// What this page's person does: landed here, or on a friend's page sent
+// to the host, which lands it. A move is made on the turn this page sees.
+// Refused, it lands nothing, and they see why.
+function perform(body) {
+  if (ROOM) return guest.send({ type: 'act', base: table.moment, body });
+  const out = store.commit(HUMAN, { base: table.moment, body });
+  if (out.refused) $('.pk-turn').textContent = out.refused;
+  return out;
 }
+const nextHand = () => perform({ type: 'next' });
 
 // ---- the session: buying in, topping up, leaving ----
 
@@ -228,37 +172,23 @@ buyin.addEventListener('submit', (event) => {
   session.bought += amount;
   if (ROOM) {
     const name = buyin.elements.name.value.trim().slice(0, 20) || 'Friend';
-    store(name, NAME);
-    guest.send(kind === 'sit' ? { type: 'sit', seat: Number(buyin.dataset.slot), name, buyIn: amount } : { type: 'topup', amount });
+    keep(name, NAME);
+    perform(kind === 'sit' ? { type: 'sit', seat: Number(buyin.dataset.slot), name, buyIn: amount } : { type: 'topup', amount });
     saveWallet();
     return closeBuyIn();
   }
-  topUp(table, amount);
+  // the host: buying in deals the next hand; the first time, after the players' hellos
+  if (perform(kind === 'topup' ? { type: 'topup', amount } : { type: 'sit', buyIn: amount }).refused) wallet.bankroll += amount;
   saveWallet();
   closeBuyIn();
-  if (kind === 'topup' && table.hand && table.hand.street !== 'done') changed();
-  else if (!table.hand) greet();
-  else nextHand();
 });
-// Before the first hand, the players say hello, a line every second or so; then the cards.
-function greet() {
-  const lines = intros(table);
-  lines.forEach((line, k) => setTimeout(() => {
-    introduce(table, line);
-    changed();
-  }, 400 + k * 1400));
-  setTimeout(nextHand, 400 + lines.length * 1400 + 600);
-}
 
 function leaveTable() {
-  if (ROOM) {
-    session.cashed = chipsOfMine();
-    guest.send({ type: 'leave' });
-  } else session.cashed = leave(table);
+  session.cashed = chipsOfMine();
+  perform({ type: 'leave' });
   wallet.bankroll += session.cashed;
   saveWallet();
   buyIn('left');
-  changed();
 }
 
 // ---- the table ----
@@ -386,8 +316,9 @@ const TAG = { fold: 'Fold', check: 'Check', call: 'Call', bet: 'Bet', raise: 'Ra
 function tag(hand, i, { id, joining, leaving }) {
   if (joining) return ['Sits in next hand', 'wait'];
   if (leaving && (!hand || hand.street === 'done')) return ['Leaving', 'fold'];
-  if (clock.ends && hand?.street !== 'done' && hand?.toAct === i) return [`${Math.max(0, Math.ceil((clock.ends - Date.now()) / 1000))}s to act`, 'wait'];
-  if (running.has(id) && hand?.toAct === i) return ['Thinking…', 'wait'];
+  if (presence()[id]?.failed) return ['Can\'t reach the model', 'failed'];
+  if (table.ends && hand?.street !== 'done' && hand?.toAct === i) return [`${Math.max(0, Math.ceil((table.ends - Date.now()) / 1000))}s to act`, 'wait'];
+  if (presence()[id]?.working && hand?.toAct === i) return ['Thinking…', 'wait'];
   if (!hand) return ['', ''];
   if (hand.street === 'done') {
     const won = hand.result.won[i];
@@ -466,9 +397,9 @@ function draw() {
     const before = was.get(id);
     node.toggleAttribute('data-folded', Boolean(out || s?.folded || p.joining || (p.leaving && (!hand || hand.street === 'done'))));
     node.toggleAttribute('data-turn', Boolean(hand && hand.street !== 'done' && hand.toAct === i));
-    node.toggleAttribute('data-thinking', Boolean(running.has(id) && hand && hand.street !== 'done' && hand.toAct === i));
+    node.toggleAttribute('data-thinking', Boolean(presence()[id]?.working && hand && hand.street !== 'done' && hand.toAct === i));
     node.toggleAttribute('data-won', Boolean(hand?.street === 'done' && hand.result.won[i]));
-    $('.pj-agent-face', node).dataset.presence = running.has(id) || (isPerson(id) && hand?.street !== 'done' && hand?.toAct === i) ? 'working' : out || s?.folded ? 'away' : 'idle';
+    $('.pj-agent-face', node).dataset.presence = presence()[id]?.working || (isPerson(id) && hand?.street !== 'done' && hand?.toAct === i) ? 'working' : out || s?.folded ? 'away' : 'idle';
     const stack = isPerson(id) ? myChips(table, id) : s ? s.stack : i >= 0 ? table.players[i].stack : STACK;
     const stackNode = $('.pk-stack', node);
     stackNode.textContent = out ? 'Out' : money(stack);
@@ -513,6 +444,7 @@ function draw() {
   if (hand?.street === 'done' && celebrated !== hand.id) {
     celebrated = hand.id;
     const mine = hand.result.won[seatOf(me)] ?? 0;
+    if (hand.seats[seatOf(me)]?.inHand) session.hands++;
     if (mine > session.biggest) session.biggest = mine;
     saveWallet();
     if (seatedNow(me) && !chipsOfMine()) setTimeout(() => buyIn('rebuy'), 1500);
@@ -524,6 +456,7 @@ function draw() {
   }
   drawMe();
   drawFeed();
+  if (shown) typed.open();
 }
 
 // Between hands: the result, then the host deals the next hand; and what the session stands at.
@@ -575,25 +508,18 @@ function drawMe() {
   $('.pk-hole-mine').style.opacity = s?.folded ? 0.5 : '';
   $('.pk-strength').textContent = !s?.inHand ? '' : s.folded ? 'Folded' : handName(s.hole, hand.board);
   const actor = hand?.street !== 'done' && hand?.seats[hand.toAct]?.id;
-  const mine = actor === me && !away;
-  const failure = !away && failed.has(actor) && { why: failed.get(actor) };
-  const recovery = $('.pk-recovery');
-  recovery.hidden = !failure;
-  $('[data-action="retry"]', recovery).hidden = Boolean(ROOM);
-  if (!failure || recovery.dataset.actor !== actor) $('details', recovery).open = false;
-  recovery.dataset.actor = failure ? actor : '';
-  $('details p', recovery).textContent = failure?.why ?? '';
+  const mine = myTurn() && !away;
   const stage = hand?.street === 'done' ? (hand.result.showdown ? 'Showdown' : 'Hand complete') : hand?.street;
   $('.pk-phase').textContent = hand ? `Hand ${hand.id} · ${stage[0].toUpperCase() + stage.slice(1)}` : '';
   let status = away;
   if (!status && mine) status = 'Your turn';
-  else if (!status && actor) status = failure ? `${label(actor)} lost connection.${ROOM ? ' Waiting for the host to retry.' : ''}` : `Waiting for ${label(actor)}`;
+  else if (!status && actor) status = `Waiting for ${label(actor)}`;
   else if (!status && !hand && chipsOfMine()) status = 'Waiting for the first deal';
   const turn = $('.pk-turn');
   if (turn.textContent !== status) turn.textContent = status;
   $('.pk-controls').hidden = !mine;
   if (!mine) return;
-  const l = legal(hand, seatOf(me));
+  const l = table.legal;
   $('[data-action="call"]').textContent = l.check ? 'Check' : `Call ${money(l.call)}${l.call === s.stack ? ' · all in' : ''}`;
   $('[data-action="raise"]').hidden = !l.raise;
   $('.pk-sizes').hidden = !l.raise || l.raise.min === l.raise.max;
@@ -605,7 +531,7 @@ function drawMe() {
 }
 function drawRaise() {
   const hand = table.hand;
-  const l = legal(hand, seatOf(me));
+  const l = table.legal;
   const to = Number($('.pk-slider').value);
   $('.pk-slider').setAttribute('aria-valuetext', money(to));
   const seat = hand.seats[seatOf(me)];
@@ -615,61 +541,41 @@ function drawRaise() {
 // A raise of a size a player names: the least, half the pot, the pot, all in.
 function size(name) {
   const hand = table.hand;
-  const l = legal(hand, seatOf(me));
-  const pot = hand.seats.reduce((sum, s) => sum + s.total, 0) + l.toCall;
+  const l = table.legal;
+  const pot = hand.pot + l.toCall;
   const to = { min: l.raise.min, half: hand.currentBet + Math.round(pot / 2), pot: hand.currentBet + pot, max: l.raise.max }[name];
   $('.pk-slider').value = Math.min(l.raise.max, Math.max(l.raise.min, to));
   drawRaise();
 }
 
-// What this page's player does: landed here, or on a friend's page sent to the host, which lands it.
-function perform(message) {
-  if (ROOM) guest.send(message);
-  else apply(HUMAN, message);
-}
-const play = (action) => perform({ type: 'act', action });
-
-// What a person does, from this page or a friend's: through the writer, as an AI player's proposal.
-function apply(id, message) {
-  const hand = table.hand;
-  const between = !hand || hand.street === 'done';
-  const amount = Math.round(Number(message.amount ?? message.buyIn)) || 0;
-  if (message.type === 'act' && hand && message.action && typeof message.action === 'object') land(table, id, { hand: hand.id, n: hand.n, turn: true }, { action: message.action });
-  else if (message.type === 'say') say(table, id, message.text);
-  else if (message.type === 'react') react(table, id, message.emoji);
-  else if (message.type === 'sit' && id !== HUMAN && amount >= MIN_BUY && amount <= MAX_BUY) {
-    if (!seatFriend(table, id, String(message.name).trim().slice(0, 20) || 'Friend', message.seat, amount)) room.send(peerOf(id), { type: 'refused', amount });
-  } else if (message.type === 'topup' && seatedNow(id) && amount > 0 && myChips(table, id) + amount <= MAX_BUY) topUp(table, amount, id);
-  else if (message.type === 'leave' && seatedNow(id) && between) leave(table, id);
-  else return;
-  changed();
-}
+const play = (action) => perform({ action });
 
 // ---- the chat: what people say, as a chat app shows it, and each hand's result ----
 
-let drawn = 0; // log entries drawn
+// A line an AI player said lands at once; this page types it out first,
+// one after another, unless it was there when the page opened.
+const typed = typer(() => draw(), typeTime);
+let drawn = 0; // lines drawn
+let popped = null; // reactions shown, from when the page opened
 let posted = 0; // the last hand whose result is in the chat
 function drawFeed() {
   const feed = $('.pk-feed');
   const stick = feed.scrollHeight - feed.scrollTop - feed.clientHeight < 40;
   for (const node of feed.querySelectorAll('.pk-typing')) node.remove();
-  for (; drawn < table.log.length; drawn++) {
-    const change = table.log[drawn];
-    if (change.type === 'chat') {
-      const line = table.chat[change.line - 1];
-      feed.append(chatLine(line, feed.lastElementChild?.dataset.by === line.by));
-    } else if (change.type === 'react') {
-      pop(change.by, change.emoji);
-    } else if (change.type === 'rebuy') {
-      feed.append(notice(`${change.by} buys back in for ${money(change.amount)}.`));
-    }
+  typed.clear();
+  for (; drawn < table.chat.length; drawn++) {
+    const line = table.chat[drawn];
+    if (!isPerson(line.by) && !typed.shows(`l:${line.id}`, line.by, line.text)) break;
+    feed.append(line.by === DEALER ? notice(line.text) : chatLine(line, feed.lastElementChild?.dataset.by === line.by));
   }
+  if (shown) popped ??= table.reactions.length;
+  for (; popped < table.reactions.length; popped++) pop(table.reactions[popped].by, table.reactions[popped].emoji);
   const hand = table.hand;
   if (hand?.street === 'done' && posted !== hand.id) {
     posted = hand.id;
     feed.append(notice(`Hand ${hand.id}: ${resultText()}`));
   }
-  for (const id of typing) feed.append(typingMessage(faceOf(id), id));
+  for (const id of typed.typing) feed.append(typingMessage(faceOf(id), id));
   if (stick) feed.scrollTop = feed.scrollHeight;
 }
 // A reaction: the emoji pops up in a bubble by its sender's face and floats away.
@@ -704,7 +610,6 @@ function item(content, run, disabled = '') {
   else li.addEventListener('click', () => {
     closeMenu();
     run();
-    changed();
   });
   return li;
 }
@@ -720,18 +625,18 @@ function who(id) {
 function openMenu(anchor, { slot, id }) {
   const here = lineup(table);
   if (id && isPerson(id)) {
-    menu.replaceChildren(el('li', 'pk-menu-head', ''), item([el('span', '', 'Ask to leave the table')], () => turnAway(id)));
+    menu.replaceChildren(el('li', 'pk-menu-head', ''), item([el('span', '', 'Ask to leave the table')], () => sendAway(id)));
     menu.firstChild.append(faceOf(id), el('b', '', label(id)));
   } else if (id) {
     const p = here.find((q) => q.id === id);
     const others = here.filter((q) => q.id !== HUMAN && !q.leaving).length;
     menu.replaceChildren(el('li', 'pk-menu-head', ''), p.leaving
-      ? item([el('span', '', 'Stay at the table')], () => addPlayer(table, id))
-      : item([el('span', '', p.joining ? 'Don\'t sit down' : table.hand && table.hand.street !== 'done' ? 'Leave after this hand' : 'Leave the table')], () => removePlayer(table, id), others < 2 ? 'A table needs someone to play against' : ''));
+      ? item([el('span', '', 'Stay at the table')], () => perform({ type: 'add', id }))
+      : item([el('span', '', p.joining ? 'Don\'t sit down' : table.hand && table.hand.street !== 'done' ? 'Leave after this hand' : 'Leave the table')], () => perform({ type: 'remove', id }), others < 2 ? 'A table needs someone to play against' : ''));
     menu.firstChild.append(...who(id));
   } else {
     const out = PERSONAS.filter((q) => !here.some((h) => h.id === q.id));
-    menu.replaceChildren(...out.map((q) => item(who(q.id), () => addPlayer(table, q.id, slot))));
+    menu.replaceChildren(...out.map((q) => item(who(q.id), () => perform({ type: 'add', id: q.id, seat: slot }))));
   }
   const at = anchor.getBoundingClientRect();
   menu.hidden = false;
@@ -765,13 +670,13 @@ function showThinking() {
   const body = $('.pk-thinking-body', dialog);
   body.replaceChildren(...hand.seats.filter((s) => !isPerson(s.id)).map(({ id }) => {
     const seat = hand.seats.findIndex((s) => s.id === id);
-    const thoughts = table.notes[id]?.thoughts.filter((t) => t.hand === hand.id) ?? [];
+    const thoughts = table.thoughts[id] ?? [];
     const part = el('details', 'pj-trace-part');
     part.open = true;
     const summary = el('summary');
     const avatar = el('span', 'pj-avatar pj-avatar-agent');
     avatar.append(agentFace(id));
-    const held = hand.seats[seat].hole;
+    const held = hand.seats[seat].hole ?? [];
     summary.append(icon('chevron'), avatar, el('span', 'pj-trace-title', id), el('span', 'pj-trace-meta', held.length ? `held ${held.map(cardText).join(' ')}` : 'sat out'));
     part.append(summary);
     if (!thoughts.length) part.append(el('p', 'pj-empty', 'No decisions this hand.'));
@@ -797,10 +702,6 @@ function drawModel() {
 document.addEventListener('click', (event) => {
   const action = event.target.closest('[data-action]')?.dataset.action;
   if (action === 'next') nextHand();
-  else if (action === 'retry' && !ROOM) {
-    const actor = $('.pk-recovery').dataset.actor;
-    if (failed.has(actor)) runtime.retry(actor);
-  }
   else if (action === 'topup') buyIn('topup');
   else if (action === 'leave') leaveTable();
   else if (action === 'buyin-cancel') {
@@ -814,7 +715,7 @@ document.addEventListener('click', (event) => {
   else if (action === 'invite-done') closeInvite();
   else if (action === 'copy') copyLink();
   else if (action === 'fold') play({ type: 'fold' });
-  else if (action === 'call') play({ type: legal(table.hand, seatOf(me)).check ? 'check' : 'call' });
+  else if (action === 'call') play({ type: table.legal.check ? 'check' : 'call' });
   else if (action === 'raise') play({ type: table.hand.currentBet ? 'raise' : 'bet', amount: Number($('.pk-slider').value) });
   else if (action === 'chat') {
     const chat = $('.pk-chat');
@@ -827,91 +728,63 @@ $('.pk-thinking').addEventListener('click', (event) => {
 });
 $('.pk-reacts').addEventListener('click', (event) => {
   const emoji = event.target.closest('[data-react]')?.dataset.react;
-  if (emoji) perform({ type: 'react', emoji });
+  if (emoji) perform({ react: emoji });
 });
 $('.pk-say').addEventListener('submit', (event) => {
   event.preventDefault();
   const input = event.currentTarget.elements.text;
   if (!input.value.trim()) return;
-  perform({ type: 'say', text: input.value });
+  perform({ say: input.value });
   input.value = '';
 });
 
 // ---- friends: the host's page invites them; a friend's page joins ----
 
-const peers = new Map(); // a friend's page in the room → { id, log, chat }: its player, and how much of the log and chat it was sent
-const gone = new Set(); // friends whose page went: they leave the table once the hand is over
-let room = null; // the room, once the person invites friends
 let away = ''; // a friend's page: why the line to the host is down
-const peerOf = (id) => [...peers].find(([, p]) => p.id === id)?.[0];
+const sentAway = new Set(); // friends the host asked to leave: their pages may not come back
 
+// Each friend's page gets its seat's view, with the presence it may see
+// (game-kit.js); what it sends lands as its player's.
+const guests = friends(store, {
+  heard: act,
+  joined: (id) => (sentAway.has(id) ? 'The host asked you to leave the table.' : ''),
+});
 const inviting = $('.pk-invite');
 async function invite() {
   inviting.hidden = false;
   document.body.classList.add('pk-buying-in');
   inviting.elements.name.value = table.names[HUMAN] ?? load(NAME) ?? '';
-  room ??= await host({ joined, heard: (peer, message) => peers.has(peer) && apply(peers.get(peer).id, message), left });
-  inviting.elements.link.value = room.link;
+  inviting.elements.link.value = await guests.link();
 }
 function closeInvite() {
   const name = inviting.elements.name.value.trim().slice(0, 20);
   if (name) {
-    table.names[HUMAN] = name;
-    store(name, NAME);
+    store.commit(HUMAN, { body: { type: 'name', name } });
+    keep(name, NAME);
   }
   inviting.hidden = true;
   document.body.classList.remove('pk-buying-in');
-  changed();
 }
 function copyLink() {
   inviting.elements.link.select();
   navigator.clipboard?.writeText(inviting.elements.link.value).catch(() => {});
 }
-function joined(peer, hello) {
-  if (!/^f[0-9a-f]{8}$/.test(String(hello?.id))) return room.turnAway(peer, 'Not a player');
-  if (sentAway.has(hello.id)) return room.turnAway(peer, 'The host asked you to leave the table.');
-  peers.set(peer, { id: hello.id, log: 0, chat: 0 });
-  gone.delete(hello.id);
-  changed();
-}
-// A friend's page goes: unless a page of theirs is back within RECONNECT_MS (a reload), they are gone, and leave once the hand is over.
-function left(peer) {
-  const id = peers.get(peer)?.id;
-  peers.delete(peer);
-  setTimeout(() => {
-    if (!id || !lineup(table).some((p) => p.id === id) || [...peers.values()].some((p) => p.id === id)) return;
-    gone.add(id);
-    changed();
-  }, RECONNECT_MS);
-}
-// The host asks a friend to leave: they are gone at once, and their page may not come back.
-const sentAway = new Set();
-function turnAway(id) {
-  const peer = peerOf(id);
-  if (peer !== undefined) room.turnAway(peer, 'The host asked you to leave the table.');
-  peers.delete(peer);
+// The host asks a friend to leave: their page goes, and may not come back; they leave the table.
+function sendAway(id) {
   sentAway.add(id);
-  if (lineup(table).some((p) => p.id === id)) gone.add(id);
-  changed();
+  guests.turnAway(id, 'The host asked you to leave the table.');
+  store.client(id).commit({ body: { type: 'leave' } });
 }
-
-// Each friend's page gets the table as its player may see it: its own
-// cards, others' once shown, the AI players' once the hand is over; the
-// log and chat since it was last sent them.
-function share() {
-  for (const [peer, p] of peers) {
-    const seat = seatOf(p.id);
-    const hand = table.hand && {
-      ...table.hand,
-      deck: [],
-      seats: table.hand.seats.map((s, i) => ({ ...s, hole: i === seat || (table.hand.result?.showdown && table.hand.result.hands[i]) || (table.hand.street === 'done' && !isPerson(s.id)) ? s.hole : s.hole.map(() => null) })),
-    };
-    const done = table.hand?.street === 'done';
-    const notes = Object.fromEntries(PERSONAS.map(({ id }) => [id, { thoughts: done ? table.notes[id].thoughts.filter((t) => t.hand === table.hand.id) : [] }]));
-    const { rev, players, slots, names, joining, leaving, handNo } = table;
-    room.send(peer, { type: 'state', table: { rev, players, slots, names, joining, leaving, handNo, hand, notes, topUp: { [p.id]: table.topUp[p.id] ?? 0 }, log: table.log.slice(p.log), logFrom: p.log, chat: table.chat.slice(p.chat), chatFrom: p.chat }, running: [...running], typing: [...typing], failed: [...failed], clock: clock.ends ? clock.ends - Date.now() : 0 });
-    Object.assign(p, { log: table.log.length, chat: table.chat.length });
-  }
+// What a friend's page sends: what its player does, made on `base`. A buy-in
+// that does not land goes back to their bankroll.
+function act(id, message) {
+  const b = message.body ?? {};
+  const action = b.action && typeof b.action === 'object' ? { type: String(b.action.type), ...(Number.isInteger(b.action.amount) ? { amount: b.action.amount } : {}) } : null;
+  const body = ['sit', 'topup', 'leave'].includes(b.type) ? { type: b.type, seat: b.seat, name: b.name, buyIn: b.buyIn, amount: b.amount }
+    : { ...(action ? { action } : {}), ...(typeof b.say === 'string' ? { say: b.say } : {}), ...(typeof b.react === 'string' ? { react: b.react } : {}) };
+  const { refused: why } = store.commit(id, { base: String(message.base ?? ''), body });
+  if (why && b.type === 'sit') guests.send(id, { type: 'refused', amount: Number(b.buyIn) || 0 });
+  else if (why) guests.send(id, { type: 'rejected', why });
 }
 
 // A friend's page: the table as the host sends it.
@@ -922,12 +795,11 @@ const guest = ROOM && join(ROOM, { id: me }, {
       wallet.bankroll += message.amount;
       saveWallet();
     }
+    if (message.type === 'rejected') $('.pk-turn').textContent = message.why;
     if (message.type !== 'state') return draw();
-    const t = message.table;
-    table = { ...t, log: [...table.log.slice(0, t.logFrom), ...t.log], chat: [...table.chat.slice(0, t.chatFrom), ...t.chat] };
-    for (const [set, ids] of [[running, message.running], [typing, message.typing]]) set.clear() || ids.forEach((id) => set.add(id));
-    failed = new Map(message.failed);
-    clock = { ends: message.clock && Date.now() + message.clock };
+    shown = message.view;
+    table = shown.content;
+    present = message.presence;
     if (reclaim && seatedNow(me)) wallet.bankroll -= reclaim;
     reclaim = 0;
     saveWallet();
@@ -948,5 +820,20 @@ const guest = ROOM && join(ROOM, { id: me }, {
 
 $('.pk-slider').addEventListener('input', drawRaise);
 drawModel();
+if (!ROOM) {
+  // The members' controllers: each AI player's, the dealer's, the clock's, and this screen's, the host's seat.
+  for (const { id } of PERSONAS) control(store.client(id), { program: think(id), wallet: store.wallet });
+  control(store.client(DEALER), { program: dealer });
+  control(store.client(CLOCK), clock());
+  control(store.client(HUMAN), {
+    show(view) {
+      shown = view;
+      table = view.content;
+      draw();
+    },
+  });
+  // Friends at a table this page held before it reloaded: the room is new, so they are gone.
+  for (const { id } of lineup(table)) if (isPerson(id) && id !== HUMAN) guests.gone(id);
+  if (!chipsOfMine()) buyIn(table.greeted ? 'rebuy' : 'sit');
+}
 draw();
-if (!ROOM) buyIn('sit');

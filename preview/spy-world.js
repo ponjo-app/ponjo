@@ -13,7 +13,7 @@
 // chat, and the AI players of the game just played answer.
 
 import { MAX_CLUE, MAX_LINES, act, due, endTalk, fallback as sayNothing, linesLeft, newGame, turn, view as seatView } from './spy-rules.js';
-import { DEPTH, MAX_LINE, named } from './table-talk.js';
+import { DEPTH, MAX_LINE, after as next, latest, line as newLine, named, think as thought, deadline } from './game-kit.js';
 
 export const HUMAN = 'you';
 export const CLOCK = 'clock'; // the member whose tasks are the table's deadlines
@@ -21,7 +21,6 @@ export const MAX_PEOPLE = 8;
 export const TURN = 90_000; // ms a turn may take; then everyone still due is taken as doing nothing
 export const TALK = 90_000; // ms a discussion may last; then the vote
 const HELLO_MS = 1800; // ms from one AI player's hello to the next, and from the last to the first clue
-const THOUGHTS_SHOWN = 8; // a player's own latest thinking its view has
 
 // Each AI player: who they are (`blurb`, shown on the page), how they talk
 // and how they clue, what they do when they think they are the spy, and the
@@ -113,7 +112,7 @@ const namedIn = (t, text) => named([...new Set([...t.players, ...t.people])], (i
 const moment = (t) => (t.game ? `${t.gameNo}:${t.greeting ? `hello:${t.hellos.length}` : turn(t.game)}` : '');
 const ends = (t) => t.since + (t.game.phase === 'talk' ? TALK : TURN);
 // The first AI player after `by` in seat order (from the first seat, if `by` has none) that `ok` takes.
-const after = (t, by, ok) => [...t.players.keys()].map((k) => t.players[(t.players.indexOf(by) + 1 + k) % t.players.length]).find((p) => p !== by && !isPerson(p) && ok(p));
+const after = (t, by, ok) => next(t.players, by, (p) => !isPerson(p) && ok(p));
 // The discussion's tasks are `talk:<gameNo>:<round>:<line>`, its opening line 0.
 const talk = (t) => `talk:${t.gameNo}:${t.game.round}:`;
 // The task `given` each line or pass answers: an AI player's, the one its
@@ -153,7 +152,7 @@ function chatTasks(t, id) {
 // the end of a turn, when everyone still due takes the rules' fallback; the
 // end of a discussion, when the vote is called.
 function clockTasks(t) {
-  const task = (given, as, at, why) => [{ given, as, kind: 'turn', from: [], depth: 0, at, why }];
+  const task = (...a) => [deadline(...a)];
   if (t.greeting) return t.intros.length ? task(`hello:${t.gameNo}:${t.players.indexOf(t.intros[0].id)}`, t.intros[0].id, t.since + HELLO_MS, 'A hello') : task(`begin:${t.gameNo}`, CLOCK, t.since + HELLO_MS, 'The first clue');
   if (!playing(t)) return [];
   return t.game.phase === 'talk' ? task(`vote-called:${moment(t)}`, CLOCK, ends(t), 'The vote') : task(`expire:${moment(t)}`, CLOCK, ends(t), 'The turn is up');
@@ -185,7 +184,7 @@ function view(t, member) {
       people, names, players, gameNo, greeting, hellos,
       game: t.game && seatView(t.game, seat < 0 ? null : seat),
       lines: t.lines.filter((l) => l.kind === 'chat'), // a discussion's are in the game's log
-      thoughts: t.game?.phase === 'over' ? t.thoughts : seat < 0 ? {} : { [member]: (t.thoughts[member] ?? []).slice(-THOUGHTS_SHOWN) },
+      thoughts: t.game?.phase === 'over' ? t.thoughts : seat < 0 ? {} : { [member]: latest(t.thoughts, member) },
       moment: moment(t),
       ends: playing(t) ? ends(t) : 0,
     },
@@ -306,19 +305,13 @@ function chat(t, by, b, answers) {
 // whoever set that off.
 function line(t, by, text, answers, marks) {
   const asked = tasksOf(t, by, t.players.indexOf(by)).filter((x) => answers.includes(x.given));
-  const person = isPerson(by);
-  return {
-    id: t.lines.length + 1, by, text, to: namedIn(t, text).filter((id) => id !== by),
-    depth: person ? 0 : 1 + Math.max(0, ...asked.map((x) => x.depth)), from: person ? [by] : [...new Set(asked.flatMap((x) => x.from))],
-    game: t.gameNo, ...marks,
-  };
+  return newLine(t.lines, { by, text, to: namedIn(t, text), person: isPerson(by), asked, game: t.gameNo, ...marks });
 }
 
 // An AI player's thinking lands with its change, as of the moment it was made on (`before`).
 function think(t, before, by, b) {
   if (isPerson(by) || !b.thinking) return t;
-  const thought = { round: before.game?.round ?? 0, kind: ['say', 'pass'].includes(b.type) ? 'talk' : b.type, text: String(b.thinking), action: b.type === 'vote' ? { type: 'vote', target: b.target } : null };
-  return { ...t, thoughts: { ...t.thoughts, [by]: [...(t.thoughts[by] ?? []), thought] } };
+  return { ...t, thoughts: thought(t.thoughts, by, { round: before.game?.round ?? 0, kind: ['say', 'pass'].includes(b.type) ? 'talk' : b.type, text: String(b.thinking), action: b.type === 'vote' ? { type: 'vote', target: b.target } : null }) };
 }
 
 // ---- what an AI player is shown ----

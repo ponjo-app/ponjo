@@ -9,7 +9,8 @@
 // night; the seer, who learns one player's side a night; the witch, with one
 // potion that saves the night's victim and one that kills, each once a game;
 // villagers. A night, as a narrator calls it: the wolves pick a kill
-// together, then the seer checks someone, then the witch. Dawn says who died. Then each living player
+// together, then the seer checks someone, then the witch; it ends when the
+// narrator calls dawn (`daybreak`). Dawn says who died. Then each living player
 // speaks once, in seat order; then everyone alive votes at once; the player
 // with the most votes is out, and says their last words. The village wins
 // when every wolf is dead; the wolves, once they are as many as everyone else.
@@ -184,9 +185,27 @@ export function fallback(game, seats = due(game).map((d) => d.seat)) {
   return settle(g);
 }
 
-// After an action: while no one is due, the phase ends and the next begins.
+// After an action: while no one is due, the phase ends and the next begins;
+// the night's last step waits for the narrator to call dawn.
 function settle(g) {
-  while (g.phase !== 'over' && !due(g).length) end(g);
+  while (g.phase !== 'over' && !due(g).length && !(g.phase === 'night' && g.step === 'witch')) end(g);
+  return g;
+}
+
+/**
+ * The narrator calls dawn: whoever is still due tonight is taken as doing
+ * nothing (`fallback`), and the day begins. Returns the new game.
+ */
+export function daybreak(game) {
+  let g = game;
+  while (g.phase === 'night') {
+    if (due(g).length) g = fallback(g);
+    else {
+      g = clone(g);
+      end(g);
+      settle(g);
+    }
+  }
   return g;
 }
 
