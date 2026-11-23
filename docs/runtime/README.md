@@ -9,17 +9,18 @@ this way: [vision](vision.md). Ponjo is one host ([Ponjo](#ponjo)).
 
 | Word | Means |
 | --- | --- |
-| member | one who acts in a world: a person or an agent |
+| member | one who acts in a world: a person, an agent, or a system member (the clock, a dealer) |
 | client | what acts for a member: a controller and a program |
-| program | what a controller hands a task to: a person's screen, an agent program, a script |
+| program | what a controller hands tasks to: a person's screen, an agent program, a script, a timer |
 | seat | whom a change acts as (`as`): a member, or a role it plays; the world gives a seat its view and rights |
-| `for` | the people a task is done for: whose trust and money it spends |
-| owner | the person whose machine, keys and money an agent uses; each agent has one |
+| owner | the person whose keys and money an agent uses; each agent has one |
+| wallet | the owner's part: whom they pay for, how much, the limits, the keys, the effects; kept where the owner trusts |
 | host | the application that runs one owner's clients |
 | store | where the state is kept, and the one way it changes |
-| world | the rules: three pure functions |
-| task | something a member is due to do: what it answers, as whom, for whom |
-| run | an agent program working once on a task |
+| world | the rules: two pure functions |
+| task | one thing a member is due to do: one `given`, as one seat |
+| run | an agent program working once, on one or more tasks of one seat |
+| effect | an action on the outside world (a message, a deploy), carried out by the wallet |
 | presence | who is here and what they are doing; not part of the state |
 
 # Part 1. A world of members
@@ -33,54 +34,68 @@ flowchart LR
   subgraph clients["A client per member"]
     person["Person: a screen"]
     agent["Agent: an agent program"]
+    system["System member: a timer, a script"]
   end
-  outside(["Outside programs: a dealer, the clock, git pull"])
+  outside(["Members with no tasks: git pull, an editor"])
   clients -- "read(member), wait, commit, presence" --> store["Store"]
   outside -- "commit" --> store
-  store -- "view, apply, deadlines" --> world["World"]
+  store -- "view, apply" --> world["World"]
 ```
 
 ## Members
 
-A member is an identity and a client. A person, a buddy that acts as
-itself, and an agent playing a person's seat while they are away are the
-same thing with different programs. A member acts in two ways:
+A member is an identity and a client. A person, a buddy acting as itself,
+an agent playing a person's seat while they are away, the clock and a
+dealer are the same thing with different programs. A member acts in two
+ways:
 
-- **On a task**, through its controller: what the world says it is due to
-  do (its turn, an ask).
+- **On a task**, through its controller: what its view says it is due to
+  do (its turn, an ask, a deadline).
 - **Of its own accord**, with no task: a person types, chats, resolves a
-  thread. Only people do; an agent acts only on a task, as every look costs.
+  thread; `git pull` writes a file. An agent never does: every look costs.
 
 ## Store
 
 ```
 read(member)              → { rev, view }     that member's projection: the world's view
 wait(member, rev)         → rev               once that member's view has changed after rev
-commit(change)            → { rev, actions } | { refused: why }
+commit(change)            → { rev, effects } | { refused: why }
 presence(member, what)                        what the member is doing now, shown as the view says
 ```
+
+A change:
+
+```
+Change  { by, at, as, base, answers, body }
+```
+
+`by` and `at` the store sets; `as` the seat it acts as; `base` what it was
+made on (a turn, a text's hash, a rev); `answers` the ids of the tasks it
+answers; `body` the world's.
 
 - **It alone holds the whole state.** A client, a person's or an agent's,
   on this machine or another, gets only its projection. The host that runs
   the store can read everything; no one else can.
 - **It keeps the state.** `{ rev, state }` outlives a refresh, a restart or
-  a crash; `rev` only grows. A store that forgets is not a store.
+  a crash; `rev` only grows. A store that forgets is not a store. Two copies
+  of one truth, such as a folder synced by git, are not one store: each is
+  the other's outside writer.
 - **It authenticates.** `commit` sets `by` from who sent the change, never
-  from the change. A file written outside, such as by `git pull`, is `by:
-  outside`, so it vouches for nothing.
+  from the change. A file written outside is `by: outside`, so it vouches
+  for nothing.
 - **It stamps.** `commit` sets `at` from the store's clock.
 - **It lands one change at a time.** It applies the world's `apply` to the
   newest state and keeps the result only if nothing landed meanwhile; else
-  it applies again. So `{ refused }` comes only from `apply`.
+  it applies again. `base` tells `apply` whether the change is stale.
 - **It wakes only whom a change concerns.** `wait` returns when that
-  member's view has changed. Its return carries nothing: the client reads
-  again, so a lost or doubled notice costs nothing, and no one learns of a
-  change they may not see.
-- **It keeps the past by content.** What `view` or `apply` needs of an
-  earlier state (what changed since a member last answered, the edits a
-  late change must move over) is looked up by hash, and what a hash names
-  never changes, so both stay pure. A past the store no longer keeps is
-  missing, never wrong: a view without it is a first look.
+  member's view has changed, as its fingerprint tells. Its return carries
+  nothing: the client reads again, so a lost or doubled notice costs
+  nothing, and no one learns of a change they may not see.
+- **It keeps the past by content.** What a view or `apply` needs of an
+  earlier state (what changed since a member last answered; the edits a
+  late change must move over) is looked up by hash. Tasks never need it:
+  they come from the state alone, so two stores that kept different pasts
+  give the same tasks. A past no longer kept is a first look.
 
 *Why one holder.* Hidden information (a hand of cards, a role) is safe
 only if no client ever holds the whole state. One holder, and projections
@@ -91,13 +106,12 @@ server) is the same store, moved.
 
 ```
 view(state, member, past)    → { content, actions, tasks, seen, rules }
-apply(state, change, past)   → { state, actions } | { refused: why }
-deadlines(state)           → [{ at, change }]
+apply(state, change, past)   → { state, effects } | { refused: why }
 ```
 
-All three are pure: no I/O, no clock, no randomness of their own. What
-comes from outside comes in a change: a shuffled deck in the dealer's,
-the time in the store's stamp.
+Both are pure: no I/O, no clock, no randomness of their own. What comes
+from outside comes in a change: a shuffled deck in the dealer's, the time
+in the store's stamp, a deadline in the clock's.
 
 ### view
 
@@ -112,56 +126,59 @@ the time in the store's stamp.
 A view is the seat's. What a seat may see and do is the world's to say
 (a wolf sees the pack; a doc's reader its threads). One `view` serves a
 person's screen, an agent's prompt and another host alike, so they never
-disagree.
+disagree. A seat's view goes only to a machine whose owner may see it.
 
 ### Tasks
 
 ```
-Task  { given, as, for, depth, standing, at?, why }
+Task  { given, as, kind, from, depth, at?, why }
 ```
 
-`given` the ids of what it answers; `as` the seat; `for` the people it is
-done for; `depth` 0 when a person or the world set it off, else one more
-than the change that did; `standing` whether only a standing request (a
-watch, an open channel) makes it due, not the world's rules (a turn); `at`
-when it is due by, if ever; `why` in words.
+`given` the one id it answers; `as` the seat; `kind` `turn` (the rules
+ask it), `ask` (a member asked) or `watch` (a standing request); `from`
+the people whose changes set it off; `depth` 0 when a person or the rules
+set it off, else one more than the agent's change that did; `at` when it
+is due by; `why` in words.
 
-- Tasks come from the state: who must act, who asked whom, who turned on a
-  watch. Each fact is a change whose `by` the store set, so a task names
-  only people who really asked.
+- Tasks come from the state alone: who must act, who asked whom, who
+  turned on a watch. Each fact is a change whose `by` the store set, so a
+  task names only people who really asked.
 - The order of `tasks` is the world's priority.
-- What different seats or rights need are different tasks; what needs the
-  same seat and rights is one, whoever asked.
+- Where one answer is wanted from several (a line said to the whole
+  table), the world lists the task for one member, by a rule of the state.
+- **A task others wait on has an `at`.** The rules decide what happens
+  when it passes; nothing waits for ever.
 
 ### Answers
 
-Every run's change lands. `apply` records what it was given as answered,
-keyed by content (an ask's id and its latest comment, a text's hash), never
-by `rev`:
+A change answers the tasks in `answers`. Every world gets one ledger,
+kept in the state by a pure wrapper around its `apply`:
 
-| A run's change | `apply` records | The task |
+| A run's change | The ledger | The task |
 | --- | --- | --- |
 | accepted | answered | gone |
-| turned away (illegal, or the turn moved) | a try, and why, for its next view | due again; at the world's limit, the world plays its fallback |
-| `{ failed }` | failed | an ask: gone, a person may ask again; a turn: the world plays its fallback at once |
+| refused by `apply` | a try, and why, shown in the seat's next view | due again; at the world's limit of tries, its `fallback` |
+| `{ failed }`, or not started by the wallet | failed | `turn`: its `fallback` at once; `ask`, `watch`: gone, a person may ask again |
 | nothing | answered | gone |
 
-A person's or an outside program's illegal or stale change is `{ refused
-}`: nothing lands, and they see why at once. Answers are in the state, so
-a restart, or another host on the same state, finds the same tasks.
+A world gives only `apply`, `fallback(state, task)` and its limit of
+tries. A person's or an outside member's refused change lands nothing:
+they see why at once. Answers are in the state, keyed by `given`, never by
+`rev`, so a restart, or another host on the same state, finds the same
+tasks.
 
 ### Time
 
-`deadlines` says which changes the clock must commit, and when: a turn
-that expires, a pause that settles people's typing. The store's host
-commits each at its `at`, with the state it was made for as its base, so
-it lands only if still due. Time is a change like any; no rule reads a
-clock.
+The clock is a member. Its tasks are the world's deadlines: a turn's `at`,
+a pause that settles people's typing, a narrator's next call. Its program
+waits until each `at` and commits the change the task names, with its
+base, so it lands only if still due. No rule reads a clock.
 
 ### Disagreement
 
-When the agents of different people keep undoing each other, the world
-stops listing those tasks and gives the people a task to settle it.
+Open: how the world sees the agents of different people undo each other,
+so that it stops listing those tasks and gives the people one to settle
+it. Until then, the wallet's limits are all that stop them.
 
 ## Controllers
 
@@ -171,38 +188,30 @@ One per member, on its owner's host:
 client(member, program):
   forever:
     { rev, view } = store.read(member)
-    stop the task going if none of its given is in view.tasks
-    hand view.tasks to program                  a person's: all; an agent's: see Part 2
+    stop the run going if none of its tasks is in view.tasks
+    hand view.tasks to program                  a person's: all; an agent's: Part 2
     wait until store.wait(member, rev) returns
 ```
 
-- A task goes on while any of its `given` is still listed. What the
-  program returns is one change, committed at once. A task that is stopped
-  commits nothing; the world still lists it, so it is handed
-  again when it is due again.
+- A run goes on while any of its tasks is still listed. What the program
+  returns is one change, committed at once. A run that is stopped commits
+  nothing; its tasks are handed again when they are due again.
 - A person's program shows every task and returns when they act; stopped,
   it takes the prompt away and keeps what they had written.
 - A controller holds only what is going. Losing it loses at most that.
 
 *Why a controller per member.* The member is what acts. One per member puts
 each on its owner's host, lets one wait or hang without holding up
-another, and makes a person and an agent the same loop.
+another, and makes a person, an agent and the clock the same loop.
 
 ## Presence
 
 Who is here, who is typing, who is thinking: told to the store with
 `presence`, shown to those the view's `seen` allows, kept nowhere. It is
-not state, so it never decides anything; a program that watches it may
-commit a change (a player gone too long leaves their seat). It can say what
-the state hides (a seat at work at night has a role), so the world decides
-who sees it. A screen may type a fresh line out: the line has landed.
-
-## Outside programs
-
-The clock, `git pull`, a room that sees a player gone: each commits as
-itself. One that must also be handed tasks, such as a dealer, is a member
-whose program is a script. One that holds a secret (a deck) runs beside the
-store, and lets it out only in its changes.
+not state, so it decides nothing; a member that watches it may commit a
+change (a player gone too long leaves their seat). It can say what the
+state hides (a seat at work at night has a role), so the world decides who
+sees it. A screen may type a fresh line out: the line has landed.
 
 # Part 2. Agent clients
 
@@ -211,8 +220,12 @@ its own: each look costs money; it acts for others; it fails in ways a
 person does not; it remembers nothing between runs.
 
 ```
-agent client = controller + renderer + agent program, with local and capacity
+agent client = controller + renderer + agent program, with the owner's wallet and the host's capacity
 ```
+
+An agent's controller takes the tasks of one seat that the wallet lets
+start, in the view's order, and hands them to one run; it starts no other
+run until that one ends. A run's answer is one change, so it lands whole.
 
 ## Renderers
 
@@ -226,34 +239,40 @@ The same view, written for an agent:
 
 What a run answers is one change: its actions, its thinking, or nothing.
 
-## Local
+## Wallet
 
-What only the owner's machine says, and only it writes:
+What only the owner says, kept where they trust: their own machine, or a
+store that holds it apart from the state, for them alone.
 
 ```
-allow(task)    → whether the owner lets this task start
-charge(task)   → counts a run against what it spends, before it starts
-act(actions)   → each outside action that landed: recorded, approved, carried out once
+allow(tasks)     → those the owner lets start
+charge(run)      → counts a run against what it spends, before it starts
+carry(effects)   → each effect that landed: approved, carried out once
 ```
 
-- **For whom.** The owner's policy: which people in `for` it does work for
-  (the room, the team). If it pays for some of them only, the run is given
-  only what they asked; the rest stays listed, unpaid.
-- **How much.** Each person's budget; a run's cost is split among those it
-  is done for.
+- **For whom.** The owner always pays. Their policy says for which people
+  in `from` they let a task start (the room, the team, themselves).
+- **How much.** A quota per person: a run's cost is charged evenly to the
+  `from` of the tasks it answers.
 - **Runaway.** Past a depth limit, nothing starts, so agents waking each
-  other come to rest. Past N standing runs in a world since a person last
-  acted there, no standing task starts until a person acts or resumes: a
-  loop the depth cannot see, such as a program that echoes an agent, stops
-  too. Turns are not counted: the world's rules bring a game to its end.
-- **Keys, settings, the record of each outside action.**
+  other come to rest. Past N runs on `watch` tasks, or of `depth` above 0,
+  since a person last acted in what this agent sees, none starts until one
+  does or the owner resumes: a loop the depth cannot see, such as a
+  program that echoes an agent, stops too. A `turn` is not counted: the
+  rules bring a game to its end.
+- **Keys, settings, and each effect's record.**
 
-An agent's controller hands its program at most one task, the first in
-`tasks` that `allow` lets start, as a run costs and its answer must be
-whole. Another task waits for the next run.
+A task the wallet will not start is answered as not started (Answers): a
+turn others wait on is played by its fallback, not left hanging.
 
-*Why apart from the store.* The store says who did what. Only the owner
-says what they will pay for, and only their machine holds their keys.
+*Why apart from the state.* The store says who did what. Only the owner
+says what they will pay for, and only where they trust are their keys.
+
+*Where it runs.* An agent's client runs where its wallet is, and is handed
+its seat's view. So where the owner may not see that view (a seat in a
+game of hidden hands), the client and the wallet must sit beside the
+store: the store keeps that owner's wallet apart from the state, and no
+client ever reads it.
 
 ## Capacity
 
@@ -261,7 +280,8 @@ A provider's limits (requests or tokens a minute, a 429) are the host's,
 not the world's:
 
 - One queue per provider and key, shared by every controller on the host.
-- Taken in the order of each task's priority.
+- Within a world, in the order of its tasks; across worlds, a task a
+  person waits on (a `turn`, an `ask`) first, then each world in turn.
 - Waiting is never failing: it is not an answer, not counted by the limits
   above, and not timed by the run's timeout. A task that is no longer due
   stops its run, waiting or not.
@@ -271,43 +291,48 @@ not the world's:
   its provider itself, such as a command-line agent, waits on its own, and
   its waiting counts in the run's time.
 
-## Outside actions
+## Effects
 
-An action on the outside world (a message, a call to an API, a deploy) is
-part of a run's change, never something a run does itself.
+An effect (a message, a call to an API, a deploy) is part of a run's
+change, never something a run does itself.
 
-- **Proposed.** A run lists its actions among what it made, each with a
-  name and an input. Only actions the owner installed can be named; the
+- **Proposed.** A run lists its effects in its change, each with a name, an
+  input and an id. Only effects the owner installed can be named; the
   prompt lists them. Nothing in the store can install one.
-- **Carried out once, after it lands.** `apply` returns the actions of a
-  change that landed. Local gives each an id and a record (proposed,
-  approved, started, then done or failed), never in the store.
+- **Carried out once, after it lands.** `apply` returns the effects of a
+  change that landed, and the wallet carries them out. They are in the
+  landed change, so the wallet, after a crash, finds each one it has no
+  record of and goes on; its record (approved, started, done or failed) is
+  the wallet's, never the state's.
 - **Never twice on its own.** One that started and did not end shows as
   "may have run", with Retry for a person. It is given its id, so a service
   that takes an idempotency key drops a second try.
-- **Approved first.** Each asks the owner first, by default: a task local
-  gives the owner, not the world. The owner may let an action run unasked,
-  and then only for tasks they alone are `for`.
-- **Its result** is committed as the action's reply, one deeper than the
+- **Approved first.** Each asks the owner, by default: a prompt from the
+  wallet to its owner, not a task of the world. The owner may let an effect
+  run unasked, and then only for tasks whose `from` is them alone.
+- **Its result** is committed as the effect's reply, one deeper than the
   run that proposed it.
-- **Not undone.** Undo takes back the edits it came with, never the action.
-
-Reading stays with the agent program: what it reads can end up where
-others see it, and a fetch can carry data out in its URL. So the shipped
-agent programs read, edit, search and fetch only.
+- **Not undone.** Undo takes back the edits it came with, never the effect.
 
 ## Security
 
 - The store sets who made each change; a file written outside vouches for
   no one.
 - A run acts with its seat's rights (`as`), and starts only for people the
-  owner pays for (`for`).
-- No client holds the whole state. Whoever runs the store's host can read
-  it; a world whose players must not, needs a store that plays in no seat.
+  owner pays for.
+- No client holds the whole state, and a seat's view reaches no machine
+  whose owner may not see it.
+- An owner's key spends only what their wallet allows; a wallet kept in a
+  shared store has its own budget and rate, so a room cannot spend more
+  than its owner set.
 - **Influence follows the view.** A run reads what others wrote, and that
   text can try to steer it. What bounds the harm: its seat's rights, the
-  owner's approval of each outside action, and a change that shows who
-  made it and can be undone. Nothing stops the attempt.
+  owner's approval of each effect, and a change that shows who made it and
+  can be undone. Nothing stops the attempt.
+- **Reading can leak.** What an agent program reads can end up where others
+  see it, and a fetch can carry data out in its URL. Where a view holds
+  what others must not learn, the agent gets the world's actions as its
+  only tools.
 
 # Hosts
 
@@ -327,9 +352,11 @@ How each of its worlds implements this: [doc](../app/worlds/doc.md),
 | agent program | an agent (`agents/`, run by `src/host/runner.js`) |
 | world | the doc world (`src/host/doc-world.js`); three games in `preview/` |
 | store | the doc's door (`src/host/doc-service.js`); for a game, a [room](../app/worlds/rooms.md) on the relay |
-| local | the config folder: settings, secrets, logs |
+| wallet | the config folder: settings, secrets, logs; for a game, the room, for the key's owner |
 | controller | `src/core/runtime.js`, given its runs, logs and settings by `src/host/buddy-runtime.js` |
-| an outside action | a plugin in `actions/` of the config folder; its input on stdin, its id as `PONJO_ACTION_ID`, its record in `logs/actions.jsonl` |
+| an effect | a plugin in `actions/` of the config folder; its input on stdin, its id as `PONJO_ACTION_ID`, its record in `logs/actions.jsonl` |
+
+Open: Ponjo's limits. Proposed: a depth limit of 10, and N = 30.
 
 ## Today
 
@@ -342,12 +369,32 @@ Ponjo's code follows the design before this one:
   none, and each game writes its own "your turn" and its own view for
   people (poker's `share`).
 - Who is due rests on notes in memory; a run that makes nothing or fails
-  commits nothing; a failure waits for Retry, in memory.
+  commits nothing; a failure waits for Retry, in memory. Each game keeps
+  its own tries and fallback.
 - The doc's `rev` starts again each time it opens; the comments are read
   from disk beside the door; a run lands in several commits.
 - A game's table lives only in the memory of the page that opened it: a
-  refresh ends the game, and that page can read every card. The way there:
-  a [room](../app/worlds/rooms.md) on the relay.
+  refresh ends the game, and that page can read every card.
 - Time is in page timers and in `stamp()`; tables change in place.
-- The breaker counts runs in a window; a busy API fails a run after one
-  retry ([Ponjo agent](../app/ponjo-agent.md)); runs share no queue.
+- The breaker counts runs in a window; the depth limit is 1,000; a busy
+  API fails a run after one retry ([Ponjo agent](../app/ponjo-agent.md));
+  runs share no queue.
+
+## Migration
+
+In this order, each step its own change, each with its tests:
+
+1. **The doc's store.** The door keeps `{ rev, state }` durably, holds the
+   comments in memory, sets `by` and `at`, lands a run in one commit, and
+   wakes each member on its view.
+2. **The doc's world.** `view` and `apply` as pure functions, the answer
+   ledger, asks answered by comments, watches in the door's own state.
+   `due.js` and the runtime's notes go.
+3. **Controllers.** One per member, the wallet, the capacity queue. The
+   five-call world is served through an adapter until the games move.
+4. **Game rooms.** One room per table on the relay, with the games' rules
+   as `view` and `apply`, AI seats and their wallets beside the store, and
+   one kit for what the three games share. The adapter goes.
+
+Each format kept on disk (the door's state, the wallet's records) carries a
+version, and a step that changes one reads the one before.

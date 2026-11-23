@@ -69,9 +69,10 @@ truth can move from a file to a database and no rule changes.
 
 **5. People declare; agents reconcile.** Only people say what they want: a
 request, a watch, a standing intent. Agents work the board toward it, and
-when it is met, the board comes to rest. Chains between agents are capped,
-and agents that keep undoing each other for different people are stopped
-for those people to settle.
+when it is met, the board comes to rest. Chains between agents are
+capped, and every task others wait on has a deadline, so nothing waits for
+ever. Agents that keep undoing each other for different people should be
+stopped for those people to settle; how the world sees that is still open.
 
 ## Two layers
 
@@ -81,13 +82,13 @@ agent adds to it:
 | Layer | Component | What it does | Principle |
 |---|---|---|---|
 | Members | Store | holds the whole state, keeps it, sets who made each change, lands one at a time, gives each member its view | 2, 4 |
-| | World | pure functions: what a member sees and is due to do, what a change does, when the clock acts | 1, 3, 4 |
-| | Controller | one per member: hands its tasks to its program, a screen or an agent program, and commits the answer | 1, 2 |
-| Agents | Local | the owner's: whom they pay for, how much, the limits, the keys, outside actions | 3 |
+| | World | two pure functions: what a member sees and is due to do, and what a change does | 1, 3, 4 |
+| | Controller | one per member: hands its tasks to its program (a screen, an agent program, the clock's timer) and commits the answer | 1, 2 |
+| Agents | Wallet | the owner's: whom they pay for, how much, the limits, the keys, effects | 3 |
 | | Capacity | the host's queue for a provider's limits | 3 |
 
-Each answers one question: the world whether a member *should* act, local
-whether an agent *may*, capacity *when*, the controller that it *does*, the
+Each answers one question: the world whether a member *should* act, the
+wallet whether an agent *may*, capacity *when*, the controller that it *does*, the
 store what is *true*.
 
 **Why the owner's policy is not in the store.** The store says who did
@@ -99,7 +100,7 @@ holds their keys.
 
 1. The dealer commits "Action on: Bob". The store lands it as rev 41.
 2. Bob's controller, waiting on Bob's view, wakes: its tasks hold Bob's
-   turn. Local allows it.
+   turn. The wallet allows it.
 3. A view is written for the agent: the table as text, the moves as tools.
 4. The agent program decides to call.
 5. The run commits the call. The store applies the world's rules: it is

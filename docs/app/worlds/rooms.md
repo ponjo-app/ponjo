@@ -16,14 +16,20 @@ turn-based games with hidden information. Each is a store of the
 - **Identity.** The room gives each member a token when they sit. `by` is
   the member whose token sent the change. A page that comes back with its
   token is in its seat again; one without is a new member.
-- **Time.** The room's alarm is the clock: it commits each of
-  `deadlines(state)` at its `at`.
+- **Time.** The clock is a member that runs in the room: the room's alarm
+  wakes it at its next task's `at`.
 - **Secrets.** The dealer runs in the room; the deck leaves it only in the
   dealer's changes.
-- **AI seats** are clients whose program is an agent program. An AI seat's
-  owner is whoever's key it uses: Ponjo's, and it runs in the room; or a
-  visitor's own, and it runs in their page, which is then its host and
-  holds its local.
+- **AI seats** run in the room, beside the store, so no page is ever handed
+  an AI seat's view: whoever's key one uses could otherwise read its cards.
+  The key is Ponjo's, or a visitor's own. A visitor's key is kept, as their
+  wallet, in the room's storage apart from the state: encrypted with a key
+  held in the Worker's secrets, bound to the token of whoever gave it, used
+  only for the AI seats they brought, sent to no client, and deleted when
+  the table ends, they leave it or they take it back. Keeping it across
+  tables would need accounts, which the games do not have.
+- **Spending.** Each room has its own budget and rate, on Ponjo's key and
+  on each visitor's, so no room spends more than its owner set.
 - **Presence** goes to the room, which passes it on as each view's `seen`
   allows, and keeps none.
 
