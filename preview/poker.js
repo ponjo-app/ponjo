@@ -1,32 +1,26 @@
 // The poker page (site/poker.html): a person and AI players at one
 // No-Limit Hold'em table, chatting while they play. The dealer
 // (poker-dealer.js) owns what must be exact; the table is a world
-// (poker-world.js) on the runtime's core (src/core/): a store in this
-// page, kept in the browser's storage on each change (game-kit.js), so a
-// refresh goes on with the hand. Each member has a controller: an AI
-// player's program is one call of the visitor's model (game-page.js, with
-// the log's messages); the person's is this screen, which draws their
-// seat's view and lands what they do; the dealer's deals each hand and
-// street from a deck the table never holds; the clock's waits for each
-// turn's deadline. The person may invite friends (poker-share.js): their
-// pages join by a link, and this page, the host's, sends each its seat's
-// view and lands what they do. A friend's page, opened at `#join=<room>`,
-// only draws. preview/build.js bundles it into dist/preview, as the site serves it.
+// (poker-world.js) on the runtime's core (src/core/), kept by the table's
+// room on the relay (relay/table.js), which also runs the AI players (on
+// the visitor's model, game-page.js), the dealer, who deals each hand and
+// street from a deck the table never holds, and the clock, with each
+// turn's deadline. This page is one seat's client: it draws its seat's
+// view, as the room sends it, and sends what its person does. The page
+// that opens the table plays as its host; friends join by a link, at
+// `#join=<room>` (game-kit.js, `sit`). preview/build.js bundles it into
+// dist/preview, as the site serves it.
 
 /* global document, location, matchMedia, innerWidth, innerHeight, HTMLDialogElement */
 
-import { $, el, message, models, notice, typingMessage } from './game-page.js';
-import { agent, friends, keep, load, openTable, typer } from './game-kit.js';
+import { $, el, message, models, notice, typingMessage, unreached } from './game-page.js';
+import { keep, load, sit, typer } from './game-kit.js';
 import { agentFace, personFace, setBuddies, setOwner } from '../web/faces.js';
 import { icon } from '../web/icons.js';
-import { clock, control } from '../src/core/controller.js';
-import { draw as cards, handName } from './poker-dealer.js';
-import { CLOCK, DEALER, DECIDE, HUMAN, MAX_BUY, MAX_SEATS, MIN_BUY, PERSONAS, STACK, decided, freeSeats, isPerson, lineup, myChips, newTable, prompt, world } from './poker-world.js';
-import { createRuntimePanel } from '../web/runtime-panel.js';
-import { guestId, join } from './poker-share.js';
+import { handName } from './poker-dealer.js';
+import { DEALER, HUMAN, MAX_BUY, MAX_SEATS, MIN_BUY, PERSONAS, STACK, freeSeats, isPerson, lineup, myChips, newTable } from './poker-world.js';
 
 const WALLET = 'ponjo-poker-bankroll';
-const TABLE = 'ponjo-poker-table'; // the table the host's page holds: { rev, state }, as its store last saved it
 const BANKROLL = 1000; // play dollars a new player starts with, and starts again with
 const money = (n) => `$${n.toLocaleString('en')}`;
 const SLOTS = ['bottom', 'left', 'top-left', 'top', 'top-right', 'right']; // the six seats round the table, from the one this page sits in
@@ -37,82 +31,43 @@ setBuddies(PERSONAS.map(({ id }) => ({ id, name: id })));
 setOwner(HUMAN);
 
 const ROOM = new URLSearchParams(location.hash.slice(1)).get('join'); // a friend's page: the room of the table it joins
-const me = ROOM ? guestId(ROOM) : HUMAN; // who this page plays as
-let shown = null; // this page's seat's view: the host's, as its controller last read it; a friend's, as the host last sent it
-let present = {}; // a friend's page: the presence the host last sent
+let me = ROOM ? null : HUMAN; // who this page plays as, once the room says
+let shown = null; // this page's seat's view, as the room last sent it
+let present = {}; // the presence the room last sent
+let note = null; // what the room last said of the AI players
 const EMPTY = { content: { ...newTable(), players: [], hand: null, legal: null, moment: '', ends: 0 }, tasks: [] };
 let table = EMPTY.content; // the table as this page's seat sees it
 
 // ---- what the visitor keeps in this browser: their bankroll ----
 
 // The bankroll, with what was on the table when they last left the page: it
-// comes back to them, unless the table is still here, chips and all.
-const kept = !ROOM && load(TABLE);
-const wallet = (({ bankroll = BANKROLL, onTable = 0, restarts = 0 } = {}) => ({ bankroll: bankroll + (kept ? 0 : onTable), restarts }))(load(WALLET) ?? undefined);
+// comes back to them, unless the table still has them seated, chips and all.
+const wallet = (({ bankroll = BANKROLL, onTable = 0, restarts = 0 } = {}) => ({ bankroll: bankroll + onTable, restarts }))(load(WALLET) ?? undefined);
 const session = { bought: 0, hands: 0, biggest: 0, cashed: 0 };
 const chipsOfMine = () => (turnedAway ? 0 : myChips(table, me));
 const saveWallet = () => keep({ ...wallet, onTable: chipsOfMine() }, WALLET);
 let turnedAway = false; // a friend's page the host asked to leave: its chips are back in its bankroll
-// A friend's page, reloaded: the chips it had on the table, put back in the
-// bankroll above, go back on the table if the host still has it seated.
-let reclaim = ROOM ? load(WALLET)?.onTable ?? 0 : 0;
-const ai = models(() => draw()); // the players' model
-
-// ---- the store and its members, on the host's page ----
-
-// The store, kept in this browser on each change. Its members' presence
-// (who is at work, whose run failed) is drawn here and sent to friends.
-const store = ROOM ? null : openTable(world, TABLE, newTable, () => {
+// A page reloaded: the chips it had on the table, put back in the bankroll
+// above, go back on the table if the room still has it seated.
+let reclaim = load(WALLET)?.onTable ?? 0;
+// The players' model: the host's page gives the room the visitor's own key, when they pick one.
+const ai = models(() => {
+  room.giveKey();
   draw();
-  guests.shown();
-});
-const presence = () => (ROOM ? present : store.client(HUMAN).present());
+}, Boolean(ROOM));
+const presence = () => present;
 const seatedNow = (id) => lineup(table).some((p) => p.id === id && !p.leaving);
 const seatOf = (id) => (table.hand ? table.hand.seats : table.players).findIndex((p) => p.id === id);
 const myTurn = () => (shown?.tasks ?? []).some((t) => t.given.startsWith('turn:'));
 setInterval(() => table.ends && draw(), 1000);
 
-// A model answers in a second or two, faster than a person can follow: a
-// player takes at least its own time to think (more facing a bet, less to
-// answer in the chat). Its line lands with its move; each page types it out after.
-const PACE = { Gary: [1200, 2600], Duke: [700, 1600], Penny: [1800, 3600], Mabel: [1600, 3200], Lex: [800, 1800], Hank: [1000, 2200] }; // ms a player thinks on its turn, from and to
-function thinkTime(id, tasks, view) {
-  const [from, to] = PACE[id];
-  const ms = from + Math.random() * (to - from);
-  if (!tasks.some((t) => t.given.startsWith('turn:'))) return ms / 2;
-  return ms + (view.content.legal?.toCall ? 600 : 0);
-}
+// Each page types a line out after it lands.
 const typeTime = (text) => Math.min(3000, Math.max(700, text.length * 35));
 
-// With ?debug, the host's page shows each AI player's runs (the runtime
-// panel): every player's cards and thinking, so only on asking.
-const ASKS = { turn: (hand) => `Turn, hand ${hand}`, line: (n) => `Chat line ${n}`, react: (hand) => `After hand ${hand}` };
-const panel = !ROOM && new URLSearchParams(location.search).has('debug') ? createRuntimePanel({
-  where: 'this table', faceOf,
-  askText: (id) => ASKS[id.split(':')[0]]?.(id.split(':')[1]) ?? id,
-}) : null;
-
-// AI player `id`'s program: a run is one call of the model on what its
-// seat sees, then the player's own time to think; what it decided lands at once.
-const think = (id) => agent({ client: store.client(id), id, infer: ai.infer, tool: DECIDE, prompt, panel, decide: decided, pace: (tasks, view) => thinkTime(id, tasks, view) });
-
-// The dealer's program: on its task, the cards it is to deal, from the
-// rest of a shuffled deck: the table holds no deck. The first hand waits
-// for the players' hellos.
-const dealer = ([task], view, signal) => new Promise((resolve) => {
-  const timer = setTimeout(() => resolve({ body: { cards: cards(view.content.out, view.content.need) } }), (task.at ?? 0) - Date.now());
-  signal.addEventListener('abort', () => clearTimeout(timer));
-});
-
-// What this page's person does: landed here, or on a friend's page sent
-// to the host, which lands it. A move is made on the turn this page sees.
-// Refused, it lands nothing, and they see why.
-function perform(body) {
-  if (ROOM) return guest.send({ type: 'act', base: table.moment, body });
-  const out = store.commit(HUMAN, { base: table.moment, body });
-  if (out.refused) $('.pk-turn').textContent = out.refused;
-  return out;
-}
+// What this page's person does, sent to the room, which lands it. A move
+// is made on the turn this page sees. Refused, it lands nothing, and the
+// room says why; chips bought go back to the bankroll.
+const perform = (body) => room.act(table.moment, body);
 const nextHand = () => perform({ type: 'next' });
 
 // ---- the session: buying in, topping up, leaving ----
@@ -170,15 +125,11 @@ buyin.addEventListener('submit', (event) => {
   wallet.bankroll -= amount;
   if (kind === 'sit') Object.assign(session, { bought: 0, hands: 0, biggest: 0, cashed: 0 });
   session.bought += amount;
-  if (ROOM) {
+  if (ROOM && kind === 'sit') {
     const name = buyin.elements.name.value.trim().slice(0, 20) || 'Friend';
     keep(name, NAME);
-    perform(kind === 'sit' ? { type: 'sit', seat: Number(buyin.dataset.slot), name, buyIn: amount } : { type: 'topup', amount });
-    saveWallet();
-    return closeBuyIn();
-  }
-  // the host: buying in deals the next hand; the first time, after the players' hellos
-  if (perform(kind === 'topup' ? { type: 'topup', amount } : { type: 'sit', buyIn: amount }).refused) wallet.bankroll += amount;
+    perform({ type: 'sit', seat: Number(buyin.dataset.slot), name, buyIn: amount });
+  } else perform(kind === 'topup' ? { type: 'topup', amount } : { type: 'sit', buyIn: amount }); // the host's buying in deals the next hand; the first time, after the players' hellos
   saveWallet();
   closeBuyIn();
 });
@@ -693,8 +644,7 @@ function showThinking() {
 
 function drawModel() {
   $('[data-action="key"]').hidden = Boolean(ROOM);
-  if (ROOM) $('.pk-model').textContent = 'You joined a friend\'s table: the AI players run on their page.';
-  else ai.draw();
+  ai.draw(note);
 }
 
 // ---- wiring ----
@@ -738,28 +688,21 @@ $('.pk-say').addEventListener('submit', (event) => {
   input.value = '';
 });
 
-// ---- friends: the host's page invites them; a friend's page joins ----
+// ---- the table's room: the host's page invites friends; a friend's page joins ----
 
-let away = ''; // a friend's page: why the line to the host is down
-const sentAway = new Set(); // friends the host asked to leave: their pages may not come back
+let away = ''; // why the line to the room is down
 
-// Each friend's page gets its seat's view, with the presence it may see
-// (game-kit.js); what it sends lands as its player's.
-const guests = friends(store, {
-  heard: act,
-  joined: (id) => (sentAway.has(id) ? 'The host asked you to leave the table.' : ''),
-});
 const inviting = $('.pk-invite');
 async function invite() {
   inviting.hidden = false;
   document.body.classList.add('pk-buying-in');
   inviting.elements.name.value = table.names[HUMAN] ?? load(NAME) ?? '';
-  inviting.elements.link.value = await guests.link();
+  inviting.elements.link.value = await room.link();
 }
 function closeInvite() {
   const name = inviting.elements.name.value.trim().slice(0, 20);
   if (name) {
-    store.commit(HUMAN, { body: { type: 'name', name } });
+    perform({ type: 'name', name });
     keep(name, NAME);
   }
   inviting.hidden = true;
@@ -769,45 +712,47 @@ function copyLink() {
   inviting.elements.link.select();
   navigator.clipboard?.writeText(inviting.elements.link.value).catch(() => {});
 }
-// The host asks a friend to leave: their page goes, and may not come back; they leave the table.
-function sendAway(id) {
-  sentAway.add(id);
-  guests.turnAway(id, 'The host asked you to leave the table.');
-  store.client(id).commit({ body: { type: 'leave' } });
-}
-// What a friend's page sends: what its player does, made on `base`. A buy-in
-// that does not land goes back to their bankroll.
-function act(id, message) {
-  const b = message.body ?? {};
-  const action = b.action && typeof b.action === 'object' ? { type: String(b.action.type), ...(Number.isInteger(b.action.amount) ? { amount: b.action.amount } : {}) } : null;
-  const body = ['sit', 'topup', 'leave'].includes(b.type) ? { type: b.type, seat: b.seat, name: b.name, buyIn: b.buyIn, amount: b.amount }
-    : { ...(action ? { action } : {}), ...(typeof b.say === 'string' ? { say: b.say } : {}), ...(typeof b.react === 'string' ? { react: b.react } : {}) };
-  const { refused: why } = store.commit(id, { base: String(message.base ?? ''), body });
-  if (why && b.type === 'sit') guests.send(id, { type: 'refused', amount: Number(b.buyIn) || 0 });
-  else if (why) guests.send(id, { type: 'rejected', why });
-}
+// The host asks a friend to leave: the room turns their page away, and they leave the table.
+const sendAway = (id) => room.send({ type: 'away', id });
 
-// A friend's page: the table as the host sends it.
-const guest = ROOM && join(ROOM, { id: me }, {
+// This page's seat at the table, in its room. Its first view: the host's
+// page, with no chips on the table, buys in.
+let opened = false;
+const room = sit('poker', HUMAN, {
+  key: ai.key,
+  hello(id) {
+    me = id;
+    draw();
+  },
   heard(message) {
     away = '';
-    if (message.type === 'refused') {
-      wallet.bankroll += message.amount;
-      saveWallet();
+    if (message.type === 'rejected') {
+      const back = message.body.type === 'sit' ? message.body.buyIn : message.body.type === 'topup' ? message.body.amount : 0;
+      if (back) {
+        wallet.bankroll += back;
+        saveWallet();
+      }
+      $('.pk-turn').textContent = message.why;
+      return draw();
     }
-    if (message.type === 'rejected') $('.pk-turn').textContent = message.why;
-    if (message.type !== 'state') return draw();
+    if (message.type !== 'state') return;
     shown = message.view;
     table = shown.content;
     present = message.presence;
+    note = message.ai;
     if (reclaim && seatedNow(me)) wallet.bankroll -= reclaim;
     reclaim = 0;
     saveWallet();
+    if (!opened) {
+      opened = true;
+      if (!ROOM && !chipsOfMine()) buyIn(table.greeted ? 'rebuy' : 'sit');
+    }
+    drawModel();
     draw();
   },
-  away(reason) {
-    away = reason === 'host' ? 'The host is away. Waiting for them…' : reason === 'line' ? 'Reconnecting…' : reason;
-    if (!['host', 'line'].includes(reason) && !turnedAway) {
+  away(why) {
+    away = unreached(why, shown);
+    if (why !== 'line' && !turnedAway) {
       const back = chipsOfMine();
       wallet.bankroll += back;
       session.cashed += back;
@@ -820,20 +765,4 @@ const guest = ROOM && join(ROOM, { id: me }, {
 
 $('.pk-slider').addEventListener('input', drawRaise);
 drawModel();
-if (!ROOM) {
-  // The members' controllers: each AI player's, the dealer's, the clock's, and this screen's, the host's seat.
-  for (const { id } of PERSONAS) control(store.client(id), { program: think(id), wallet: store.wallet });
-  control(store.client(DEALER), { program: dealer });
-  control(store.client(CLOCK), clock());
-  control(store.client(HUMAN), {
-    show(view) {
-      shown = view;
-      table = view.content;
-      draw();
-    },
-  });
-  // Friends at a table this page held before it reloaded: the room is new, so they are gone.
-  for (const { id } of lineup(table)) if (isPerson(id) && id !== HUMAN) guests.gone(id);
-  if (!chipsOfMine()) buyIn(table.greeted ? 'rebuy' : 'sit');
-}
 draw();

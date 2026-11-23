@@ -115,29 +115,32 @@ turns. Capacity: one queue per key in the room, turns before lines.
 
 ## Today
 
-- The store is in the opener's page (`preview/poker.js`), not a room: it
-  keeps `{ rev, state }` in the page's storage on each commit (`openTable`,
-  `preview/game-kit.js`), so a refresh goes on with the hand, but that page
-  holds the whole state, every hole card, and with `?debug` shows each AI
-  seat's prompt. The AI seats, the dealer, the clock and the wallet's
-  limits (depth 10, N 30) run there too, on the opener's key or theirs,
-  with no budget or rate, and no queue per provider. The bankroll stays in
-  the visitor's browser, apart from the table.
-- The dealer's program is a script in that page: for `deal` and `board` it
+- The store is the table's room on the relay (`relay/table.js`, a `Table`
+  Durable Object at infer.ponjo.app, [rooms](rooms.md)), which runs this
+  world (`preview/poker-world.js`, through `preview/game-tables.js`). Each
+  page (`preview/poker.js`) is one seat's client (`sit`,
+  `preview/game-kit.js`): it draws the view the room sends it and sends
+  what its person does; no page holds the state.
+- The room sends a page its whole view each time it changes, with the
+  presence it may see, instead of a notice to read again; there is no
+  `wait` and no `past`.
+- The AI seats, the clock and the wallet run in the room: the limits
+  (depth 10, N 30), in memory; the table's model calls an hour, on Ponjo's
+  key or the opener's own; no queue per provider. The opener's own key is
+  held in memory only, not kept in storage ([rooms](rooms.md#today)).
+- The bankroll stays in the visitor's browser, apart from the table.
+- The dealer is a system member of the room: for `deal` and `board` it
   draws the cards from a fresh shuffle of those not yet out (`draw`,
   `preview/poker-dealer.js`), so no deck is kept anywhere; its view lists
   every card out. `apply` checks its cards are new and enough. Its task is
   `deal:<n>`, `n` counting deals, a hand or none for want of chips; the
   first carries an `at`, once the hellos are said.
-- A friend is whoever their page says, and reaches the store through the
-  opener's page (`friends`, `game-kit.js`, over `preview/poker-share.js`),
-  which sends each only their seat's view. That page commits `leave` for a
-  friend not back within `RECONNECT_MS`, or turned away; mid-hand, they are
-  checked or folded for, and out at the next deal. Reloaded, it opens a new
-  room, so its friends leave.
+- The room commits `leave` for a friend not back within `RECONNECT_MS`, or
+  sent away by the host; mid-hand, they are checked or folded for, and out
+  at the next deal.
 - The roll is a hash of the seat and `given` (`rolls`); a person's line to
   the whole table asks the next AI seat after the speaker (its `next`); a
   person alone with AI seats has no `at`, as before.
-- An AI seat's program waits its persona's pace (`PACE`, `poker.js`)
-  after the model answers, so its change lands that much later; each page
-  types a fresh line out after.
+- An AI seat's program waits its persona's pace (`game-tables.js`) after
+  the model answers, so its change lands that much later; each page types
+  a fresh line out after.

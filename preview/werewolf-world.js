@@ -5,8 +5,9 @@
 // game and after it, each AI player's thinking. `view` gives a member only
 // what its seat may see, and its tasks; `apply` lands a change, or refuses
 // it, saying why. No clock and no randomness: the time is each change's
-// `at`, the deal comes in the host's `start`, and the clock is a member
-// whose tasks are the deadlines and the narrator's calls.
+// `at`, the deal comes in the host's `start` (dealt by the table's room,
+// game-tables.js), and the clock is a member whose tasks are the
+// deadlines and the narrator's calls.
 //
 // At night the narrator calls dusk, then each role, alive or not, for a
 // fixed time, so how long a call lasts says nothing of who acted in it: a
@@ -15,7 +16,7 @@
 // dawn. Players are often due at once (the wolves at night, everyone in a
 // vote): the rules end a phase once all are in.
 //
-// The people are the host (HUMAN), whose page holds the table, and any
+// The people are the host (HUMAN), whose page opened the table, and any
 // friends who joined it by a link; the AI players fill the seats left.
 // Outside a game the people at the table chat; once one is over, the AI
 // players of it answer what concerns them.

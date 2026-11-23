@@ -2,8 +2,6 @@
 // Sharing): a Cloudflare Worker that serves the page (dist/web/team.html,
 // as static assets; relay/wrangler.toml) and joins the owner's doc host to
 // each teammate's page, with one Durable Object per room. It stores nothing.
-// The game pages' hosts (poker, Who's the Spy) share their tables with
-// friends' pages through the same rooms (preview/poker-share.js).
 //
 // Both connect with a WebSocket to /rooms/<room>, the room being the hex
 // SHA-256 of a secret only the host knows, the host adding `?host`. No
@@ -33,16 +31,22 @@
 // on to ENDPOINT with the key, the model and a cap on tokens of its own, and
 // its answer comes back as is. Only the messages and tools are taken from
 // the page, with `tool_choice: auto` as every provider of the Ponjo agent
-// sends it (docs/app/ponjo-agent.md). POST /infer/anthropic/messages is the
-// game pages' AI players' (site/poker.html, werewolf.html, spy.html,
-// preview/game-page.js): an Anthropic Messages request as INFER.anthropic
-// sends it goes on to ANTHROPIC_ENDPOINT with the ANTHROPIC_API_KEY and
-// ANTHROPIC_MODEL, the same way. An address asks
-// at most 60 times a minute (INFER), on both.
+// sends it (docs/app/ponjo-agent.md). An address asks at most 60 times a
+// minute (INFER). And it keeps the game pages' tables (site/poker.html,
+// werewolf.html, spy.html): a WebSocket to /tables/<room>, from ORIGIN's
+// pages (or from no page: a page always says its origin), at most 60 an
+// address a minute (SEATS), reaches the table's room, a Durable Object of
+// its own class that keeps the table and runs its AI players with the
+// ANTHROPIC_API_KEY (relay/table.js).
 
 /* global WebSocketPair, WebSocketRequestResponsePair */
 
+import { Table } from './table.js';
+
+export { Table };
+
 const ROOM = /^\/rooms\/([0-9a-f]{64})$/;
+const TABLE = /^\/tables\/[0-9a-f]{64}$/;
 const MAX_PAGES = 20;
 const MAX_MESSAGE = 8 * 2 ** 20; // characters: room for the plain view's longest doc (5,000,000)
 const MAX_INFER = 200_000; // characters of a request: a turn on a sample doc, read whole
@@ -52,7 +56,7 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     if (env.ENDPOINT && url.pathname === '/infer/chat/completions') return infer(request, env, chat);
-    if (env.ANTHROPIC_API_KEY && url.pathname === '/infer/anthropic/messages') return infer(request, env, anthropic);
+    if (env.TABLES && TABLE.test(url.pathname)) return table(request, env);
     const room = url.pathname.match(ROOM)?.[1];
     if (!room || request.headers.get('Upgrade') !== 'websocket') return new Response('Not found', { status: 404 });
     const limit = url.searchParams.has('host') ? env.HOSTS : env.PAGES;
@@ -160,11 +164,20 @@ export class Room {
   }
 }
 
+// A page's line to its table's room: from ORIGIN's pages only, at most SEATS an address a minute.
+async function table(request, env) {
+  if (request.headers.get('Upgrade') !== 'websocket') return new Response('Not found', { status: 404 });
+  const origin = request.headers.get('Origin');
+  if (origin && origin !== env.ORIGIN) return new Response('Forbidden', { status: 403 });
+  if (!(await env.SEATS.limit({ key: request.headers.get('CF-Connecting-IP') ?? '' })).success) return new Response('Too many connections', { status: 429 });
+  return env.TABLES.get(env.TABLES.idFromName(new URL(request.url).pathname.split('/').pop())).fetch(request);
+}
+
 // One step of a model, from ORIGIN's pages only: `forward` sends the
 // page's messages and tools on, with the key, the model and the caps.
 async function infer(request, env, forward) {
   if (request.headers.get('Origin') !== env.ORIGIN) return new Response('Forbidden', { status: 403 });
-  const cors = { 'access-control-allow-origin': env.ORIGIN, 'access-control-allow-headers': 'content-type, authorization, x-api-key, anthropic-version, anthropic-dangerous-direct-browser-access', vary: 'Origin' };
+  const cors = { 'access-control-allow-origin': env.ORIGIN, 'access-control-allow-headers': 'content-type, authorization', vary: 'Origin' };
   if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
   const refuse = (status, why) => new Response(why, { status, headers: cors });
   if (request.method !== 'POST') return refuse(405, 'POST only');
@@ -184,13 +197,6 @@ const chat = ({ messages, tools }, env) => fetch(`${env.ENDPOINT}/chat/completio
   method: 'POST',
   headers: { 'content-type': 'application/json', authorization: `Bearer ${env.TOKEN_FACTORY_KEY}` },
   body: JSON.stringify({ model: env.MODEL, max_tokens: MAX_TOKENS, messages, tools, tool_choice: 'auto' }),
-});
-
-// A game player's step thinks little: it must answer in a few seconds.
-const anthropic = ({ messages, tools }, env) => fetch(`${env.ANTHROPIC_ENDPOINT}/messages`, {
-  method: 'POST',
-  headers: { 'content-type': 'application/json', 'x-api-key': env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
-  body: JSON.stringify({ model: env.ANTHROPIC_MODEL, max_tokens: MAX_TOKENS, output_config: { effort: 'low' }, messages, tools, tool_choice: { type: 'auto' } }),
 });
 
 function close(socket, code, reason) {

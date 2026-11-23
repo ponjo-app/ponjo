@@ -16,9 +16,16 @@ directory = "../dist/web"
 name = "ROOMS"
 class_name = "Room"
 
+# Both envs inherit these (worker.js exports both classes). v2 is the game
+# tables' own class (table.js): bound only in the hackathon env, unused at
+# share.ponjo.app.
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["Room"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["Table"]
 
 # Hosts an address connects a minute (worker.js).
 [[ratelimits]]
@@ -36,7 +43,9 @@ simple = { limit = 120, period = 60 }
 # The preview's buddies' model (worker.js), at https://infer.ponjo.app,
 # deployed by CI (README.md, The preview's buddies). Its key, the
 # secret TOKEN_FACTORY_KEY, is the repo's secret of that name, and so is
-# ANTHROPIC_API_KEY, the game pages' (preview/game-page.js).
+# ANTHROPIC_API_KEY, which the game tables' AI players run on (table.js).
+# The tables are here, not at share.ponjo.app, so that key, its rate and
+# the tables' budgets stay in the one Worker that holds it.
 [env.hackathon]
 name = "ponjo-hackathon"
 routes = [{ pattern = "infer.ponjo.app", custom_domain = true }]
@@ -45,11 +54,30 @@ routes = [{ pattern = "infer.ponjo.app", custom_domain = true }]
 ORIGIN = "https://ponjo.app"
 ENDPOINT = "https://api.tokenfactory.nebius.com/v1"
 MODEL = "nvidia/nemotron-3-super-120b-a12b" # Nemotron 3 Super, which calls tools
-ANTHROPIC_ENDPOINT = "https://api.anthropic.com/v1" # the game pages' AI players, with the secret ANTHROPIC_API_KEY
+ANTHROPIC_ENDPOINT = "https://api.anthropic.com/v1" # the game tables' AI players, with the secret ANTHROPIC_API_KEY or a visitor's own
 ANTHROPIC_MODEL = "claude-haiku-5-5"
+# Model calls a table makes in a clock hour (table.js): on Ponjo's key, a
+# few games of spy or werewolf, or about 30 hands of poker, at most about
+# $1 of Haiku 5.5 with every answer at its cap; on a visitor's own key,
+# which they pay for, more.
+RUNS_AN_HOUR = "300"
+OWN_RUNS_AN_HOUR = "600"
 
-# Requests an address makes a minute: a turn is a few, up to six.
+# A table per room (table.js).
+[[env.hackathon.durable_objects.bindings]]
+name = "TABLES"
+class_name = "Table"
+
+# Requests an address makes a minute: a turn is a few, up to six. A
+# table's calls on Ponjo's key count against the address that opened it.
 [[env.hackathon.ratelimits]]
 name = "INFER"
 namespace_id = "1003"
+simple = { limit = 60, period = 60 }
+
+# Lines to a table an address opens a minute (worker.js): a page opens one,
+# and again after it drops.
+[[env.hackathon.ratelimits]]
+name = "SEATS"
+namespace_id = "1004"
 simple = { limit = 60, period = 60 }

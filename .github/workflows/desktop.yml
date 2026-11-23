@@ -4,12 +4,11 @@
 # (https://github.com/ponjo-app/ponjo/releases/tag/nightly), so a build
 # that cannot open a doc never replaces a working one, and deploy the relay
 # with the teammate's page (https://share.ponjo.app) from the same commit,
-# so a teammate sees the owner's UI. The preview's buddies' model
-# (https://infer.ponjo.app) deploys from each push to main once the unit
-# tests pass. The unit tests (npm
-# test), the buddy concurrency stress test (npm run test:stress) and the
-# latency promise (npm run test:perf) run once, on Linux, and hold it back
-# too.
+# so a teammate sees the owner's UI. The preview's buddies' model and the
+# game tables (https://infer.ponjo.app) deploy from each push to main once
+# the unit tests pass. The unit tests (npm test), the buddy concurrency
+# stress test (npm run test:stress) and the latency promise (npm run
+# test:perf) run once, on Linux, and hold it back too.
 #
 # A pull request that changes only docs (docs/ or a top-level *.md) skips the
 # installers, the tests and the stress test: the `changes` job decides, and
@@ -238,9 +237,9 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
   infer:
-    # The preview's buddies' model and the game pages' (infer.ponjo.app,
-    # the hackathon env in relay/wrangler.toml), with the Token Factory key
-    # and the Anthropic key. Nothing of the
+    # The preview's buddies' model and the game pages' tables, which run
+    # their AI players (infer.ponjo.app, the hackathon env in
+    # relay/wrangler.toml), with the Token Factory key and the Anthropic key. Nothing of the
     # nightly's: it waits only for the unit tests (test/infer.test.js among
     # them), so the preview's page (pages.yml) waits for it little.
     needs: test

@@ -16,3 +16,6 @@ release/
 
 # API keys for npm run bench:agent
 .env*
+
+# The relay run locally: its secrets (README.md, The preview's buddies)
+.dev.vars

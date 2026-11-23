@@ -197,6 +197,7 @@
     <button type="button" role="radio" aria-checked="false" data-provider="openai">OpenAI-compatible</button>
   </div>
   <label class="pk-field" data-for="openai">Base URL<input class="pj-input" name="endpoint" placeholder="https://api.openai.com/v1" autocomplete="off"></label>
+  <p class="pj-join-text" data-for="openai">A base URL at OpenAI, OpenRouter, Groq, Together, DeepSeek, Mistral, Fireworks, Google's Gemini or Nebius Token Factory: your table calls no other host.</p>
   <label class="pk-field">API key<input class="pj-input" name="key" type="password" autocomplete="off" required></label>
   <div class="pk-field" data-for="anthropic">Model
     <div class="pj-segmented" role="radiogroup" aria-label="Model">
@@ -206,7 +207,7 @@
     </div>
   </div>
   <label class="pk-field" data-for="openai">Model<input class="pj-input" name="model" placeholder="gpt-5-mini" autocomplete="off"></label>
-  <p class="pj-join-text">Your key stays in this browser and goes only to <span data-host>api.anthropic.com</span>, never to a Ponjo server. Each AI player's turn is one call billed to your key.</p>
+  <p class="pj-join-text">Your key stays in this browser. While you play, your table on Ponjo's server holds it in memory only, never stored and never shown to anyone at the table, to call <span data-host>api.anthropic.com</span> for your AI players. Each AI player's turn is one call billed to your key.</p>
   <p class="pk-error" hidden></p>
   <div class="pk-setup-buttons">
     <button class="pj-secondary" type="button" data-action="cancel">Cancel</button>

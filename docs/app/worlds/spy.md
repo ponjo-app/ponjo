@@ -124,20 +124,22 @@ Capacity: one queue per provider and key, in task priority.
 
 ## Today
 
-- The store is in the opener's page (`preview/spy.js`), not a room: it
-  keeps `{ rev, state }` in the page's storage on each commit, so a
-  refresh goes on with the game, but that page holds the whole state, and
-  with `?debug` shows each AI seat's prompt. The AI seats, the clock and
-  the wallet's limits (depth 10, N 30) run there too, with no budget or
-  rate, and no queue per provider.
-- A friend is whoever their page says (`spy.js`, `joined`), and reaches the
-  store through the opener's page (`preview/poker-share.js`), which sends
-  each only their seat's view. That page commits `leave` for a friend not
-  back within `RECONNECT_MS`; reloaded, it opens a new room, so its friends
-  leave.
-- The opener's page deals, in its `start`: there is no dealer member.
-- An AI seat's program waits its persona's pace (`PACE`, `spy.js`) after
+- The store is the table's room on the relay (`relay/table.js`, a `Table`
+  Durable Object at infer.ponjo.app, [rooms](rooms.md)), which runs this
+  world (`preview/spy-world.js`, through `preview/game-tables.js`). Each
+  page (`preview/spy.js`) is one seat's client (`sit`,
+  `preview/game-kit.js`): it draws the view the room sends it and sends
+  what its person does; no page holds the state.
+- The room sends a page its whole view each time it changes, with the
+  presence it may see, instead of a notice to read again; there is no
+  `wait` and no `past`.
+- The AI seats, the clock and the wallet run in the room: the limits
+  (depth 10, N 30), in memory; the table's model calls an hour, on Ponjo's
+  key or the opener's own; no queue per provider. The opener's own key is
+  held in memory only, not kept in storage ([rooms](rooms.md#today)).
+- The room deals, in the opener's `start`: there is no dealer member.
+- An AI seat's program waits its persona's pace (`game-tables.js`) after
   the model answers, so its change lands that much later.
 - What the three games share is in `preview/game-kit.js`: lines, the
-  clock's tasks, thoughts, the store kept in the page, the AI seats'
-  program, a fresh line typed out, and friends.
+  clock's tasks, thoughts, the AI seats' program, a fresh line typed out,
+  and a page's seat at the table.

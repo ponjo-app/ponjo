@@ -380,10 +380,11 @@ Open: Ponjo's limits. Proposed: a depth limit of 10, and N = 30.
 ## Today
 
 Who's the Spy, werewolf and poker run on this design's core
-(`src/core/store.js`, `ledger.js`, `controller.js`), each with its store
-in the opener's page, kept in that page's storage, so a refresh goes on
-with the game; that page can read every word, role and card
-([spy](../app/worlds/spy.md#today), [werewolf](../app/worlds/werewolf.md#today),
+(`src/core/store.js`, `ledger.js`, `controller.js`), each table's store in
+its room on the relay (`relay/table.js`, [rooms](../app/worlds/rooms.md#today)),
+with its AI seats, its clock and its wallet; each page is one seat's
+client, sent only its view ([spy](../app/worlds/spy.md#today),
+[werewolf](../app/worlds/werewolf.md#today),
 [poker](../app/worlds/poker.md#today)). What they share is in
 `preview/game-kit.js`. The doc follows the design before this one:
 
@@ -397,8 +398,8 @@ with the game; that page can read every word, role and card
   from disk beside the door; a run lands in several commits.
 - The breaker counts runs in a window; the depth limit is 1,000; a busy
   API fails a run after one retry ([Ponjo agent](../app/ponjo-agent.md));
-  runs share no queue. The games' wallets have the proposed limits, in
-  their pages.
+  runs share no queue. The games' wallets have the proposed limits, and
+  each room a budget of model calls an hour.
 
 ## Migration
 
