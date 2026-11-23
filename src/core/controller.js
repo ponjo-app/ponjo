@@ -14,8 +14,9 @@ const same = (a, b) => a.as === b.as && a.given === b.given;
  * `wallet`, if given, says which may start; the rest are answered as not
  * started. A run is `program(tasks, view, signal)`, resolving to { base,
  * body }, or null for nothing; it throws when it fails. It goes on while
- * any of its tasks is still listed; stopped, it commits nothing.
- * Returns { stop() }.
+ * any of its tasks is still listed; stopped, it commits nothing. A store
+ * whose commit is a promise is waited on: no run starts before it is in.
+ * Returns { stop() }, which resolves once its run, if any, has ended.
  */
 export function control(client, { program, pick = (view) => view.tasks.filter((t) => t.as === view.tasks[0].as), show = () => {}, wallet }) {
   let run = null;
@@ -31,7 +32,7 @@ export function control(client, { program, pick = (view) => view.tasks.filter((t
       } catch (error) {
         made = { failed: error.message };
       }
-      if (!r.stop.signal.aborted) client.commit({ as: tasks[0].as, answers: tasks.map((t) => t.given), ...made });
+      if (!r.stop.signal.aborted) await (r.landing = client.commit({ as: tasks[0].as, answers: tasks.map((t) => t.given), ...made }));
       if (run === r) run = null;
     })();
     return r;
@@ -39,6 +40,8 @@ export function control(client, { program, pick = (view) => view.tasks.filter((t
 
   (async () => {
     while (!stopped) {
+      if (run?.landing) await run.done; // it lands: what it did is read next
+      if (stopped) break;
       const { rev, view } = client.read();
       show(view);
       if (run && !run.tasks.some((t) => view.tasks.some((u) => same(t, u)))) {
@@ -48,7 +51,7 @@ export function control(client, { program, pick = (view) => view.tasks.filter((t
       if (!run && program && view.tasks.length) {
         const tasks = pick(view);
         const allowed = wallet ? wallet.allow(tasks) : tasks;
-        if (allowed.length < tasks.length) client.commit({ as: tasks[0].as, answers: tasks.filter((t) => !allowed.includes(t)).map((t) => t.given), failed: 'Not started: past the wallet\'s limits.' });
+        if (allowed.length < tasks.length) await client.commit({ as: tasks[0].as, answers: tasks.filter((t) => !allowed.includes(t)).map((t) => t.given), failed: 'Not started: past the wallet\'s limits.' });
         else if (tasks.length) run = start(tasks, view);
       }
       await Promise.race([client.wait(rev), ...(run ? [run.done] : [])]);
@@ -59,6 +62,7 @@ export function control(client, { program, pick = (view) => view.tasks.filter((t
     stop() {
       stopped = true;
       run?.stop.abort();
+      return run?.done;
     },
   };
 }
@@ -66,18 +70,21 @@ export function control(client, { program, pick = (view) => view.tasks.filter((t
 /**
  * The owner's limits on an agent's runs: past `depth`, no task starts, so
  * agents waking each other come to rest; past `runs` runs on tasks other
- * than turns since a person last acted (`acted()`), none of those starts.
+ * than turns since a person last acted (`acted()`), and within `within`
+ * ms, none of those starts (`paused()`).
  */
-export function limits({ depth = 10, runs = 30 } = {}) {
-  let count = 0;
+export function limits({ depth = 10, runs = 30, within = Infinity, now = Date.now } = {}) {
+  let started = []; // when each counted run started
+  const count = () => (started = started.filter((at) => at > now() - within)).length;
   return {
-    allow: (tasks) => tasks.filter((t) => t.depth <= depth && (t.kind === 'turn' || count < runs)),
+    allow: (tasks) => tasks.filter((t) => t.depth <= depth && (t.kind === 'turn' || count() < runs)),
     charge(tasks) {
-      if (tasks.some((t) => t.kind !== 'turn')) count++;
+      if (tasks.some((t) => t.kind !== 'turn')) started.push(now());
     },
     acted() {
-      count = 0;
+      started = [];
     },
+    paused: () => count() >= runs,
   };
 }
 
@@ -90,6 +97,9 @@ export const clock = ({ now = Date.now } = {}) => ({
   pick: (view) => view.tasks.slice(0, 1),
   program: ([task], view, signal) => new Promise((resolve) => {
     const timer = setTimeout(() => resolve({ body: {} }), task.at - now());
-    signal.addEventListener('abort', () => clearTimeout(timer));
+    signal.addEventListener('abort', () => {
+      clearTimeout(timer);
+      resolve(null);
+    });
   }),
 });

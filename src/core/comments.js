@@ -232,41 +232,36 @@ export function askedOf(thread, askers) {
 
 /**
  * The same, each with the comment that asks it: Map(buddy id → the latest
- * comment of `askers` that asks it). `taken(comment)` says whether a comment
- * of theirs may ask: one that does not is skipped. A comment whose id is in
- * `relayed` (a buddy's, posted by a run here) asks the buddies it
- * @mentions, but never itself, and only them.
+ * comment of `askers` that asks it), from asksOf.
  */
 export function askedBy(thread, askers, taken = () => true, relayed = new Set()) {
+  return new Map([...asksOf(thread, askers, taken, relayed)].map(([id, asking]) => [id, asking.at(-1)]));
+}
+
+/**
+ * The same, each with every comment that asks it since its last comment
+ * there, oldest first: Map(buddy id → [comment]). `taken(comment)` says
+ * whether a comment of theirs may ask: one that does not is skipped. A
+ * comment whose id is in `relayed` (a buddy's, posted by a run here) asks
+ * the buddies it @mentions, but never itself, and only them.
+ */
+export function asksOf(thread, askers, taken = () => true, relayed = new Set()) {
   const asked = new Map();
   if (thread.resolved) return asked;
+  const ask = (id, c) => asked.set(id, [...(asked.get(id) ?? []), c]);
   const theirs = [thread.comments[0].by.id].filter((id) => !askers.includes(id));
   thread.comments.forEach((c) => {
     if (c.resolved) asked.clear();
     asked.delete(c.by.id); // its comment answers what was asked before it
     if (relayed.has(c.id)) {
-      for (const id of c.mentions) if (id !== c.by.id && !askers.includes(id)) asked.set(id, c);
+      for (const id of c.mentions) if (id !== c.by.id && !askers.includes(id)) ask(id, c);
       return;
     }
     if (!askers.includes(c.by.id) || c.body.trim() === '' || !taken(c)) return;
-    for (const id of c.mentions.length > 0 ? c.mentions : theirs) if (!askers.includes(id)) asked.set(id, c);
+    for (const id of c.mentions.length > 0 ? c.mentions : theirs) if (!askers.includes(id)) ask(id, c);
     for (const id of c.mentions) if (!theirs.includes(id) && !askers.includes(id)) theirs.push(id);
   });
   return asked;
-}
-
-/**
- * Every ask in `threads` (threadsOf), as askedBy finds them: [{ id (the
- * thread's), agent (the buddy asked), at (when the comment that asks was
- * written), from (who wrote it), for and depth (when a run here posted it,
- * the people that run was for and its depth: `posted` maps such comments
- * to { for, depth }), until (when the thread's latest comment was written)
- * }], in the threads' order.
- */
-export function asksIn(threads, askers, taken, posted) {
-  return threads.flatMap((thread) => [...askedBy(thread, askers, taken, posted)].map(([agent, c]) => ({
-    id: thread.id, agent, at: c.at, from: c.by.id, ...posted.get(c.id), until: thread.comments.at(-1).at,
-  })));
 }
 
 /**

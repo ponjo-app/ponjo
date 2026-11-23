@@ -1,22 +1,8 @@
-+   0.000  plan.md  look · the agents or who may ask changed
-  Ada     not due: no ask, not watching
-  Ben     not due: no ask, not watching
-  Clippy  not due: no ask, not watching
-+   0.000  plan.md  look · asks changed by a person, rev 1
++   0.000  plan.md  look · a comment by a person, rev 1
   Clippy  due: asked in c1 · started r1
-  Ada     not due: no ask, not watching
-  Ben     not due: no ask, not watching
++   1.000  plan.md  look · a comment by a person, rev 1
+  Clippy  stopped: the doc closed
 +   1.000  plan.md  run r1 of Clippy ended: stopped in 1.0 s · Ended without an answer, 0 comments
-+   1.000  plan.md  look · the agents or who may ask changed
++   1.000  plan.md  look · who is here changed, rev 0
   Clippy  due: asked in c1 · started r2
-  Ada     not due: no ask, not watching
-  Ben     not due: no ask, not watching
-+   2.000  plan.md  look · asks changed by Clippy, rev 1
-  Clippy  stopped: nothing asks it now
-  Ada     not due: no ask, not watching
-  Ben     not due: no ask, not watching
 +   2.000  plan.md  run r2 of Clippy ended: ok in 1.0 s · Posted, 1 comments
-+   2.000  plan.md  look · run r2 of Clippy ended
-  Ada     not due: no ask, not watching
-  Ben     not due: no ask, not watching
-  Clippy  not due: no ask, not watching

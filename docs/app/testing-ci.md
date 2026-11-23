@@ -80,16 +80,16 @@ for a window), **e2e** (the packaged app, under xvfb on Linux).
   again; a comment written while it runs is answered by a run right after,
   with only the threads not answered; a run that posts nothing in a thread
   is not run again for it until someone writes there.
-- A look that cannot read the asks is tried again, later each time, with
-  no event, and not again once one can. A look on the clock starts what no
-  event woke, and says an event was lost. The agent log says what woke
-  each look, why the buddy ran, and how its run ended.
-- Who is due, as a pure function of the threads, the host's notes and the
-  time (`test/due.test.js`): a comment asks until answered or given to a
-  run; a watcher is due once turned on, on people's changes once they pause
-  (free), on another buddy's once its run ended (a step), never on its own, each
-  verdict with why in words; the steps
-  gain one every interval up to the cap, none with 0, all on Refill.
+- The agent log says what changed, why each buddy's run started, stopped
+  or did not start, and how its run ended.
+- Who is due, as a pure function of the state (`test/doc-world.test.js`):
+  a comment asks until the buddy comments after it; a watcher is due once
+  turned on, on people's changes once the clock settles them, on an
+  outside one at once, on another buddy's once its run landed (a step
+  deeper), never on its own. The store (`test/doc-store.test.js`): a run
+  lands in one rev; `wait` wakes only a member whose view changed; the
+  settle is the clock's task. A restart in the middle of a run lands
+  nothing twice and runs each open ask once.
 - A buddy a person sets watching looks at once and opens a thread of its
   own on the whole doc; then it runs once people's edits pause 5 s, not before,
   told what changed, in the text and the threads, saying nothing when nothing is due; set off, it runs

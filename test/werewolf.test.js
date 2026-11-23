@@ -244,21 +244,23 @@ function begins(t, roles = ROLES) {
   ticks(t, () => t.state().call?.step === 'wolves');
   return t;
 }
-// The game played to its end: the wolves kill, the rest pass, speak and abstain, till the wolves win.
+// The game played to its end: the wolves kill, the seer checks someone alive, the rest pass, speak and abstain, till the wolves win.
 function toEnd(t) {
   while (t.game().phase !== 'over') {
-    everyone(t, (seat, kind) => ({ kill: { type: 'kill', target: t.game().seats.findIndex((s) => s.alive && s.role !== 'wolf') }, check: { type: 'check', target: seat ? 0 : 1 }, potion: { type: 'pass' }, vote: { type: 'abstain' } }[kind] ?? { type: 'speak', text: 'Hm.' }));
+    everyone(t, (seat, kind) => ({ kill: { type: 'kill', target: t.game().seats.findIndex((s) => s.alive && s.role !== 'wolf') }, check: { type: 'check', target: t.game().seats.findIndex((s, i) => s.alive && i !== seat) }, potion: { type: 'pass' }, vote: { type: 'abstain' } }[kind] ?? { type: 'speak', text: 'Hm.' }));
     if (t.game().phase !== 'over') tick(t);
   }
 }
-// Everyone due acts, as `choose(seat, kind)` says, until no one is.
+// Everyone due acts, as `choose(seat, kind)` says, until no one is. A
+// person's action turned away lands nothing, so they would be due forever: it fails.
 function everyone(t, choose) {
   for (let acted = true; acted;) {
     acted = false;
     for (const id of t.state().players) {
       const v = view_(t, id);
       if (!v.tasks.length) continue;
-      actor(t, id)(t, id, choose(v.content.game.seat, v.content.game.due.kind));
+      const out = actor(t, id)(t, id, choose(v.content.game.seat, v.content.game.due.kind));
+      assert.ok(isAI(id) || !out.refused, `${id}: ${out.refused}`);
       acted = true;
     }
   }

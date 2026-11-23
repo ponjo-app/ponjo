@@ -11,9 +11,9 @@ import { tmpdir } from 'node:os';
 import { basename, delimiter, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildPrompt } from '../src/core/prompt.js';
-import { agentsFor, createBuddyRuntime } from '../src/host/buddy-runtime.js';
-import { SETTLE_MS, createDocWorld } from '../src/host/doc-world.js';
-import { noteTaken, readWatching } from '../src/store/history.js';
+import { SETTLE_MS } from '../src/core/doc-world.js';
+import { agentsFor } from '../src/host/buddy-runtime.js';
+import { readWatching } from '../src/store/history.js';
 import { agentScript, agentsDir, installAgents, listAgents } from '../src/store/agents.js';
 import { readSecrets, secretTails, writeSecrets } from '../src/store/secrets.js';
 import { SAMPLE, fakeConfig, fakeRuns, openTestDoc, readOnly, tempDoc, until } from './helpers.js';
@@ -185,121 +185,43 @@ test('a script that exits 1 lands only its buddy\'s "Could not finish." in the t
   });
 });
 
-// The runtime over a doc world whose door only holds threads, for what it does
-// whatever the doc: `read()` gives the sidecar's lines, or throws.
-// `change(change, told)` lands a change in the door's log ({ by, comments,
-// text: the doc's text after it }), and tells the world of it unless `told`
-// is false.
-async function withRuntime(read, fn) {
-  const settingsDir = await fakeConfig();
-  const docPath = await tempDoc('Text.\n');
-  const ask = { id: 'c_asked0001', anchor: null, by: { id: 'u_me000001', name: 'me', kind: 'human' }, at: '2026-11-17T10:00:00.000Z', body: '@X look' };
-  await noteTaken(docPath, settingsDir, ask, [ask.id]);
-  const landed = [];
-  const changes = [];
-  const listeners = [];
-  let text = 'Text.\n';
-  const change = ({ text: after = text, ...c }, told = true) => {
-    text = after;
-    changes.push({ rev: changes.length + 1, at: performance.now(), comments: false, ...c });
-    if (told) for (const listener of listeners) listener();
-  };
-  const world = createDocWorld({
-    door: {
-      text: () => text, rev: () => changes.length, epoch: () => 'e_1', missing: () => false, changes: (since) => changes.slice(Math.max(0, since)),
-      readComments: async () => ({ lines: read(ask).map((comment) => ({ comment })), problem: null }),
-      submit: async () => ({}), comment: async (arg) => { landed.push(arg); return { at: new Date().toISOString() }; },
-    },
-    subscribe: (listener) => listeners.push(listener), place: () => ({ docPath, folder: null, room: null }), pathInProject: async () => 'doc.md',
-    buddies: async () => [{ id: 'b_x', name: 'X', about: '' }], me: async () => ({ id: 'u_me000001', name: 'me' }), settingsDir,
-  });
-  const emitted = [];
-  const runtime = await createBuddyRuntime({ world, docPath: () => docPath, settingsDir, secrets: () => ({}), emit: (type, data) => emitted.push({ type, data }) });
-  try {
-    await fn({ runtime, landed, settingsDir, change, emitted });
-  } finally {
-    await runtime.close();
-  }
-}
+// An agent that cannot start: its scripts gone.
+const noAgent = async (settingsDir) => {
+  await rm(join(settingsDir, 'agents', 'fake'));
+  await rm(join(settingsDir, 'agents', 'fake.cmd'));
+};
 
 test('a run whose agent cannot start fails once, answered "Could not finish.": it is not run again until asked again', async () => {
-  await withRuntime((ask) => [ask], async ({ runtime, settingsDir, landed }) => {
-    await rm(join(settingsDir, 'agents', 'fake'));
-    await rm(join(settingsDir, 'agents', 'fake.cmd'));
-    await runtime.look();
-    await until(async () => runtime.statuses().length === 0 && (await runLog(settingsDir).catch(() => [])).length === 1, 'its failure');
+  await withDoc(async ({ settingsDir, call, state }) => {
+    await noAgent(settingsDir);
+    const id = await comment(call, '@Clippy look');
+    await until(async () => (await repliesIn(state, id)).length === 1 && (await runLog(settingsDir).catch(() => [])).length === 1, 'its failure');
     await sleep(500);
     assert.equal((await runLog(settingsDir)).length, 1, 'not again on its own');
     assert.equal((await runLog(settingsDir))[0].outcome, 'failed');
-    assert.deepEqual(landed.map((c) => [c.thread, c.body]), [['c_asked0001', 'Could not finish.']]);
-    const agentLog = () => readFile(join(settingsDir, 'logs', 'agents.log'), 'utf8').catch(() => '');
-    await until(async () => /look · run/.test(await agentLog()), 'the look after it');
-    const log = await agentLog();
-    assert.match(log, /^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d\.\d{3}  \S+\.md  look · asked to\n  X  due: asked in c_asked0001 · started (r_\w+)\n/, 'the agent log: why it looked, and why the buddy ran');
+    assert.deepEqual((await repliesIn(state, id)).map((c) => c.body), ['Could not finish.']);
+    const log = await readFile(join(settingsDir, 'logs', 'agents.log'), 'utf8');
+    assert.match(log, new RegExp(`^\\d{4}-\\d\\d-\\d\\d \\d\\d:\\d\\d:\\d\\d\\.\\d{3}  plan\\.md  look · a comment by a person, rev 1\\n  Clippy  due: asked in ${id} · started (r_\\w+)\\n`), 'the agent log: what changed, and why the buddy ran');
     const [, run] = log.match(/started (r_\w+)/);
-    assert.match(log, new RegExp(`  run ${run} of X ended: failed: .*no such agent.* · Failed, 1 comments\n`));
-    assert.match(log, new RegExp(`look · run ${run} of X ended\n  X  not due: no ask, not watching\n`), 'given that ask, it is not asked again');
+    assert.match(log, new RegExp(`  run ${run} of Clippy ended: failed: .*no such agent.* · Failed, 1 comments\n`));
   });
 });
 
-test('the doc host keeps what its runtime did, and tells the windows: a run\'s end once its trace is written, without the doc', async () => {
-  await withRuntime((ask) => [ask], async ({ runtime, settingsDir, emitted }) => {
-    await rm(join(settingsDir, 'agents', 'fake'));
-    await rm(join(settingsDir, 'agents', 'fake.cmd'));
-    await runtime.look();
-    await until(() => runtime.recent().some((e) => e.type === 'run.end'), 'the run to end');
-    const recent = runtime.recent();
+test('the doc host keeps what its controllers did, and tells the windows: a run\'s end once its trace is written, without the doc', async () => {
+  await withDoc(async ({ settingsDir, call }) => {
+    await noAgent(settingsDir);
+    const id = await comment(call, '@Clippy look');
+    await until(async () => (await call('runtime')).events.some((e) => e.type === 'run.end'), 'the run to end');
+    const recent = (await call('runtime')).events;
     const look = recent.find((e) => e.type === 'look' && e.verdicts.some((v) => v.run));
     const end = recent.find((e) => e.type === 'run.end');
     assert.equal(end.run, look.verdicts.find((v) => v.run).run, 'the run the look started');
     assert.equal(end.result.outcome, 'failed');
-    assert.deepEqual(end.task.asks.map((a) => a.id), ['c_asked0001']);
+    assert.deepEqual(end.task.asks.map((a) => a.id), [id]);
     assert.ok(!('view' in end) && !('made' in end.result), 'no doc, no prompt, nothing it made: those are its trace\'s');
     assert.ok(recent.every((e) => Number.isFinite(e.at)), 'each when it came');
     assert.ok((await runLog(settingsDir)).some((r) => r.run === end.run), 'its line was written before it was told');
-    assert.deepEqual(emitted.filter((e) => e.type === 'runtime').map((e) => e.data), recent, 'each told to the windows as it came');
   });
-});
-
-test('a look that could not read the doc is tried again, later each time, until one can: no event need come', async () => {
-  let reads = 0;
-  const read = (ask) => {
-    reads += 1;
-    if (reads <= 2) throw Object.assign(new Error('EBUSY: the sidecar is locked'), { code: 'EBUSY' });
-    return [ask];
-  };
-  await withRuntime(read, async ({ runtime, landed }) => {
-    const from = Date.now();
-    await runtime.look();
-    assert.equal(reads, 1);
-    await until(() => landed.length === 1, 'the run, once the doc could be read', 8000);
-    assert.ok(Date.now() - from >= 2900, 'after 1 s, then 2 s');
-    assert.equal(landed[0].thread, 'c_asked0001');
-  });
-});
-
-test('a change the world was not told of is in the log its next wait reads: a person\'s edit still has the watcher run once they pause', { timeout: 30_000 }, async () => {
-  await withRuntime(() => [], async ({ runtime, landed, change }) => {
-    await runtime.calls.watch({ buddy: 'b_x', on: true }, { id: 'u_me000001' });
-    await until(() => landed.length === 1 && runtime.running().length === 0, 'its first look');
-    change({ by: { id: 'u_me000001', kind: 'person' }, text: 'Text.\nMore.\n' }, false); // its notification lost
-    change({ by: { id: 'u_me000001', kind: 'person' }, comments: true });
-    await until(() => landed.length === 2, 'a run on the edit, once people pause', 10_000);
-  });
-});
-
-test('the doc lands a run only while everyone it ran for may still ask', async () => {
-  const landed = [];
-  const room = { list: () => ({ teammates: [{ id: 'u_mate0001', name: 'Mate', level: 'read' }] }) };
-  const world = createDocWorld({
-    door: { text: () => 'Text.\n', rev: () => 0, changes: () => [], readComments: async () => ({ lines: [], problem: null }), comment: async (arg) => landed.push(arg) },
-    subscribe: () => {}, place: () => ({ docPath: 'doc.md', folder: null, room }), pathInProject: async () => 'doc.md',
-    buddies: async () => [{ id: 'b_x', name: 'X', about: '' }], me: async () => ({ id: 'u_me000001', name: 'me' }), settingsDir: await fakeConfig(),
-  });
-  const made = { text: 'Text.\n', comments: { before: '', after: '' }, groups: [] };
-  const old = { files: { text: 'Text.\n' }, asks: [] };
-  assert.deepEqual(await world.propose({ id: 'b_x', name: 'X', for: ['u_me000001', 'u_mate0001'], depth: 0 }, 0, old, made), { comments: [], landed: 'Dropped: whoever asked can no longer edit' });
-  assert.deepEqual(landed, []);
 });
 
 test('a teammate hears that a watch run failed, not why', () => {
@@ -525,16 +447,14 @@ test('a buddy\'s @mention asks the buddy it names, a step deeper: it runs and an
 });
 
 test('typing that is then deleted wakes no watcher: its view is as it was', { timeout: 60_000 }, async () => {
-  await withDoc(async ({ settingsDir, call, edit, state, runs }) => {
+  await withDoc(async ({ call, edit, state, runs }) => {
     await call('watch', { buddy: 'Clippy', on: true });
     await until(async () => (await runs()).length === 1 && (await state()).agents.every((a) => a.state === 'ready'), 'its first look');
     const { text } = await state();
     await edit(`${text}Not for long.\n`);
     await edit(text);
-    const log = () => readFile(join(settingsDir, 'logs', 'agents.log'), 'utf8');
-    await until(async () => /but its view is as it was/.test(await log()), 'the look once people pause', 10_000);
-    await sleep(500);
-    assert.equal((await runs()).length, 1, 'no run');
+    await sleep(SETTLE_MS + 1500);
+    assert.equal((await runs()).length, 1, 'no run once people paused');
   });
 });
 
@@ -586,22 +506,22 @@ test('a buddy\'s change wakes each other buddy watching, never itself, a step de
     assert.equal(await moves(), 1, 'its own change wakes it not');
     assert.deepEqual((await state()).watches, { paused: false });
 
-    await call('watch', { buddy: 'Ben', on: true });
+    await call('watch', { buddy: 'Ben', on: true }); // a person acts: the runs are counted from here
     await until(async () => (await state()).watches.paused, 'the breaker', 30_000);
     await idle();
     await sleep(1000);
-    assert.equal(await moves(), 10, 'ten runs, then the watches pause');
+    assert.equal(await moves(), 11, 'Ada\'s first, then ten since Ben\'s watch was turned on: the watches pause');
     assert.deepEqual((await runs()).slice(0, 4).map((r) => r.buddy), ['Ada', 'Ben', 'Ada', 'Ben'], 'each on the other\'s move');
     assert.match((await runs())[2].prompt, /on the whole doc, new since you last looked:\n\n<thread>\nBen: Watching\./, 'told what the other said with its move');
     const log = await readFile(join(settingsDir, 'logs', 'agents.log'), 'utf8');
-    assert.match(log, /Ada +due: changed by itself at rev \d+, which does not count, Ben at rev \d+, after its look at rev \d+ · depth 1 · started/, 'woken by Ben\'s first look, a person\'s: one deeper');
+    assert.match(log, /look · Ben's run landed, rev \d+\n  Ada  due: its watch: the doc changed · depth 1 · started/, 'woken by Ben\'s first look, a person\'s: one deeper');
     assert.match(log, /· depth 3 · started/, 'and deeper with each move');
     assert.match(log, /watches paused: 10 runs in 10 min/);
-    assert.match(log, /but watches are paused/);
+    assert.match(log, /not started: the watches are paused/);
 
     await call('resume', {});
     assert.deepEqual((await state()).watches, { paused: false });
-    await until(async () => (await moves()) > 10, 'the moves go on');
+    await until(async () => (await moves()) > 11, 'the moves go on');
   }, { content: 'ping-pong\n', settings: { pauseAfter: 10 }, buddies: { Ada: 'Plays.\n', Ben: 'Plays.\n' } });
 });
 
@@ -720,6 +640,23 @@ test('after a restart, an unanswered ask runs again', { timeout: 30_000 }, async
     await until(async () => (await runs()).length === 2, 'the run to start again');
     await release('Clippy');
     await until(async () => (await repliesIn(state, id)).length === 1, 'one reply');
+  });
+});
+
+test('a restart in the middle of a run lands nothing twice and runs each open ask once', { timeout: 30_000 }, async () => {
+  await withDoc(async ({ docPath, call, state, runs, release, restart }) => {
+    const first = await comment(call, '@Clippy hold replace "extra load" with "extra peak load"');
+    const second = await comment(call, '@Clippy replace "week one" with "week 1"');
+    await until(async () => (await runs()).length === 1, 'the run on the first ask');
+    await restart(() => release('Clippy')); // the run is ended as it would land
+    await until(async () => (await repliesIn(state, first)).length && (await repliesIn(state, second)).length, 'a reply in each');
+    await until(async () => (await state()).agents.every((a) => a.state === 'ready'), 'the runs to end');
+    await sleep(1000);
+    assert.deepEqual([(await repliesIn(state, first)).length, (await repliesIn(state, second)).length], [1, 1], 'one reply each');
+    const text = await readFile(docPath, 'utf8');
+    assert.deepEqual([text.split('extra peak load').length, text.split('week 1').length], [2, 2], 'each edit once');
+    const after = (await runs()).slice(1);
+    assert.deepEqual(after.flatMap((r) => r.threadIds).sort(), [first, second].sort(), 'after the restart, each open ask in one run');
   });
 });
 

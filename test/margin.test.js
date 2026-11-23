@@ -32,7 +32,7 @@ const COMMENTS = [
   { id: 'c_capagain', thread: 'c_capacity', by: fan, at: at(12), body: 'Thanks.' },
   { id: 'c_wholedoc', anchor: null, by: fan, at: at(20), body: 'On the doc as a whole.' },
   { id: 'c_deleted1', anchor: { exact: 'a sentence no longer here', prefix: '', suffix: '', start: 0 }, by: fan, at: at(21), body: 'About deleted text.' },
-  // A thread whose buddy's run failed (src/host/doc-world.js, failed).
+  // A thread whose buddy's run failed (src/host/doc-store.js, land).
   { id: 'c_failed01', anchor: on('for details'), by: fan, at: at(30), body: '@Clippy fail' },
   { id: 'c_failreply', thread: 'c_failed01', by: clippy, at: at(31), body: 'Could not finish.' },
 ];

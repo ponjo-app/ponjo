@@ -1,282 +1,102 @@
-+   0.000  plan.md  look · the agents or who may ask changed
-  Ada     not due: no ask, not watching
-  Ben     not due: no ask, not watching
-  Clippy  not due: no ask, not watching
-+   0.000  plan.md  look · Ada's watch turned on
-  Ada     due: its first look · started r1
-  Ben     not due: no ask, not watching
-  Clippy  not due: no ask, not watching
-+   0.000  plan.md  look · a change by Ada, rev 1
-  Ada     not due: already running (changed by itself at rev 1, which does not count, after its look at rev 0)
-  Ben     not due: no ask, not watching
-  Clippy  not due: no ask, not watching
-+   0.050  plan.md  look · asks changed by Ada, rev 2
-  Ada     not due: already running (changed by itself at rev 1, which does not count, after its look at rev 0)
-  Ben     not due: no ask, not watching
-  Clippy  not due: no ask, not watching
++   0.000  plan.md  look · Ada's watch turned on by a person, rev 0
+  Ada  due: its first look · started r1
 +   0.050  plan.md  run r1 of Ada ended: ok in 0.0 s · Posted, 1 comments
-+   0.050  plan.md  look · run r1 of Ada ended
-  Ada     not due: changed by itself at rev 1, which does not count, after its look at rev 0
-  Ben     not due: no ask, not watching
-  Clippy  not due: no ask, not watching
-+   1.000  plan.md  look · Ben's watch turned on
-  Ada     not due: changed by itself at rev 1, which does not count, after its look at rev 0
-  Ben     due: its first look · started r2
-  Clippy  not due: no ask, not watching
-+   1.000  plan.md  look · a change by Ben, rev 3
-  Ada     not due: changed by itself at rev 1, which does not count, Ben at rev 3, still landing, after its look at rev 0
-  Ben     not due: already running (changed by itself at rev 3, which does not count, after its look at rev 2)
-  Clippy  not due: no ask, not watching
-+   1.000  plan.md  look · asks changed by Ben, rev 4
-  Ada     not due: changed by itself at rev 1, which does not count, Ben at rev 3, still landing, after its look at rev 0
-  Ben     not due: already running (changed by itself at rev 3, which does not count, after its look at rev 2)
-  Clippy  not due: no ask, not watching
++   1.000  plan.md  look · Ben's watch turned on by a person, rev 1
+  Ben  due: its first look · started r2
++   1.000  plan.md  look · Ben's run landed, rev 2
+  Ada  due: its watch: the doc changed · depth 1 · started r3
 +   1.000  plan.md  run r2 of Ben ended: ok in 0.0 s · Posted, 1 comments
-+   1.000  plan.md  look · run r2 of Ben ended
-  Ada     due: changed by itself at rev 1, which does not count, Ben at rev 3, after its look at rev 0 · depth 1 · started r3
-  Ben     not due: changed by itself at rev 3, which does not count, after its look at rev 2
-  Clippy  not due: no ask, not watching
-+   1.000  plan.md  look · a change by Ada, rev 5
-  Ada     not due: already running (changed by itself at rev 5, which does not count, after its look at rev 4)
-  Ben     not due: changed by Ada at rev 5, still landing, itself at rev 3, which does not count, after its look at rev 2
-  Clippy  not due: no ask, not watching
-+   1.000  plan.md  look · asks changed by Ada, rev 6
-  Ada     not due: already running (changed by itself at rev 5, which does not count, after its look at rev 4)
-  Ben     not due: changed by Ada at rev 5, still landing, itself at rev 3, which does not count, after its look at rev 2
-  Clippy  not due: no ask, not watching
++   1.000  plan.md  look · Ada's run landed, rev 3
+  Ben  due: its watch: the doc changed · depth 2 · started r4
 +   1.000  plan.md  run r3 of Ada ended: ok in 0.0 s · Posted, 1 comments
-+   1.000  plan.md  look · run r3 of Ada ended
-  Ada     not due: changed by itself at rev 5, which does not count, after its look at rev 4
-  Ben     due: changed by Ada at rev 5, itself at rev 3, which does not count, after its look at rev 2 · depth 2 · started r4
-  Clippy  not due: no ask, not watching
-+   1.000  plan.md  look · a change by Ben, rev 7
-  Ada     not due: changed by itself at rev 5, which does not count, Ben at rev 7, still landing, after its look at rev 4
-  Ben     not due: already running (changed by itself at rev 7, which does not count, after its look at rev 6)
-  Clippy  not due: no ask, not watching
-+   1.000  plan.md  look · asks changed by Ben, rev 8
-  Ada     not due: changed by itself at rev 5, which does not count, Ben at rev 7, still landing, after its look at rev 4
-  Ben     not due: already running (changed by itself at rev 7, which does not count, after its look at rev 6)
-  Clippy  not due: no ask, not watching
++   1.000  plan.md  look · Ben's run landed, rev 4
+  Ada  due: its watch: the doc changed · depth 3 · started r5
 +   1.000  plan.md  run r4 of Ben ended: ok in 0.0 s · Posted, 1 comments
-+   1.000  plan.md  look · run r4 of Ben ended
-  Ada     due: changed by itself at rev 5, which does not count, Ben at rev 7, after its look at rev 4 · depth 3 · started r5
-  Ben     not due: changed by itself at rev 7, which does not count, after its look at rev 6
-  Clippy  not due: no ask, not watching
-+   1.000  plan.md  look · a change by Ada, rev 9
-  Ada     not due: already running (changed by itself at rev 9, which does not count, after its look at rev 8)
-  Ben     not due: changed by Ada at rev 9, still landing, itself at rev 7, which does not count, after its look at rev 6
-  Clippy  not due: no ask, not watching
-+   1.000  plan.md  look · asks changed by Ada, rev 10
-  Ada     not due: already running (changed by itself at rev 9, which does not count, after its look at rev 8)
-  Ben     not due: changed by Ada at rev 9, still landing, itself at rev 7, which does not count, after its look at rev 6
-  Clippy  not due: no ask, not watching
++   1.000  plan.md  look · Ada's run landed, rev 5
+  Ben  due: its watch: the doc changed · depth 4 · started r6
 +   1.000  plan.md  run r5 of Ada ended: ok in 0.0 s · Posted, 1 comments
-+   1.000  plan.md  look · run r5 of Ada ended
-  Ada     not due: changed by itself at rev 9, which does not count, after its look at rev 8
-  Ben     due: changed by Ada at rev 9, itself at rev 7, which does not count, after its look at rev 6 · depth 4 · started r6
-  Clippy  not due: no ask, not watching
-+   1.000  plan.md  look · a change by Ben, rev 11
-  Ada     not due: changed by itself at rev 9, which does not count, Ben at rev 11, still landing, after its look at rev 8
-  Ben     not due: already running (changed by itself at rev 11, which does not count, after its look at rev 10)
-  Clippy  not due: no ask, not watching
-+   1.000  plan.md  look · asks changed by Ben, rev 12
-  Ada     not due: changed by itself at rev 9, which does not count, Ben at rev 11, still landing, after its look at rev 8
-  Ben     not due: already running (changed by itself at rev 11, which does not count, after its look at rev 10)
-  Clippy  not due: no ask, not watching
++   1.000  plan.md  look · Ben's run landed, rev 6
+  Ada  due: its watch: the doc changed · depth 5 · started r7
 +   1.000  plan.md  run r6 of Ben ended: ok in 0.0 s · Posted, 1 comments
-+   1.000  plan.md  look · run r6 of Ben ended
-  Ada     due: changed by itself at rev 9, which does not count, Ben at rev 11, after its look at rev 8 · depth 5 · started r7
-  Ben     not due: changed by itself at rev 11, which does not count, after its look at rev 10
-  Clippy  not due: no ask, not watching
-+   1.000  plan.md  look · a change by Ada, rev 13
-  Ada     not due: already running (changed by itself at rev 13, which does not count, after its look at rev 12)
-  Ben     not due: changed by Ada at rev 13, still landing, itself at rev 11, which does not count, after its look at rev 10
-  Clippy  not due: no ask, not watching
-+   1.000  plan.md  look · asks changed by Ada, rev 14
-  Ada     not due: already running (changed by itself at rev 13, which does not count, after its look at rev 12)
-  Ben     not due: changed by Ada at rev 13, still landing, itself at rev 11, which does not count, after its look at rev 10
-  Clippy  not due: no ask, not watching
++   1.000  plan.md  look · Ada's run landed, rev 7
+  Ben  due: its watch: the doc changed · depth 6 · started r8
 +   1.000  plan.md  run r7 of Ada ended: ok in 0.0 s · Posted, 1 comments
-+   1.000  plan.md  look · run r7 of Ada ended
-  Ada     not due: changed by itself at rev 13, which does not count, after its look at rev 12
-  Ben     due: changed by Ada at rev 13, itself at rev 11, which does not count, after its look at rev 10 · depth 6 · started r8
-  Clippy  not due: no ask, not watching
-+   1.000  plan.md  look · a change by Ben, rev 15
-  Ada     not due: changed by itself at rev 13, which does not count, Ben at rev 15, still landing, after its look at rev 12
-  Ben     not due: already running (changed by itself at rev 15, which does not count, after its look at rev 14)
-  Clippy  not due: no ask, not watching
-+   1.000  plan.md  look · asks changed by Ben, rev 16
-  Ada     not due: changed by itself at rev 13, which does not count, Ben at rev 15, still landing, after its look at rev 12
-  Ben     not due: already running (changed by itself at rev 15, which does not count, after its look at rev 14)
-  Clippy  not due: no ask, not watching
++   1.000  plan.md  look · Ben's run landed, rev 8
+  Ada  due: its watch: the doc changed · depth 7 · started r9
 +   1.000  plan.md  run r8 of Ben ended: ok in 0.0 s · Posted, 1 comments
-+   1.000  plan.md  look · run r8 of Ben ended
-  Ada     due: changed by itself at rev 13, which does not count, Ben at rev 15, after its look at rev 12 · depth 7 · started r9
-  Ben     not due: changed by itself at rev 15, which does not count, after its look at rev 14
-  Clippy  not due: no ask, not watching
-+   1.000  plan.md  look · a change by Ada, rev 17
-  Ada     not due: already running (changed by itself at rev 17, which does not count, after its look at rev 16)
-  Ben     not due: changed by Ada at rev 17, still landing, itself at rev 15, which does not count, after its look at rev 14
-  Clippy  not due: no ask, not watching
-+   1.000  plan.md  look · asks changed by Ada, rev 18
-  Ada     not due: already running (changed by itself at rev 17, which does not count, after its look at rev 16)
-  Ben     not due: changed by Ada at rev 17, still landing, itself at rev 15, which does not count, after its look at rev 14
-  Clippy  not due: no ask, not watching
++   1.000  plan.md  look · Ada's run landed, rev 9
+  Ben  due: its watch: the doc changed · depth 8 · started r10
 +   1.000  plan.md  run r9 of Ada ended: ok in 0.0 s · Posted, 1 comments
-+   1.000  plan.md  look · run r9 of Ada ended
-  Ada     not due: changed by itself at rev 17, which does not count, after its look at rev 16
-  Ben     due: changed by Ada at rev 17, itself at rev 15, which does not count, after its look at rev 14 · depth 8 · started r10
-  Clippy  not due: no ask, not watching
++   1.000  plan.md  look · Ben's run landed, rev 10
+  Ada  due: its watch: the doc changed · depth 9 · started r11
 +   1.000  plan.md  watches paused: 10 runs in 10 min
-+   1.000  plan.md  look · a change by Ben, rev 19
-  Ada     not due: changed by itself at rev 17, which does not count, Ben at rev 19, still landing, after its look at rev 16
-  Ben     not due: already running (changed by itself at rev 19, which does not count, after its look at rev 18)
-  Clippy  not due: no ask, not watching
-+   1.000  plan.md  look · asks changed by Ben, rev 20
-  Ada     not due: changed by itself at rev 17, which does not count, Ben at rev 19, still landing, after its look at rev 16
-  Ben     not due: already running (changed by itself at rev 19, which does not count, after its look at rev 18)
-  Clippy  not due: no ask, not watching
 +   1.000  plan.md  run r10 of Ben ended: ok in 0.0 s · Posted, 1 comments
-+   1.000  plan.md  look · run r10 of Ben ended
-  Ada     not due: changed by itself at rev 17, which does not count, Ben at rev 19, after its look at rev 16, but watches are paused
-  Ben     not due: changed by itself at rev 19, which does not count, after its look at rev 18
-  Clippy  not due: no ask, not watching
-+   9.005  plan.md  look · a change by a person, rev 21, once people pause
-  Ada     not due: changed by itself at rev 17, which does not count, Ben at rev 19, people at rev 21, after its look at rev 16, but watches are paused
-  Ben     not due: changed by itself at rev 19, which does not count, people at rev 21, after its look at rev 18, but watches are paused
-  Clippy  not due: no ask, not watching
-+  11.000  plan.md  look · the watches were resumed
-  Ada     due: changed by itself at rev 17, which does not count, Ben at rev 19, people at rev 21, after its look at rev 16 · started r11
-  Ben     due: changed by itself at rev 19, which does not count, people at rev 21, after its look at rev 18 · started r12
-  Clippy  not due: no ask, not watching
-+  11.000  plan.md  look · a change by Ada, rev 22
-  Ada     not due: already running (changed by itself at rev 22, which does not count, after its look at rev 21)
-  Ben     not due: already running (changed by Ada at rev 22, still landing, itself at rev 19, which does not count, people at rev 21, after its look at rev 18)
-  Clippy  not due: no ask, not watching
-+  11.000  plan.md  look · asks changed by Ada, rev 23
-  Ada     not due: already running (changed by itself at rev 22, which does not count, after its look at rev 21)
-  Ben     not due: already running (changed by Ada at rev 22, still landing, itself at rev 19, which does not count, people at rev 21, after its look at rev 18)
-  Clippy  not due: no ask, not watching
-+  11.000  plan.md  run r11 of Ada ended: ok in 0.0 s · Posted, 1 comments
-+  11.000  plan.md  look · run r11 of Ada ended
-  Ada     not due: changed by itself at rev 22, which does not count, after its look at rev 21
-  Ben     not due: already running (changed by Ada at rev 22, itself at rev 19, which does not count, people at rev 21, after its look at rev 18)
-  Clippy  not due: no ask, not watching
-+  11.000  plan.md  look · a change by Ben, rev 24
-  Ada     not due: changed by itself at rev 22, which does not count, Ben at rev 24, still landing, after its look at rev 21
-  Ben     not due: already running (changed by Ada at rev 22, itself at rev 24, which does not count, after its look at rev 21)
-  Clippy  not due: no ask, not watching
-+  11.000  plan.md  look · asks changed by Ben, rev 25
-  Ada     not due: changed by itself at rev 22, which does not count, Ben at rev 24, still landing, after its look at rev 21
-  Ben     not due: already running (changed by Ada at rev 22, itself at rev 24, which does not count, after its look at rev 21)
-  Clippy  not due: no ask, not watching
-+  11.000  plan.md  run r12 of Ben ended: ok in 0.0 s · Posted; where it collided with people, their lines stayed, 1 comments
-+  11.000  plan.md  look · run r12 of Ben ended
-  Ada     due: changed by itself at rev 22, which does not count, Ben at rev 24, after its look at rev 21 · depth 1 · started r13
-  Ben     due: changed by Ada at rev 22, itself at rev 24, which does not count, after its look at rev 21 · depth 1 · started r14
-  Clippy  not due: no ask, not watching
-+  11.000  plan.md  look · a change by Ada, rev 26
-  Ada     not due: already running (changed by itself at rev 26, which does not count, after its look at rev 25)
-  Ben     not due: already running (changed by Ada at rev 26, still landing, itself at rev 24, which does not count, after its look at rev 21)
-  Clippy  not due: no ask, not watching
-+  11.000  plan.md  look · asks changed by Ada, rev 27
-  Ada     not due: already running (changed by itself at rev 26, which does not count, after its look at rev 25)
-  Ben     not due: already running (changed by Ada at rev 26, still landing, itself at rev 24, which does not count, after its look at rev 21)
-  Clippy  not due: no ask, not watching
-+  11.000  plan.md  run r13 of Ada ended: ok in 0.0 s · Posted, 1 comments
-+  11.000  plan.md  look · run r13 of Ada ended
-  Ada     not due: changed by itself at rev 26, which does not count, after its look at rev 25
-  Ben     not due: already running (changed by Ada at rev 26, itself at rev 24, which does not count, after its look at rev 21)
-  Clippy  not due: no ask, not watching
-+  11.000  plan.md  look · a change by Ben, rev 28
-  Ada     not due: changed by itself at rev 26, which does not count, Ben at rev 28, still landing, after its look at rev 25
-  Ben     not due: already running (changed by Ada at rev 26, itself at rev 28, which does not count, after its look at rev 25)
-  Clippy  not due: no ask, not watching
-+  11.000  plan.md  look · asks changed by Ben, rev 29
-  Ada     not due: changed by itself at rev 26, which does not count, Ben at rev 28, still landing, after its look at rev 25
-  Ben     not due: already running (changed by Ada at rev 26, itself at rev 28, which does not count, after its look at rev 25)
-  Clippy  not due: no ask, not watching
-+  11.000  plan.md  run r14 of Ben ended: ok in 0.0 s · Posted; where it collided with people, their lines stayed, 1 comments
-+  11.000  plan.md  look · run r14 of Ben ended
-  Ada     due: changed by itself at rev 26, which does not count, Ben at rev 28, after its look at rev 25 · depth 2 · started r15
-  Ben     due: changed by Ada at rev 26, itself at rev 28, which does not count, after its look at rev 25 · depth 2 · started r16
-  Clippy  not due: no ask, not watching
-+  11.000  plan.md  look · a change by Ada, rev 30
-  Ada     not due: already running (changed by itself at rev 30, which does not count, after its look at rev 29)
-  Ben     not due: already running (changed by Ada at rev 30, still landing, itself at rev 28, which does not count, after its look at rev 25)
-  Clippy  not due: no ask, not watching
-+  11.000  plan.md  look · asks changed by Ada, rev 31
-  Ada     not due: already running (changed by itself at rev 30, which does not count, after its look at rev 29)
-  Ben     not due: already running (changed by Ada at rev 30, still landing, itself at rev 28, which does not count, after its look at rev 25)
-  Clippy  not due: no ask, not watching
-+  11.000  plan.md  run r15 of Ada ended: ok in 0.0 s · Posted, 1 comments
-+  11.000  plan.md  look · run r15 of Ada ended
-  Ada     not due: changed by itself at rev 30, which does not count, after its look at rev 29
-  Ben     not due: already running (changed by Ada at rev 30, itself at rev 28, which does not count, after its look at rev 25)
-  Clippy  not due: no ask, not watching
-+  11.000  plan.md  look · a change by Ben, rev 32
-  Ada     not due: changed by itself at rev 30, which does not count, Ben at rev 32, still landing, after its look at rev 29
-  Ben     not due: already running (changed by Ada at rev 30, itself at rev 32, which does not count, after its look at rev 29)
-  Clippy  not due: no ask, not watching
-+  11.000  plan.md  look · asks changed by Ben, rev 33
-  Ada     not due: changed by itself at rev 30, which does not count, Ben at rev 32, still landing, after its look at rev 29
-  Ben     not due: already running (changed by Ada at rev 30, itself at rev 32, which does not count, after its look at rev 29)
-  Clippy  not due: no ask, not watching
-+  11.000  plan.md  run r16 of Ben ended: ok in 0.0 s · Posted; where it collided with people, their lines stayed, 1 comments
-+  11.000  plan.md  look · run r16 of Ben ended
-  Ada     due: changed by itself at rev 30, which does not count, Ben at rev 32, after its look at rev 29 · depth 3 · started r17
-  Ben     due: changed by Ada at rev 30, itself at rev 32, which does not count, after its look at rev 29 · depth 3 · started r18
-  Clippy  not due: no ask, not watching
-+  11.000  plan.md  look · a change by Ada, rev 34
-  Ada     not due: already running (changed by itself at rev 34, which does not count, after its look at rev 33)
-  Ben     not due: already running (changed by Ada at rev 34, still landing, itself at rev 32, which does not count, after its look at rev 29)
-  Clippy  not due: no ask, not watching
-+  11.000  plan.md  look · asks changed by Ada, rev 35
-  Ada     not due: already running (changed by itself at rev 34, which does not count, after its look at rev 33)
-  Ben     not due: already running (changed by Ada at rev 34, still landing, itself at rev 32, which does not count, after its look at rev 29)
-  Clippy  not due: no ask, not watching
-+  11.000  plan.md  run r17 of Ada ended: ok in 0.0 s · Posted, 1 comments
-+  11.000  plan.md  look · run r17 of Ada ended
-  Ada     not due: changed by itself at rev 34, which does not count, after its look at rev 33
-  Ben     not due: already running (changed by Ada at rev 34, itself at rev 32, which does not count, after its look at rev 29)
-  Clippy  not due: no ask, not watching
-+  11.000  plan.md  look · a change by Ben, rev 36
-  Ada     not due: changed by itself at rev 34, which does not count, Ben at rev 36, still landing, after its look at rev 33
-  Ben     not due: already running (changed by Ada at rev 34, itself at rev 36, which does not count, after its look at rev 33)
-  Clippy  not due: no ask, not watching
-+  11.000  plan.md  look · asks changed by Ben, rev 37
-  Ada     not due: changed by itself at rev 34, which does not count, Ben at rev 36, still landing, after its look at rev 33
-  Ben     not due: already running (changed by Ada at rev 34, itself at rev 36, which does not count, after its look at rev 33)
-  Clippy  not due: no ask, not watching
-+  11.000  plan.md  run r18 of Ben ended: ok in 0.0 s · Posted; where it collided with people, their lines stayed, 1 comments
-+  11.000  plan.md  look · run r18 of Ben ended
-  Ada     due: changed by itself at rev 34, which does not count, Ben at rev 36, after its look at rev 33 · depth 4 · started r19
-  Ben     due: changed by Ada at rev 34, itself at rev 36, which does not count, after its look at rev 33 · depth 4 · started r20
-  Clippy  not due: no ask, not watching
++   1.000  plan.md  look · Ada's run landed, rev 11
+  Ben  not started: the watches are paused
++   1.000  plan.md  run r11 of Ada ended: ok in 0.0 s · Posted, 1 comments
++   9.000  plan.md  look · people paused, rev 12
+  Ben  due: its watch: the doc changed · started r12
++   9.000  plan.md  look · people paused, rev 12
+  Ada  due: its watch: the doc changed · started r13
++   9.000  plan.md  run r13 of Ada ended: ok in 0.0 s · Posted, 1 comments
++   9.000  plan.md  run r12 of Ben ended: ok in 0.0 s · Posted; where it collided with people, their lines stayed, 1 comments
++   9.000  plan.md  look · Ben's run landed, rev 14
+  Ben  due: its watch: the doc changed · started r14
++   9.000  plan.md  look · Ben's run landed, rev 15
+  Ada  due: its watch: the doc changed · depth 1 · started r15
++   9.000  plan.md  run r14 of Ben ended: ok in 0.0 s · Posted, 1 comments
++   9.000  plan.md  look · Ada's run landed, rev 16
+  Ben  due: its watch: the doc changed · depth 2 · started r16
++   9.000  plan.md  run r15 of Ada ended: ok in 0.0 s · Posted, 1 comments
++   9.000  plan.md  look · Ben's run landed, rev 17
+  Ada  due: its watch: the doc changed · depth 3 · started r17
++   9.000  plan.md  run r16 of Ben ended: ok in 0.0 s · Posted, 1 comments
++   9.000  plan.md  look · Ada's run landed, rev 18
+  Ben  due: its watch: the doc changed · depth 4 · started r18
++   9.000  plan.md  run r17 of Ada ended: ok in 0.0 s · Posted, 1 comments
++   9.000  plan.md  look · Ben's run landed, rev 19
+  Ada  due: its watch: the doc changed · depth 5 · started r19
++   9.000  plan.md  run r18 of Ben ended: ok in 0.0 s · Posted, 1 comments
++   9.000  plan.md  look · Ada's run landed, rev 20
+  Ben  due: its watch: the doc changed · depth 6 · started r20
++   9.000  plan.md  run r19 of Ada ended: ok in 0.0 s · Posted, 1 comments
++   9.000  plan.md  look · Ben's run landed, rev 21
+  Ada  due: its watch: the doc changed · depth 7 · started r21
++   9.000  plan.md  watches paused: 10 runs in 10 min
++   9.000  plan.md  run r20 of Ben ended: ok in 0.0 s · Posted, 1 comments
++   9.000  plan.md  look · Ada's run landed, rev 22
+  Ben  not started: the watches are paused
++   9.000  plan.md  run r21 of Ada ended: ok in 0.0 s · Posted, 1 comments
++  11.000  plan.md  look · the watches resumed by a person, rev 22
+  Ben  due: its watch: the doc changed · started r22
++  11.000  plan.md  look · Ben's run landed, rev 23
+  Ada  due: its watch: the doc changed · depth 1 · started r23
++  11.000  plan.md  run r22 of Ben ended: ok in 0.0 s · Posted, 1 comments
++  11.000  plan.md  look · Ada's run landed, rev 24
+  Ben  due: its watch: the doc changed · depth 2 · started r24
++  11.000  plan.md  run r23 of Ada ended: ok in 0.0 s · Posted, 1 comments
++  11.000  plan.md  look · Ben's run landed, rev 25
+  Ada  due: its watch: the doc changed · depth 3 · started r25
++  11.000  plan.md  run r24 of Ben ended: ok in 0.0 s · Posted, 1 comments
++  11.000  plan.md  look · Ada's run landed, rev 26
+  Ben  due: its watch: the doc changed · depth 4 · started r26
++  11.000  plan.md  run r25 of Ada ended: ok in 0.0 s · Posted, 1 comments
++  11.000  plan.md  look · Ben's run landed, rev 27
+  Ada  due: its watch: the doc changed · depth 5 · started r27
++  11.000  plan.md  run r26 of Ben ended: ok in 0.0 s · Posted, 1 comments
++  11.000  plan.md  look · Ada's run landed, rev 28
+  Ben  due: its watch: the doc changed · depth 6 · started r28
++  11.000  plan.md  run r27 of Ada ended: ok in 0.0 s · Posted, 1 comments
++  11.000  plan.md  look · Ben's run landed, rev 29
+  Ada  due: its watch: the doc changed · depth 7 · started r29
++  11.000  plan.md  run r28 of Ben ended: ok in 0.0 s · Posted, 1 comments
++  11.000  plan.md  look · Ada's run landed, rev 30
+  Ben  due: its watch: the doc changed · depth 8 · started r30
++  11.000  plan.md  run r29 of Ada ended: ok in 0.0 s · Posted, 1 comments
++  11.000  plan.md  look · Ben's run landed, rev 31
+  Ada  due: its watch: the doc changed · depth 9 · started r31
 +  11.000  plan.md  watches paused: 10 runs in 10 min
-+  11.000  plan.md  look · a change by Ada, rev 38
-  Ada     not due: already running (changed by itself at rev 38, which does not count, after its look at rev 37)
-  Ben     not due: already running (changed by Ada at rev 38, still landing, itself at rev 36, which does not count, after its look at rev 33)
-  Clippy  not due: no ask, not watching
-+  11.000  plan.md  look · asks changed by Ada, rev 39
-  Ada     not due: already running (changed by itself at rev 38, which does not count, after its look at rev 37)
-  Ben     not due: already running (changed by Ada at rev 38, still landing, itself at rev 36, which does not count, after its look at rev 33)
-  Clippy  not due: no ask, not watching
-+  11.000  plan.md  run r19 of Ada ended: ok in 0.0 s · Posted, 1 comments
-+  11.000  plan.md  look · run r19 of Ada ended
-  Ada     not due: changed by itself at rev 38, which does not count, after its look at rev 37
-  Ben     not due: already running (changed by Ada at rev 38, itself at rev 36, which does not count, after its look at rev 33, but watches are paused)
-  Clippy  not due: no ask, not watching
-+  11.000  plan.md  look · a change by Ben, rev 40
-  Ada     not due: changed by itself at rev 38, which does not count, Ben at rev 40, still landing, after its look at rev 37
-  Ben     not due: already running (changed by Ada at rev 38, itself at rev 40, which does not count, after its look at rev 37, but watches are paused)
-  Clippy  not due: no ask, not watching
-+  11.000  plan.md  look · asks changed by Ben, rev 41
-  Ada     not due: changed by itself at rev 38, which does not count, Ben at rev 40, still landing, after its look at rev 37
-  Ben     not due: already running (changed by Ada at rev 38, itself at rev 40, which does not count, after its look at rev 37, but watches are paused)
-  Clippy  not due: no ask, not watching
-+  11.000  plan.md  run r20 of Ben ended: ok in 0.0 s · Posted; where it collided with people, their lines stayed, 1 comments
-+  11.000  plan.md  look · run r20 of Ben ended
-  Ada     not due: changed by itself at rev 38, which does not count, Ben at rev 40, after its look at rev 37, but watches are paused
-  Ben     not due: changed by Ada at rev 38, itself at rev 40, which does not count, after its look at rev 37, but watches are paused
-  Clippy  not due: no ask, not watching
++  11.000  plan.md  run r30 of Ben ended: ok in 0.0 s · Posted, 1 comments
++  11.000  plan.md  look · Ada's run landed, rev 32
+  Ben  not started: the watches are paused
++  11.000  plan.md  run r31 of Ada ended: ok in 0.0 s · Posted, 1 comments

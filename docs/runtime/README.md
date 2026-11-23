@@ -368,11 +368,11 @@ How each of its worlds implements this: [doc](../app/worlds/doc.md),
 | --- | --- |
 | agent | a buddy |
 | agent program | an agent (`agents/`, run by `src/host/runner.js`) |
-| world | the doc world (`src/host/doc-world.js`); three games in `preview/` |
-| store | the doc's door (`src/host/doc-service.js`); for a game, a [room](../app/worlds/rooms.md) on the relay, holding a store in memory (`src/core/store.js`) |
+| world | the doc world (`src/core/doc-world.js`); three games in `preview/` |
+| store | the doc's door (`src/host/doc-service.js`), with the rest of its state beside it (`src/host/doc-store.js`); for a game, a [room](../app/worlds/rooms.md) on the relay, holding a store in memory (`src/core/store.js`) |
 | answers | the ledger, a wrapper around a world (`src/core/ledger.js`) |
 | wallet | the config folder: settings, secrets, logs; for a game, the room, for the key's owner |
-| controller | `src/core/controller.js`, with the wallet's limits and the clock's program; the doc's, `src/core/runtime.js`, given its runs, logs and settings by `src/host/buddy-runtime.js` |
+| controller | `src/core/controller.js`, with the wallet's limits and the clock's program; a doc's buddies' and clock's are given their programs, logs and settings by `src/host/buddy-runtime.js` |
 | an effect | a plugin in `actions/` of the config folder; its input on stdin, its id as `PONJO_ACTION_ID`, its record in `logs/actions.jsonl` |
 
 Open: Ponjo's limits. Proposed: a depth limit of 10, and N = 30.
@@ -386,20 +386,19 @@ with its AI seats, its clock and its wallet; each page is one seat's
 client, sent only its view ([spy](../app/worlds/spy.md#today),
 [werewolf](../app/worlds/werewolf.md#today),
 [poker](../app/worlds/poker.md#today)). What they share is in
-`preview/game-kit.js`. The doc follows the design before this one:
+`preview/game-kit.js`. The doc runs on it too, a controller per buddy per
+open doc and one for the clock ([doc](../app/worlds/doc.md#today)), with
+these differences:
 
-- The world is one object of five calls with I/O (`members`, `asks`,
-  `view`, `wait`, `propose`), and `failed`; who is due is the runtime's
-  plan (`src/core/due.js`); a controller reads the whole state.
-- One controller per open doc, for all its agents; people have none.
-- Who is due rests on notes in memory; the doc answers each ask with a
-  comment instead.
-- The doc's `rev` starts again each time it opens; the comments are read
-  from disk beside the door; a run lands in several commits.
-- The breaker counts runs in a window; the depth limit is 1,000; a busy
-  API fails a run after one retry ([Ponjo agent](../app/ponjo-agent.md));
-  runs share no queue. The games' wallets have the proposed limits, and
-  each room a budget of model calls an hour.
+- People have no controllers: a window reads the door's own `state`, and
+  the door lands typing and comments of its own accord.
+- The doc's `rev` starts again each time it opens, and its ledger is in
+  memory; a restart finds its tasks in the state on disk.
+- Its limits are the owner's settings: a depth limit of 1,000, and N runs
+  within a window since a person last acted; a busy API fails a run after
+  one retry ([Ponjo agent](../app/ponjo-agent.md)); runs share no queue.
+  The games' wallets have the proposed limits, and each room a budget of
+  model calls an hour.
 
 ## Migration
 
