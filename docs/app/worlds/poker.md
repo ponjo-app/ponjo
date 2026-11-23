@@ -1,133 +1,140 @@
 # Poker table
 
-The poker page (`preview/poker.js`) is a No-Limit Hold'em table: one
-person, AI players (`PERSONAS`), friends who join by a link, a dealer and
-table chat. In the target design it runs in the browser on the
-[runtime](../../runtime/README.md): the table is the state,
-`preview/poker-world.js` the world, and each AI seat has a controller.
+The poker page (`preview/poker.js`): No-Limit Hold'em for the host person,
+AI players (`PERSONAS`), friends who join by a link, a dealer and chat. In
+the target design, a world of members on the [runtime](../../runtime/README.md):
+the host's page keeps the store; each AI seat is an agent client there.
 
 ## State
 
 ```
-Table { rev, players, slots, names, hand, handNo, button, topUp,
-        joining, leaving, chat, log, seats: { id → Seat }, answered }
-Seat  { thoughts: [{ hand, street, text, action }], turnedAway: { turn, tries, why } }
-Line  { id, by, text, to (whom it names), depth, about, hand, for? }
+Table { players, slots, names, hand, handNo, button, topUp, joining, leaving,
+        chat, reactions, seats: { id → Seat }, answered }
+Seat  { thoughts: [{ hand, street, text, action }], tries: { turn, n, why } }
+Line  { id, by, as, text, to (whom it names), depth, about, hand, for?, at }
+hand  as in preview/poker-dealer.js, with no deck; answered: the watermarks
 ```
-
-`hand` is the dealer's (`preview/poker-dealer.js`): seats, hole cards,
-`deck`, board, `n` (actions so far), `toAct`, `result`. `seats` is what an
-AI seat keeps between runs: only its own view shows it, and the person
-reads `thoughts` once the hand is over. `rev` grows by one per change.
 
 ## Store
 
-```
-read()               → { rev, state }       state frozen
-wait(rev, deadline)  → rev                  on the next commit, or at deadline
-commit(change)       → { rev, actions: [] } | { refused: why }
-```
-
-- An object in the host's page, on one thread: `commit` reads, applies and
-  lands with no `await` between, so its condition always holds.
-- A stale move is the world's to see: an action carries `base { hand, n }`,
-  the turn it was made on, and `apply` compares it with the state.
-- Friends' pages never reach the store. They send moves to the host's page,
-  which commits them as theirs, and get a person's view back.
-
-## Local
-
-The host's page also holds what only the owner's machine says: the
-bankroll (`localStorage`; chips on the table are state); the model and key
-(`models()`, `preview/game-page.js`); whom it vouches for (the person, and
-friends admitted by `joined`, not sent away or gone); the depth limit; no
-breaker, as nothing is standing. Store and local share a page but stay two
-objects: a friend's message reaches the store, never local.
-
-Open: a friend's line sets off a run on the owner's key, or only the
-owner's do.
+The host's page holds `{ rev, state }`. Every client gets only
+`read(member)`: the host's screen, each AI seat, the dealer, friends' pages
+over the relay. `wait(member, rev)` returns once that member's view
+changed: a line between two seats wakes no third. `commit` sets `by` from
+the sender (a friend by its relay peer) and stamps `at`; the world checks
+`by` may play the seat in `as`. `past` is unused: the hand and the chat
+are in the state. The host's page can read every card; a table that must
+hide them from its opener needs the store on the relay.
 
 ## World
 
 ```
-due(state, local, agent)     → [Task]
-view(state, local, task)     → { files: base, prompt: { rules, situation } }
-apply(state, change, local)  → { state, actions: [] } | { refused: why }
-base  { hand, n, street, turn, about, react, talk }
+view(state, member, past)  → { content, actions, tasks, seen, rules }
+apply(state, change)       → { state, actions: [] } | { refused: why }
+deadlines(state)           → [{ at, change }]
 ```
 
-| `due` gives | When | Audience | Depth |
-| --- | --- | --- | --- |
-| `turn:<hand>:<n>` | the hand is live, its seat is `toAct`, not answered or last turned away | the owner | 0 |
-| `line:<id>` | a line names it, or a person says it to the whole table; not its own or the dealer's; `depth` < `DEPTH` (2) | the line's person, or an agent's line's `for` | the line's |
-| `react:<hand>` | a big hand ended (all in, or 15 big blinds); the winner and one other still in | the owner | 0 |
+One `view` for every seat; `share` and `prompt` go:
 
-The turn and the owner's lines are one task; a friend's line is another.
-Lines said at `DEPTH` (hellos, byes) wake no one. `talk`, whether a run may
-speak: always to a person's line or after a big hand, else when a roll falls
-under the persona's `talk`.
+- `content`: the table, this hand's actions and reactions, the last 24
+  lines; its own hole cards, others' at a showdown; for people, the AI
+  seats' cards and `thoughts` once the hand is over; for an AI seat, its
+  own `thoughts` this hand and why its last try was turned away.
+- `actions`: on its turn `fold`, `check`, `call`, `bet`, `raise`, `allin`,
+  legal amounts; `say`, `react`; people's `sit`, `topup`, `leave`; the
+  host's `next`, `add`, `remove`, `invite`, `turnAway`.
+- `seen`: all presence, to all. `rules`: `RULES`, and a persona's style.
 
-`view` is the seat's: the dealer's `view(hand, seat)` (its own hole cards,
-others' at a showdown), the last 24 lines, this hand's reactions, its own
-`thoughts` this hand, why its last action was turned away, and `talk`.
+| `given` | Seat | When | `for` | Depth |
+| --- | --- | --- | --- | --- |
+| `turn:<hand>:<n>` | the one to act | the hand is live | the host | 0 |
+| `line:<id>` | each AI seat it names; all, for a person's line to the table | not its own; `depth` < `DEPTH` (2) | the line's person, or its `for` | the line's |
+| `react:<hand>` | the winner and one other still in, if AI | a big hand ended | the host | 0 |
+| `deal:<handNo>` | the dealer | the host chose `next` | the host | 0 |
+| `board:<hand>:<street>` | the dealer | a street closed, two or more still in | the host | 0 |
 
-| `apply` takes | By | Lands |
-| --- | --- | --- |
-| `{ by, for, given, depth, base, made }` | agent | `made.thinking` into `thoughts`. `made.action` against `base`: a moved turn or an illegal action is turned away, `tries` + 1, why kept for its prompt; at `MAX_TRIES` (3) the dealer checks, else folds, for it (`forced`). Then `react`; then `say`, unless `talk` is false or another agent answered the same whole-table line. `given` is answered. |
-| `act { base, action }` | person | stale or illegal: refused |
-| `say`, `react` | member | a line, a reaction |
-| `sit`, `topup`, `leave`, `join`, `part` | person | between hands, or at the next |
-| `deal { deck }` | dealer | rebuys for AI players out of chips; the hand |
-| `timeout { turn }` | clock | the dealer checks or folds, if `turn` is still the turn |
+A person's turn has `at`, its start plus 30 s, while a friend is at the
+table. A seat's turn and lines are one task (one seat, one rights), whoever
+asked; `for` is all of them; the turn comes first. `DEPTH` is the table's
+rule: a line at it, such as a hello, sets off nothing. `talk`, whether an
+AI seat may speak: always to a person's line or after a big hand, else when
+a roll falls under the persona's `talk`; a line it will not speak to is
+not a task.
 
-Watermarks, `answered[agent]`: `turn` (the key, whether turned away),
-`lines` (per audience, the highest id), `react` (the hand). Every run's
-change sets them, also `made: null` and `{ failed }`.
+Open: the roll a hash of the seat and `given`, or from a seed in `deal`.
 
-*Dealer.* Its rules (`act`: legal moves, the next street from `hand.deck`,
-pots) are pure and run inside `apply`. Outside is what commits `deal`: the
-person's Next, and the page after the hellos. *Randomness.* The deck is
-shuffled outside and comes in `deal`. *Time.* Order is `rev` and ids; no
-rule reads a clock. While friends are at the table a person has 30 s to
-act; the host's clock commits `timeout`.
+Answers: `apply` keys `answered[seat]` by content: turn key, line ids, hand.
 
-- Open: the `talk` roll a hash of the agent and `given`, or a seed in `deal`.
-- Open: a failed run on a turn counts as a try, or waits for Retry.
-- Open: the deck in the state, seen by any reader of the store; or in the
-  dealer's local, each street committed as its cards.
+- Accepted: the action, then the reaction, then the line, unless `talk` is
+  false or another seat answered the same whole-table line.
+- Turned away (illegal, or `n` moved since its base): a try and why in
+  `tries`, due again; at `MAX_TRIES` (3) the world checks, else folds,
+  `as` the seat, `forced`.
+- `{ failed }`: gone; the host may ask again, a change. Nothing: answered.
 
-## Controllers
+Only `apply` writes `thoughts`, from that seat's runs. A person's act
+carries the `base` their screen showed; stale or illegal, it is `{ refused }`.
 
-One per AI seat, made when a player joins, ended when it leaves. A run is
-one model call with the `decide` tool; the player's pace (`thinkTime`) is
-the run's. The person and friends are members, not agents: no controller;
-their page shows their turn, and they commit their own moves.
+- Open: with a turned-away action, its line lands (today) or waits.
+- Open: a failed or hung AI turn: the fallback at once, the 30 s timer as
+  for a person, or wait for Retry.
 
-Open: a line after its player is seen typing, as a second commit; or in
-one commit with the action, drawn late.
+Time. `deadlines`: `timeout { base: turn }` at a person's turn `at`, which
+plays the fallback if that is still the turn; once the host sits down, each
+AI seat's hello, 1.4 s apart, `as` that seat, then `deal`. The store's host
+commits each, stamped by the store. No rule reads a clock.
+
+## Members and controllers
+
+One controller per member, on its owner's host: the AI seats and the host
+on the host's page, each friend on their page, the dealer a script. A
+person's program is the screen, showing every task ("your turn", with its
+timer); people also act unasked: chat, react, buy in, leave, `next`.
+
+## Presence
+
+`thinking` and `typing` are presence, seen by all, never state. An AI
+client shows `thinking` for its persona's `PACE` (longer facing a bet, from
+its view), then `typing` for its line, then commits all in one change.
+
+## Outside programs
+
+The dealer keeps the deck beside the store: on `deal` it commits the hole
+cards and the hand, on `board` the street's cards. `act` (legal moves,
+pots, the showdown) stays pure, in `apply`, and deals from no deck.
+
+## Agent clients
+
+Renderer: tools; `content` and `rules` the prompt, `actions` the tools, plus
+`thinking`. Local: the visitor's model and key (`models()`,
+`preview/game-page.js`); whom the owner pays for; the depth limit; the
+breaker. Capacity: one queue for that key, turns before chat.
+
+Open: by default the owner pays for friends' lines (the room), or not.
 
 ## Today
 
-In `preview/poker-world.js` unless named:
+`W` is `preview/poker-world.js`, `P` is `preview/poker.js`:
 
-- Five calls with I/O (`createWorld`, :382); who is due is `plan`
-  (`src/core/due.js:44`), from `seen` in memory (`src/core/runtime.js:260`).
-  One runtime for all seats (`poker.js:152`); asks merge across audiences;
-  every person `mayAsk` (:399).
-- Calls change the table in place: `land` (:315), `say` (:296), `deal`
-  (:193), `force` (:364); `commit` (:147) only logs and bumps `rev`.
-- `stamp()` reads `Date.now()` (:143) for `turnAt` (:150) and a line's `at`
-  (:299), which tell asks apart; a turned-away turn is asked again by a new
-  `turnAt` (:344). Seat notes `tries`, `triesKey`, `rejected`, `thoughts`
-  (:139) are written by `land` (:320, :341-343). `view` rolls
-  `Math.random()` for `talk` (`begin`, :273, from :410).
-- One run lands in two commits: the action, then the line after `typing`
-  (:432-437). One that makes nothing or fails commits nothing; a failure
-  is kept in memory, with Retry (`poker.js:162`, `poker.js:800`). `deal`
-  shuffles (`poker-dealer.js:113`) and lands a rev per rebuy and one for
-  the hand (:214, :220).
-- A person's move lands on a `base` from the table now, never stale
-  (`poker.js:637`). The turn timer is a `setTimeout` that calls `force`
-  (`poker.js:80-94`), which checks `toAct`, not the turn (:367).
-- The page writes hellos and byes as the player's lines (:110, :136;
-  `poker.js:244`) and builds each friend's view (`share`, `poker.js:901`).
+- The table lives only in page memory (`P:39`): a refresh ends the game.
+  The way there: keep `{ rev, state }` in the host browser's storage on
+  each commit, as the bankroll is (`P:47-50`).
+- Five calls with I/O (`W:382`); who is due is `plan` (`src/core/due.js:44`),
+  from `seen` in memory (`src/core/runtime.js:260`). One runtime for all
+  seats (`P:152`); people have none: the page draws their turn (`P:571`)
+  and friends' views (`share`, `P:901`).
+- `land`, `say`, `deal`, `force` change the table in place (`W:315`, :296,
+  :193, :364); `commit` only logs (`W:147`), a rev per rebuy (`W:214`).
+- `stamp()` reads `Date.now()` (`W:143`); a turn turned away is re-asked by
+  a new `turnAt` (`W:344`); the turn timer is a page `setTimeout`
+  (`P:80-94`); `force` checks `toAct`, not the turn (`W:367`).
+- Notes `tries`, `triesKey`, `rejected`, `thoughts` on the table (`W:139`,
+  :320, :341-343); `view` rolls `Math.random()` (`W:273`, from :410).
+- A run lands in two commits, the line after `typing` (`W:432-437`); its
+  pace reads the live table (`P:103-109`). A failed run commits nothing;
+  Retry is in memory (`P:162`, :800); a model change retries (`P:56-59`).
+- `startHand` shuffles, `act` deals from `hand.deck`
+  (`preview/poker-dealer.js:113`, :259-260). A person's move lands on a
+  base from the table now (`P:637`); a friend is whoever its hello claims
+  (`P:871`); hellos are page timers (`W:110`, `P:244-251`); no breaker
+  (`P:154`).
