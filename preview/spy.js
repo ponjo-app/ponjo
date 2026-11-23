@@ -1,43 +1,34 @@
 // The spy page (site/spy.html): a person, any friends they invite and AI
 // players round one table at a game of Who's the Spy. The rules
 // (spy-rules.js) own what must be exact; the table is a world
-// (spy-world.js) on the runtime's core (src/core/): a store in this page,
-// kept in the browser's storage on each change, so a refresh goes on with
-// the game. Each member has a controller: an AI player's program is one
-// call of the visitor's model (game-page.js, with the log's messages and the
-// vote arrows); the person's is this screen, which draws their seat's view
-// and lands what they do; the clock's waits for each deadline. The table is
-// drawn as the werewolf page draws its clearing, from a seat's own view
-// alone. Friends join by a link (poker-share.js): the host's page holds the
-// store and runs the AI players, and sends each friend's page its seat's
-// view; a friend's page, opened at `#join=<room>`, only draws and sends what
-// its player does. preview/build.js bundles it into dist/preview.
+// (spy-world.js) on the runtime's core (src/core/), kept by the table's
+// room on the relay (relay/table.js), which also runs the AI players (on
+// the visitor's model, game-page.js) and the clock. This page is one
+// seat's client: it draws its seat's view, as the room sends it, and sends
+// what its person does. The table is drawn as the werewolf page draws its
+// clearing, from a seat's own view alone. The page that opens the table
+// plays as its host; friends join by a link, at `#join=<room>`
+// (game-kit.js, `sit`). preview/build.js bundles it into dist/preview.
 
 /* global document, location, matchMedia, HTMLDialogElement, innerWidth, innerHeight, addEventListener */
 
 import { agentFace, personFace, setBuddies, setOwner } from '../web/faces.js';
 import { icon } from '../web/icons.js';
-import { $, arrows, el, message, models, notice, typingMessage } from './game-page.js';
-import { agent, friends, keep, load, openTable, typer } from './game-kit.js';
-import { clock, control } from '../src/core/controller.js';
-import { createRuntimePanel } from '../web/runtime-panel.js';
-import { guestId, join } from './poker-share.js';
-import { deal } from './spy-rules.js';
-import { CLOCK, DECIDE, HUMAN, MAX_CLUE, MAX_LINES, PERSONAS, TALK, TURN, decided, isPerson, newTable, prompt, world } from './spy-world.js';
+import { $, arrows, el, message, models, notice, typingMessage, unreached } from './game-page.js';
+import { keep, load, sit, typer } from './game-kit.js';
+import { HUMAN, MAX_CLUE, MAX_LINES, PERSONAS, TALK, TURN, isPerson } from './spy-world.js';
 
 const NAME = 'ponjo-poker-name'; // the visitor's name at a friend's table, as the poker page keeps it
-const TABLE = 'ponjo-spy-table'; // the table the host's page holds: { rev, state }, as its store last saved it
 const SVG = 'http://www.w3.org/2000/svg';
 
 setBuddies(PERSONAS.map(({ id }) => ({ id, name: id })));
 setOwner(HUMAN);
 
 const ROOM = new URLSearchParams(location.hash.slice(1)).get('join'); // a friend's page: the room of the table it joins
-const me = ROOM ? guestId(ROOM) : HUMAN; // who this page plays as
-let shown = null; // the host's page: its seat's view, as its controller last read it
-let remote = null; // a friend's page: what the host last sent, { view, presence }
+let me = ROOM ? null : HUMAN; // who this page plays as, once the room says
+let shown = null; // what the room last sent: { view, presence, ai }
 let myVote = null; // { at, target }: this page's vote, its own to see before the vote ends
-let away = ''; // a friend's page: why the line to the host is down
+let away = ''; // why the line to the room is down
 // What the page last drew: the seats, for which game; the last vote's arrows and when its dots land; the dealt word; the moment the chat box is for.
 let seats = [];
 let seatsFor = '';
@@ -47,50 +38,19 @@ let dealt = 0;
 let chatAt = '';
 const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-const ai = models(() => draw()); // the players' model
-
-// ---- the store and its members, on the host's page ----
-
-// The store, kept in this browser on each change. Its members' presence
-// (who is at work, whose run failed) is drawn here and sent to friends.
-const table = ROOM ? null : openTable(world, TABLE, newTable, () => {
+// The players' model: the host's page gives the room the visitor's own key, when they pick one.
+const ai = models(() => {
+  table.giveKey();
   draw();
-  guests.shown();
-});
-const client = (id) => table.client(id);
-const commit = (id, change) => table.commit(id, change);
+}, Boolean(ROOM));
 
-// Each player's pace, as a person's at a table: ms from and to before they act.
-const PACE = { Ivy: [3000, 5500], Max: [1200, 2500], Juno: [2500, 4500], Sam: [2000, 3500], Lou: [2500, 5000], Remy: [3500, 6500], Pip: [1200, 2600] };
 const typeTime = (text) => Math.min(6000, Math.max(1200, text.length * 60));
 
-// With ?debug, the host's page shows each AI player's runs (the runtime
-// panel): every player's word and thinking, so only on asking. A task is
-// a turn of the game: its round, phase, a runoff; a line in a discussion;
-// or a line in the chat after it.
-const panel = !ROOM && new URLSearchParams(location.search).has('debug') ? createRuntimePanel({
-  where: 'this table', faceOf: (id) => faceOf(picture().t, id),
-  askText: (given) => {
-    const [kind, , round, phase, runoff] = given.split(':');
-    return kind === 'talk' ? `The discussion (round ${round})` : kind === 'chat' ? 'A line in the chat' : `Round ${round}, ${phase}${runoff ? ' (runoff)' : ''}`;
-  },
-}) : null;
-
-// AI player `id`'s program: a run is one call of the model on what its
-// seat sees, then the player's own time to think. What it decided lands at
-// once; each page types a line out after.
-const think = (id) => agent({
-  client: client(id), id, infer: ai.infer, tool: DECIDE, prompt, panel,
-  decide: (args, view) => decided(args, view.actions),
-  pace: () => PACE[id][0] + Math.random() * (PACE[id][1] - PACE[id][0]),
-});
-
-// A new game: the AI players fill the seats the people leave, each with its
-// hello, which the clock says for it round the table; then the first clue.
+// A new game, dealt by the room: the AI players fill the seats the people
+// leave, each with its hello, which the clock says for it round the table; then the first clue.
 function startGame(size) {
-  const ais = PERSONAS.slice(0, Math.max(0, size - picture().t.people.length)).map(({ id, hello }) => ({ id, hello }));
   myVote = null;
-  commit(HUMAN, { body: { type: 'start', size, dealt: deal(size), ais } });
+  table.act('', { type: 'start', size });
 }
 
 // ---- what this page draws: its seat's view of the table ----
@@ -98,10 +58,10 @@ function startGame(size) {
 const EMPTY = { content: { people: [], names: {}, players: [], gameNo: 0, greeting: false, hellos: [], game: null, lines: [], thoughts: {}, moment: '', ends: 0 }, actions: [], tasks: [] };
 // The view this page draws (`t` its content, `v` the game as its seat sees it), and the presence it may see.
 function picture() {
-  const view = (ROOM ? remote?.view : shown) ?? EMPTY;
+  const view = shown?.view ?? EMPTY;
   return { t: view.content, v: view.content.game, view };
 }
-const presence = () => (ROOM ? remote?.presence : shown && client(HUMAN).present()) ?? {};
+const presence = () => shown?.presence ?? {};
 
 const label = (t, id) => (id === me ? 'You' : isPerson(id) ? t.names[id] ?? (id === HUMAN ? 'Host' : 'Friend') : id);
 const cap = (text) => text[0].toUpperCase() + text.slice(1);
@@ -248,7 +208,7 @@ function drawCenter(t, v, view) {
   $('.ww-phase-text').textContent = !v || t.greeting ? 'Who\'s the Spy' : over ? (v.winner === 'civilians' ? 'The civilians win' : `The ${v.seats.filter((s) => s.role === 'spy').length > 1 ? 'spies win' : 'spy wins'}`) : `Round ${v.round}`;
   const speaker = v && v.speaker !== null ? (v.speaker === v.seat ? 'Your' : `${label(t, t.players[v.speaker])}'s`) : '';
   const tied = v?.runoff ? list(v.runoff.map((i) => (i === v.seat ? 'you' : label(t, t.players[i])))) : '';
-  const [key, mark, words] = !v ? ['wait', null, ROOM ? 'Waiting for the host to start a game' : '']
+  const [key, mark, words] = !v ? [`wait:${away}`, null, away || (ROOM ? 'Waiting for the host to start a game' : '')]
     : t.greeting ? ['hello', null, 'Everyone says hello']
       : over ? ['over', null, mine ? ((mine === 'spy') === (v.winner === 'spies') ? 'You won' : 'You lost') : '']
         : v.phase === 'vote' ? [`vote:${v.runoff}`, symbol('ww-ballot'), v.runoff ? `Vote between ${tied}` : 'Vote for the spy']
@@ -346,21 +306,16 @@ box.addEventListener('keydown', (event) => {
   }
 });
 
-// What this page's player does, on the moment it sees: landed here as
-// they act (a person's change answers no task: refused, it lands nothing,
-// and they see why), or, on a friend's page, sent to the host, which lands it.
+// What this page's player does, on the moment it sees, sent to the room,
+// which lands it (a person's change answers no task: refused, it lands
+// nothing, and the room says why).
 function perform(body) {
   const { t, v, view } = picture();
   if (!view.actions.includes(body.type)) return;
   if (body.type === 'vote') myVote = { at: v.log.length, target: body.target };
   if ('text' in body) box.value = '';
-  if (ROOM) {
-    guest.send({ type: 'act', base: t.moment, body });
-    return draw();
-  }
-  const { refused: why } = commit(HUMAN, { base: t.moment, body });
-  if (why && 'text' in body) box.value = body.text;
-  refused(why);
+  table.act(t.moment, body);
+  draw();
 }
 function refused(why) {
   $('.ww-error').textContent = why ?? '';
@@ -451,6 +406,7 @@ function draw() {
   drawMe(t, v);
   drawChat(t, v, view);
   if (!ROOM && !starting.hidden) drawStart();
+  ai.draw(shown?.ai);
 }
 
 // ---- a seat's menu: your vote ----
@@ -552,60 +508,25 @@ starting.addEventListener('submit', (event) => {
   document.body.classList.remove('pk-buying-in');
   startGame(size);
 });
-// ---- friends: the host's page invites them; a friend's page joins ----
+// ---- the table's room: the host's page invites friends; a friend's page joins ----
 
-// Each friend's page gets its seat's view, with the presence it may see
-// (game-kit.js). One that was at the table (its page reloaded) is back in
-// its seat, by the name it had.
-const guests = friends(table, {
-  heard: act,
-  joined(id) {
-    const { people, names } = picture().t;
-    if (names[id] && !people.includes(id)) commit(id, { body: { type: 'join', name: names[id] } });
-  },
-});
 const inviting = $('.pk-invite');
 async function invite() {
   inviting.hidden = false;
   document.body.classList.add('pk-setting-up');
   inviting.elements.name.value = picture().t.names[HUMAN] ?? load(NAME) ?? '';
-  inviting.elements.link.value = await guests.link();
+  inviting.elements.link.value = await table.link();
 }
 function closeInvite() {
   const name = inviting.elements.name.value.trim();
   if (name) {
-    commit(HUMAN, { body: { type: 'join', name } });
+    table.act('', { type: 'join', name });
     keep(name, NAME);
   }
   inviting.hidden = true;
   document.body.classList.remove('pk-setting-up');
 }
-// What a friend's page sends: to sit at the table, or what its player does, made on `base`.
-function act(id, message) {
-  const b = message.body ?? {};
-  const body = message.type === 'sit' ? { type: 'join', name: message.name } : { type: String(b.type), ...(typeof b.text === 'string' ? { text: b.text } : {}), ...(Number.isInteger(b.target) ? { target: b.target } : {}) };
-  const { refused: why } = commit(id, { base: String(message.base ?? ''), body });
-  if (why) guests.send(id, { type: 'rejected', why });
-}
 
-// A friend's page: the table as the host sends it.
-const guest = ROOM && join(ROOM, { id: me }, {
-  heard(message) {
-    away = '';
-    if (message.type === 'rejected') {
-      refused(message.why);
-      return draw();
-    }
-    if (message.type !== 'state') return;
-    remote = message;
-    if (!joining.hidden && message.view.content.people.includes(me)) closeJoin(); // back at the table after a reload
-    draw();
-  },
-  away(reason) {
-    away = reason === 'host' ? 'The host is away. Waiting for them…' : reason === 'line' ? 'Reconnecting…' : reason;
-    draw();
-  },
-});
 const joining = $('.sp-join');
 function closeJoin() {
   joining.hidden = true;
@@ -615,8 +536,44 @@ joining.addEventListener('submit', (event) => {
   event.preventDefault();
   const name = joining.elements.name.value.trim().slice(0, 20) || 'Friend';
   keep(name, NAME);
-  guest.send({ type: 'sit', name });
+  table.act('', { type: 'join', name });
   closeJoin();
+});
+
+// This page's seat at the table. Its first view: the host's page, with no
+// game on, offers to start one; a friend's page that was at the table (a
+// reload) is back in its seat, by the name it had.
+let opened = false;
+const table = sit('spy', HUMAN, {
+  key: ai.key,
+  hello(id) {
+    me = id;
+    draw();
+  },
+  heard(message) {
+    away = '';
+    if (message.type === 'rejected') {
+      if ('text' in message.body && !box.value) box.value = message.body.text;
+      refused(message.why);
+      return draw();
+    }
+    if (message.type !== 'state') return;
+    shown = message;
+    const { people, names, game } = message.view.content;
+    if (!opened) {
+      opened = true;
+      if (!ROOM && !game) openStart();
+    }
+    if (ROOM && !joining.hidden && names[me]) {
+      closeJoin();
+      if (!people.includes(me)) table.act('', { type: 'join', name: names[me] });
+    }
+    draw();
+  },
+  away(why) {
+    away = unreached(why, shown);
+    draw();
+  },
 });
 
 // ---- wiring ----
@@ -647,23 +604,8 @@ setInterval(() => picture().v?.phase === 'talk' && draw(), 1000); // the discuss
 
 if (ROOM) {
   for (const node of document.querySelectorAll('[data-action="invite"], [data-action="key"]')) node.hidden = true;
-  $('.pk-model').textContent = 'You joined a friend\'s table: the AI players run on their page.';
   joining.elements.name.value = load(NAME) ?? '';
   joining.hidden = false;
   document.body.classList.add('pk-buying-in');
-} else {
-  ai.draw();
-  // The members' controllers: each AI player's, the clock's, and this screen's, the host's seat.
-  for (const { id } of PERSONAS) control(client(id), { program: think(id), wallet: table.wallet });
-  control(client(CLOCK), clock());
-  control(client(HUMAN), {
-    show(view) {
-      shown = view;
-      draw();
-    },
-  });
-  // Friends at a table this page held before it reloaded: the room is new, so they are gone.
-  for (const id of shown.content.people) if (id !== HUMAN) guests.gone(id);
-  if (!shown.content.game) openStart();
 }
 draw();

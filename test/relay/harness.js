@@ -17,14 +17,17 @@ const root = fileURLToPath(new URL('../..', import.meta.url));
 
 /**
  * The relay, started, serving the teammate's page from dist/web (`npm run
- * build` first): { url, its ws: URL; origin, its http: one; stop() }.
+ * build` first): { url, its ws: URL; origin, its http: one; stop() }. As
+ * `env` (the hackathon env keeps the game tables) with `bindings` over its
+ * own; its Durable Objects' storage kept in the folder `persist`, so a relay
+ * started again on it finds them, or nowhere.
  */
-export async function startRelay() {
+export async function startRelay({ env, bindings, persist = false } = {}) {
   const wrangler = createRequire(join(root, 'relay', 'package.json')).resolve('wrangler');
   process.env.WRANGLER_LOG ??= 'error'; // not every request
   const { unstable_startWorker } = await import(pathToFileURL(wrangler).href);
-  // Nothing kept on disk: each relay starts with no rooms counted against the limit.
-  const worker = await unstable_startWorker({ config: join(root, 'relay', 'wrangler.toml'), dev: { server: { hostname: '127.0.0.1', port: 0 }, inspector: false, watch: false, persist: false } });
+  // Nothing kept on disk unless asked: each relay starts with no rooms counted against the limit.
+  const worker = await unstable_startWorker({ config: join(root, 'relay', 'wrangler.toml'), env, bindings, dev: { server: { hostname: '127.0.0.1', port: 0 }, inspector: false, watch: false, persist } });
   const { host } = await worker.url;
   return { url: `ws://${host}`, origin: `http://${host}`, stop: () => worker.dispose() };
 }

@@ -5,9 +5,10 @@
 // player's thinking. `view` gives a member only what its seat may see, and
 // its tasks; `apply` lands a change, or refuses it, saying why. No clock and
 // no randomness: the time is each change's `at`, the deal comes in the
-// host's `start`, and the clock is a member whose tasks are the deadlines.
+// host's `start` (dealt by the table's room, game-tables.js), and the clock
+// is a member whose tasks are the deadlines.
 //
-// The people are the host (HUMAN), whose page holds the table, and any
+// The people are the host (HUMAN), whose page opened the table, and any
 // friends who joined it by a link; the AI players fill the seats left.
 // Outside a game, before it and once it is over, the people at the table
 // chat, and the AI players of the game just played answer.

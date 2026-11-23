@@ -112,7 +112,7 @@ relay runs on.
 
 Done when: a game goes on with the opener's page closed; a refresh is
 back in the same seat; a page receives no view but its own seat's (a test
-reads every frame); a page cannot act as another seat; `test/relay.test.js`
+reads every frame); a page cannot act as another seat; `test/tables.test.js`
 covers rooms with state.
 
 ## 5. The doc on the new core

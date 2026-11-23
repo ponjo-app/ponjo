@@ -1,12 +1,11 @@
 // What the game pages (site/poker.html, site/werewolf.html, site/spy.html)
-// share: the model their AI players run on, with the card for the
-// visitor's own key; the log's messages, as a chat app shows them; and the
+// share: the model their AI players run on in the table's room, with the
+// card for the visitor's own key; the log's messages, as a chat app shows them; and the
 // votes round a table, as arrows. Their markup and styles are poker.css's
 // .pk-setup and .pk-feed, and werewolf.css's .ww-votes.
 
 /* global document */
 
-import { INFER } from '../agents/ponjo-core.mjs';
 import { keep, load } from './game-kit.js';
 
 export const $ = (selector, root = document) => root.querySelector(selector);
@@ -15,18 +14,19 @@ export const el = (tag, className = '', text = '') => Object.assign(document.cre
 // ---- the model ----
 
 const SAVED = 'ponjo-poker'; // the visitor's own provider, key and model, for every game page (poker's name, from before there were others)
-const HOSTED = 'https://infer.ponjo.app/infer/anthropic'; // Ponjo's key and model, for ponjo.app's pages only
 
 /**
- * The model the AI players run on: Claude Haiku through infer.ponjo.app
- * (relay/worker.js), which holds Ponjo's key; or, with a visitor's own key,
- * kept in this browser and sent only to their model's provider, on the
- * model they pick. Wires the page's .pk-setup card, and calls `onUse` once
- * the visitor picks. Returns { infer, open, draw }: `infer()` is the model
- * now, as INFER (agents/ponjo-core.mjs) gives it; `open` shows the card;
- * `draw` says in .pk-model what the players run on.
+ * The model the AI players run on, in the table's room (relay/table.js):
+ * Claude Haiku on Ponjo's key, which never leaves the relay; or, with a
+ * visitor's own key, kept in this browser and given to the room of a table
+ * they opened, which holds it in memory only and calls their model's
+ * provider with it, on the model they pick. Wires the page's .pk-setup
+ * card, and calls `onUse` once the visitor picks. Returns { key, open,
+ * draw }: `key()` is the visitor's settings, or null for Ponjo's; `open`
+ * shows the card; `draw(ai)` says in .pk-model what the players run on (on
+ * a `friend`'s page, the host's), and what the room says of them (`aiNote`).
  */
-export function models(onUse) {
+export function models(onUse, friend) {
   const setup = $('.pk-setup');
   let settings = load(SAVED); // or null for Ponjo's
   let provider = settings?.provider ?? 'anthropic';
@@ -67,8 +67,8 @@ export function models(onUse) {
     setup.hidden = true;
     document.body.classList.remove('pk-setting-up');
   };
-  function draw() {
-    $('.pk-model').textContent = !settings ? 'The players run on Claude Haiku 5.5.' : `The players run on ${settings.provider === 'anthropic' ? `Claude ${$(`[data-model="${settings.model}"]`, setup).textContent}` : settings.model}, with your key.`;
+  function draw(ai) {
+    $('.pk-model').textContent = [friend ? 'You joined a friend\'s table: the AI players run on their key, or on Ponjo\'s.' : !settings ? 'The players run on Claude Haiku 5.5.' : `The players run on ${settings.provider === 'anthropic' ? `Claude ${$(`[data-model="${settings.model}"]`, setup).textContent}` : settings.model}, with your key.`, aiNote(ai)].join(' ').trim();
     $('[data-action="key"]').textContent = settings ? 'Change' : 'Use your own key';
   }
   // From now on the players run on `next`, the visitor's own, or null for Ponjo's.
@@ -93,24 +93,37 @@ export function models(onUse) {
     event.preventDefault();
     const f = setup.elements;
     const key = f.key.value.trim() || (settings?.provider === provider ? settings.key : '');
+    const endpoint = f.endpoint.value.trim() || f.endpoint.placeholder;
     const error = $('.pk-error', setup);
-    if (!key) {
-      error.textContent = 'Paste an API key.';
+    const wrong = !key ? 'Paste an API key.' : provider === 'openai' && !endpoint.startsWith('https://') ? 'The base URL starts with https://.' : '';
+    if (wrong) {
+      error.textContent = wrong;
       error.hidden = false;
       return;
     }
     use(provider === 'openai'
-      ? { provider, key, endpoint: f.endpoint.value.trim() || f.endpoint.placeholder, model: f.model.value.trim() || f.model.placeholder }
+      ? { provider, key, endpoint, model: f.model.value.trim() || f.model.placeholder }
       : { provider, key, model });
   });
   forget.addEventListener('click', () => use(null));
   $('.pk-error', setup).after(forget);
 
-  const infer = () => (!settings ? INFER.anthropic({ model: 'claude-haiku-5-5', key: 'ponjo' }, HOSTED) // the Worker sets the key, model and effort
-    : settings.provider === 'openai' ? INFER.openai({ endpoint: settings.endpoint, model: settings.model, key: settings.key })
-      : INFER.anthropic({ model: settings.model, key: settings.key, effort: 'low' }));
-  return { infer, open, draw };
+  return { key: () => settings, open, draw };
 }
+
+/**
+ * What the table's room says of its AI players (`ai` in its state, or
+ * none): waiting for the host's key, which their page gives it again when
+ * it comes back; or past this table's model calls for the hour.
+ */
+export function aiNote(ai) {
+  if (ai?.waiting) return 'The AI players wait for the host\'s key: on their turns, they pass when time is up.';
+  if (ai?.until) return `This table has used its model calls for the hour: the AI players pass until ${new Date(ai.until).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}.`;
+  return '';
+}
+
+// The line a page shows while it has no line to the table's room, or `why` it was turned away.
+export const unreached = (why, shown) => (why !== 'line' ? why : shown ? 'Reconnecting…' : 'Cannot reach the table yet. Trying again…');
 
 // ---- the log ----
 

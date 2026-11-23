@@ -38,7 +38,7 @@ merges their changes.
 | Shell | `desktop/` | Electron main: windows, menus, dialogs, the keychain; starts the doc host |
 | Pages | `web/` | the editor; turn typing into operations and back |
 | Doc host | `src/host/`, `desktop/doc-host.js` | holds open docs, does every write |
-| Relay | `relay/` | a Cloudflare Worker that forwards messages between the host and teammates' pages; stores nothing |
+| Relay | `relay/` | a Cloudflare Worker that forwards messages between the host and teammates' pages, storing nothing of a doc; deployed again at infer.ponjo.app, it keeps the game pages' tables, each in a room with its state ([rooms](worlds/rooms.md)) |
 
 ## Components in the doc host
 

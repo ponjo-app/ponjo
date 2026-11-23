@@ -9,7 +9,7 @@
 // to deal a hand and each street's cards, which come in its changes; the
 // clock is a member whose tasks are the turns' deadlines.
 //
-// The people are the host (HUMAN), whose page holds the table, and any
+// The people are the host (HUMAN), whose page opened the table, and any
 // friends who joined it by a link and bought in; AI players come and go
 // between hands as the host asks. Anyone may chat and react at any time.
 
@@ -26,7 +26,7 @@ export const MAX_SEATS = 6;
 export const TURN = 30_000; // ms a turn may take while it holds up a person; then the dealer checks or folds for the player
 const HELLO_MS = 1400; // ms each AI player's hello takes to show, before the first deal
 const CHAT_SHOWN = 24; // latest lines an AI player's view has
-const DECK = shuffled().sort();
+const DECK = shuffled(() => 0); // every card; no random numbers as the module loads, which a Worker may not make then
 
 // `talk`: the share of its turns, or of lines other players say to it, on which a player may say something.
 export const PERSONAS = [

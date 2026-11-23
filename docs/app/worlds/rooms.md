@@ -25,25 +25,43 @@ turn-based games with hidden information. Each is a store of the
   dealer's changes.
 - **AI seats** run in the room, beside the store, so no page is ever handed
   an AI seat's view: whoever's key one uses could otherwise read its cards.
-  The key is Ponjo's, or a visitor's own. A visitor's key is kept, as their
-  wallet, in the room's storage apart from the state: encrypted with a key
-  held in the Worker's secrets, bound to the token of whoever gave it, used
-  only for the AI seats they brought, sent to no client, and deleted when
-  the table ends, they leave it or they take it back. Keeping it across
+  The key is Ponjo's, which never leaves the relay, or a visitor's own. A
+  visitor's key is their wallet's: their page gives it to the room of a
+  table they opened, which holds it in memory only, uses it only for the AI
+  seats they brought, and sends it to no client. It is not kept at rest. A
+  room that is evicted forgets it: the AI seats on it wait until the
+  visitor's page comes back and gives it again, and their turns take the
+  fallback at their deadlines meanwhile. Keeping a key at rest needs a
+  master secret the owner sets, to encrypt it with; keeping it across
   tables would need accounts, which the games do not have.
 - **Spending.** Each room has its own budget and rate, on Ponjo's key and
   on each visitor's, so no room spends more than its owner set.
 - **Presence** goes to the room, which passes it on as each view's `seen`
   allows, and keeps none.
 
-It replaces the opener's page as the store and the forwarding in
-`preview/poker-share.js`. The relay keeps state for it; today it
-keeps none ([architecture](../architecture.md)).
-
 ## Today
 
-The table's store is in the page that opened it, kept in that page's
-storage, so a refresh goes on with the game; that page can read every
-card, role and word. Friends read and act through that page over the
-relay, each sent only their seat's view, and a friend is whoever their
-page says it is (`friends`, `preview/game-kit.js`).
+Each table is a room: a `Table` Durable Object (`relay/table.js`) in the
+relay deployed as `ponjo-hackathon` at infer.ponjo.app, beside the
+`ANTHROPIC_API_KEY` it runs the AI seats on. It keeps `{ rev, state }`,
+the members' tokens (hashed), what its wallet spent this hour and a hash
+of the address that opened it (for its rate) in its storage, and runs the game's world (`preview/game-tables.js`) on the
+runtime's core. Each page is one seat's client (`sit`,
+`preview/game-kit.js`): the opener's page keeps the table's secret, whose
+hash names the room, and plays as the host; a friend joins by the link
+and keeps the token it is given for that tab. Its alarm is the clock: it
+wakes the room at the next deadline of the clock's or the dealer's tasks,
+when a page has been gone `RECONNECT_MS`, and every 30 seconds while an AI
+seat has a task; a table no page has been at for a day is deleted.
+
+- **Spending.** A table makes at most 300 model calls a clock hour on
+  Ponjo's key and 600 on a visitor's (`RUNS_AN_HOUR`, `OWN_RUNS_AN_HOUR`,
+  `relay/wrangler.toml`); past that, the AI seats' turns take the
+  fallback until the next hour, and the pages say until when. Each call on
+  Ponjo's key also counts against the address that opened the table, at
+  most 60 a minute (the INFER rate), and an address opens at most 60
+  lines to tables a minute (SEATS). The owner cannot set these yet.
+- **Views.** The room sends a page its whole view each time it changes,
+  with the presence it may see, instead of telling it to read again.
+- **Deploys.** A page that cannot reach the room says so and tries again,
+  so pages published before the relay is deployed wait for it.
