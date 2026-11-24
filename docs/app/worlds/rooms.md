@@ -60,6 +60,15 @@ turn-based games with hidden information. Each is a store of the
   say until when. Each call on Ponjo's key also counts against the address
   that opened the table, at most 60 a minute (`INFER`), and an address
   opens at most 60 lines to tables a minute (`SEATS`).
+- **Chat.** Whoever is at a table may chat at any time the game does not
+  mute them; the rules say who is muted when. In werewolf a game mutes
+  everyone (it has its own speeches; a wolf's line to the pack goes with its
+  kill); in Who's the Spy, everyone but the discussion's living players; in
+  poker, no one. The AI players sit at the table from when it opens, each
+  saying hello in its own words as it sits down, and answer the lines that
+  ask them. No line is written for them. The table's latest lines are in
+  every prompt, in a game too, so what the people agree there (the
+  language to speak, house rules) holds, as far as the rules allow.
 - **Presence** goes to the room, which passes it on as each view's `seen`
   allows, and keeps none.
 

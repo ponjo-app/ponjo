@@ -24,7 +24,6 @@ export const STACK = 1000;
 export const [MIN_BUY, MAX_BUY] = [200, 1000]; // what a person may buy in for, and hold on the table
 export const MAX_SEATS = 6;
 export const TURN = 30_000; // ms a turn may take while it holds up a person; then the dealer checks or folds for the player
-const HELLO_MS = 1400; // ms each AI player's hello takes to show, before the first deal
 const CHAT_SHOWN = 24; // latest lines an AI player's view has
 const DECK = shuffled(() => 0); // every card; no random numbers as the module loads, which a Worker may not make then
 
@@ -34,7 +33,6 @@ export const PERSONAS = [
     id: 'Gary',
     talk: 0.35,
     blurb: 'A tourist who plays any two cards',
-    hello: ['Hi folks! Gary, first time at a real table. My wife is at the slots.', 'Quick one: a flush is the all-same-colour thing, right?'],
     bye: 'That\'s my wife texting. Bye, everyone!',
     style: 'You are a tourist on holiday who wandered into the casino for fun. You barely know the strategy: you play almost every hand, call far too much, raise on a whim (a lucky feeling, pretty cards, your birthday), and hate to fold. Cheerful and chatty: you celebrate tiny wins, ask the table naive questions, and say what you hold out loud by mistake now and then. You react to nearly everything, mostly 😮 👏 🔥.',
   },
@@ -42,7 +40,6 @@ export const PERSONAS = [
     id: 'Duke',
     talk: 0.5,
     blurb: 'Rude, aggressive, talks trash',
-    hello: ['Name\'s Duke. Sit down, empty your wallet, try not to cry.'],
     bye: 'Fine, I\'m out. None of you were worth my time anyway.',
     style: 'You are rude, cocky and aggressive. You raise and re-raise a lot, bully short stacks and go all in to make people sweat. You talk trash with nearly every action, unprompted: mock a fold, needle whoever is winning, brag about pots you took, taunt the person to call you. Keep it playful-mean table banter: no slurs, no swearing, nothing about anyone\'s real life. You react often, to mock: 😂 at a fold or a small bet, 😤 when someone beats you.',
   },
@@ -50,7 +47,6 @@ export const PERSONAS = [
     id: 'Penny',
     talk: 0.15,
     blurb: 'Careful, counts every chip',
-    hello: ['Penny. I count every chip, so don\'t expect gifts.'],
     bye: 'I\'ll take my chips and go. Good game.',
     style: 'You are careful and calculating: every chip counts. You fold weak hands, call only with the right pot odds, bet your strong hands for value and rarely bluff. You talk little, and when you do it is dry and precise: the price of a call, the pot odds, a quick count of outs. You rarely react: a 👍 for a well-played hand.',
   },
@@ -58,7 +54,6 @@ export const PERSONAS = [
     id: 'Mabel',
     talk: 0.3,
     blurb: 'A sweet grandmother who sets traps',
-    hello: ['Hello, dears. Mabel. Don\'t mind me, I only play for fun.'],
     bye: 'Time for my programme, dears. Take care now!',
     style: 'You are a sweet, polite grandmother who plays cards every Thursday. You look harmless and play very tight, but with a big hand you set a trap: check and call, then raise on the river. You chat warmly, call people "dear", offer them biscuits, and apologise when you win. You react with 👏 and 👍.',
   },
@@ -66,7 +61,6 @@ export const PERSONAS = [
     id: 'Lex',
     talk: 0.3,
     blurb: 'An online grinder who talks theory',
-    hello: ['Lex. I usually play twelve tables online, so this is a holiday.'],
     bye: 'Off to grind some real tables. GG.',
     style: 'You are a young online grinder who plays twelve tables at once at home. You play solid, aggressive, balanced poker and talk in poker jargon: ranges, equity, "3-bet", "standard fold". A little smug, you explain the theory to people who did not ask. You react with 😮 at an odd play and 🔥 at your own.',
   },
@@ -74,7 +68,6 @@ export const PERSONAS = [
     id: 'Hank',
     talk: 0.35,
     blurb: 'A cowboy who loves a big bluff',
-    hello: ['Howdy, partners. Hank. Been playin\' cards since before y\'all were born.'],
     bye: 'Saddlin\' up. Y\'all take care, partners.',
     style: 'You are an old-school cowboy from the back-room card games, loose and aggressive, who plays on feel and reads people, not charts. You tell tall tales about legendary pots you won, call everyone "partner", and love a big bluff. You react with 😂 and 🔥.',
   },
@@ -90,15 +83,15 @@ export const isPerson = (id) => !PERSONAS.some((p) => p.id === id);
  * up. People, the host and any friends, buy chips: `topUp` holds what each
  * added since the hand began; one with none sits a hand out. `names`: the
  * people's names. `chat`: the lines said; `reactions`: the emoji sent;
- * `thoughts`: each AI player's thinking. `dealing`: the dealer is to deal
- * the next hand, at `dealAt` if set; `deals`, how many it dealt, a hand or
- * none for want of chips. `since`: the `at` of the change that
+ * `thoughts`: each AI player's thinking. `sat`: the host has bought in.
+ * `dealing`: the dealer is to deal the next hand; `deals`, how many it
+ * dealt, a hand or none for want of chips. `since`: the `at` of the change that
  * began the turn.
  */
 export function newTable(ids = FIRST) {
   const players = [{ id: HUMAN, stack: 0 }, ...ids.map((id) => ({ id, stack: STACK }))];
   const slots = Object.fromEntries([[HUMAN, 0], ...ids.map((id, k) => [id, ids.length === 3 ? 2 * k + 1 : k + 1])]);
-  return { players, slots, names: {}, hand: null, handNo: 0, button: -1, topUp: {}, joining: [], leaving: [], chat: [], reactions: [], thoughts: {}, greeted: false, dealing: false, dealAt: 0, deals: 0, since: 0 };
+  return { players, slots, names: {}, hand: null, handNo: 0, button: -1, topUp: {}, joining: [], leaving: [], chat: [], reactions: [], thoughts: {}, sat: false, dealing: false, deals: 0, since: 0 };
 }
 
 // The seats no one has, or will have at the next hand.
@@ -158,12 +151,15 @@ const talks = (id, tasks) => tasks.some((t) => !t.given.startsWith('turn:') || r
 // (the next AI player after them); none at DEPTH.
 const asks = (l, id) => l.by !== id && l.by !== DEALER && l.depth < DEPTH && (l.to.includes(id) ? isPerson(l.by) || rolls(id, `line:${l.id}`) : l.next === id);
 
-// What member `id` is due to do: its turn; an AI player at the table, each
-// line that asks it, and a word after a big hand.
+// What member `id` is due to do: its turn; an AI player at the table, its
+// hello if it has said no line yet (from when it sits down, a hand or not),
+// each line that asks it, and a word after a big hand.
 function tasksOf(t, id) {
   const tasks = [];
   if (actor(t) === id) tasks.push({ given: `turn:${moment(t)}`, as: id, kind: 'turn', from: [], depth: 0, ...(ends(t) ? { at: ends(t) } : {}), why: 'Your turn' });
-  if (isPerson(id) || seatOf(t, id) < 0) return tasks;
+  if (isPerson(id) || !lineup(t).some((p) => p.id === id && !p.leaving)) return tasks;
+  if (!t.chat.some((l) => l.by === id)) tasks.push({ given: `hello:${id}`, as: id, kind: 'ask', from: [], depth: 0, why: 'You just sat down at the table: say hello' });
+  if (seatOf(t, id) < 0) return tasks;
   for (const l of t.chat) if (asks(l, id)) tasks.push({ given: `line:${l.id}`, as: id, kind: 'ask', from: l.from, depth: l.depth, why: `${nameOf(t, l.by)} said "${l.text}"` });
   if (isBig(t.hand) && reactors(t.hand).includes(id)) tasks.push({ given: `react:${t.hand.id}`, as: id, kind: 'turn', from: [], depth: 0, why: 'A big hand just ended' });
   return tasks;
@@ -172,7 +168,7 @@ function tasksOf(t, id) {
 // The dealer's: the next hand, once asked to deal it; a street's cards, once its betting is over.
 function dealerTasks(t) {
   if (live(t)) return owed(t.hand) ? [deadline(`board:${t.hand.id}:${t.hand.street}`, DEALER, undefined, 'The next street')] : [];
-  return t.dealing ? [deadline(`deal:${t.deals + 1}`, DEALER, t.dealAt || undefined, 'The next hand')] : [];
+  return t.dealing ? [deadline(`deal:${t.deals + 1}`, DEALER, undefined, 'The next hand')] : [];
 }
 
 // The clock's: a turn's end, when the dealer checks or folds for its player.
@@ -200,11 +196,11 @@ function view(t, member) {
   let hand = t.hand && handView(t.hand, seat);
   if (hand && person && over) hand = { ...hand, seats: hand.seats.map((s, i) => (isPerson(s.id) ? s : { ...s, hole: [...t.hand.seats[i].hole] })) };
   const mine = (id) => (t.thoughts[id] ?? []).filter((x) => x.hand === t.hand?.id);
-  const { players, slots, names, handNo, button, joining, leaving, greeted, dealing } = t;
+  const { players, slots, names, handNo, button, joining, leaving, sat, dealing } = t;
   return {
     ...base,
     content: {
-      players, slots, names, handNo, button, joining, leaving, greeted, dealing, hand,
+      players, slots, names, handNo, button, joining, leaving, sat, dealing, hand,
       topUp: { [member]: t.topUp[member] ?? 0 },
       chat: person ? t.chat : t.chat.slice(-CHAT_SHOWN),
       reactions: t.reactions,
@@ -225,8 +221,7 @@ function view(t, member) {
  * lands takes its line, its emoji and its thinking with it. A line of an
  * AI player's run lands only if the run may talk (`talks`). Or by `type`:
  *   name { name }                a person goes by `name`
- *   sit { buyIn }             the host buys chips; the first time, the AI
- *                                players say hello; the next hand is dealt
+ *   sit { buyIn }                the host buys chips; the next hand is dealt
  *   sit { seat, name, buyIn }    a friend takes `seat` at the next hand
  *   topup { amount }             more chips, landing before the next hand
  *   leave                        a person cashes out between hands; a friend
@@ -258,7 +253,7 @@ function step(t, { by, at, base, answers = [], body }) {
     return void force(t, actor(t));
   }
   if (by === DEALER) return dealt(t, answers[0], b.cards);
-  if (b.type) return command(t, by, b, at);
+  if (b.type) return command(t, by, b);
   const asked = tasksOf(t, by).filter((x) => answers.includes(x.given));
   if (b.action) {
     if (base !== moment(t) || actor(t) !== by) return { refused: 'Stale: the table moved on before your action landed.' };
@@ -298,7 +293,7 @@ function dealt(t, given, cards) {
 }
 
 // What a person does that is not a move, a line or an emoji, at `at`.
-function command(t, by, b, at) {
+function command(t, by, b) {
   const between = !live(t);
   const amount = Math.round(Number(b.amount ?? b.buyIn)) || 0;
   const seated = lineup(t).some((p) => p.id === by && !p.leaving);
@@ -309,7 +304,7 @@ function command(t, by, b, at) {
   if (b.type === 'sit' && by === HUMAN) {
     if (amount < MIN_BUY || myChips(t) + amount > MAX_BUY) return { refused: `Buy in for ${MIN_BUY} to ${MAX_BUY}.` };
     t.topUp[HUMAN] = (t.topUp[HUMAN] ?? 0) + amount;
-    if (!t.greeted) greet(t, at);
+    t.sat = true;
     if (between) t.dealing = true;
     return;
   }
@@ -357,19 +352,8 @@ function say(t, by, text, asked = [], depth) {
   t.chat.push(l);
 }
 
-// The players at the table say hello when the host first sits down, each
-// its first line in seat order, then any more: lines written for them, so
-// they ask no one. The first hand is dealt once they are said, from `at`.
-function greet(t, at) {
-  const here = playing(t).filter((p) => !isPerson(p.id)).map(({ id }) => PERSONAS.find((p) => p.id === id));
-  const lines = [...here.map((p) => [p.id, p.hello[0]]), ...here.flatMap((p) => p.hello.slice(1).map((text) => [p.id, text]))];
-  for (const [id, text] of lines) say(t, id, text, [], DEPTH);
-  t.greeted = true;
-  t.dealAt = at + lines.length * HELLO_MS;
-}
-
-// An AI player takes a seat at the next hand, and says hello. False if
-// there is no free seat, or it is already at the table.
+// An AI player takes a seat at the next hand, and says hello (its task).
+// False if there is no free seat, or it is already at the table.
 function addPlayer(t, id, seat = freeSeats(t)[0]) {
   const persona = PERSONAS.find((p) => p.id === id);
   if (!persona || lineup(t).some((p) => p.id === id && !p.leaving)) return false;
@@ -378,7 +362,6 @@ function addPlayer(t, id, seat = freeSeats(t)[0]) {
     t.joining.push(id);
     t.slots[id] = seat;
   } else return false;
-  say(t, id, persona.hello[0], [], DEPTH);
   return true;
 }
 
@@ -415,7 +398,6 @@ function leave(t, id) {
 // chips sits the hand out. With no person to play, there is no hand.
 function deal(t, cards) {
   t.dealing = false;
-  t.dealAt = 0;
   t.deals++;
   const before = (t.hand ? t.hand.seats : t.players).map(({ id, stack }) => ({ id, stack }));
   for (const id of t.leaving) delete t.slots[id];
@@ -549,6 +531,7 @@ export function prompt({ content: c, tasks, rules: how }, id) {
   if (c.chat.length) parts.push(['The chat, latest last:', ...c.chat.map((l) => `- ${l.by === id ? `${id} (you)` : nameOf(c, l.by)}: ${l.text}`)].join('\n'));
   const lines = tasks.filter((t) => t.given.startsWith('line:'));
   const why = [
+    tasks.some((t) => t.given.startsWith('hello:')) && 'you just sat down at the table: say hello',
     turn && 'it is your turn: decide your action',
     lines.length && `${lines.map((t) => t.why).join(', and ')}${turn ? '' : ' (it is not your turn: no action, only say, if anything)'}`,
     tasks.some((t) => t.given.startsWith('react:')) && !turn && 'a big hand just ended: say something only if it is worth it, no action',

@@ -10,15 +10,18 @@ in turn, then all vote at once. Rules `preview/werewolf-rules.js`, world
 ## State
 
 ```
-Table { rev, people, names, no, lines, game, ledger }
+Table { rev, people, names, size, no, lines, game, ledger }
 Game  { players, seats: [{ role, alive }], day, phase, step, round, picks, victim,
         saved, poisoned, potions, speaker, order, votes, acted, log, winner,
         since, called: { step, at }, minds: [{ thoughts }] }
-Line  { id, by, text, to, depth, about, game, after }
+Line  { id, by, text, to, depth, about, no }
 ```
 
 - The table is the world; a game is a change, the dealer's `deal`. `game`
-  is the last one, kept for the chat about it.
+  is the last one, kept for the chat about it. `size`: the next game's
+  seats; the people fill them first, AI players the rest, and those sit at
+  the table from then on. A line's `no` is the last game begun when it was
+  said.
 - A `log` entry's `to` is the seats that may see it; none, all. The pack,
   `to: wolves(game)`, is seats, people and agents alike, that `view` reads.
 - `turn(game)` is the moment (`day:phase:step round`, or the speaker), the
@@ -59,14 +62,16 @@ the night", how only to the pack and the witch. The night's step is
 `called`, not the rules' step. Then its mind, its last try's why, and the
 chat; once over, all. A member with no seat sees what all see. `rules` is
 `RULES`; a persona is its agent's prompt. `actions`: what the rules' `due`
-lets the seat do now; `say` outside a game; `sit`, `leave` between games;
-`start { size }`, for the opener. No effects.
+lets the seat do now; `chat` outside a game, for whoever is at the table;
+`sit`, `leave` between games; `size { size }` and `start { size }`, for the
+opener. No effects.
 
 **Tasks.**
 
 ```
 turn:<turn>:<seat>  { kind: turn, as: seat, from: [], depth: 0, at: since + TURN, or the call's end }
 line:<id>           { kind: ask, as: member, from: the line's people, depth: the line's }
+hello:<member>      { kind: ask, as: member, from: [], depth: 0 }
 ```
 
 A turn task while a seat is in the rules' `due(game)`, a person's as an
@@ -74,11 +79,10 @@ agent's: a person's is their "your turn", its `at` the ring. `as` gives its
 view and rights, so an AI wolf sees the pack whoever owns it. A line task
 while a line names the member under `DEPTH`; a person's line to all is
 listed for one AI player, the one whose last line is oldest, ties in seat
-order. A turn comes first; with no chat during a game, a seat never has a
-turn and a line at once.
-
-Open: whether chat before a game wakes AI players. In the code it wakes
-none; only chat after one does.
+order. Line and hello tasks are listed only outside a game, for the AI
+players at the table: a hello for one new to it (no line yet, not in the
+last game). A game mutes the chat, so a seat never has a turn and a line at
+once.
 
 **Answers.** The ledger's. Accepted, a change goes through the rules'
 `act`: the seat joins `acted`, and `settle` ends a phase once no one is
@@ -97,8 +101,7 @@ task, with its ring; the AI seats run in the room, with their wallet.
   turn's `at`: all still due take the fallback. `call:<day>:<step>`: the
   narrator calls dusk for 3 s, then each night role, alive or not, for
   exactly `CALL_MS` (8 s), so a call's length tells nothing; a night turn's
-  `at` is its call's end. `hello:<seat>`: the hellos before the first
-  night, one each `HELLO_MS`.
+  `at` is its call's end.
 - **Dealer**, a system member with a script, in the room: after `start`,
   its task `deal:<no>`; it commits `deal { roles }` by
   `crypto.getRandomValues`; `apply` checks it shuffles `cast(size)`.
@@ -132,5 +135,4 @@ the room's budget and rate, the depth limit; the breaker counts no turn.
 - The table keeps `call { day, step, at }`, `since` and `thoughts` beside
   the game, not in it, for `called`, `since` and `minds`; the tasks carry
   the game's `no`: `turn:<no>:<turn>`, `line:<no>:<id>`,
-  `call:<no>:<day>:<step>`, `hello:<no>:<seat>`, `begin:<no>`,
-  `expire:<no>:<turn>`.
+  `call:<no>:<day>:<step>`, `expire:<no>:<turn>`.

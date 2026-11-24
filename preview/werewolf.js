@@ -40,8 +40,8 @@ const ai = models(() => {
   draw();
 }, Boolean(ROOM));
 
-// A new game, dealt by the room: the AI players fill the seats the people
-// leave, each with its hello, which the clock says for it round the fire; then night falls.
+// A new game, dealt by the room: the people at the table and the AI players
+// sitting with them, in the seats the host picked; then night falls.
 function startGame(size) {
   myVote = null;
   table.act('', { type: 'start', size });
@@ -49,12 +49,12 @@ function startGame(size) {
 
 // ---- what this page draws: its seat's view of the table ----
 
-const EMPTY = { content: { people: [], names: {}, players: [], no: 0, greeting: false, hellos: [], game: null, call: null, lines: [], thoughts: {}, moment: '' }, actions: [], tasks: [] };
-// The view this page draws (`t` its content, `v` the game as its seat sees it: round the fire while everyone says hello).
+const EMPTY = { content: { people: [], names: {}, size: 7, seated: [], players: [], no: 0, game: null, call: null, lines: [], thoughts: {}, moment: '' }, actions: [], tasks: [] };
+// The view this page draws (`t` its content, `v` the game as its seat sees it).
 function picture() {
   const view = shown?.view ?? EMPTY;
   const t = view.content;
-  return { t, v: t.game && (t.greeting ? { ...t.game, phase: 'gather', due: null, log: [] } : t.game), view };
+  return { t, v: t.game, view };
 }
 const presence = () => shown?.presence ?? {};
 
@@ -125,9 +125,11 @@ function seatNode(t, id, at, i, n) {
   node.append(face, plate);
   return node;
 }
-// The seats of a new game round the fire: the person's notes and vote start again.
+// The seats of a new game round the fire, or before any, of whoever sits
+// at the table: the person's notes and vote start again.
 function layout(t) {
-  const key = `${t.no}:${t.players.join()}`;
+  const ids = t.game ? t.players : t.seated;
+  const key = `${t.no}:${ids.join()}`;
   if (key === seatsFor) return;
   seatsFor = key;
   $('.site-theme').hidden = Boolean(t.game); // the game sets light and dark now
@@ -136,8 +138,8 @@ function layout(t) {
   formAt = '';
   arrowsFor = '';
   for (const node of seats) node.remove();
-  const mine = Math.max(0, t.players.indexOf(me));
-  seats = t.players.map((id, i) => seatNode(t, id, (i - mine + t.players.length) % t.players.length, i, t.players.length));
+  const mine = Math.max(0, ids.indexOf(me));
+  seats = ids.map((id, i) => seatNode(t, id, (i - mine + ids.length) % ids.length, i, ids.length));
   $('.ww-ring').append(...seats);
 }
 
@@ -321,7 +323,7 @@ function drawVotes(t, v) {
     const picks = new Map(v.log.filter((e) => e.type === 'pick' && e.day === v.day).map((e) => [e.seat, e.target]));
     for (const [s, x] of picks) pairs.push([s, x, 'pack']);
   }
-  const fresh = vote && arrowsFor !== `${vote.day}` && v.phase !== 'gather';
+  const fresh = vote && arrowsFor !== `${vote.day}`;
   if (vote) arrowsFor = `${vote.day}`;
   const ms = arrows($('.ww-votes'), pairs, (i) => $('.pj-avatar', seats[i]), fresh && !still);
   if (ms !== null) votesIn = ms;
@@ -343,11 +345,10 @@ function drawCenter(t, v) {
   const time = $('.ww-time');
   if (time.dataset.icon !== (night ? 'moon' : 'sun')) time.replaceChildren(icon(night ? 'moon' : 'sun'));
   time.dataset.icon = night ? 'moon' : 'sun';
-  $('.ww-phase-text').textContent = v.phase === 'gather' ? 'Round the fire' : v.phase === 'over' ? (v.winner === 'village' ? 'The village wins' : 'The werewolves win') : `${night ? 'Night' : 'Day'} ${v.day}`;
+  $('.ww-phase-text').textContent = v.phase === 'over' ? (v.winner === 'village' ? 'The village wins' : 'The werewolves win') : `${night ? 'Night' : 'Day'} ${v.day}`;
   const call = t.call?.step ?? 'dusk';
   const [key, mark, words] = away ? ['away', null, away]
-    : v.phase === 'gather' ? ['gather', null, 'Everyone says hello']
-      : v.phase === 'over' ? ['over', null, v.seat < 0 ? '' : (v.role === 'wolf') === (v.winner === 'wolves') ? 'You won' : 'You lost']
+    : v.phase === 'over' ? ['over', null, v.seat < 0 ? '' : (v.role === 'wolf') === (v.winner === 'wolves') ? 'You won' : 'You lost']
         : night ? [`call:${call}`, call === 'dusk' ? null : symbol(call === 'wolves' ? 'wolf' : call), CALL_TEXT[call]]
           : v.phase === 'vote' ? ['vote', symbol('ballot'), 'Vote']
             : v.phase === 'last' ? ['last', null, 'Last words'] : ['day', null, ''];
@@ -417,8 +418,7 @@ function drawChat(t, v, view) {
         : v.seat < 0 && v.phase !== 'over' ? 'You are watching: you play from the next game.'
           : !v.alive && !['over', 'last'].includes(v.phase) ? 'You are out: the dead don\'t speak.'
             : v.phase === 'over' ? 'The game is over: you watched it.'
-              : v.phase === 'gather' ? 'Muted while everyone says hello.'
-                : v.phase === 'night' ? 'Muted: it is night, and everyone\'s eyes are shut.'
+              : v.phase === 'night' ? 'Muted: it is night, and everyone\'s eyes are shut.'
                   : v.phase === 'vote' ? 'Muted while everyone votes.'
                     : speaker ? `Muted: ${speaker} ${speaker === 'You' ? 'have' : 'has'} the floor. You speak in turn.` : 'Muted.'];
   const line = $('.ww-audience');
@@ -561,15 +561,14 @@ function drawFeed(t, v) {
     last = null;
   };
   // the chat before this game, and (below) after it
-  const chatted = (after) => t.lines.filter((l) => l.after === after && l.game === t.no);
+  const chatted = (no) => t.lines.filter((l) => l.no === no);
   const chatLine = (l) => {
     const i = t.players.indexOf(l.by);
     if (i >= 0) return say(i, l.text, '');
     rows.push(message({ face: l.by !== me && faceOf(t, l.by), name: label(t, l.by), text: l.text, mine: l.by === me, more: last === l.by }));
     last = l.by;
   };
-  chatted(false).forEach(chatLine);
-  for (const h of t.hellos) say(t.players.indexOf(h.id), h.text, '');
+  chatted(t.no - 1).forEach(chatLine);
   for (const e of v.log) {
     const secret = SECRET[e.type];
     if (e.type === 'night') line(`Night ${e.day} falls. Everyone closes their eyes.`);
@@ -596,31 +595,38 @@ function drawFeed(t, v) {
       line(`The vote: ${votes.join(', ')}. ${e.out === null ? 'A tie: no one is out.' : `${Name(e.out)} ${e.out === v.seat ? 'are' : 'is'} out.`}`);
     } else if (e.type === 'over') line(e.winner === 'village' ? 'Every werewolf is dead: the village wins.' : 'The werewolves are as many as the rest: they win.');
   }
-  chatted(true).forEach(chatLine);
-  for (const [id, p] of Object.entries(presence())) {
-    if (p.typing) rows.push(typingMessage(faceOf(t, id), id));
-    if (!p.failed) continue;
-    const row = notice(`${id} could not reach the model: ${p.failed}`);
-    row.dataset.failed = '';
-    rows.push(row);
-  }
+  chatted(t.no).forEach(chatLine);
+  rows.push(...working(t));
   feed.replaceChildren(...rows);
   if (stick) feed.scrollTop = feed.scrollHeight;
 }
 
-// Before any game, the log is the chat of the people at the table.
+// Under the log: who is typing, and who could not reach the model.
+function working(t) {
+  return Object.entries(presence()).flatMap(([id, p]) => {
+    if (p.typing) return [typingMessage(faceOf(t, id), id)];
+    if (!p.failed) return [];
+    const row = notice(`${id} could not reach the model: ${p.failed}`);
+    row.dataset.failed = '';
+    return [row];
+  });
+}
+
+// Before any game, the log is the chat of everyone at the table.
 function drawLobby(t) {
   $('.ww-phase-text').textContent = away || (ROOM ? 'Waiting for the host to start a game' : 'Round the fire');
   $('.ww-over').hidden = Boolean(ROOM); // before any game, the host's way to start one
   $('[data-action="thinking"]').hidden = true;
+  $('.ww-hint').hidden = true; // no roles to guess yet
   const feed = $('.pk-feed');
+  const stick = feed.scrollHeight - feed.scrollTop - feed.clientHeight < 40;
   let last = null;
-  feed.replaceChildren(...t.lines.filter((l) => !l.after && l.game === t.no + 1).map((l) => {
+  feed.replaceChildren(...t.lines.map((l) => {
     const row = message({ face: l.by !== me && faceOf(t, l.by), name: label(t, l.by), text: l.text, mine: l.by === me, more: last === l.by });
     last = l.by;
     return row;
-  }));
-  feed.scrollTop = feed.scrollHeight;
+  }), ...working(t));
+  if (stick) feed.scrollTop = feed.scrollHeight;
 }
 
 // Draws this page's player's view: while the players say hello, round the
@@ -674,14 +680,13 @@ function showThinking() {
 // ---- a new game: how many players, who is at the table, and the roles that makes ----
 
 const starting = $('.ww-start');
-let size = 7;
 function openStart() {
   starting.hidden = false;
   document.body.classList.add('pk-buying-in');
   drawStart();
 }
 function drawStart() {
-  const { people } = picture().t;
+  const { people, size } = picture().t;
   for (const b of starting.querySelectorAll('[data-size]')) b.setAttribute('aria-checked', String(Number(b.dataset.size) === size));
   const roles = cast(size);
   $('.ww-cast', starting).replaceChildren(...[...new Set(roles)].map((role) => {
@@ -696,15 +701,13 @@ function drawStart() {
 }
 starting.addEventListener('click', (event) => {
   const b = event.target.closest('[data-size]');
-  if (!b) return;
-  size = Number(b.dataset.size);
-  drawStart();
+  if (b) table.act('', { type: 'size', size: Number(b.dataset.size) }); // AI players sit down or get up for it
 });
 starting.addEventListener('submit', (event) => {
   event.preventDefault();
   starting.hidden = true;
   document.body.classList.remove('pk-buying-in');
-  startGame(size);
+  startGame(picture().t.size);
 });
 
 // ---- the table's room: the host's page invites friends; a friend's page joins ----
@@ -739,10 +742,8 @@ joining.addEventListener('submit', (event) => {
   closeJoin();
 });
 
-// This page's seat at the table. Its first view: the host's page, with no
-// game on, offers to start one; a friend's page that was at the table (a
+// This page's seat at the table. A friend's page that was at the table (a
 // reload) is back in its seat, by the name it had.
-let opened = false;
 const table = sit('werewolf', HUMAN, {
   key: ai.key,
   hello(id) {
@@ -758,11 +759,7 @@ const table = sit('werewolf', HUMAN, {
     }
     if (message.type !== 'state') return;
     shown = message;
-    const { people, names, game } = message.view.content;
-    if (!opened) {
-      opened = true;
-      if (!ROOM && !game) openStart();
-    }
+    const { people, names } = message.view.content;
     if (ROOM && !joining.hidden && names[me]) {
       closeJoin();
       if (!people.includes(me)) table.act('', { type: 'join', name: names[me] });
