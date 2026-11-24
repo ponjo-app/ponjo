@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ponjo Agent</title>
+<link rel="icon" href="../../build/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../dist/web/app.css?v=dd1545b">
+<link rel="stylesheet" href="../../site.css?v=dd1545b">
+</head>
+<body>
+<header class="site-header">
+  <a class="site-brand" href="../../index.html">Ponjo</a>
+  <nav class="site-nav" aria-label="Pages">
+    <a href="../../index.html">Download</a>
+    <a href="../../introduction.html">Introduction</a>
+    <a href="../../docs/" aria-current="page">Docs</a>
+    <details class="site-drop" name="site-menu">
+      <summary>Development<svg class="pj-icon" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></summary>
+      <div class="pj-block-menu site-menu">
+        <a href="../../architecture.html">Architecture</a>
+        <a href="../../design.html">Design system</a>
+        <a href="../../avatars.html">Avatar design</a>
+      </div>
+    </details>
+    <details class="site-drop" name="site-menu">
+      <summary>Preview<svg class="pj-icon" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></summary>
+      <div class="pj-block-menu site-menu">
+        <a href="../../preview/">Doc mode</a>
+        <a href="../../preview/?folder">Folder mode</a>
+        <a href="../../poker.html">Poker</a>
+        <a href="../../werewolf.html">Werewolf</a>
+        <a href="../../spy.html">Who's the Spy</a>
+      </div>
+    </details>
+  </nav>
+  <span class="pj-spacer"></span>
+  <a class="pj-icon-btn" href="https://github.com/ponjo-app/ponjo" aria-label="GitHub" title="GitHub"><svg class="pj-icon" viewBox="0 0 24 24"><path fill="currentColor" stroke="none" d="M12 2C6.48 2 2 6.58 2 12.23c0 4.52 2.87 8.35 6.84 9.7.5.1.68-.22.68-.49l-.01-1.7c-2.78.62-3.37-1.38-3.37-1.38-.46-1.18-1.11-1.5-1.11-1.5-.91-.64.07-.62.07-.62 1 .07 1.53 1.06 1.53 1.06.9 1.57 2.35 1.12 2.92.86.09-.67.35-1.12.64-1.38-2.22-.26-4.56-1.14-4.56-5.07 0-1.12.39-2.04 1.03-2.76-.1-.26-.45-1.3.1-2.71 0 0 .84-.28 2.75 1.05A9.36 9.36 0 0 1 12 6.98c.85 0 1.71.12 2.51.34 1.91-1.33 2.75-1.05 2.75-1.05.55 1.41.2 2.45.1 2.71.64.72 1.03 1.64 1.03 2.76 0 3.94-2.34 4.81-4.57 5.06.36.32.68.94.68 1.9l-.01 2.81c0 .27.18.6.69.49A10.1 10.1 0 0 0 22 12.23C22 6.58 17.52 2 12 2z"/></svg></a>
+  <button class="pj-icon-btn site-theme" type="button" aria-label="Switch theme" title="Switch theme"><svg class="pj-icon site-moon" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"/></svg><svg class="pj-icon site-sun" viewBox="0 0 24 24"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg></button>
+</header>
+<main class="doc-page">
+<h1 id="ponjo-agent">Ponjo Agent</h1>
+<p>An agent of our own, run like Claude Code and Codex: a script in
+<code>agents/</code> under the same <a href="agent-config.html#the-contract">contract</a>. Inside,
+an LLM reads and comments; the program checks each comment and applies it.</p>
+<p>Claude Code and Codex are black boxes (their prompts, shell and web tools,
+permissions, start-up time) for work that is narrow: read, comment, edit
+text. Our own loop for only that is small enough to read whole, and runs a
+cloud model of your choice. Local models are not a goal for now: the ones a
+laptop runs (an 8B model tried) claim edits they did not make.</p>
+<h2 id="principles">Principles</h2>
+<ol>
+<li><strong>Read and comment, never write.</strong> The model&#39;s only effect is its
+comments, each with the edits it carries; the program checks each and
+applies it to the copies.</li>
+<li><strong>The tools are the permissions.</strong> <code>read</code>, <code>find</code>, <code>grep</code> and <code>comment</code> only, and
+with Anthropic, its web fetch: no shell, no network but the model&#39;s API. Text a teammate wrote can at
+worst make an undoable comment.</li>
+<li><strong>Stateless.</strong> A turn remembers nothing after. Within it, all state is
+the messages, and its trace replays it.</li>
+<li><strong>The doc comes with the prompt; the model asks for the rest.</strong> Nearly
+every turn needs the doc, so it is sent, not read: a step saved. The
+project&#39;s file names come too, as a person sees them in the sidebar;
+the model reads what else it needs.</li>
+<li><strong>Read by line number, write by quote.</strong> Never count characters.</li>
+</ol>
+<h2 id="interfaces">Interfaces</h2>
+<table>
+<thead>
+<tr>
+<th>Interface</th>
+<th>Called by</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>turn({ prompt, doc, sidecar }, { infer, readFile, resolve }) → { doc, sidecar, groups, text }</code></td>
+<td>the program&#39;s <code>main</code>; the preview&#39;s buddies (<code>preview/doc-stub.js</code>)</td>
+</tr>
+<tr>
+<td><code>infer(messages, tools) → { calls: [{ id, name, args }], text, sent, usage }</code></td>
+<td><code>turn</code>, for each step</td>
+</tr>
+<tr>
+<td><code>read</code>, <code>find</code>, <code>grep</code>, <code>comment</code></td>
+<td>the model, as tools</td>
+</tr>
+</tbody></table>
+<p><strong><code>main</code></strong> is all the I/O, and all of the contract: it reads the prompt on
+stdin, the paths in <code>PONJO_DOC</code>, <code>PONJO_COMMENTS</code> and <code>PONJO_PROJECT</code>,
+and its settings in <code>PONJO_SETTING_*</code>, calls <code>turn</code>, writes the texts it
+gives back to the copies and the groups to <code>PONJO_GROUPS</code>, prints the
+model&#39;s last words, for the trace, and exits 0. A run without a key fails
+at once, saying where to set it.</p>
+<p><strong><code>turn</code></strong> is one run of a buddy, on every thread that asks it, with no
+I/O of its own: it thinks, and checks each comment. <code>prompt</code> is stdin as
+is; <code>doc</code> and <code>sidecar</code> are the copies&#39; paths in the project, and
+<code>resolve</code> puts a path the model wrote in that form. It gives back the
+copies&#39; new texts, each comment&#39;s edits as its group
+(<a href="agent-config.html#groups">agent config</a>), and what the model wrote in its
+last step, and throws when the turn fails. It
+and each <code>infer</code> are in <code>ponjo-core.mjs</code>, which imports nothing, so a
+browser runs them too; <code>main</code> and <code>readFile</code> are in <code>ponjo.mjs</code>.</p>
+<p><strong>Paths are the project&#39;s only</strong>, as a person in it would write them:
+relative to its top, <code>/</code> between folders. An absolute path, or one out of
+the project, is no file, so a turn&#39;s trace never shows where a run keeps
+its copies or where the project is. <code>main</code> finds the copies&#39; paths in the
+project from where they sit in the working folder.</p>
+<p><strong><code>readFile(path)</code></strong> gives a file&#39;s text, a folder&#39;s entries (a subfolder&#39;s
+ending in <code>/</code>), or null, and is all the turn can see: the copies, and the
+project&#39;s files as the app shows them (inside the folder, not starting with
+<code>.</code>, sidecars included), and of files only text (no NUL byte) of 20 MB or
+less; in doc mode, the working folder, which holds only the copies. It reads
+the project folder itself, so it is the boundary: what it refuses, no
+teammate&#39;s comment can get a buddy to read. Tests run one table of cases on
+it and on the app&#39;s ProjectService, so the two cannot drift.</p>
+<p><strong><code>infer</code></strong> is one step of the model, one implementation per provider,
+over plain HTTP (the program runs from the config folder, with no
+dependencies). <code>turn</code> keeps the messages in one neutral form (the prompt,
+each step&#39;s calls with the model&#39;s message as its API sent it, and each
+call&#39;s result), and each <code>infer</code> translates them:</p>
+<table>
+<thead>
+<tr>
+<th><code>provider</code></th>
+<th>API</th>
+<th>Its own</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>anthropic</code></td>
+<td>Messages (<code>/v1/messages</code>)</td>
+<td><code>output_config.effort</code>, the model thinking as it needs; its messages sent back as they came, thinking included; prompt caching up to the last message, moved each step, so a step pays in full only for what is new, and on the first message, the prompt&#39;s rules and the doc, which stay the same from one run to the next while the doc does (the prompt&#39;s situation, from <code>The situation now:</code> on, is a message after it); web fetch, with <code>web</code>; a refusal or a cut-off answer fails the turn</td>
+</tr>
+<tr>
+<td><code>openai</code></td>
+<td>Chat Completions at <code>endpoint</code> (OpenAI, OpenRouter and others)</td>
+<td><code>reasoning_effort</code>; caching is the API&#39;s own</td>
+</tr>
+<tr>
+<td><code>nebius</code></td>
+<td>Chat Completions at Nebius Token Factory, for NVIDIA&#39;s Nemotron models</td>
+<td>no effort</td>
+</tr>
+</tbody></table>
+<p>All send <code>tool_choice: &quot;auto&quot;</code>, the same for every model: current Claude
+models refuse a forced tool call, and Nemotron, forced, answered a question
+with <code>comment</code>. A step without one ends the turn; its <code>text</code> is only for
+the trace.</p>
+<p>A request that failed where the server most likely did no work is sent once
+more, the same body, after its <code>retry-after</code> (at most 60 seconds) or 5
+seconds: a 429, 503 or 529, or a connection refused or reset before any
+answer. A repeat is safe: a request has no effect but its answer, a step is
+added to the messages only once its answer arrives, and nothing touches the
+copies before the turn ends; a duplicate costs only tokens. Anything
+else fails the turn: a 500 may fail the same way again, a name that does not
+resolve is a wrong endpoint, and a timeout has already waited (Node&#39;s
+<code>fetch</code> gives up on a reply that takes five minutes to start).</p>
+<p><strong><code>read({ path, lines? })</code></strong> returns the text with line numbers, from line
+<code>lines[0]</code> to <code>lines[1]</code>. A file over 20,000 characters without <code>lines</code>
+returns its outline instead (Markdown headings with their line ranges); a
+folder, its files. When the doc&#39;s folder has a file by the same path, it says
+so: models read a file a comment names from the project&#39;s top, though the
+prompt says it is from the doc&#39;s folder.</p>
+<p><strong><code>find({ pattern, path? })</code></strong> returns the paths of the files under the
+folder <code>path</code> (the project&#39;s top if left out) that <code>pattern</code> matches, sorted.
+<code>pattern</code> is a JavaScript regular expression, not a glob, matched against
+each path in the project; as in the sidebar&#39;s filter, case is ignored unless
+it has a capital letter. An invalid one says what is wrong and that it is not
+a glob.</p>
+<p><strong><code>grep({ pattern, path? })</code></strong> searches the lines of the files under <code>path</code>,
+a folder or a file, with the same pattern: each file&#39;s path, then each line
+it matches as <code>read</code> gives it, cut at 500 characters. Both walk the folders
+with <code>readFile</code>, and give at most 100 paths or lines, then how many more,
+saying to narrow the pattern or the path.</p>
+<p><strong><code>comment({ thread, body, edits? })</code></strong> replies in a thread, by the id the
+comments file gives it; <strong><code>comment({ on, body, edits? })</code></strong> starts one on
+<code>on</code>, quoted from the doc as this comment&#39;s edits leave it and found there
+once, or <code>&quot;&quot;</code> for the whole doc. It is the model&#39;s only way to change
+anything, as a member&#39;s comment is theirs: a change to the doc is the
+<code>edits</code> of the comment that says why, and members undo each comment&#39;s
+edits on their own. Each edit replaces <code>old</code>, found in the doc exactly
+once, with <code>new</code>. A bad call (an edit not found once, a thread not in the
+doc, a quote not found once) is sent back at once, saying what to fix, and
+changes nothing. A good one&#39;s edits apply to the doc at once, so what the
+model reads next has them, and its line of the sidecar
+(<a href="agent-config.html#comments">agent config</a>) is written by the program when
+the turn ends. One tool, not fields of another: a model writing the lines
+itself got the path, the JSON or the thread&#39;s id wrong, and one filling a
+field of its last call (a <code>resolve</code>, once) set it for every thread. A
+comment&#39;s text is found as the app finds it: as quoted, else with any run
+of whitespace standing for another. There is no tool to resolve: only
+people resolve.</p>
+<p><strong>Web pages</strong>, with Anthropic and <code>web</code> on: Anthropic&#39;s web fetch
+(<code>web_fetch_20260209</code>), which runs at Anthropic, not on this computer, so it
+cannot reach the user&#39;s own network. It opens only a URL already in the
+messages: one in the thread or the doc, or on a page it read. So it can send
+nothing out of the doc but which of those links it follows, and a page&#39;s
+text, like a doc&#39;s, can at worst make an undoable proposal. It is the API&#39;s
+own tool, not one of <code>turn</code>&#39;s: a step that fetches comes back with the page
+read, and its text is what it wrote after the last page. A step Anthropic pauses
+while fetching is asked to go on, as one answer, at most five requests.</p>
+<h2 id="the-loop">The loop</h2>
+<pre><code>step(messages, budget):
+  calls = infer(messages, tools)
+  if there are none: return the texts with the comments, and the groups
+  run each call in order; a comment&#39;s edits apply at once
+  if budget is 0: fail
+  return step(messages + calls + their results, budget - 1)
+</code></pre>
+<p>The first message is the prompt, as is: its rules are every agent&#39;s. Then,
+in a project, its files as the sidebar shows them (no sidecar of a file
+there), so the model knows which docs a comment can mean: every path up to
+200, else the top folder&#39;s entries, saying to find the rest. Then the doc
+as <code>read</code> gives it: with line numbers, or its outline when it is over
+20,000 characters. The
+tools match the contract it describes: <code>comment</code> is its tool to comment,
+with the edits it carries. Twenty steps, and the turn fails.</p>
+<h2 id="architecture">Architecture</h2>
+<pre class="doc-diagram">flowchart LR
+  runner[&quot;Runner&quot;] -- &quot;the contract&quot; --&gt; main[&quot;main&lt;br&gt;agents/ponjo.mjs&quot;]
+  main --&gt; turn[&quot;turn()&lt;br&gt;agents/ponjo-core.mjs&quot;]
+  turn -- &quot;infer&quot; --&gt; api[&quot;Anthropic or&lt;br&gt;OpenAI-compatible API&quot;]
+  turn -- &quot;readFile&quot; --&gt; files[&quot;the copies, the project&quot;]</pre>
+<ul>
+<li><strong>Shipped, then the user&#39;s,</strong> like the other scripts: theirs to read,
+change, or rewrite in any language that keeps the contract.</li>
+<li><strong>Its settings</strong> are in its <a href="agent-config.html#agents">manifest</a>, not in
+the program. Each provider keeps its own model and key, shown while it is
+picked, so switching back and forth sets nothing again:</li>
+</ul>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Type</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>provider</code></td>
+<td>choice: Anthropic, OpenAI-compatible, Nebius Token Factory</td>
+<td><code>anthropic</code></td>
+</tr>
+<tr>
+<td><code>endpoint</code></td>
+<td>text, for OpenAI-compatible only</td>
+<td><code>https://api.openai.com/v1</code></td>
+</tr>
+<tr>
+<td><code>&lt;provider&gt;_model</code></td>
+<td>text, one for each provider</td>
+<td>Anthropic <code>claude-opus-5-5</code>, OpenAI-compatible none, Nebius <code>nvidia/nemotron-3-super-120b-a12b</code></td>
+</tr>
+<tr>
+<td><code>&lt;provider&gt;_key</code></td>
+<td>secret, one for each provider</td>
+<td>none: a run without the picked provider&#39;s fails, saying where to set it</td>
+</tr>
+<tr>
+<td><code>web</code></td>
+<td>switch, for Anthropic only</td>
+<td>on: the model reads web pages (see Web pages)</td>
+</tr>
+<tr>
+<td><code>effort</code></td>
+<td>choice: low, medium, high</td>
+<td><code>low</code>: scoped edits; higher thinks longer before it answers</td>
+</tr>
+</tbody></table>
+<ul>
+<li><strong>Tests</strong> call <code>turn</code> with a fake <code>infer</code>, and each <code>infer</code> on a fake
+server of its API. The program&#39;s check of a comment&#39;s text and the
+app&#39;s (<code>src/core/comments.js</code>) run on one table of cases, so they
+cannot drift apart: the program runs from the config folder and cannot
+import it.</li>
+<li><strong>The benchmark</strong> (<code>npm run bench:agent</code>, on your own key, not in CI)
+runs each case of <code>scripts/bench-cases.js</code> a few times on a real model,
+under the contract, and checks what it left: a doc and a thread asking
+Clippy (a question, an instruction, an unclear ask, comments to add, a
+thread already answered, a doc that tries to give orders, a comment that
+means another file in the project). Its replies are its comments in that
+thread. Each check passes
+right answers and fails wrong ones in <code>npm test</code>, without a model; a run
+that fails on the API counts as neither. A failed run&#39;s folder and trace
+are kept to read: a model&#39;s mistake, or a check&#39;s, which then gets that
+answer as a test.</li>
+<li><strong>Each turn&#39;s messages go to its trace</strong> (<code>PONJO_TRACE</code>, <a href="agent-config.html#traces">agent
+config</a>), a line each as they come, but the
+prompt, which the app has: the model&#39;s with how long it took and its
+<code>usage</code>, each call&#39;s result after it. The app keeps them only while
+Trace runs is on.</li>
+</ul>
+<h2 id="open-questions">Open questions</h2>
+<ul>
+<li>A step waits for the whole answer, at most 16,000 tokens, with no
+streaming: Node&#39;s <code>fetch</code> gives up on a reply that takes over five
+minutes to start, which a high effort could reach.</li>
+<li>No fallback model when Anthropic&#39;s safeguards refuse: the turn fails,
+saying so.</li>
+<li>Later: web pages with the other providers, by a fetch of our own that
+keeps, as Anthropic&#39;s does, to the links in the messages and off the
+user&#39;s network.</li>
+</ul>
+</main>
+<script type="module" src="../../site.js?v=dd1545b"></script>
+<script type="module" src="../../preview/docs.js?v=dd1545b"></script>
+</body>
+</html>

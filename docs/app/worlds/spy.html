@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Who's the Spy</title>
+<link rel="icon" href="../../../build/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../../dist/web/app.css?v=dd1545b">
+<link rel="stylesheet" href="../../../site.css?v=dd1545b">
+</head>
+<body>
+<header class="site-header">
+  <a class="site-brand" href="../../../index.html">Ponjo</a>
+  <nav class="site-nav" aria-label="Pages">
+    <a href="../../../index.html">Download</a>
+    <a href="../../../introduction.html">Introduction</a>
+    <a href="../../../docs/" aria-current="page">Docs</a>
+    <details class="site-drop" name="site-menu">
+      <summary>Development<svg class="pj-icon" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></summary>
+      <div class="pj-block-menu site-menu">
+        <a href="../../../architecture.html">Architecture</a>
+        <a href="../../../design.html">Design system</a>
+        <a href="../../../avatars.html">Avatar design</a>
+      </div>
+    </details>
+    <details class="site-drop" name="site-menu">
+      <summary>Preview<svg class="pj-icon" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></summary>
+      <div class="pj-block-menu site-menu">
+        <a href="../../../preview/">Doc mode</a>
+        <a href="../../../preview/?folder">Folder mode</a>
+        <a href="../../../poker.html">Poker</a>
+        <a href="../../../werewolf.html">Werewolf</a>
+        <a href="../../../spy.html">Who's the Spy</a>
+      </div>
+    </details>
+  </nav>
+  <span class="pj-spacer"></span>
+  <a class="pj-icon-btn" href="https://github.com/ponjo-app/ponjo" aria-label="GitHub" title="GitHub"><svg class="pj-icon" viewBox="0 0 24 24"><path fill="currentColor" stroke="none" d="M12 2C6.48 2 2 6.58 2 12.23c0 4.52 2.87 8.35 6.84 9.7.5.1.68-.22.68-.49l-.01-1.7c-2.78.62-3.37-1.38-3.37-1.38-.46-1.18-1.11-1.5-1.11-1.5-.91-.64.07-.62.07-.62 1 .07 1.53 1.06 1.53 1.06.9 1.57 2.35 1.12 2.92.86.09-.67.35-1.12.64-1.38-2.22-.26-4.56-1.14-4.56-5.07 0-1.12.39-2.04 1.03-2.76-.1-.26-.45-1.3.1-2.71 0 0 .84-.28 2.75 1.05A9.36 9.36 0 0 1 12 6.98c.85 0 1.71.12 2.51.34 1.91-1.33 2.75-1.05 2.75-1.05.55 1.41.2 2.45.1 2.71.64.72 1.03 1.64 1.03 2.76 0 3.94-2.34 4.81-4.57 5.06.36.32.68.94.68 1.9l-.01 2.81c0 .27.18.6.69.49A10.1 10.1 0 0 0 22 12.23C22 6.58 17.52 2 12 2z"/></svg></a>
+  <button class="pj-icon-btn site-theme" type="button" aria-label="Switch theme" title="Switch theme"><svg class="pj-icon site-moon" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"/></svg><svg class="pj-icon site-sun" viewBox="0 0 24 24"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg></button>
+</header>
+<main class="doc-page">
+<h1 id="whos-the-spy">Who&#39;s the Spy</h1>
+<p>Who&#39;s the Spy on the <a href="../../runtime/README.html">Blackboard Agent Runtime</a>.
+Each seat gets a secret word, the spies a different one. A round: a clue
+from each living seat in order, a discussion, a vote of all at once; chat
+before and after. The table is a <a href="rooms.html">room</a> on the relay; the
+<em>opener</em> starts games, friends join by a link. Rules <code>preview/spy-rules.js</code>,
+world <code>preview/spy-world.js</code>, page <code>preview/spy.js</code>.</p>
+<h2 id="state">State</h2>
+<pre><code>{ rev, people, names, players, gameNo, hellos, game, lines, thoughts, since }
+game      { seats: [{ role, word, alive }], words, first, round, phase, runoff,
+            order, speaker, acted, votes, said, log, winner }
+thoughts  { member → [{ round, kind, text }] }
+</code></pre>
+<p><code>turn(game)</code> names the moment (round, phase, runoff, speaker); lines and
+votes do not move it. <code>lines</code>: the discussion and the chat (<code>game-kit.js</code>).
+<code>since</code>: the <code>at</code> of the change that began the turn. The answer ledger is
+the generic wrapper&#39;s.</p>
+<h2 id="store">Store</h2>
+<p>The room: it alone holds <code>{ rev, state }</code>, in its storage. Every client,
+each AI seat in the room included, gets only <code>read(member)</code>; no page, the
+opener&#39;s included, can read another&#39;s word. <code>wait(member, rev)</code> wakes a
+seat only when its view changed. <code>commit</code> sets <code>by</code> from the member&#39;s
+token and stamps <code>at</code>. A change is <code>{ by, at, as, base, answers, body }</code>;
+<code>base</code> is the <code>turn</code> it was made on. No effect is ever proposed.</p>
+<h2 id="world">World</h2>
+<pre><code>view(state, member, past)    → { content, actions, tasks, seen, rules }
+apply(state, change, past)   → { state, effects: [] } | { refused: why }
+fallback(state, task, at)    a silent clue, an abstention, a pass; tries: 3
+</code></pre>
+<p><strong>view.</strong> <code>content</code> is the rules&#39; <code>view(game, seat)</code>: its own word, never
+its side; who is alive, and the side of each seat voted out; who has voted,
+not for whom; the log; the lines; its last 8 thoughts and the ledger&#39;s why
+for its last try. Once the game is over, everything, all thoughts included.
+<code>past</code> gives the lines since the seat last answered. <code>actions</code>: <code>clue { text }</code>, <code>say { text }</code>, <code>pass</code>, <code>vote { target }</code>, <code>chat { text }</code>.
+<code>rules</code>: <code>RULES</code>.</p>
+<p><strong>Tasks.</strong> For any seat, a person&#39;s too, in priority order:</p>
+<table>
+<thead>
+<tr>
+<th>Task</th>
+<th><code>kind</code></th>
+<th><code>given</code></th>
+<th>Due while</th>
+<th><code>at</code></th>
+</tr>
+</thead>
+<tbody><tr>
+<td>clue</td>
+<td>turn</td>
+<td><code>turn:&lt;gameNo&gt;:&lt;turn&gt;</code></td>
+<td>it is the speaker and has not spoken</td>
+<td><code>since + TURN</code></td>
+</tr>
+<tr>
+<td>vote</td>
+<td>turn</td>
+<td><code>turn:&lt;gameNo&gt;:&lt;turn&gt;</code></td>
+<td>it is alive and has not voted</td>
+<td><code>since + TURN</code></td>
+</tr>
+<tr>
+<td>talk</td>
+<td>turn</td>
+<td><code>talk:&lt;gameNo&gt;:&lt;round&gt;:&lt;line&gt;</code></td>
+<td>it is alive, has lines left, and has not answered the opening (line 0) or a line that asks it</td>
+<td><code>since + TALK</code></td>
+</tr>
+<tr>
+<td>chat</td>
+<td>ask</td>
+<td><code>chat:&lt;gameNo&gt;:&lt;line&gt;</code></td>
+<td>a line after the game names it, below <code>DEPTH</code> (2)</td>
+<td>none</td>
+</tr>
+</tbody></table>
+<ul>
+<li><code>from</code> is empty for a clue or vote, which the rules set off and the
+owner pays for; else whoever set off the line it answers. <code>depth</code> is 0
+for a clue or vote, else as that line set it off.</li>
+<li>The discussion opens with one task for every living seat. After that, a
+line asks only the seats it names; one that names no one asks one seat:
+the next living AI seat after the speaker with lines left. A seat is
+given the first it has not answered, so a line that does not ask it
+leaves its task, and a run on it goes on. A line or a pass answers it; a
+person&#39;s line or pass answers all before it. So a discussion costs about
+one run per seat and one per line. It is a <code>turn</code>, as the rules ask
+every seat to take part: the runaway count skips it; the line budget and
+depth limit end it.</li>
+<li>Every voter is due at once: a barrier, tallied once no one is due.</li>
+<li>A person&#39;s line to everyone, after a game, is one chat task, for the
+first AI seat after the speaker in seat order (the first AI seat, if the
+speaker has none).</li>
+<li>The discussion ends when no one is due: every living seat, people
+included, has answered its opening and each line that asks it, or used
+its lines; else at <code>TALK</code>. Open: also not before a minimum, as a table that all pass votes
+at once.</li>
+</ul>
+<p><strong>Answers.</strong> The wrapper keeps the ledger. A clue, a line, a vote or a pass
+is answered. A change <code>apply</code> refuses (it says its word, a wrong target,
+the turn moved) is a try, its why in the next view; at 3, <code>fallback</code>. A
+failed run, a task the wallet will not start, or nothing on a turn: its
+<code>fallback</code> at once. <code>thinking</code> lands with the change, into <code>thoughts</code>. A
+person&#39;s refused <code>act</code> lands nothing; they see why at once.</p>
+<p><strong>Time.</strong> The clock&#39;s tasks, each with its base: <code>hello:&lt;gameNo&gt;:&lt;seat&gt;</code>
+at <code>start.at</code> plus <code>HELLO_MS</code> each, then <code>begin</code>; <code>expire:&lt;gameNo&gt;:&lt;turn&gt;</code> at
+<code>since + TURN</code> (each seat still due takes its <code>fallback</code>); <code>vote-called</code>
+at <code>since + TALK</code>. Each lands only if its turn is still the game&#39;s.</p>
+<h2 id="members-and-controllers">Members and controllers</h2>
+<p>One per member: each AI seat, the opener, each friend, the clock, the
+dealer. A person&#39;s page shows all their tasks, each <code>at</code> as a ring.</p>
+<h2 id="presence">Presence</h2>
+<p>Who is here, at work or typing; kept nowhere. Every seat may see it
+(<code>seen</code>): each phase lets all act, or only the speaker, so it shows no
+side. A run commits at once; screens type its line out after. The room
+commits <code>leave</code> for a friend not back within <code>RECONNECT_MS</code>; then each of
+their turns takes its <code>fallback</code>.</p>
+<h2 id="system-members">System members</h2>
+<p>The dealer, a script in the room, has a <code>deal:&lt;gameNo&gt;</code> task on the
+opener&#39;s <code>start { size }</code> and commits <code>dealt</code>: the word pair, which is the
+spies&#39;, the sides, the first speaker, by <code>cryptoRandom</code>. The clock, the
+room&#39;s alarm, commits its tasks at their <code>at</code>.
+The hello lines come in <code>start</code>, from each AI seat&#39;s persona; the clock
+commits each <code>by</code> itself, <code>as</code> that seat.</p>
+<h2 id="agent-clients">Agent clients</h2>
+<p>Each AI seat and its wallet run in the room. The renderer: <code>rules</code> and
+<code>content</code> as the prompt, the world&#39;s <code>actions</code> as its only tools. The
+persona (<code>PERSONAS</code>) is the agent&#39;s. A run answers the seat&#39;s allowed
+tasks, in the view&#39;s order, in one change.</p>
+<p>The wallet is the key owner&#39;s: Ponjo&#39;s, or a visitor&#39;s kept in the room
+(<a href="rooms.html">rooms</a>). The owner pays; their policy says for which <code>from</code>
+(the opener, friends at the table), with the room&#39;s budget and rate.
+Capacity: one queue per provider and key, in task priority.</p>
+<h2 id="differs">Differs</h2>
+<ul>
+<li>Its room&#39;s (<a href="rooms.html#differs">rooms</a>).</li>
+<li>There is no dealer member: the room deals in the opener&#39;s <code>start</code>.</li>
+<li>An AI seat&#39;s program waits its persona&#39;s pace (<code>preview/game-tables.js</code>)
+after the model answers, so its change lands that much later.</li>
+</ul>
+</main>
+<script type="module" src="../../../site.js?v=dd1545b"></script>
+</body>
+</html>

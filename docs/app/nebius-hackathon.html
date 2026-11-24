@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ponjo on NVIDIA Nemotron</title>
+<link rel="icon" href="../../build/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../dist/web/app.css?v=dd1545b">
+<link rel="stylesheet" href="../../site.css?v=dd1545b">
+</head>
+<body>
+<header class="site-header">
+  <a class="site-brand" href="../../index.html">Ponjo</a>
+  <nav class="site-nav" aria-label="Pages">
+    <a href="../../index.html">Download</a>
+    <a href="../../introduction.html">Introduction</a>
+    <a href="../../docs/" aria-current="page">Docs</a>
+    <details class="site-drop" name="site-menu">
+      <summary>Development<svg class="pj-icon" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></summary>
+      <div class="pj-block-menu site-menu">
+        <a href="../../architecture.html">Architecture</a>
+        <a href="../../design.html">Design system</a>
+        <a href="../../avatars.html">Avatar design</a>
+      </div>
+    </details>
+    <details class="site-drop" name="site-menu">
+      <summary>Preview<svg class="pj-icon" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></summary>
+      <div class="pj-block-menu site-menu">
+        <a href="../../preview/">Doc mode</a>
+        <a href="../../preview/?folder">Folder mode</a>
+        <a href="../../poker.html">Poker</a>
+        <a href="../../werewolf.html">Werewolf</a>
+        <a href="../../spy.html">Who's the Spy</a>
+      </div>
+    </details>
+  </nav>
+  <span class="pj-spacer"></span>
+  <a class="pj-icon-btn" href="https://github.com/ponjo-app/ponjo" aria-label="GitHub" title="GitHub"><svg class="pj-icon" viewBox="0 0 24 24"><path fill="currentColor" stroke="none" d="M12 2C6.48 2 2 6.58 2 12.23c0 4.52 2.87 8.35 6.84 9.7.5.1.68-.22.68-.49l-.01-1.7c-2.78.62-3.37-1.38-3.37-1.38-.46-1.18-1.11-1.5-1.11-1.5-.91-.64.07-.62.07-.62 1 .07 1.53 1.06 1.53 1.06.9 1.57 2.35 1.12 2.92.86.09-.67.35-1.12.64-1.38-2.22-.26-4.56-1.14-4.56-5.07 0-1.12.39-2.04 1.03-2.76-.1-.26-.45-1.3.1-2.71 0 0 .84-.28 2.75 1.05A9.36 9.36 0 0 1 12 6.98c.85 0 1.71.12 2.51.34 1.91-1.33 2.75-1.05 2.75-1.05.55 1.41.2 2.45.1 2.71.64.72 1.03 1.64 1.03 2.76 0 3.94-2.34 4.81-4.57 5.06.36.32.68.94.68 1.9l-.01 2.81c0 .27.18.6.69.49A10.1 10.1 0 0 0 22 12.23C22 6.58 17.52 2 12 2z"/></svg></a>
+  <button class="pj-icon-btn site-theme" type="button" aria-label="Switch theme" title="Switch theme"><svg class="pj-icon site-moon" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"/></svg><svg class="pj-icon site-sun" viewBox="0 0 24 24"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg></button>
+</header>
+<main class="doc-page">
+<h1 id="ponjo-on-nvidia-nemotron">Ponjo on NVIDIA Nemotron</h1>
+<p>Ponjo is a text editor where people and AI buddies co-author the same doc:
+you select text, @mention a buddy in a comment, and it reads the doc, edits
+what you asked about and replies in the thread. For the Nebius x NVIDIA
+Global AI Hackathon (Best Apps and Agents track), every buddy&#39;s answer in the
+web demo is a run of NVIDIA Nemotron 3 Super on Nebius Token Factory.</p>
+<h2 id="try-it">Try it</h2>
+<p>Open <a href="https://ponjo.app/preview/">https://ponjo.app/preview/</a> in any browser, desktop or phone. No
+install, no account: the doc and its comments stay in that tab.</p>
+<ol>
+<li>Select the paragraph under &quot;Why Ponjo&quot; and comment &quot;@Clippy make this
+half as long&quot;. The paragraph is rewritten in place and the edit is marked.
+Clippy&#39;s receipt shows the edit and undoes it in one click.</li>
+<li>Ask &quot;@Clippy is anything wrong here?&quot; on the paragraph under &quot;How it
+works&quot;: it has one wrong fact.</li>
+<li>Ask a question, such as &quot;@Clippy who is Ponjo for?&quot;: Clippy answers and
+leaves the doc as it is.</li>
+</ol>
+<p><a href="https://ponjo.app/preview/?folder">https://ponjo.app/preview/?folder</a> opens a sample project instead, where the
+buddies Editor and Researcher can read every file in it.</p>
+<h2 id="how-it-uses-nemotron-and-token-factory">How it uses Nemotron and Token Factory</h2>
+<pre class="doc-diagram">flowchart LR
+  page[&quot;Browser: the doc and its comments&lt;br&gt;turn() in agents/ponjo-core.mjs&quot;] -- &quot;one step: messages + tools&quot; --&gt; worker[&quot;Worker at infer.ponjo.app&lt;br&gt;key, model, caps&quot;]
+  worker -- &quot;Chat Completions&quot; --&gt; tf[&quot;Nebius Token Factory&lt;br&gt;Nemotron 3 Super&quot;]
+  tf -- &quot;a tool call&quot; --&gt; worker --&gt; page</pre>
+<ul>
+<li><strong>Nemotron drives an agent loop, not a chat.</strong> A turn
+(<a href="ponjo-agent.html">docs/ponjo-agent.md</a>) gives the model tools to <code>read</code>
+a file by line numbers, <code>find</code> and <code>grep</code> the project, <code>comment</code> on a
+passage, <code>resolve</code> its thread, and <code>propose</code> edits quoted exactly from the
+doc and a reply. It reads what it needs, then proposes; the app checks
+every proposal (each quote found once, only the doc and its comments
+touched) and sends a bad one back saying what to fix. The model never
+writes a file itself.</li>
+<li><strong>Nemotron 3 Super</strong> fits this: scoped edits need accurate tool calls and
+instruction following, answered while the person waits, not long
+reasoning. The prompt also asks it to tell a question (answer, edit
+nothing) from an instruction (edit only what was asked).</li>
+<li><strong>The turn runs in the page.</strong> The same code as the desktop app&#39;s Ponjo
+agent, with the doc in memory. Only each model step leaves the browser.</li>
+<li><strong>The Worker holds the key</strong> (<code>relay/worker.js</code>, the <code>hackathon</code> env in
+<code>relay/wrangler.toml</code>): it takes only the messages and tools from
+<code>https://ponjo.app</code>, adds the model, the key and a token cap, lets an
+address ask 60 times a minute, and passes the answer back as is.</li>
+<li><strong>Token Factory speaks Chat Completions</strong>, so the agent&#39;s existing
+OpenAI-compatible path ran Nemotron unchanged, and one key serves the web
+demo and the desktop app.</li>
+</ul>
+<h2 id="run-it-yourself">Run it yourself</h2>
+<p>The desktop app runs the same turn on your own key:</p>
+<pre><code class="language-bash">npm install
+npm run desktop
+</code></pre>
+<p>In Settings &gt; Agents, choose the Ponjo agent, with the provider Nebius Token
+Factory (its model, <code>nvidia/nemotron-3-super-120b-a12b</code>, is the default) and
+your <a href="https://tokenfactory.nebius.com">Token Factory</a> API key; then @mention
+a buddy in any doc.</p>
+<p><code>npm test</code> runs the Worker in front of a fake model (<code>test/infer.test.js</code>);
+<code>npx wrangler deploy --env hackathon</code> in <code>relay/</code> deploys your own, with
+the secret <code>TOKEN_FACTORY_KEY</code>.</p>
+<h2 id="where-the-code-is">Where the code is</h2>
+<table>
+<thead>
+<tr>
+<th>Part</th>
+<th>Files</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>The turn, its tools and the Token Factory provider</td>
+<td><code>agents/ponjo-core.mjs</code></td>
+</tr>
+<tr>
+<td>The prompt a buddy gets</td>
+<td><code>src/core/prompt.js</code></td>
+</tr>
+<tr>
+<td>The web demo&#39;s buddies: run, land the edit, reply</td>
+<td><code>preview/doc-stub.js</code></td>
+</tr>
+<tr>
+<td>The model&#39;s Worker</td>
+<td><code>relay/worker.js</code>, <code>relay/wrangler.toml</code></td>
+</tr>
+</tbody></table>
+</main>
+<script type="module" src="../../site.js?v=dd1545b"></script>
+<script type="module" src="../../preview/docs.js?v=dd1545b"></script>
+</body>
+</html>

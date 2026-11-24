@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Blackboard Agent Runtime: vision</title>
+<link rel="icon" href="../../build/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../dist/web/app.css?v=dd1545b">
+<link rel="stylesheet" href="../../site.css?v=dd1545b">
+</head>
+<body>
+<header class="site-header">
+  <a class="site-brand" href="../../index.html">Ponjo</a>
+  <nav class="site-nav" aria-label="Pages">
+    <a href="../../index.html">Download</a>
+    <a href="../../introduction.html">Introduction</a>
+    <a href="../../docs/" aria-current="page">Docs</a>
+    <details class="site-drop" name="site-menu">
+      <summary>Development<svg class="pj-icon" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></summary>
+      <div class="pj-block-menu site-menu">
+        <a href="../../architecture.html">Architecture</a>
+        <a href="../../design.html">Design system</a>
+        <a href="../../avatars.html">Avatar design</a>
+      </div>
+    </details>
+    <details class="site-drop" name="site-menu">
+      <summary>Preview<svg class="pj-icon" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></summary>
+      <div class="pj-block-menu site-menu">
+        <a href="../../preview/">Doc mode</a>
+        <a href="../../preview/?folder">Folder mode</a>
+        <a href="../../poker.html">Poker</a>
+        <a href="../../werewolf.html">Werewolf</a>
+        <a href="../../spy.html">Who's the Spy</a>
+      </div>
+    </details>
+  </nav>
+  <span class="pj-spacer"></span>
+  <a class="pj-icon-btn" href="https://github.com/ponjo-app/ponjo" aria-label="GitHub" title="GitHub"><svg class="pj-icon" viewBox="0 0 24 24"><path fill="currentColor" stroke="none" d="M12 2C6.48 2 2 6.58 2 12.23c0 4.52 2.87 8.35 6.84 9.7.5.1.68-.22.68-.49l-.01-1.7c-2.78.62-3.37-1.38-3.37-1.38-.46-1.18-1.11-1.5-1.11-1.5-.91-.64.07-.62.07-.62 1 .07 1.53 1.06 1.53 1.06.9 1.57 2.35 1.12 2.92.86.09-.67.35-1.12.64-1.38-2.22-.26-4.56-1.14-4.56-5.07 0-1.12.39-2.04 1.03-2.76-.1-.26-.45-1.3.1-2.71 0 0 .84-.28 2.75 1.05A9.36 9.36 0 0 1 12 6.98c.85 0 1.71.12 2.51.34 1.91-1.33 2.75-1.05 2.75-1.05.55 1.41.2 2.45.1 2.71.64.72 1.03 1.64 1.03 2.76 0 3.94-2.34 4.81-4.57 5.06.36.32.68.94.68 1.9l-.01 2.81c0 .27.18.6.69.49A10.1 10.1 0 0 0 22 12.23C22 6.58 17.52 2 12 2z"/></svg></a>
+  <button class="pj-icon-btn site-theme" type="button" aria-label="Switch theme" title="Switch theme"><svg class="pj-icon site-moon" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"/></svg><svg class="pj-icon site-sun" viewBox="0 0 24 24"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg></button>
+</header>
+<main class="doc-page">
+<h1 id="blackboard-agent-runtime-vision">Blackboard Agent Runtime: vision</h1>
+<p><strong>People and agents are members of one world, acting on one board. They
+read the same view and act by the same actions; when the board changes,
+the world&#39;s rules say who is due, each member&#39;s controller hands the task
+on, and one writer decides what lands.</strong></p>
+<p><em>Terms.</em> A <strong>member</strong> is a person or an <strong>agent</strong>, a member whose client is
+an <strong>agent program</strong>, the tool that does its thinking, such as Claude Code.
+A <strong>world</strong> is the board&#39;s rules: a doc, a poker table, an incident. A
+<strong>host</strong> is the application that runs one owner&#39;s clients, such as Ponjo,
+an editor. The reference: <a href="README.html">Blackboard Agent
+Runtime</a>.</p>
+<p><em>The name</em> is the blackboard architecture&#39;s (Hearsay-II, in the 1970s):
+knowledge sources work on one shared blackboard, and a control part picks
+who acts next. Here the knowledge sources are people and agents, and the
+world&#39;s rules pick; the controller only runs them.</p>
+<h2 id="the-problem">The problem</h2>
+<p>Today you delegate to an agent: hand off a task, wait, review the result.
+That works for one agent and one task. It fails when the work is shared: a
+poker table with you and three agents, or a doc that people and agents
+improve at once. There, nobody hands work back; everyone watches one state,
+and anyone may act at any moment.</p>
+<p>Delegate runtimes start a run per event, so a lost event loses the work:
+even OpenHands <a href="https://github.com/OpenHands/extensions/blob/cfd1d0f873c0d97e0a1c30093b34c6364a1141c0/skills/github-repo-monitor/scripts/main.py#L1012-L1042">drops requests</a>
+when a poll fails. Often the next event is an agent&#39;s own call: an LLM
+decides whether to hand on, and to whom, so it may never be sent. And each
+agent acts on its own private context, which goes stale once another
+changes the work, so to stay correct agents take turns.</p>
+<h2 id="what-an-agent-is">What an agent is</h2>
+<p>The design follows from four facts:</p>
+<ol>
+<li>A call to an agent is slow, costly, not sure to agree with itself, and
+not to be trusted.</li>
+<li>The board is changed at once by people, programs and other agents.</li>
+<li>An agent&#39;s work counts only once it lands on the board.</li>
+<li>People need to stay in control: to see who did what, to undo it, and to
+say what may be spent.</li>
+</ol>
+<h2 id="five-principles">Five principles</h2>
+<p><strong>1. Decide from state, never from events.</strong> Who is due is a function of
+what the board holds. An event only means &quot;look again&quot;, so a lost event or
+a restart costs nothing. A thermostat works this way: it reads the room, not
+a count of opened doors. So does a Kubernetes controller.</p>
+<p><strong>2. Members propose; one writer changes the state.</strong> A run reads its view
+and hands back a change, as a person&#39;s click does. It changes nothing itself, so it can be stopped,
+refused and redone, or lost, at no cost. A run that made nothing, or
+failed, lands too: that it answered is part of the state (fact 3).</p>
+<p><strong>3. Rules in the world, money on the owner&#39;s machine, mechanism in the
+controller.</strong> The world says what each member sees, what it is due to do
+and what lands. The owner&#39;s machine says whom it will spend for, and how
+much. The controller only hands tasks on and stops them. A person and an
+agent read the same view and act by the same actions; private views
+follow: a member is handed only its view, and woken only when it
+changes.</p>
+<p><strong>4. Rules are pure; I/O is apart.</strong> The world is functions of a snapshot:
+no disk, no clock. Where the state is kept is the store&#39;s alone, so the
+truth can move from a file to a database and no rule changes.</p>
+<p><strong>5. People declare; agents reconcile.</strong> Only people say what they want: a
+request, a watch, a standing intent. Agents work the board toward it, and
+when it is met, the board comes to rest. Chains between agents are
+capped, and every task others wait on has a deadline, so nothing waits for
+ever. Agents that keep undoing each other for different people should be
+stopped for those people to settle; how the world sees that is still open.</p>
+<h2 id="two-layers">Two layers</h2>
+<p>A world of members, which any multi-user application is, and what an
+agent adds to it:</p>
+<table>
+<thead>
+<tr>
+<th>Layer</th>
+<th>Component</th>
+<th>What it does</th>
+<th>Principle</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Members</td>
+<td>Store</td>
+<td>holds the whole state, keeps it, sets who made each change, lands one at a time, gives each member its view</td>
+<td>2, 4</td>
+</tr>
+<tr>
+<td></td>
+<td>World</td>
+<td>two pure functions: what a member sees and is due to do, and what a change does</td>
+<td>1, 3, 4</td>
+</tr>
+<tr>
+<td></td>
+<td>Controller</td>
+<td>one per member: hands its tasks to its program (a screen, an agent program, the clock&#39;s timer) and commits the answer</td>
+<td>1, 2</td>
+</tr>
+<tr>
+<td>Agents</td>
+<td>Wallet</td>
+<td>the owner&#39;s: whom they pay for, how much, the limits, the keys, effects</td>
+<td>3</td>
+</tr>
+<tr>
+<td></td>
+<td>Capacity</td>
+<td>the host&#39;s queue for a provider&#39;s limits</td>
+<td>3</td>
+</tr>
+</tbody></table>
+<p>Each answers one question: the world whether a member <em>should</em> act, the
+wallet whether an agent <em>may</em>, capacity <em>when</em>, the controller that it <em>does</em>, the
+store what is <em>true</em>.</p>
+<p><strong>Why the owner&#39;s policy is not in the store.</strong> The store says who did
+what: it sets each change&#39;s author, so a file written outside vouches for
+no one. Only the owner says what they will pay for, and only their machine
+holds their keys.</p>
+<p><strong>How a change moves</strong>, at a poker table:</p>
+<ol>
+<li>The dealer commits &quot;Action on: Bob&quot;. The store lands it as rev 41.</li>
+<li>Bob&#39;s controller, waiting on Bob&#39;s view, wakes: its tasks hold Bob&#39;s
+turn. The wallet allows it.</li>
+<li>A view is written for the agent: the table as text, the moves as tools.</li>
+<li>The agent program decides to call.</li>
+<li>The run commits the call. The store applies the world&#39;s rules: it is
+still Bob&#39;s turn, so it lands as rev 42, which records that Bob answered.</li>
+<li>The dealer&#39;s next move changes Alice&#39;s view: her turn. Alice is a
+person, so her screen shows the buttons Bob had as tools.</li>
+</ol>
+<p>Nobody drew that flow: each step is a view of a new state.</p>
+<h2 id="what-emerges">What emerges</h2>
+<ul>
+<li><strong>Always-on with no jobs.</strong> Agents act when the world changes, whoever
+changed it; when nothing changes, nothing runs.</li>
+<li><strong>Parallel work on one board,</strong> with no branches.</li>
+<li><strong>Coordination with no orchestrator.</strong> Bob acts, the board changes, so
+Alice is due.</li>
+</ul>
+<h2 id="how-it-differs">How it differs</h2>
+<ol>
+<li><strong>Everyone acts on one board at once.</strong> People and agents alike, with
+no turns and no copies: agents propose, one writer lands each change in
+order and refuses one made on a stale board.</li>
+<li><strong>Code decides who goes next, from the board.</strong> Not an LLM, and not a
+chain of events: the same answer every time, and nothing to lose.</li>
+</ol>
+<p>Against the common way, an orchestrator, as its runtimes&#39; docs describe it
+in 2026:</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>Orchestrator: Claude Code subagents, OpenAI Agents SDK, CrewAI</th>
+<th>Controller: this runtime</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Working at once</td>
+<td>Workers in parallel, each on its own copy; the lead merges</td>
+<td>Everyone at once; the writer lands in order and refuses stale moves</td>
+</tr>
+<tr>
+<td>People</td>
+<td>Give the task and review the result</td>
+<td>Members, acting while agents act</td>
+</tr>
+<tr>
+<td>Who goes next</td>
+<td>An LLM: the lead starts workers, or an agent hands on</td>
+<td>Code, from the board</td>
+</tr>
+</tbody></table>
+<h2 id="evidence">Evidence</h2>
+<p>Open-card Hold&#39;em on the runtime as Ponjo hosts it, with scripted agents,
+lost no actions. Small fixes that follow from these principles took it from 3.4 runs
+and 5.2 s per action to 1 run and 0.25 s. The <a href="https://ponjo.app/poker.html">poker page</a>,
+three AI players and you at one table, was built from scratch with its own
+small runtime and arrived at the same shape: a pure plan, one view that
+hides others&#39; cards, a writer that refuses stale moves, and table talk
+limited by depth. It now runs on this runtime, as a world
+(<code>preview/poker-world.js</code>). So do <a href="https://ponjo.app/werewolf.html">Werewolf</a>
+and <a href="https://ponjo.app/spy.html">Who&#39;s the Spy</a>, games of hidden roles,
+where each seat sees only what it may.</p>
+<h2 id="not-for">Not for</h2>
+<p>Fixed flows that split into independent tasks and need only a final answer.
+An orchestrator fits those better.</p>
+<h2 id="status">Status</h2>
+<ul>
+<li><strong>Built</strong>, with Ponjo as its host: the two layers as above, one writer,
+deciding from state through one blocking wait, asks and watches,
+stateless agents, the agent log, chains limited by depth with a breaker,
+and effects carried out once and approved by the owner
+(<a href="README.html#effects">effects</a>); for docs, and for three games whose
+tables are rooms on the relay that outlive a refresh or the opener&#39;s page.</li>
+<li><strong>Not yet:</strong> a doc host that keeps running with no window open. What
+differs: <a href="README.html#differs">Differs</a>.</li>
+</ul>
+</main>
+<script type="module" src="../../site.js?v=dd1545b"></script>
+</body>
+</html>

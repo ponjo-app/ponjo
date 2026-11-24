@@ -1,0 +1,516 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Blackboard Agent Runtime</title>
+<link rel="icon" href="../../build/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../dist/web/app.css?v=dd1545b">
+<link rel="stylesheet" href="../../site.css?v=dd1545b">
+</head>
+<body>
+<header class="site-header">
+  <a class="site-brand" href="../../index.html">Ponjo</a>
+  <nav class="site-nav" aria-label="Pages">
+    <a href="../../index.html">Download</a>
+    <a href="../../introduction.html">Introduction</a>
+    <a href="../../docs/" aria-current="page">Docs</a>
+    <details class="site-drop" name="site-menu">
+      <summary>Development<svg class="pj-icon" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></summary>
+      <div class="pj-block-menu site-menu">
+        <a href="../../architecture.html">Architecture</a>
+        <a href="../../design.html">Design system</a>
+        <a href="../../avatars.html">Avatar design</a>
+      </div>
+    </details>
+    <details class="site-drop" name="site-menu">
+      <summary>Preview<svg class="pj-icon" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></summary>
+      <div class="pj-block-menu site-menu">
+        <a href="../../preview/">Doc mode</a>
+        <a href="../../preview/?folder">Folder mode</a>
+        <a href="../../poker.html">Poker</a>
+        <a href="../../werewolf.html">Werewolf</a>
+        <a href="../../spy.html">Who's the Spy</a>
+      </div>
+    </details>
+  </nav>
+  <span class="pj-spacer"></span>
+  <a class="pj-icon-btn" href="https://github.com/ponjo-app/ponjo" aria-label="GitHub" title="GitHub"><svg class="pj-icon" viewBox="0 0 24 24"><path fill="currentColor" stroke="none" d="M12 2C6.48 2 2 6.58 2 12.23c0 4.52 2.87 8.35 6.84 9.7.5.1.68-.22.68-.49l-.01-1.7c-2.78.62-3.37-1.38-3.37-1.38-.46-1.18-1.11-1.5-1.11-1.5-.91-.64.07-.62.07-.62 1 .07 1.53 1.06 1.53 1.06.9 1.57 2.35 1.12 2.92.86.09-.67.35-1.12.64-1.38-2.22-.26-4.56-1.14-4.56-5.07 0-1.12.39-2.04 1.03-2.76-.1-.26-.45-1.3.1-2.71 0 0 .84-.28 2.75 1.05A9.36 9.36 0 0 1 12 6.98c.85 0 1.71.12 2.51.34 1.91-1.33 2.75-1.05 2.75-1.05.55 1.41.2 2.45.1 2.71.64.72 1.03 1.64 1.03 2.76 0 3.94-2.34 4.81-4.57 5.06.36.32.68.94.68 1.9l-.01 2.81c0 .27.18.6.69.49A10.1 10.1 0 0 0 22 12.23C22 6.58 17.52 2 12 2z"/></svg></a>
+  <button class="pj-icon-btn site-theme" type="button" aria-label="Switch theme" title="Switch theme"><svg class="pj-icon site-moon" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"/></svg><svg class="pj-icon site-sun" viewBox="0 0 24 24"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg></button>
+</header>
+<main class="doc-page">
+<h1 id="blackboard-agent-runtime">Blackboard Agent Runtime</h1>
+<p>A runtime for worlds where people and AI agents act on one shared state.
+Part 1 is a world of members, with no LLM in it: any multi-user
+application has this shape. Part 2 is what an agent adds. Why it is built
+this way: <a href="vision.html">vision</a>. Ponjo is one host (<a href="#ponjo">Ponjo</a>).</p>
+<h2 id="words">Words</h2>
+<table>
+<thead>
+<tr>
+<th>Word</th>
+<th>Means</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>member</td>
+<td>one who acts in a world: a person, an agent, or a system member (the clock, a dealer)</td>
+</tr>
+<tr>
+<td>client</td>
+<td>what acts for a member: a controller and a program</td>
+</tr>
+<tr>
+<td>program</td>
+<td>what a controller hands tasks to: a person&#39;s screen, an agent program, a script, a timer</td>
+</tr>
+<tr>
+<td>seat</td>
+<td>whom a change acts as (<code>as</code>): a member, or a role it plays; the world gives a seat its view and rights</td>
+</tr>
+<tr>
+<td>owner</td>
+<td>the person whose keys and money an agent uses; each agent has one</td>
+</tr>
+<tr>
+<td>wallet</td>
+<td>the owner&#39;s part: whom they pay for, how much, the limits, the keys, the effects; kept where the owner trusts</td>
+</tr>
+<tr>
+<td>host</td>
+<td>the application that runs one owner&#39;s clients</td>
+</tr>
+<tr>
+<td>store</td>
+<td>where the state is kept, and the one way it changes</td>
+</tr>
+<tr>
+<td>world</td>
+<td>the rules: two pure functions</td>
+</tr>
+<tr>
+<td>task</td>
+<td>one thing a member is due to do: one <code>given</code>, as one seat</td>
+</tr>
+<tr>
+<td>run</td>
+<td>an agent program working once, on one or more tasks of one seat</td>
+</tr>
+<tr>
+<td>effect</td>
+<td>an action on the outside world (a message, a deploy), carried out by the wallet</td>
+</tr>
+<tr>
+<td>presence</td>
+<td>who is here and what they are doing; not part of the state</td>
+</tr>
+</tbody></table>
+<h1 id="part-1-a-world-of-members">Part 1. A world of members</h1>
+<p>Nothing in this part knows what an agent is. A person and an agent read
+the same view and act by the same actions, through the same writer; only
+their programs differ.</p>
+<pre class="doc-diagram">flowchart LR
+  subgraph clients[&quot;A client per member&quot;]
+    person[&quot;Person: a screen&quot;]
+    agent[&quot;Agent: an agent program&quot;]
+    system[&quot;System member: a timer, a script&quot;]
+  end
+  outside([&quot;Members with no tasks: git pull, an editor&quot;])
+  clients -- &quot;read(member), wait, commit, presence&quot; --&gt; store[&quot;Store&quot;]
+  outside -- &quot;commit&quot; --&gt; store
+  store -- &quot;view, apply&quot; --&gt; world[&quot;World&quot;]</pre>
+<h2 id="members">Members</h2>
+<p>A member is an identity and a client. A person, a buddy acting as itself,
+an agent playing a person&#39;s seat while they are away, the clock and a
+dealer are the same thing with different programs. A member acts in two
+ways:</p>
+<ul>
+<li><strong>On a task</strong>, through its controller: what its view says it is due to
+do (its turn, an ask, a deadline).</li>
+<li><strong>Of its own accord</strong>, with no task: a person types, chats, resolves a
+thread; <code>git pull</code> writes a file. An agent never does: every look costs.</li>
+</ul>
+<h2 id="store">Store</h2>
+<pre><code>read(member)              → { rev, view }     that member&#39;s projection: the world&#39;s view
+wait(member, rev)         → rev               once that member&#39;s view has changed after rev
+commit(change)            → { rev, effects } | { refused: why }
+presence(member, what)                        what the member is doing now, shown as the view says
+</code></pre>
+<p>A change:</p>
+<pre><code>Change  { by, at, as, base, answers, body }
+</code></pre>
+<p><code>by</code> and <code>at</code> the store sets; <code>as</code> the seat it acts as; <code>base</code> what it was
+made on (a turn, a text&#39;s hash, a rev); <code>answers</code> the ids of the tasks it
+answers; <code>body</code> the world&#39;s.</p>
+<ul>
+<li><strong>It alone holds the whole state.</strong> A client, a person&#39;s or an agent&#39;s,
+on this machine or another, gets only its projection. The host that runs
+the store can read everything; no one else can.</li>
+<li><strong>It keeps the state.</strong> <code>{ rev, state }</code> outlives a refresh, a restart or
+a crash; <code>rev</code> only grows. A store that forgets is not a store. Two copies
+of one truth, such as a folder synced by git, are not one store: each is
+the other&#39;s outside writer.</li>
+<li><strong>It authenticates.</strong> <code>commit</code> sets <code>by</code> from who sent the change, never
+from the change. A file written outside is <code>by: outside</code>, so it vouches
+for nothing.</li>
+<li><strong>It stamps.</strong> <code>commit</code> sets <code>at</code> from the store&#39;s clock.</li>
+<li><strong>It lands one change at a time.</strong> It applies the world&#39;s <code>apply</code> to the
+newest state and keeps the result only if nothing landed meanwhile; else
+it applies again. <code>base</code> tells <code>apply</code> whether the change is stale.</li>
+<li><strong>It wakes only whom a change concerns.</strong> <code>wait</code> returns when that
+member&#39;s view has changed, as its fingerprint tells. Its return carries
+nothing: the client reads again, so a lost or doubled notice costs
+nothing, and no one learns of a change they may not see.</li>
+<li><strong>It keeps the past by content.</strong> What a view or <code>apply</code> needs of an
+earlier state (what changed since a member last answered; the edits a
+late change must move over) is looked up by hash. Tasks never need it:
+they come from the state alone, so two stores that kept different pasts
+give the same tasks. A past no longer kept is a first look.</li>
+</ul>
+<p><em>Why one holder.</em> Hidden information (a hand of cards, a role) is safe
+only if no client ever holds the whole state. One holder, and projections
+for everyone else, is the simplest way; a holder that plays in no seat (a
+server) is the same store, moved.</p>
+<h2 id="world">World</h2>
+<pre><code>view(state, member, past)    → { content, actions, tasks, seen, rules }
+apply(state, change, past)   → { state, effects } | { refused: why }
+</code></pre>
+<p>Both are pure: no I/O, no clock, no randomness of their own. What comes
+from outside comes in a change: a shuffled deck in the dealer&#39;s, the time
+in the store&#39;s stamp, a deadline in the clock&#39;s.</p>
+<h3 id="view">view</h3>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Is</th>
+<th>A screen shows</th>
+<th>An agent gets</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>content</code></td>
+<td>what the member may see, as data</td>
+<td>the page</td>
+<td>text, or files</td>
+</tr>
+<tr>
+<td><code>actions</code></td>
+<td>what it may do now: <code>{ name, input, about }</code></td>
+<td>buttons, forms</td>
+<td>tools</td>
+</tr>
+<tr>
+<td><code>tasks</code></td>
+<td>what it is due to do</td>
+<td>its inbox, &quot;your turn&quot;</td>
+<td>what its run is for</td>
+</tr>
+<tr>
+<td><code>seen</code></td>
+<td>whose presence it may see</td>
+<td>cursors, &quot;typing&quot;</td>
+<td>who is at work</td>
+</tr>
+<tr>
+<td><code>rules</code></td>
+<td>how the world works, in words</td>
+<td>the help</td>
+<td>the system prompt</td>
+</tr>
+</tbody></table>
+<p>A view is the seat&#39;s. What a seat may see and do is the world&#39;s to say
+(a wolf sees the pack; a doc&#39;s reader its threads). One <code>view</code> serves a
+person&#39;s screen, an agent&#39;s prompt and another host alike, so they never
+disagree. A seat&#39;s view goes only to a machine whose owner may see it.</p>
+<h3 id="tasks">Tasks</h3>
+<pre><code>Task  { given, as, kind, from, depth, at?, why }
+</code></pre>
+<p><code>given</code> the one id it answers; <code>as</code> the seat; <code>kind</code> <code>turn</code> (the rules
+ask it), <code>ask</code> (a member asked) or <code>watch</code> (a standing request); <code>from</code>
+the people whose changes set it off, empty when the rules alone did; <code>depth</code>
+counted from the change that set it off, whatever the kind: 0 for a
+person&#39;s or the world&#39;s own, one more than an agent&#39;s; <code>at</code> when it is due
+by; <code>why</code> in words.</p>
+<ul>
+<li>Tasks come from the state alone: who must act, who asked whom, who
+turned on a watch. A <code>watch</code> task&#39;s <code>given</code> names the watch and what it
+last saw, so any answer to it, a failed one too, moves it on, and only a
+later change makes a new one. Each fact is a change whose <code>by</code> the store set, so a
+task names only people who really asked.</li>
+<li>The order of <code>tasks</code> is the world&#39;s priority.</li>
+<li>Where one answer is wanted from several (a line said to the whole
+table), the world lists the task for one member, by a rule of the state.</li>
+<li><strong>A task that holds up a person has an <code>at</code>:</strong> a turn they cannot play
+until it is answered. A system member, which acts at once, needs none.
+The rules decide what happens when it passes. A task that holds no one
+up, such as an ask, needs none either: its run, if it hangs, fails at
+the run&#39;s timeout.</li>
+</ul>
+<h3 id="answers">Answers</h3>
+<p>A change answers the tasks in <code>answers</code>. Every world gets one ledger,
+kept in the state by a pure wrapper around its <code>apply</code>:</p>
+<table>
+<thead>
+<tr>
+<th>A run&#39;s change</th>
+<th>The ledger</th>
+<th>The task</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>accepted, whole or in part</td>
+<td>answered</td>
+<td>gone</td>
+</tr>
+<tr>
+<td>refused by <code>apply</code></td>
+<td>a try, and why, shown in the seat&#39;s next view</td>
+<td>due again; at the world&#39;s limit of tries, its <code>fallback</code></td>
+</tr>
+<tr>
+<td><code>{ failed }</code>, or not started by the wallet</td>
+<td>failed</td>
+<td><code>turn</code>: its <code>fallback</code> at once; <code>ask</code>: gone, a person may ask again; <code>watch</code>: gone until its view changes</td>
+</tr>
+<tr>
+<td>nothing</td>
+<td>answered</td>
+<td><code>turn</code>: its <code>fallback</code> at once; <code>ask</code>, <code>watch</code>: gone</td>
+</tr>
+</tbody></table>
+<p><code>apply</code> may land part of a change and drop what no longer applies (a
+reply in a thread resolved meanwhile). A refused run still writes the
+ledger: that write takes a <code>rev</code>, and
+wakes only the seat whose view it changes. A world gives only <code>apply</code>,
+its limit of tries, and</p>
+<pre><code>fallback(state, task, at)    → state
+</code></pre>
+<p>the state once the rules have played <code>task</code> for no one (a silent clue, an
+abstention, a pass), <code>at</code> the stamp of the change that set it off, pure as
+<code>apply</code> is. A person&#39;s or an outside member&#39;s refused change lands nothing:
+they see why at once. Answers are in the state, keyed by <code>given</code>, never by
+<code>rev</code>, so a restart, or another host on the same state, finds the same
+tasks.</p>
+<h3 id="time">Time</h3>
+<p>The clock is a member. Its tasks are the world&#39;s deadlines: a turn&#39;s <code>at</code>,
+a pause that settles people&#39;s typing, a narrator&#39;s next call. Its program
+waits until each <code>at</code> and commits the change the task names, with its
+base, so it lands only if still due. No rule reads a clock.</p>
+<h3 id="disagreement">Disagreement</h3>
+<p>Open: how the world sees the agents of different people undo each other,
+so that it stops listing those tasks and gives the people one to settle
+it. Until then, the wallet&#39;s limits are all that stop them.</p>
+<h2 id="controllers">Controllers</h2>
+<p>One per member, on its owner&#39;s host:</p>
+<pre><code>client(member, program):
+  forever:
+    { rev, view } = store.read(member)
+    stop the run going if none of its tasks is in view.tasks
+    hand view.tasks to program                  a person&#39;s: all; an agent&#39;s: Part 2
+    wait until store.wait(member, rev) returns
+</code></pre>
+<ul>
+<li>A run goes on while any of its tasks is still listed. What the program
+returns is one change, committed at once. A run that is stopped commits
+nothing; its tasks are handed again when they are due again.</li>
+<li>A person&#39;s program shows every task and returns when they act; stopped,
+it takes the prompt away and keeps what they had written.</li>
+<li>A controller holds only what is going. Losing it loses at most that.</li>
+</ul>
+<p><em>Why a controller per member.</em> The member is what acts. One per member puts
+each on its owner&#39;s host, lets one wait or hang without holding up
+another, and makes a person, an agent and the clock the same loop.</p>
+<h2 id="presence">Presence</h2>
+<p>Who is here, who is typing, who is thinking: told to the store with
+<code>presence</code>, shown to those the view&#39;s <code>seen</code> allows, kept nowhere. It is
+not state, so it decides nothing; a member that watches it may commit a
+change (a player gone too long leaves their seat). It can say what the
+state hides (a seat at work at night has a role), so the world decides who
+sees it. A screen may type a fresh line out: the line has landed.</p>
+<h1 id="part-2-agent-clients">Part 2. Agent clients</h1>
+<p>An agent is a member whose program is an agent program. Four things are
+its own: each look costs money; it acts for others; it fails in ways a
+person does not; it remembers nothing between runs.</p>
+<pre><code>agent client = controller + renderer + agent program, with the owner&#39;s wallet and the host&#39;s capacity
+</code></pre>
+<p>An agent&#39;s controller takes the tasks of one seat that the wallet lets
+start, in the view&#39;s order, and hands them to one run; it starts no other
+run until that one ends. A run&#39;s answer is one change, so it lands whole.</p>
+<h2 id="renderers">Renderers</h2>
+<p>The same view, written for an agent:</p>
+<ul>
+<li><strong>Tools</strong>: <code>content</code> and <code>rules</code> as the prompt, <code>actions</code> as the tools it
+may call, <code>tasks</code> as what this run is for.</li>
+<li><strong>Files</strong>, for a command-line agent program: <code>content</code> as files in a
+private folder; after the run, what it changed is turned back into
+actions.</li>
+</ul>
+<p>What a run answers is one change: its actions, its thinking, or nothing.</p>
+<h2 id="wallet">Wallet</h2>
+<p>What only the owner says, kept where they trust: their own machine, or a
+store that holds it apart from the state, for them alone.</p>
+<pre><code>allow(tasks)     → those the owner lets start
+charge(run)      → counts a run against what it spends, before it starts
+carry(effects)   → each effect that landed: approved, carried out once
+</code></pre>
+<ul>
+<li><strong>For whom.</strong> The owner always pays. Their policy says for which people
+in <code>from</code> they let a task start (the room, the team, themselves).</li>
+<li><strong>How much.</strong> A quota per person: a run&#39;s cost is charged evenly to the
+<code>from</code> of the tasks it answers; a task with no <code>from</code> (a turn the rules
+set) to the owner&#39;s own budget.</li>
+<li><strong>Runaway.</strong> Past a depth limit, nothing starts, so agents waking each
+other come to rest. Past N runs on <code>watch</code> tasks, or of <code>depth</code> above 0,
+since a person last acted in what this agent sees, none starts until one
+does or the owner resumes: a loop the depth cannot see, such as a
+program that echoes an agent, stops too. A <code>turn</code> is not counted: the
+rules bring a game to its end.</li>
+<li><strong>Keys, settings, and each effect&#39;s record.</strong></li>
+</ul>
+<p>A task the wallet will not start is answered as not started (Answers): a
+turn others wait on is played by its fallback, not left hanging.</p>
+<p><em>Why apart from the state.</em> The store says who did what. Only the owner
+says what they will pay for, and only where they trust are their keys.</p>
+<p><em>Where it runs.</em> An agent&#39;s client runs where its wallet is, and is handed
+its seat&#39;s view. So where the owner may not see that view (a seat in a
+game of hidden hands), the client and the wallet must sit beside the
+store: the store keeps that owner&#39;s wallet apart from the state, and no
+client ever reads it.</p>
+<h2 id="capacity">Capacity</h2>
+<p>A provider&#39;s limits (requests or tokens a minute, a 429) are the host&#39;s,
+not the world&#39;s:</p>
+<ul>
+<li>One queue per provider and key, shared by every controller on the host.</li>
+<li>Within a world, in the order of its tasks; across worlds, a task a
+person waits on (a <code>turn</code>, an <code>ask</code>) first, then each world in turn.</li>
+<li>Waiting is never failing: it is not an answer, not counted by the limits
+above, and not timed by the run&#39;s timeout. A task that is no longer due
+stops its run, waiting or not.</li>
+<li>Only an error that waiting cannot outlast (a bad key, a missing model, a
+500 that repeats) is <code>{ failed }</code>.</li>
+<li>Only calls made through the host are queued. An agent program that calls
+its provider itself, such as a command-line agent, waits on its own, and
+its waiting counts in the run&#39;s time.</li>
+</ul>
+<h2 id="effects">Effects</h2>
+<p>An effect (a message, a call to an API, a deploy) is part of a run&#39;s
+change, never something a run does itself.</p>
+<ul>
+<li><strong>Proposed.</strong> A run lists its effects in its change, each with a name, an
+input and an id. Only effects the owner installed can be named; the
+prompt lists them. Nothing in the store can install one.</li>
+<li><strong>Carried out once, after it lands.</strong> <code>apply</code> returns the effects of a
+change that landed, and the wallet carries them out. They are in the
+landed change, so the wallet, after a crash, finds each one it has no
+record of and goes on; its record (approved, started, done or failed) is
+the wallet&#39;s, never the state&#39;s.</li>
+<li><strong>Never twice on its own.</strong> One that started and did not end shows as
+&quot;may have run&quot;, with Retry for a person. It is given its id, so a service
+that takes an idempotency key drops a second try.</li>
+<li><strong>Approved first.</strong> Each asks the owner, by default: a prompt from the
+wallet to its owner, not a task of the world. The owner may let an effect
+run unasked, and then only for tasks whose <code>from</code> is them alone.</li>
+<li><strong>Its result</strong> is committed as the effect&#39;s reply, one deeper than the
+run that proposed it.</li>
+<li><strong>Not undone.</strong> Undo takes back the edits it came with, never the effect.</li>
+</ul>
+<h2 id="security">Security</h2>
+<ul>
+<li>The store sets who made each change; a file written outside vouches for
+no one.</li>
+<li>A run acts with its seat&#39;s rights (<code>as</code>), and starts only for people the
+owner pays for.</li>
+<li>No client holds the whole state, and a seat&#39;s view reaches no machine
+whose owner may not see it.</li>
+<li>An owner&#39;s key spends only what their wallet allows; a wallet kept in a
+shared store has its own budget and rate, so a room cannot spend more
+than its owner set.</li>
+<li><strong>Influence follows the view.</strong> A run reads what others wrote, and that
+text can try to steer it. What bounds the harm: its seat&#39;s rights, the
+owner&#39;s approval of each effect, and a change that shows who made it and
+can be undone. Nothing stops the attempt.</li>
+<li><strong>Reading can leak.</strong> What an agent program reads can end up where others
+see it, and a fetch can carry data out in its URL. Where a view holds
+what others must not learn, the agent gets the world&#39;s actions as its
+only tools.</li>
+</ul>
+<h1 id="hosts">Hosts</h1>
+<h2 id="ponjo">Ponjo</h2>
+<p>Ponjo, a text editor where people and buddies co-author files, is a host.
+Its rules for a doc: <a href="../app/host-spec.html#buddies">host spec</a>; what an
+agent program gets and returns: <a href="../app/agent-config.html">agent config</a>.
+How each of its worlds implements this: <a href="../app/worlds/doc.html">doc</a>,
+<a href="../app/worlds/poker.html">poker</a>, <a href="../app/worlds/werewolf.html">werewolf</a>,
+<a href="../app/worlds/spy.html">spy</a>; the games&#39; tables:
+<a href="../app/worlds/rooms.html">rooms</a>.</p>
+<table>
+<thead>
+<tr>
+<th>Here</th>
+<th>In Ponjo</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>agent</td>
+<td>a buddy</td>
+</tr>
+<tr>
+<td>agent program</td>
+<td>an agent (<code>agents/</code>, run by <code>src/host/runner.js</code>)</td>
+</tr>
+<tr>
+<td>world</td>
+<td>the doc world (<code>src/core/doc-world.js</code>); three games in <code>preview/</code></td>
+</tr>
+<tr>
+<td>store</td>
+<td>the doc&#39;s door (<code>src/host/doc-service.js</code>), with the rest of its state beside it (<code>src/host/doc-store.js</code>); for a game, a <a href="../app/worlds/rooms.html">room</a> on the relay, holding a store (<code>src/core/store.js</code>) kept in its storage</td>
+</tr>
+<tr>
+<td>answers</td>
+<td>the ledger, a wrapper around a world (<code>src/core/ledger.js</code>)</td>
+</tr>
+<tr>
+<td>wallet</td>
+<td>the config folder: settings, secrets, logs; for a game, the room, for the key&#39;s owner</td>
+</tr>
+<tr>
+<td>controller</td>
+<td><code>src/core/controller.js</code>, with the wallet&#39;s limits and the clock&#39;s program; a doc&#39;s buddies&#39; and clock&#39;s are given their programs, logs and settings by <code>src/host/buddy-runtime.js</code></td>
+</tr>
+<tr>
+<td>an effect</td>
+<td>a plugin in <code>actions/</code> of the config folder; its input on stdin, its id as <code>PONJO_ACTION_ID</code>, its record in <code>logs/actions.jsonl</code></td>
+</tr>
+</tbody></table>
+<p>Open: Ponjo&#39;s limits. Proposed: a depth limit of 10, and N = 30.</p>
+<h2 id="differs">Differs</h2>
+<p>Where Ponjo&#39;s code is not yet this design. Each world&#39;s own:
+<a href="../app/worlds/doc.html#differs">doc</a>, <a href="../app/worlds/poker.html#differs">poker</a>,
+<a href="../app/worlds/werewolf.html#differs">werewolf</a>, <a href="../app/worlds/spy.html#differs">spy</a>,
+<a href="../app/worlds/rooms.html#differs">rooms</a>.</p>
+<ul>
+<li><strong>A doc&#39;s people have no controllers.</strong> A window reads the door&#39;s own
+<code>state</code>, and the door lands typing and comments of its own accord.</li>
+<li><strong>A doc&#39;s <code>rev</code> starts again each time it opens</strong>, and its ledger is in
+memory; a restart finds its tasks in the state kept on disk.</li>
+<li><strong>A game&#39;s room sends a page its whole view</strong> each time it changes, not
+a notice to read again.</li>
+<li><strong>The limits.</strong> A doc&#39;s are the owner&#39;s settings: a depth limit of 1,000,
+and N runs within a window of minutes since a person last acted. The
+games&#39; are the proposed ones.</li>
+<li><strong>No capacity queue.</strong> Runs share none: a doc runs one run per buddy at a
+time, the Ponjo agent tries a busy API once more itself
+(<a href="../app/ponjo-agent.html">Ponjo agent</a>), and a room&#39;s AI seats each call
+the model within the table&#39;s calls an hour.</li>
+<li><strong>No key is kept at rest in a room.</strong> A visitor&#39;s is in its memory only;
+an evicted room waits for their page to give it again.</li>
+</ul>
+<h2 id="migration">Migration</h2>
+<p>How Ponjo&#39;s code got here, in six steps: <a href="../app/runtime-migration.html">runtime migration</a>.</p>
+</main>
+<script type="module" src="../../site.js?v=dd1545b"></script>
+<script type="module" src="../../preview/docs.js?v=dd1545b"></script>
+</body>
+</html>

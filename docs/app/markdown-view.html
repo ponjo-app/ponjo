@@ -1,0 +1,476 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Markdown view</title>
+<link rel="icon" href="../../build/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../dist/web/app.css?v=dd1545b">
+<link rel="stylesheet" href="../../site.css?v=dd1545b">
+</head>
+<body>
+<header class="site-header">
+  <a class="site-brand" href="../../index.html">Ponjo</a>
+  <nav class="site-nav" aria-label="Pages">
+    <a href="../../index.html">Download</a>
+    <a href="../../introduction.html">Introduction</a>
+    <a href="../../docs/" aria-current="page">Docs</a>
+    <details class="site-drop" name="site-menu">
+      <summary>Development<svg class="pj-icon" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></summary>
+      <div class="pj-block-menu site-menu">
+        <a href="../../architecture.html">Architecture</a>
+        <a href="../../design.html">Design system</a>
+        <a href="../../avatars.html">Avatar design</a>
+      </div>
+    </details>
+    <details class="site-drop" name="site-menu">
+      <summary>Preview<svg class="pj-icon" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></summary>
+      <div class="pj-block-menu site-menu">
+        <a href="../../preview/">Doc mode</a>
+        <a href="../../preview/?folder">Folder mode</a>
+        <a href="../../poker.html">Poker</a>
+        <a href="../../werewolf.html">Werewolf</a>
+        <a href="../../spy.html">Who's the Spy</a>
+      </div>
+    </details>
+  </nav>
+  <span class="pj-spacer"></span>
+  <a class="pj-icon-btn" href="https://github.com/ponjo-app/ponjo" aria-label="GitHub" title="GitHub"><svg class="pj-icon" viewBox="0 0 24 24"><path fill="currentColor" stroke="none" d="M12 2C6.48 2 2 6.58 2 12.23c0 4.52 2.87 8.35 6.84 9.7.5.1.68-.22.68-.49l-.01-1.7c-2.78.62-3.37-1.38-3.37-1.38-.46-1.18-1.11-1.5-1.11-1.5-.91-.64.07-.62.07-.62 1 .07 1.53 1.06 1.53 1.06.9 1.57 2.35 1.12 2.92.86.09-.67.35-1.12.64-1.38-2.22-.26-4.56-1.14-4.56-5.07 0-1.12.39-2.04 1.03-2.76-.1-.26-.45-1.3.1-2.71 0 0 .84-.28 2.75 1.05A9.36 9.36 0 0 1 12 6.98c.85 0 1.71.12 2.51.34 1.91-1.33 2.75-1.05 2.75-1.05.55 1.41.2 2.45.1 2.71.64.72 1.03 1.64 1.03 2.76 0 3.94-2.34 4.81-4.57 5.06.36.32.68.94.68 1.9l-.01 2.81c0 .27.18.6.69.49A10.1 10.1 0 0 0 22 12.23C22 6.58 17.52 2 12 2z"/></svg></a>
+  <button class="pj-icon-btn site-theme" type="button" aria-label="Switch theme" title="Switch theme"><svg class="pj-icon site-moon" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"/></svg><svg class="pj-icon site-sun" viewBox="0 0 24 24"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg></button>
+</header>
+<main class="doc-page">
+<h1 id="markdown-view">Markdown view</h1>
+<p>The editor a <code>.md</code> doc opens in: the Markdown file as its text, drawn
+formatted, with the syntax shown only where the caret is (live preview). It
+is one view (<a href="host-spec.html#processes-and-views">Views</a>); switched off, Markdown opens in
+the plain view as source.</p>
+<h2 id="principles">Principles</h2>
+<ol>
+<li><strong>The file is Markdown, and the view edits it.</strong> The editor&#39;s text is the
+file&#39;s text: what is shown is what is saved, and nothing is rewritten.
+A block no one changed keeps its bytes because nothing touches it.</li>
+<li><strong>Format as you type, or with the toolbar.</strong> Typed <code>**x**</code> is bold, as
+in any Markdown editor; the toolbar and its keys type the same syntax.</li>
+<li><strong>The page is the writer&#39;s.</strong> Tools sit at its edges; nothing but the
+text and the marks of others is drawn in it.</li>
+<li><strong>Every mark is someone&#39;s.</strong> A comment, a revision and a cursor each show
+whose it is, in that teammate&#39;s color.</li>
+<li><strong>Text in, text out.</strong> The view takes and gives the doc&#39;s text, and is
+told in offsets on it what to draw. It knows no one, no file and no rule.</li>
+</ol>
+<h2 id="ux">UX</h2>
+<h3 id="writing">Writing</h3>
+<ul>
+<li><p>All of CommonMark and GFM, and footnotes as GitHub writes them
+(<a href="https://github.com/ponjo-app/ponjo/issues/358">#358</a> lists each).
+Syntax outside them (math, <code>==highlight==</code>, wiki links) is text.</p>
+</li>
+<li><p><strong>Live preview.</strong> Text is drawn formatted and its syntax is hidden, except
+where it is being edited, as in Typora: a span&#39;s (bold, a link, code)
+while the selection touches it, faded; a block&#39;s markers on the lines the
+selection touches, hanging in the margin (<code>#</code>, <code>&gt;</code>; in a window too
+narrow to have one, in place) or in the box its bullet takes, so the text
+does not move; a table is edited as a grid
+(below), and shows as its source whole only with the selection in its
+text (a match found there, or Edit as Markdown). As a doc opens, before the person is in it,
+nothing is source; after, what the selection touches stays source when
+the editor loses the focus too, as the caret stays drawn. An earlier
+version, read-only, is drawn whole:</p>
+<table>
+<thead>
+<tr>
+<th>Block or span</th>
+<th>Away from the selection</th>
+<th>Being edited</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Bold, italic, strikethrough (<code>~~</code> or <code>~</code>), inline code</td>
+<td>formatted; the marks hidden</td>
+<td>the span the selection touches: formatted, its marks faded</td>
+</tr>
+<tr>
+<td>Heading (<code>#</code>, or underlined with <code>===</code>/<code>---</code>)</td>
+<td>large; <code># </code> hidden, an underline faded</td>
+<td><code># </code> faded, in the margin</td>
+</tr>
+<tr>
+<td>Link, inline or by reference</td>
+<td>its text, as a link; the rest hidden. A <code>[text]</code> no definition names is text</td>
+<td>touched, the whole source</td>
+</tr>
+<tr>
+<td>Autolink (<code>&lt;https://…&gt;</code>, <code>www.…</code>, an email)</td>
+<td>a link; <code>&lt;&gt;</code> hidden</td>
+<td>touched, <code>&lt;&gt;</code> faded</td>
+</tr>
+<tr>
+<td>Link definition (<code>[ref]: url</code>)</td>
+<td>muted</td>
+<td>the same</td>
+</tr>
+<tr>
+<td>Bullet list</td>
+<td>a dot for <code>-</code>, <code>*</code>, <code>+</code>; each level indented; a wrapped line hangs under the item&#39;s text</td>
+<td>the marker, in the dot&#39;s place</td>
+</tr>
+<tr>
+<td>Ordered list (<code>1.</code>, <code>1)</code>)</td>
+<td>the number as typed, indented the same</td>
+<td>the same</td>
+</tr>
+<tr>
+<td>Task list</td>
+<td>a checkbox, ticked by a click, which types <code>x</code> or a space; a done item struck through</td>
+<td>the checkbox, <code>- </code> in the margin</td>
+</tr>
+<tr>
+<td>Quote</td>
+<td>a bar at the left per level; <code>&gt;</code> hidden</td>
+<td><code>&gt;</code> faded, in the margin</td>
+</tr>
+<tr>
+<td>Code block, fenced or indented</td>
+<td>monospace on a tint, coloured by its language; its fences hidden, their lines its padding</td>
+<td>its fences, faded</td>
+</tr>
+<tr>
+<td>Rule (<code>---</code>, <code>***</code>, <code>___</code>)</td>
+<td>a line</td>
+<td>the source</td>
+</tr>
+<tr>
+<td>Image, inline or by reference</td>
+<td>the image</td>
+<td>touched, the source</td>
+</tr>
+<tr>
+<td>Table</td>
+<td>the table, drawn, with its cells&#39; formatting and alignment; a header with no text left out</td>
+<td>the grid, a cell at a time; with the selection in its text, the source, monospace, pipes faded</td>
+</tr>
+<tr>
+<td>Mermaid block</td>
+<td>its diagram</td>
+<td>the source</td>
+</tr>
+<tr>
+<td>Footnote (<code>[^1]</code>, <code>[^1]: …</code>)</td>
+<td>a superscript number, in the order of first use; the note small, with its number</td>
+<td>a reference touched, a note on its lines: the source</td>
+</tr>
+<tr>
+<td>Paragraph wrapped by hand (a soft break: a line break, not a hard one)</td>
+<td>its lines as written, so the text does not move as the caret comes and goes</td>
+<td>the same</td>
+</tr>
+<tr>
+<td>Hard break (a line ending in <code>\</code> or two spaces)</td>
+<td>the break; <code>\</code> hidden</td>
+<td>touched, <code>\</code> shows</td>
+</tr>
+<tr>
+<td>Escape (<code>\*</code>), entity (<code>&amp;copy;</code>)</td>
+<td>the character</td>
+<td>touched, the source</td>
+</tr>
+<tr>
+<td>Front matter, raw HTML</td>
+<td>the source, muted</td>
+<td>the same</td>
+</tr>
+</tbody></table>
+</li>
+<li><p><strong>Typed Markdown formats</strong>, as it is typed. There is no other conversion:
+the characters typed are the characters saved.</p>
+</li>
+<li><p><strong>The toolbar</strong> is icons in five groups, and shows the formatting at the
+caret (its buttons pressed, the block&#39;s style named):</p>
+<table>
+<thead>
+<tr>
+<th>Group</th>
+<th>Tools</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>History</td>
+<td>Undo, Redo</td>
+</tr>
+<tr>
+<td>Text style, a menu</td>
+<td>Normal text, Heading 1–3, Quote, Code block, each with its Markdown (<code>#</code>, <code>&gt;</code>, <code>```</code>)</td>
+</tr>
+<tr>
+<td>Inline</td>
+<td>Bold, Italic, Strikethrough, Inline code, Link</td>
+</tr>
+<tr>
+<td>Lists</td>
+<td>Bulleted, Numbered, Task</td>
+</tr>
+<tr>
+<td>Insert (+), a menu</td>
+<td>Table, Divider, Footnote</td>
+</tr>
+</tbody></table>
+<p>A tool&#39;s tooltip says its name and keys. Each types or removes the syntax:
+bold wraps the selection in <code>**</code> (or unwraps it), a style sets the prefix
+of each line the selection touches (Normal text takes it away), a code
+block fences them, a table puts in two columns and a row, a footnote puts
+<code>[^n]</code> at the caret and its note at the doc&#39;s end, with the caret there.
+The standard keys do the same: Mod+B bold, Mod+I italic, Mod+E inline
+code, Mod+Shift+X strikethrough, Mod+K a link; and for the block styles,
+as Google Docs keys them (Mod+digit is a browser&#39;s tabs): Mod+Alt+0 Normal
+text, Mod+Alt+1–3 Heading 1–3, Mod+Alt+Q Quote, Mod+Alt+C Code block,
+Mod+Shift+7 Numbered, Mod+Shift+8 Bulleted, Mod+Shift+9 Task. The Task and Footnote icons
+are new to the design system (<code>site/design.html</code>, <code>web/icons.js</code>).</p>
+</li>
+<li><p><strong>Paste.</strong> Formatted text (from a web page, a doc, another editor) is
+turned into Markdown once, as it is pasted, so what shows is what is
+saved; images held in the page itself (<code>data:</code>) are left out, which would
+put their bytes in the file. Plain text goes in as it is, so pasted
+Markdown formats. Mod+Shift+V pastes the plain text of anything.
+Pasting a URL over selected text links the text.</p>
+</li>
+<li><p><strong>Pairs.</strong> <code>(</code>, <code>[</code> and <code>`</code> type their closer after the caret, and
+<code>**</code> its <code>**</code> (a <code>*</code> typed after one that starts a word); typing the
+closer steps over it, and Backspace in an empty pair takes both. A
+fence&#39;s backticks, <code>***</code> and <code>* </code> are typed as they are, and in code only
+its language&#39;s pairs close. <code>*</code>, <code>_</code> or <code>~</code> typed over a selection wraps it.</p>
+</li>
+<li><p><strong>Blank lines</strong> are lines: as many as are typed, saved as typed.</p>
+</li>
+<li><p><strong>Keys:</strong> Undo, Redo, the formatting above, Comment, Find, and focus mode
+(Ctrl+Shift+.). Enter in a paragraph or a heading starts a new
+paragraph a blank line apart, as in Typora, and Shift+Enter is a new line
+in it; Backspace at the start of that paragraph, or Delete at the end of
+the one before, takes the whole break and joins them again. Enter in a
+list item continues the list (an empty item ends it, with a blank line),
+and in a quote the quote; in a code block it is a new line. Backspace right after a list item&#39;s marker or a quote&#39;s
+takes the marker away, a blank line keeping the line apart from the
+list or quote above it; after a nested item&#39;s marker it moves the item
+out a level. Tab and Shift+Tab indent and outdent the lines of a list item
+(by its marker&#39;s width) or a code block (by its own indent); in a table&#39;s
+source they go to the next cell and the one before. Elsewhere Tab stays in the
+page.</p>
+</li>
+<li><p><strong>Links.</strong> At the caret a card says where a link goes: open it, edit it or
+remove it. The link button opens a popover for the URL: Enter applies, an
+empty URL removes, Escape cancels. Mod+click opens a link; <code>#heading</code>
+scrolls to that heading in the doc.</p>
+</li>
+<li><p><strong>Diagrams.</strong> A <code>```mermaid</code> block shows as its diagram; with the
+selection in it, as its source, typed into as any text. An AI buddy can
+change it too, asked in a comment.</p>
+</li>
+<li><p><strong>Tables</strong> are edited as a grid. A click on a cell edits it in place,
+the caret at the character clicked: its own text, Markdown and all, typed into its range of the doc, a <code>|</code>
+typed as <code>\|</code>. Tab and Shift+Tab go to the next cell and the one before,
+Enter and the arrows to the cell below or above (past the last row, Tab
+and Enter add one; past the first or the last, the arrows leave the
+table), and Escape leaves it; arrow down from the line above, or up from
+the line below, goes into it. Mod+B, Mod+I and Mod+E wrap what is
+selected in the cell. The ⋯ at its top right inserts and deletes rows
+and columns, aligns a column, or edits it as Markdown. The pipes are
+typed as written, never lined up again: rows no one changed keep their
+bytes. A header with no text shows while the table is edited.</p>
+</li>
+<li><p><strong>Code blocks.</strong> A fenced block names its language at its top right
+(Plain text for none). A click on it opens a list that finds a language
+by name, the common ones first: picking one types it after the fence,
+Enter with none found types what was typed, Escape cancels.</p>
+</li>
+<li><p><strong>Images</strong> pasted (one with no text, as a screenshot is) or dropped in
+are written beside the doc, in its folder&#39;s <code>assets/</code> under their own
+name made safe (<code>image.png</code> for none, <code>-2</code> on for a name taken), never
+over a file, and linked at the caret or where dropped: <code>![](assets/…)</code>.
+Only the owner&#39;s page adds them, up to 5 MB each; a teammate&#39;s leaves
+them out, as it adds no file to the owner&#39;s folder.
+Images in the file show. One on the web
+(<code>https:</code>) loads from there; one at a path comes from the doc host
+(<code>image</code>, as a link resolves, only what the project shows), up to 5 MB.</p>
+</li>
+<li><p><strong>Find and replace</strong> (Mod+F; Mod+Alt+F with Replace), as in every view: a
+bar at the page&#39;s top right finds in the doc&#39;s text, its syntax included,
+as the plain view does, ignoring case unless Match case is on (and Whole
+word, Regular expression: <a href="user-experience.html#around-the-doc">Around the doc</a>); every match is marked, the current one stronger, with how
+many there are. Enter or Mod+G goes to the next, Shift for the one before;
+Escape closes it and selects the match. Replace and Replace all are the
+person&#39;s own edit, undone with Cmd+Z. A view that cannot be edited finds
+only.</p>
+</li>
+<li><p><strong>Spelling</strong> is checked as the person types, by the system&#39;s spell
+checker: the text, not its code, URLs, HTML or front matter. A right-click
+on a misspelt word offers its corrections. An earlier version is not checked.</p>
+</li>
+<li><p><strong>Right to left:</strong> a line of Hebrew or Arabic runs the way its text starts.</p>
+</li>
+</ul>
+<h3 id="reading">Reading</h3>
+<p>The view&#39;s settings, on its page in Settings &gt; Views:</p>
+<ul>
+<li><strong>Page:</strong> font (sans, serif or mono) and width (normal or wide).</li>
+<li><strong>Outline:</strong> a tick per heading at the left edge; hover for the list,
+click to go.</li>
+<li><strong>Focus mode:</strong> every block but the caret&#39;s fades.</li>
+<li><strong>Word count</strong>, in the doc&#39;s status bar under the page:
+the doc&#39;s words, and the selection&#39;s when there is one.</li>
+</ul>
+<h3 id="others-in-the-doc">Others in the doc</h3>
+<ul>
+<li><strong>Comments:</strong> commented text is yellow, the open thread&#39;s stronger. A
+bubble over a selection offers Comment.</li>
+<li><strong>An AI buddy&#39;s revision:</strong> when its turn lands, its new text is in its
+color and what it removed is grey and struck through where it was. It stays until you type, press
+Escape or another turn lands; the count under its reply shows it again.</li>
+<li><strong>Changes from outside</strong> (<code>git pull</code>, another editor) glow for a moment.</li>
+<li><strong>Cursors:</strong> one each, a blinking line in their color with no name, only
+while they are at work: an AI buddy&#39;s at the passage it was asked about
+during its run; a person&#39;s where they type, until a few seconds after
+they stop. One inside hidden syntax is drawn at its edge.</li>
+<li><strong>Two people typing:</strong> see <a href="#many-writers">Many writers</a>.</li>
+</ul>
+<h3 id="earlier-versions">Earlier versions</h3>
+<p>History shows a version in the same view, read-only: as nothing there has
+the caret, it is drawn fully formatted, diagrams as their source, so a change
+in one can be seen.</p>
+<h3 id="not-here">Not here</h3>
+<p>A slash menu, and who typed which characters.</p>
+<h2 id="architecture">Architecture</h2>
+<h3 id="the-shape">The shape</h3>
+<table>
+<thead>
+<tr>
+<th>Part</th>
+<th>File</th>
+<th>Does</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Declaration</td>
+<td><code>web/views/markdown/index.js</code></td>
+<td>id, extensions, settings; loads the view with the first Markdown doc</td>
+</tr>
+<tr>
+<td>Editor</td>
+<td><code>web/views/codemirror.js</code></td>
+<td>the CodeMirror editor both views are: the contract, marks, others&#39; edits, find, right to left</td>
+</tr>
+<tr>
+<td>View</td>
+<td><code>web/views/markdown/view.js</code></td>
+<td>that editor with Markdown&#39;s language (<code>@codemirror/lang-markdown</code>, GFM) and the preview</td>
+</tr>
+<tr>
+<td>Preview</td>
+<td><code>web/views/markdown/preview.js</code></td>
+<td>the decorations and widgets of live preview, from the syntax tree, for the lines on screen</td>
+</tr>
+<tr>
+<td>Chrome</td>
+<td><code>web/views/markdown/chrome.js</code></td>
+<td>toolbar, bubble, link card and popover, outline, focus mode, word count</td>
+</tr>
+<tr>
+<td>Syntax</td>
+<td><code>web/views/markdown/syntax.js</code></td>
+<td>what Lezer&#39;s Markdown parser leaves out: GFM&#39;s single-tilde strikethrough, and footnotes</td>
+</tr>
+<tr>
+<td>Table</td>
+<td><code>web/views/markdown/table.js</code></td>
+<td>a table drawn as a grid, edited a cell at a time</td>
+</tr>
+<tr>
+<td>Pairs</td>
+<td><code>web/views/markdown/pairs.js</code></td>
+<td>brackets, backticks and <code>**</code> closed as they are typed</td>
+</tr>
+<tr>
+<td>Paste</td>
+<td><code>web/views/markdown/paste.js</code></td>
+<td>formatted text pasted, as Markdown (Turndown, with its GFM tables)</td>
+</tr>
+<tr>
+<td>Diagrams</td>
+<td><code>web/diagrams.js</code></td>
+<td>a mermaid block as its diagram</td>
+</tr>
+<tr>
+<td>Find</td>
+<td><code>web/find.js</code></td>
+<td>the find bar, the same in every view; the view finds and replaces</td>
+</tr>
+</tbody></table>
+<h3 id="one-text">One text</h3>
+<p>The editor&#39;s document is the doc&#39;s text, so an offset on the doc is a
+position in the editor: marks, the selection, anchors and others&#39; edits
+need no map. The preview is decorations over the text, never a change to
+it: the syntax tree (Lezer&#39;s, parsed again only where the text changed)
+says what each span is; a span the selection touches, and the block
+markers of the lines it touches, are drawn as source. Hidden syntax is
+atomic: the caret steps over it, and reaches it by moving next to it. A
+marker that hangs in the margin is the text itself, positioned there
+(<code>.pj-md-hang</code>), so the caret and a click reach it as any text. The language is CommonMark and GFM only, with the
+extensions in <code>syntax.js</code>: CodeMirror&#39;s own Markdown would read <code>~x~</code> as
+subscript, and <code>^x^</code> and <code>:x:</code> too.</p>
+<p>Two things keep a click where it lands. While the pointer is down, what is
+drawn stays as it was when it was pressed, and follows the selection once
+it is let go: a block drawn as its source under the press (a code block&#39;s
+fences, a table) takes another height and would move the text being
+clicked. And a block drawn in place of its lines (a table, a diagram, an
+image) has no margins, which the editor does not measure, only padding.</p>
+<h3 id="text-in-text-out">Text in, text out</h3>
+<ul>
+<li><strong>In:</strong> <code>applyText(text, { by, ops })</code> applies <code>ops</code>, the operations that
+made <code>text</code>, as one change outside the undo history, glowing with <code>by</code>,
+as the plain view does. The caret and the line on top stay.</li>
+<li><strong>Out:</strong> <code>getText()</code> is the editor&#39;s text.</li>
+<li><strong>When:</strong> <code>onEdit</code> fires on every change the person makes; <code>onChange</code> 200
+ms after they last changed it, for what can wait for a pause (the marks).</li>
+</ul>
+<h3 id="the-contract">The contract</h3>
+<p>What every view has, in offsets on the doc&#39;s text (<code>test/views.test.js</code>):
+<code>getText</code>, <code>applyText</code>, <code>setMarks</code> (comments, a revision, cursors), the
+selection, <code>tops</code> and <code>scrollTo</code> (for the margin), <code>focus</code>, <code>undo</code> and
+<code>redo</code>, and a call when its settings change. Made with the text, whether it
+is editable, whether to colour its syntax, and the page&#39;s callbacks:
+<code>onEdit</code>, <code>onChange</code>, <code>onMarkClick</code>, <code>onLayout</code>, and, given a toolbar,
+<code>onComment</code>.</p>
+<h3 id="what-it-does-not-know">What it does not know</h3>
+<p>Who anyone is (a mark&#39;s <code>by</code> is only a name to color), how edits merge
+(the doc host&#39;s, whatever view is on), the doc host, and files.</p>
+<h3 id="cost">Cost</h3>
+<p>The parse is incremental and the preview is drawn for the lines on screen
+only, so a key costs about what it costs in the plain view, whatever the
+doc&#39;s length. The outline and the word count read the whole tree, a few
+times a second at most. Its <code>limits</code>: 1,000,000 characters, held by <code>npm run test:perf</code> to the B rules.</p>
+<h2 id="many-writers">Many writers</h2>
+<p>The host orders every edit as text operations on a revision
+(<a href="host-spec.html#the-log">The log</a>); the page turns the view&#39;s
+changes into them and back (<code>web/client.js</code>), the same for both views. The
+writers are the owner, teammates who can edit
+(<a href="host-spec.html#sharing">Sharing</a>), AI buddies and changes from outside.</p>
+<ol>
+<li><strong>Typing out.</strong> On each change, while no edit is on its way, the change
+goes to the host on <code>{ epoch, rev }</code> and waits as pending. Changes made
+while one is on its way go out together when the host answers it.</li>
+<li><strong>Others in.</strong> Pending and incoming operations are transformed against
+each other, and the result is shown with <code>applyText</code>.</li>
+<li><strong>Cursors</strong> are marks, as an AI buddy&#39;s is.</li>
+<li><strong>Cmd+Z</strong> is the editor&#39;s history, which holds only the person&#39;s own
+changes, mapped over what <code>applyText</code> put in. Its result is sent like
+typing.</li>
+</ol>
+<p>Markdown adds one thing to plain text: <strong>syntax split by a merge.</strong> An
+insert lands between <code>*</code> and <code>*</code>, in a link&#39;s URL or in a table row, and
+the source parses to what neither meant. Accepted: nothing typed is lost,
+the preview shows what the text now says, and people fix it by hand.</p>
+<p>The seven cases of the many-writers prototype (#214) run against the real
+host for both views (<code>test/collab.test.js</code>), with two more: the doc changed
+outside, and a buddy&#39;s turn landing, while one types.</p>
+</main>
+<script type="module" src="../../site.js?v=dd1545b"></script>
+</body>
+</html>

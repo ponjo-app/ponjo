@@ -1,0 +1,358 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Testing and CI/CD (draft)</title>
+<link rel="icon" href="../../build/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../dist/web/app.css?v=dd1545b">
+<link rel="stylesheet" href="../../site.css?v=dd1545b">
+</head>
+<body>
+<header class="site-header">
+  <a class="site-brand" href="../../index.html">Ponjo</a>
+  <nav class="site-nav" aria-label="Pages">
+    <a href="../../index.html">Download</a>
+    <a href="../../introduction.html">Introduction</a>
+    <a href="../../docs/" aria-current="page">Docs</a>
+    <details class="site-drop" name="site-menu">
+      <summary>Development<svg class="pj-icon" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></summary>
+      <div class="pj-block-menu site-menu">
+        <a href="../../architecture.html">Architecture</a>
+        <a href="../../design.html">Design system</a>
+        <a href="../../avatars.html">Avatar design</a>
+      </div>
+    </details>
+    <details class="site-drop" name="site-menu">
+      <summary>Preview<svg class="pj-icon" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></summary>
+      <div class="pj-block-menu site-menu">
+        <a href="../../preview/">Doc mode</a>
+        <a href="../../preview/?folder">Folder mode</a>
+        <a href="../../poker.html">Poker</a>
+        <a href="../../werewolf.html">Werewolf</a>
+        <a href="../../spy.html">Who's the Spy</a>
+      </div>
+    </details>
+  </nav>
+  <span class="pj-spacer"></span>
+  <a class="pj-icon-btn" href="https://github.com/ponjo-app/ponjo" aria-label="GitHub" title="GitHub"><svg class="pj-icon" viewBox="0 0 24 24"><path fill="currentColor" stroke="none" d="M12 2C6.48 2 2 6.58 2 12.23c0 4.52 2.87 8.35 6.84 9.7.5.1.68-.22.68-.49l-.01-1.7c-2.78.62-3.37-1.38-3.37-1.38-.46-1.18-1.11-1.5-1.11-1.5-.91-.64.07-.62.07-.62 1 .07 1.53 1.06 1.53 1.06.9 1.57 2.35 1.12 2.92.86.09-.67.35-1.12.64-1.38-2.22-.26-4.56-1.14-4.56-5.07 0-1.12.39-2.04 1.03-2.76-.1-.26-.45-1.3.1-2.71 0 0 .84-.28 2.75 1.05A9.36 9.36 0 0 1 12 6.98c.85 0 1.71.12 2.51.34 1.91-1.33 2.75-1.05 2.75-1.05.55 1.41.2 2.45.1 2.71.64.72 1.03 1.64 1.03 2.76 0 3.94-2.34 4.81-4.57 5.06.36.32.68.94.68 1.9l-.01 2.81c0 .27.18.6.69.49A10.1 10.1 0 0 0 22 12.23C22 6.58 17.52 2 12 2z"/></svg></a>
+  <button class="pj-icon-btn site-theme" type="button" aria-label="Switch theme" title="Switch theme"><svg class="pj-icon site-moon" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"/></svg><svg class="pj-icon site-sun" viewBox="0 0 24 24"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg></button>
+</header>
+<main class="doc-page">
+<h1 id="testing-and-cicd-draft">Testing and CI/CD (draft)</h1>
+<p>How Ponjo is tested and shipped, derived from
+<a href="architecture.html">architecture</a>, <a href="host-spec.html">host spec</a>, <a href="https://github.com/ponjo-app/ponjo/blob/main/spec/SPEC.md">SPEC</a>,
+<a href="https://github.com/ponjo-app/ponjo/blob/main/spec/PROJECT.md">PROJECT</a> and <a href="agent-config.html">agent config</a>.
+Each test guards a rule there; a test that guards none is not needed.</p>
+<h2 id="principles">Principles</h2>
+<ol>
+<li><strong>Test invariants, not code paths.</strong> Lost text first, then everything
+else.</li>
+<li><strong>The format is a contract.</strong> Its tests are fixtures in
+<code>spec/conformance/</code> that any tool can run. Anchors run in Node and in the
+browser.</li>
+<li><strong>Agents are always faked.</strong> A fake agent script edits its copy and
+prints a reply. No test runs Claude Code, Codex or a model.</li>
+<li><strong>Every platform, every PR.</strong> Rename, scripts and process trees differ
+most on Windows.</li>
+<li><strong>Real files and processes, fake time.</strong> Integration tests use a temp
+folder, real child processes and an injected clock.</li>
+</ol>
+<p>Layers: <strong>unit</strong> (pure, <code>src/core</code>), <strong>integration</strong> (DocService and
+Runner on real files with the fake script, in the test process, standing in
+for a window), <strong>e2e</strong> (the packaged app, under xvfb on Linux).</p>
+<h2 id="tests">Tests</h2>
+<h3 id="format--unit-conformance">Format — unit, conformance</h3>
+<ul>
+<li>Reading (§4): the first of duplicate ids kept; thread order; a reply
+without its first comment hidden; a thread resolved only when its latest
+comment says so.</li>
+<li><strong>Any order or duplication of lines reads to the same threads</strong> (property
+test). This is what makes <code>merge=union</code> safe.</li>
+<li>Unknown major refused; a bad
+line reported, skipped and kept on rewrite; unknown fields kept.</li>
+<li>Writing (§5): the file replaced whole, never torn; only a human sets
+<code>resolved</code>.</li>
+<li>Mentions (§6): <code>@name</code> matches a buddy&#39;s name, case-insensitively.</li>
+<li>A doc&#39;s text: UTF-8 only, no byte order mark, LF; written back with its
+byte order mark and each line&#39;s end.</li>
+<li>Anchors on the doc&#39;s text: exact → context → fuzzy → detached; a thread
+on its latest anchor that is found.</li>
+</ul>
+<h3 id="model--unit-property">Model — unit, property</h3>
+<ul>
+<li>Three-way merge by line (<code>merge3</code>), fuzzed: <strong>the human&#39;s lines always
+survive</strong>; where both changed the same lines the other side&#39;s change is
+left out and counted; changes to other lines merge; the result is
+deterministic.</li>
+<li>Undo: each change of a run whose lines no one changed since is put back;
+lines changed since, by anyone, stay.</li>
+<li>The inbox: a thread waits on X only after a comment by this user that
+@mentions X, or mentions no one in a thread X opened or was @mentioned in;
+another user id asks no one, and neither does a comment this host did
+not take, or one changed since.</li>
+<li>Same fixtures, same output in Node and the browser.</li>
+</ul>
+<h3 id="docservice--integration">DocService — integration</h3>
+<ul>
+<li>Writes one at a time; the disk checked before each; an outside write (an
+editor, <code>git pull</code>) merged, the typing winning where they overlap, the
+outside version saved.</li>
+<li>Versions saved before and after each buddy edit, before each outside
+change, undo and restore; each can be restored.</li>
+<li>Killed mid-write: the doc and sidecar are intact.</li>
+<li>Two git branches changing one sidecar, merged with <code>merge=union</code>, read to
+the expected threads.</li>
+</ul>
+<h3 id="runner--integration-fake-script">Runner — integration, fake script</h3>
+<ul>
+<li>The script runs in a new folder holding only the copy, gets the prompt on
+stdin and <code>PONJO_DOC</code>, <code>PONJO_PROJECT</code>, <code>PONJO_GROUPS</code> and <code>PONJO_BUDDY</code>, and the lines it
+appends to its sidecar copy become its comments; the folder is gone after.</li>
+<li><strong>The human edits the same lines during a run</strong>: the human&#39;s text stays,
+the turn lands where no one changed its lines, and its version says
+<code>conflict</code>; it does not run again, and nothing asks the user.</li>
+<li>Two runs on one doc at once: both edits land, merged one at a time.</li>
+<li>A buddy&#39;s reply answers its ask: neither it nor a person&#39;s edit runs it
+again; a comment written while it runs is answered by a run right after,
+with only the threads not answered; a run that posts nothing in a thread
+is not run again for it until someone writes there.</li>
+<li>The agent log says what changed, why each buddy&#39;s run started, stopped
+or did not start, and how its run ended.</li>
+<li>Who is due, as a pure function of the state (<code>test/doc-world.test.js</code>):
+a comment asks until the buddy comments after it; a watcher is due once
+turned on, on people&#39;s changes once the clock settles them, on an
+outside one at once, on another buddy&#39;s once its run landed (a step
+deeper), never on its own. The store (<code>test/doc-store.test.js</code>): a run
+lands in one rev; <code>wait</code> wakes only a member whose view changed; the
+settle is the clock&#39;s task. A restart in the middle of a run lands
+nothing twice and runs each open ask once.</li>
+<li>A buddy a person sets watching looks at once and opens a thread of its
+own on the whole doc; then it runs once people&#39;s edits pause 5 s, not before,
+told what changed, in the text and the threads, saying nothing when nothing is due; set off, it runs
+no more. Only a person changes the watch: it outlives its thread
+resolved (it opens another) and a restart (no run on opening); it is
+never in the sidecar, and its runs say <code>watched</code> in the log. A watch run
+is ended when a person types again, with no answer, and runs again once
+they pause. A watch run that fails, before its buddy has a thread, shows
+on the buddy, why to the owner alone, and Retry runs it again.</li>
+<li>A watcher runs on people&#39;s edits once they pause, unless a run since
+already saw them. One whose run named a line in <code>PONJO_WAKE</code> runs again
+only once the doc holds it; its next run names its lines anew.</li>
+<li>A buddy&#39;s change wakes each other buddy watching, never itself, each such
+run taking a step, a person&#39;s pause none; with none left they wait, and
+Refill fills them; with steps coming on their own, they go on as each
+comes.</li>
+<li>A buddy&#39;s @mention asks the buddy it names, for a step: it runs and
+answers in the thread. A buddy&#39;s comment found in the file asks no one.</li>
+<li>Exit non-zero, or a run the host cannot start: nothing is written to the
+sidecar; the buddy&#39;s status says the thread failed, with why for the
+owner alone; it is not run again on its own, but on Retry, a new comment
+in the thread, or a change of the settings; after a restart, unanswered
+asks run again.</li>
+<li>Runs only on docs open in a window.</li>
+<li>The shipped scripts, as text: each passes the project folder only when
+there is one, on <code>sh</code> and <code>.cmd</code>.</li>
+</ul>
+<h3 id="buddy-files--unit-integration">Buddy files — unit, integration</h3>
+<ul>
+<li><code>&lt;Name&gt;.md</code>: the file name is the name, the text who it is; a
+renamed file is a renamed buddy;
+<code>.ponjo/</code> created with the first buddy; only the opened folder&#39;s counts.</li>
+<li>The user&#39;s buddies are the same in every doc and in their runs; doc
+mode reaches only them, also inside a project folder; a project&#39;s buddy
+wins over one of the user&#39;s with its name.</li>
+<li>The first run writes <code>Clippy.md</code> (id <code>Clippy</code>) once; then it is renamed,
+changed and deleted like any buddy.</li>
+<li>One agent script runs every buddy, with <code>PONJO_BUDDY</code> set;
+<strong>nothing in <code>.ponjo/</code> or a sidecar chooses a program</strong>.</li>
+<li>The same buddies have the same faces and colors everywhere; up to
+eight buddies all have different colors.</li>
+</ul>
+<h3 id="app--e2e">App — e2e</h3>
+<ul>
+<li><strong>No process outlives the app</strong>, agent children included; the app listens
+on no port.</li>
+<li>One app per machine; a second launch hands its files to the first.</li>
+<li>The main flow: open a doc and a folder, @mention a buddy, the fake agent
+edits, Undo on its reply, Cmd+Z undoes only the human&#39;s edit, restore a version.</li>
+</ul>
+<h3 id="editing-tests">Editing tests</h3>
+<p>One set of tests for the rules in <a href="host-spec.html#editing">Editing</a>,
+alone and shared alike: what changes is parameters, never the path. Every
+test title starts with its rule id (<code>A3: a dropped line never lands an edit twice</code>), and a check in <code>npm test</code> (<code>test/rules.test.js</code>) fails when
+a rule id in that table has no test, unless its row says &quot;No test yet&quot;.
+Every editing bug fix comes with a test, named by its rule id,
+that fails before the fix.</p>
+<table>
+<thead>
+<tr>
+<th>Layer</th>
+<th>Covers</th>
+<th>Where</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>1. Properties of <code>src/core/ot.js</code></td>
+<td>A1 A3 A4 A5</td>
+<td><code>npm test</code></td>
+</tr>
+<tr>
+<td>2. Protocol fuzz</td>
+<td>A1–A6, C1, C3–C5, C7</td>
+<td><code>npm run test:stress</code> (<code>test/stress/concurrency.test.js</code>)</td>
+</tr>
+<tr>
+<td>3. Named scenarios in real views and pages</td>
+<td>D1–D8, A2 A3 A4 A5 A6, B6, C1–C8</td>
+<td><code>npm test</code> (<code>test/client.test.js</code>, <code>test/doc-service.test.js</code>, <code>test/runner.test.js</code>, <code>test/store.test.js</code>, <code>test/views.test.js</code>, <code>test/relay.test.js</code>)</td>
+</tr>
+<tr>
+<td>4. Timings</td>
+<td>B1–B5, B7, B8</td>
+<td><code>npm run test:perf</code></td>
+</tr>
+<tr>
+<td>The Markdown view</td>
+<td>D5 and what it draws</td>
+<td><code>npm test</code> (<code>test/markdown.test.js</code>)</td>
+</tr>
+<tr>
+<td>5. By hand</td>
+<td>C5, C6 on a real network</td>
+<td><a href="#sharing--two-machines-by-hand">two machines</a></td>
+</tr>
+</tbody></table>
+<ul>
+<li><strong>The Markdown view</strong> (<code>test/markdown.test.js</code>), in Electron: what each
+piece of CommonMark and GFM draws with the selection away and on it,
+line by line (<a href="https://github.com/ponjo-app/ponjo/issues/358">#358</a>);
+what each key and tool does to the text and the selection, written into
+the text (<code>‸</code> the caret, <code>« »</code> a selection); where a click lands; the
+toolbar&#39;s state at the caret. And a fuzz from three fixed seeds: random
+docs of Markdown pieces, random typing, keys, tools, clicks and focus
+changes, after each of which nothing was thrown, the focus changed no
+text, a click lands at the character clicked, and the caret is never in
+hidden syntax.</li>
+<li><strong>Layer 2</strong> runs a real DocService on temp files with 1 to 4 clients
+(<code>web/client.js</code>), each on a view with a caret where it last typed, over
+a fake line that can delay, drop the line (calls fail <code>offline</code>), lose an
+event (a line that dropped: it says hello when it is back), restart the host, fail a write (the file
+read-only), make an outside change, land a buddy&#39;s edit and change a
+level. Each seed makes a list of steps, run one at a time, so it runs
+the same every time. On a pull request, a fixed 300 seeds on Linux and
+Windows (a few minutes); nightly, 30 minutes of random seeds, as a
+scheduled run of the same <code>stress</code> job. A failing seed is shrunk to the
+fewest steps that still fail and printed; the pull request that fixes it
+adds them to <code>test/stress/regressions.json</code>, which every run replays.
+Another program adds lines and deletes lines that hold nothing typed;
+not yet: buddies, whose turns merge by line as another program&#39;s do.</li>
+<li><strong>Layer 3</strong> runs each scenario for each other writer (a teammate, a
+buddy, an outside change) in each view (Markdown, Plain).</li>
+<li><strong>Layer 4</strong>: <code>test/perf/latency.test.js</code> opens each view at its limits,
+in the doc shape that costs it most, and types while a teammate&#39;s edits
+arrive; <code>test/perf/typing.test.js</code> times each key the owner types to its
+character on a teammate&#39;s page (the browser build, its applyText and
+marks included) through the relay run locally, the teammate&#39;s line 40 ms
+slower each way, in a small Markdown doc and in the plain view&#39;s longest,
+which the host writes whole on every key; <code>test/perf/open.test.js</code>
+opens the desktop app on a folder and times a file clicked in the
+sidebar until its doc is drawn in place. A timing fails when it is
+missed three times running.</li>
+<li>Layers 1 to 3 are deterministic and never retried: a test that fails now
+and then is a bug.</li>
+</ul>
+<h3 id="sharing--two-machines-by-hand">Sharing — two machines, by hand</h3>
+<p>After each deploy of the relay (README, Deploying the relay). The owner on
+machine A runs the app from <code>main</code> with no <code>PONJO_RELAY</code>; the teammate is
+on machine B, on another network (a phone&#39;s hotspot will do), in a browser.</p>
+<ol>
+<li><strong>Open room.</strong> A opens a project, Team &gt; Open room, Copy link. The link
+is <code>https://share.ponjo.app/team?room=…</code>. B opens it, picks a name, and
+is in at once: the project&#39;s first doc, editable. B reloads: in at once.</li>
+<li><strong>Teammates.</strong> A&#39;s Team panel lists B, live.</li>
+<li><strong>Both typing.</strong> Both type in the same paragraph at once for a minute.
+Each sees the other&#39;s keys as they type; nothing is lost, and the file
+on A holds both. A sets B to Read: B&#39;s tools go; back to Edit.</li>
+<li><strong>Sleep and wake.</strong> A sleeps (close the lid) for two minutes. B goes
+read only and says the host went away. A wakes: within 30 seconds B is
+back in the doc by itself, with A&#39;s text, editable, and both type again.</li>
+<li><strong>Idle.</strong> Leave both untouched for ten minutes, then type: still live.</li>
+<li><strong>Line down.</strong> B turns its network off while typing: within 15 seconds
+B is read only and shows what it typed that did not reach A, to copy.</li>
+<li><strong>Lock, kick, close.</strong> A locks the room: a second browser on the link
+is turned away; B reloads and is in. A kicks B: B&#39;s page says so, and B
+cannot come back. A unlocks; B in a private window joins again. A closes
+the room: B&#39;s page clears and says only &quot;The host closed the room&quot;. A
+opens a room again: the old link says no room is open.</li>
+</ol>
+<h2 id="ci">CI</h2>
+<table>
+<thead>
+<tr>
+<th>Stage</th>
+<th>Trigger</th>
+<th>Runs</th>
+<th>On failure</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>PR</td>
+<td>push to a PR</td>
+<td>lint; unit and conformance (Node and browser); integration on Linux, macOS, Windows; web build</td>
+<td>blocks merge</td>
+</tr>
+<tr>
+<td>main</td>
+<td>merge</td>
+<td>all of PR, e2e on three platforms, nightly installers, relay deploy</td>
+<td>blocks the nightly build and the deploy</td>
+</tr>
+<tr>
+<td>Nightly</td>
+<td>schedule</td>
+<td>the <code>stress</code> job, 30 minutes of random seeds</td>
+<td>fails the run</td>
+</tr>
+<tr>
+<td>Release</td>
+<td>version tag</td>
+<td>all of main, draft release</td>
+<td>blocks publishing</td>
+</tr>
+</tbody></table>
+<ul>
+<li>A PR that changes <code>spec/</code> changes <code>spec/conformance/</code> too.</li>
+<li>The nightly is built, and the relay with the teammate&#39;s page deployed,
+only when <code>npm test</code>, <code>npm run test:stress</code> and <code>npm run test:perf</code> pass
+too (<code>release</code> and <code>relay</code> in <code>.github/workflows/desktop.yml</code>). The
+preview&#39;s buddies&#39; model deploys once <code>npm test</code> passes (<code>infer</code>).</li>
+<li>A test that fails now and then is a bug, in the code or the test: it is
+fixed, never retried or skipped. Each relay a test starts is its own,
+with nothing kept on disk (<code>test/relay/harness.js</code>), so a limit one test
+fills never refuses another.</li>
+<li>CI holds no model API keys.</li>
+</ul>
+<h2 id="cd">CD</h2>
+<ul>
+<li>Channels: <strong>nightly</strong> (every main), <strong>beta</strong> and <strong>stable</strong> (tags). A
+release is drafted by CI and published by a person.</li>
+<li>Installers: macOS dmg (signed and notarized), Windows NSIS, Linux AppImage.</li>
+<li>The app follows semver. The format&#39;s major changes only with the spec,
+its fixtures and a note on what happens to old files.</li>
+</ul>
+<h2 id="stretch-goals">Stretch goals</h2>
+<ul>
+<li><strong>Clean install</strong>: installing the signed app on a clean VM and running the
+main flow before each release.</li>
+<li><strong>Real agents</strong>: run the shipped Claude Code and Codex scripts for real,
+to catch a program changing its flags. First by hand before a release on
+the maintainer&#39;s own subscription; later a weekly CI run with a
+subscription token. No pay-per-token API key.</li>
+<li><strong>Auto-update</strong>: needs a macOS Developer ID; checking is a network call,
+so off by default, and it applies only when the app quits.</li>
+</ul>
+</main>
+<script type="module" src="../../site.js?v=dd1545b"></script>
+</body>
+</html>

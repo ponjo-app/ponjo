@@ -1,0 +1,968 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Host spec</title>
+<link rel="icon" href="../../build/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../dist/web/app.css?v=dd1545b">
+<link rel="stylesheet" href="../../site.css?v=dd1545b">
+</head>
+<body>
+<header class="site-header">
+  <a class="site-brand" href="../../index.html">Ponjo</a>
+  <nav class="site-nav" aria-label="Pages">
+    <a href="../../index.html">Download</a>
+    <a href="../../introduction.html">Introduction</a>
+    <a href="../../docs/" aria-current="page">Docs</a>
+    <details class="site-drop" name="site-menu">
+      <summary>Development<svg class="pj-icon" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></summary>
+      <div class="pj-block-menu site-menu">
+        <a href="../../architecture.html">Architecture</a>
+        <a href="../../design.html">Design system</a>
+        <a href="../../avatars.html">Avatar design</a>
+      </div>
+    </details>
+    <details class="site-drop" name="site-menu">
+      <summary>Preview<svg class="pj-icon" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></summary>
+      <div class="pj-block-menu site-menu">
+        <a href="../../preview/">Doc mode</a>
+        <a href="../../preview/?folder">Folder mode</a>
+        <a href="../../poker.html">Poker</a>
+        <a href="../../werewolf.html">Werewolf</a>
+        <a href="../../spy.html">Who's the Spy</a>
+      </div>
+    </details>
+  </nav>
+  <span class="pj-spacer"></span>
+  <a class="pj-icon-btn" href="https://github.com/ponjo-app/ponjo" aria-label="GitHub" title="GitHub"><svg class="pj-icon" viewBox="0 0 24 24"><path fill="currentColor" stroke="none" d="M12 2C6.48 2 2 6.58 2 12.23c0 4.52 2.87 8.35 6.84 9.7.5.1.68-.22.68-.49l-.01-1.7c-2.78.62-3.37-1.38-3.37-1.38-.46-1.18-1.11-1.5-1.11-1.5-.91-.64.07-.62.07-.62 1 .07 1.53 1.06 1.53 1.06.9 1.57 2.35 1.12 2.92.86.09-.67.35-1.12.64-1.38-2.22-.26-4.56-1.14-4.56-5.07 0-1.12.39-2.04 1.03-2.76-.1-.26-.45-1.3.1-2.71 0 0 .84-.28 2.75 1.05A9.36 9.36 0 0 1 12 6.98c.85 0 1.71.12 2.51.34 1.91-1.33 2.75-1.05 2.75-1.05.55 1.41.2 2.45.1 2.71.64.72 1.03 1.64 1.03 2.76 0 3.94-2.34 4.81-4.57 5.06.36.32.68.94.68 1.9l-.01 2.81c0 .27.18.6.69.49A10.1 10.1 0 0 0 22 12.23C22 6.58 17.52 2 12 2z"/></svg></a>
+  <button class="pj-icon-btn site-theme" type="button" aria-label="Switch theme" title="Switch theme"><svg class="pj-icon site-moon" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"/></svg><svg class="pj-icon site-sun" viewBox="0 0 24 24"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg></button>
+</header>
+<main class="doc-page">
+<h1 id="host-spec">Host spec</h1>
+<p>Every rule, limit and call of the doc host, for building and checking it.
+For the design and its principles, read <a href="architecture.html">architecture</a>
+and <a href="../runtime/README.html">agent runtime</a> first. Product: <a href="product-vision.html">product vision</a>; what a
+person sees and does: <a href="user-experience.html">user experience</a>; the comment
+format: <a href="https://github.com/ponjo-app/ponjo/blob/main/spec/SPEC.md">SPEC</a>; tests: <a href="testing-ci.html">testing</a>.</p>
+<h2 id="overview">Overview</h2>
+<p>People and AI buddies write the same files together. One process on the
+owner&#39;s machine, the doc host, holds each open doc and does every write to
+it, whoever the change is from: a person in a window or a browser, a buddy,
+or another program. A buddy is run by an agent, a program that edits a
+copy of the doc and appends comments to a copy of its comments.</p>
+<pre class="doc-diagram">flowchart LR
+  person([&quot;People&lt;br&gt;windows, teammates' pages&quot;]) -- &quot;edits, comments&quot; --&gt; door
+  outside([&quot;Other programs&lt;br&gt;git pull, editors&quot;]) -. &quot;the file changed&quot; .-&gt; door
+  subgraph host[&quot;Doc host&quot;]
+    door[&quot;Doc&lt;br&gt;the one writer&quot;] -- &quot;views&quot; --&gt; ctl[&quot;Controllers&lt;br&gt;one per buddy&quot;]
+    ctl -- &quot;a buddy's changes&quot; --&gt; door
+    ctl -- &quot;a run&quot; --&gt; agent[&quot;Agent&lt;br&gt;on copies&quot;]
+  end
+  door -- &quot;writes&quot; --&gt; files[(&quot;doc + .comments.jsonl&quot;)]</pre>
+<h3 id="words">Words</h3>
+<table>
+<thead>
+<tr>
+<th>Word</th>
+<th>Means</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>member</td>
+<td>anyone who changes a doc: a person or a buddy. Every change has one as its author; a file changed outside is by <code>outside</code></td>
+</tr>
+<tr>
+<td>person</td>
+<td>a human member: the owner, or a teammate</td>
+</tr>
+<tr>
+<td>owner</td>
+<td>the person whose machine holds the files and runs the doc host</td>
+</tr>
+<tr>
+<td>teammate</td>
+<td>a person who joined the owner&#39;s room from its link</td>
+</tr>
+<tr>
+<td>buddy</td>
+<td>an AI member: an id, a name and a persona, in one file. It has no code and no state</td>
+</tr>
+<tr>
+<td>agent</td>
+<td>the program that does every buddy&#39;s work, picked in Settings &gt; Agents</td>
+</tr>
+<tr>
+<td>run</td>
+<td>the agent working once as one buddy, on copies of one doc</td>
+</tr>
+<tr>
+<td>ask</td>
+<td>a person&#39;s comment that names a buddy, open until the buddy comments after it</td>
+</tr>
+<tr>
+<td>watch</td>
+<td>a buddy set by a person to run when the doc changes</td>
+</tr>
+</tbody></table>
+<p>The code says turn nowhere: a buddy answering is a run.</p>
+<h3 id="principles">Principles</h3>
+<ol>
+<li><strong>Files are the truth.</strong> Docs, their comments and buddies are plain
+files. Everything else is a cache rebuilt from them, or only costs undo
+if lost. What runs on this machine (runs, why one failed, watches, the limits) is
+this machine&#39;s and never written to a shared file.</li>
+<li><strong>One door, one writer.</strong> Every change, whoever makes it, comes through
+the doc&#39;s one door, in one order. An agent gets only copies. A change
+made outside (another editor, <code>git pull</code>) is seen and merged.</li>
+<li><strong>No one resolves a conflict by hand.</strong> An edit merges by how it comes,
+not by who made it: typing by character, so nothing typed is lost; a
+whole text that arrives late (a run, an outside change, an undo) by
+line, where the doc&#39;s lines win. What does not land can be asked for
+again or found in history.</li>
+<li><strong>Every change can be undone</strong>, a buddy&#39;s with the comment it came with.</li>
+<li><strong>Only a person starts work.</strong> A buddy runs on a person&#39;s ask or a
+person&#39;s watch. Buddies wake each other only to a depth, and the limits
+pause a doc&#39;s buddies once they run too often with no person acting.
+Nothing in a shared file makes a buddy run, or chooses what program
+runs, on this machine.</li>
+<li><strong>Decide from state, not from events.</strong> What is due is worked out from
+the doc&#39;s state alone (its comments, its watches, the typing to settle)
+whenever anything may have changed; an event only says when to look. A
+look at any time finds the same, so a missed event costs nothing.</li>
+<li><strong>An agent is a filter</strong>: a prompt on stdin, copies in, copies out. It
+knows nothing of Ponjo and remembers nothing. It is slow, costly and
+not sure to agree with itself, so a run that fails is shown to people,
+not tried again on its own.</li>
+<li><strong>One part does one thing, through the fewest calls.</strong> If it takes two
+sentences to say what a part does, it is two parts. A new call is the
+last resort.</li>
+<li><strong>Never take mutable state as the truth.</strong> Join things by a stable id;
+a name, a path or a color is an alias, kept for show. A buddy is its
+id, not its name.</li>
+</ol>
+<h2 id="data">Data</h2>
+<table>
+<thead>
+<tr>
+<th>File</th>
+<th>Where</th>
+<th>Holds</th>
+<th>Is</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>a doc</td>
+<td>anywhere; in a project, under its folder</td>
+<td>the text</td>
+<td>shared truth</td>
+</tr>
+<tr>
+<td>its comments</td>
+<td>beside it, <code>&lt;doc&gt;.comments.jsonl</code> (<a href="https://github.com/ponjo-app/ponjo/blob/main/spec/SPEC.md">SPEC</a>)</td>
+<td>threads, anchored on the text</td>
+<td>shared truth</td>
+</tr>
+<tr>
+<td>a project&#39;s buddies</td>
+<td><code>.ponjo/buddies/&lt;name&gt;.md</code> in the project (<a href="https://github.com/ponjo-app/ponjo/blob/main/spec/PROJECT.md">PROJECT</a>)</td>
+<td>each buddy: its id, its persona</td>
+<td>shared truth</td>
+</tr>
+<tr>
+<td>the user&#39;s buddies</td>
+<td><code>buddies/</code> in the config folder</td>
+<td>the same, for every doc</td>
+<td>this user&#39;s</td>
+</tr>
+<tr>
+<td><code>settings.json</code></td>
+<td>config folder</td>
+<td>the user&#39;s id and name, editor and views&#39; settings, the agent picked and its settings</td>
+<td>this user&#39;s</td>
+</tr>
+<tr>
+<td><code>agents/</code></td>
+<td>config folder</td>
+<td>each agent: a program and its manifest (<a href="agent-config.html#agents">agent config</a>)</td>
+<td>this user&#39;s</td>
+</tr>
+<tr>
+<td><code>secrets.bin</code></td>
+<td>config folder</td>
+<td>agents&#39; secret settings, encrypted with the system keychain</td>
+<td>this user&#39;s</td>
+</tr>
+<tr>
+<td><code>state.json</code></td>
+<td>config folder</td>
+<td>recent docs and folders, window bounds</td>
+<td>cache</td>
+</tr>
+<tr>
+<td><code>history/&lt;doc&gt;/</code></td>
+<td>config folder</td>
+<td>the doc&#39;s versions; the window edits its file was last written with; the comments this host took, and those its runs posted; the buddies watching it</td>
+<td>this machine&#39;s</td>
+</tr>
+<tr>
+<td><code>logs/</code></td>
+<td>config folder</td>
+<td><code>runs.jsonl</code>, a line per run; <code>agents.log</code>, why each buddy&#39;s run started, stopped or did not start; with Trace runs on, <code>traces/&lt;run&gt;.json</code></td>
+<td>this machine&#39;s</td>
+</tr>
+</tbody></table>
+<p>The config folder is <code>~/Library/Application Support/Ponjo/</code> on macOS. Only
+the app writes it. Every file is written whole: a temporary file in the
+same folder, with the file&#39;s permissions, renamed over it.</p>
+<p>Above the files, a doc is its text: UTF-8, no byte order mark, lines ending
+in <code>\n</code>. Its byte order mark and each line&#39;s end are put back when it is
+written, a new line ending as the line before it. A file that is not UTF-8
+does not open.</p>
+<p><strong>Doc mode and project mode.</strong> A <code>.md</code> file opened on its own (from Finder)
+is doc mode: one doc, the user&#39;s buddies, no room. A folder opened from the
+home page is project mode: a file tree, the user&#39;s buddies and the
+project&#39;s, and a room to share. A project&#39;s buddy wins over one of the
+user&#39;s with its name; name, face and color follow one rule (<a href="https://github.com/ponjo-app/ponjo/blob/main/spec/PROJECT.md">PROJECT
+§2</a>). The first start writes the user&#39;s first buddy,
+Clippy.</p>
+<h2 id="the-doc">The doc</h2>
+<h3 id="the-door">The door</h3>
+<p>Every call to a doc comes as <code>call(type, arg, who)</code>, <code>who</code> being <code>{ id, name, kind, level }</code>, set by the host from the connection and never taken
+from a message. A connection is bound to one doc, so no call names one.
+Each call needs a level, <code>read &lt; write &lt; owner</code>; <code>can(who, level)</code> lets it
+through, once, and nothing behind it checks again.</p>
+<table>
+<thead>
+<tr>
+<th>Calls</th>
+<th>Level</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>state</code>, <code>history</code>, <code>version</code>, <code>cursor</code>, <code>image</code>; the project&#39;s <code>list</code>, <code>read</code>, <code>open</code></td>
+<td>read</td>
+</tr>
+<tr>
+<td><code>submit</code>, <code>comment</code> (resolving and reopening too), <code>undo</code></td>
+<td>write</td>
+</tr>
+<tr>
+<td>everything else: <code>move</code>, settings, buddies, agents, <code>saveImage</code>, the room&#39;s own calls</td>
+<td>owner</td>
+</tr>
+</tbody></table>
+<p>The owner&#39;s level is owner, a teammate&#39;s read or write. A buddy acts with
+the level of whoever asked it, at most write, as a Unix program runs as the
+user who started it. Behind the door, <code>who</code> only names a change&#39;s author.</p>
+<p>Events to every connection on the doc: <code>ops</code> (each change in the log,
+below: <code>{ epoch, rev, ops, id, by: { id, kind }, reply?, comments? }</code>, a
+change to the comments with <code>comments: true</code>, and with no <code>ops</code> but a
+run&#39;s), <code>saved</code>
+(whether the file holds what was told, and why not),
+<code>cursors</code>, <code>missing</code> (the file gone), <code>renamed</code>, and from the controllers
+<code>agents</code> (who is here, running, watching, failed), <code>watches</code> (whether they
+are paused) and, to the owner, <code>runtime</code> (for the runtime panel).</p>
+<h3 id="the-log">The log</h3>
+<p>Every change to a doc is a line in one ordered log, in memory: <code>{ rev, by: { id, kind: person | buddy | outside }, at, edit? | comment?, group? }</code>.
+An <code>edit</code> is insert and delete operations, offsets in UTF-16 code units of
+the doc&#39;s text; a <code>comment</code> is a comment line (<a href="https://github.com/ponjo-app/ponjo/blob/main/spec/SPEC.md">SPEC</a>);
+<code>group</code> the comment an edit hangs on, to undo with it. <code>rev</code> counts the
+changes since the host opened the doc, which <code>epoch</code> names; one <code>rev</code>
+versions the text and the comments, so whether anything changed since a
+moment is a comparison of two numbers.</p>
+<p>A window&#39;s edit is operations on the <code>{ epoch, rev }</code> it started from.
+The door transforms them over what landed since, by character
+(<code>transform</code> in <code>src/core/ot.js</code>), lands them, writes the file, and only
+then tells everyone. A whole text (a run, an outside change, an undo) is
+merged by line first (below) and lands as an edit on the current <code>rev</code>,
+like anyone&#39;s.</p>
+<p>The calls a change comes through:</p>
+<ul>
+<li><code>submit({ ops, epoch, rev, id, reply?, thread?, conflict? })</code>: an edit.
+Sent again with its <code>id</code>, it is answered with the rev it made. With
+<code>reply</code>, it is a group: the edits comment <code>reply</code> in <code>thread</code> carries, a
+version of its own (<code>conflict</code> when the doc&#39;s lines stayed where it
+collided); without, it is typing, a version once typing pauses.</li>
+<li><code>comment({ id?, thread?, anchor?, body, resolved?, after? })</code>: a first
+comment (<code>anchor</code> on the text, or null for the whole doc) or a reply in
+<code>thread</code>; a reply with <code>anchor</code> moves its thread (SPEC §3). A reply comes
+after every comment in its thread, or with <code>after</code> (a time) just after
+that. Sent again with its <code>id</code>, it is answered as it was.</li>
+</ul>
+<p>A buddy&#39;s run lands whole, as the buddy, through <code>land</code>, a call of the
+door&#39;s own that no window has: at one rev, its groups first, each a
+version of its own, then its comments, each reply just after the last
+comment the run was given in its thread.</p>
+<p>Only a comment that came through the door by a member asks: one found in
+the file is by <code>outside</code> and asks no one. The comments this host took are
+noted in the doc&#39;s history, so this holds after a restart.</p>
+<h3 id="how-edits-merge">How edits merge</h3>
+<table>
+<thead>
+<tr>
+<th>Edit</th>
+<th>Comes as</th>
+<th>Merged</th>
+<th>Where it collides</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>a window&#39;s: typing, a paste, a cut</td>
+<td>operations on the rev the window last heard, milliseconds old</td>
+<td>by character (<code>transform</code>)</td>
+<td>both stay, in the order they reached the host</td>
+</tr>
+<tr>
+<td>a whole text: a run, an outside change, an undo</td>
+<td>the text it ended on, from a base that may be minutes old</td>
+<td>by line (<code>merge3(base, doc, late)</code> in <code>src/core/diff.js</code>)</td>
+<td>the doc as it is stays; the late text is in history</td>
+</tr>
+</tbody></table>
+<p>An edit from a window says what it does, on text its writer saw a moment
+ago, so it moves over others&#39; by character. A whole text says only where
+it ended: its operations are a diff&#39;s guess, and spliced by character into
+edits it never saw they make words no one wrote. By line, the collision
+shows. The doc as it is wins because people have seen it and keep working
+on it, while a late text can be made again or found in history. So a
+paste, however large, is a window&#39;s edit, and a person&#39;s edit saved in
+another editor gives way where it collides, as a run does.</p>
+<h3 id="files-on-disk">Files on disk</h3>
+<p>The door reads the doc and its comments when the doc opens, keeping a
+hash of each and both in memory, and watches both: a folder watch, and a poll every 500 ms for
+file systems where watches miss changes. A doc file it did not write is a
+change by <code>outside</code>: taken once unchanged for 50 ms (up to a second), as
+another program may be half way through writing it; saved to history; then
+merged by line from the text the file last held, and landed. Before each
+write it checks the file is still what it last wrote, and lands an outside
+change first. A file whose size, mtime and inode are those of its own last
+write is not read again: a doc of millions of characters takes tens of
+milliseconds to read and hash. A sidecar it did not write is a change by
+<code>outside</code> too, read whole and held; before each write of its own the door
+takes one first.</p>
+<p>A write that fails (a read-only file, a lock, a full disk) does not undo
+the edit: it has landed, <code>submit</code> answers <code>not_saved</code>, and the door writes
+once it can, half a second later, then twice as long each time up to 10
+s. Every connection hears whether the file holds what it was told
+(<code>saved</code>), so a page shows Not saved, and why, exactly while it is so.</p>
+<h3 id="catching-up">Catching up</h3>
+<p>A window catches up one way, whatever it missed (a new connection, a missed
+event, an edit refused as <code>stale</code>): <code>state({ since: { epoch, rev } })</code>.
+While the log reaches back that far (the last 1,000 changes), the answer
+holds the changes missed, and the window takes them as any, knowing its own
+edit by its id. For a new epoch (the host started again) or a log that no
+longer reaches back, it takes <code>diffOps(the text it last heard, the new text)</code> and moves its typing over that. An edit lands at most once: one
+sent again with the same id and rev is answered with the rev it already
+made, however long ago, as the ids written to the file are noted in the
+doc&#39;s history through every restart. A whole text needs no log: each has
+its base (a run&#39;s copy, the file&#39;s last text, a version).</p>
+<h3 id="versions-and-undo">Versions and undo</h3>
+<p>History records a version each time typing pauses (its authors each person
+who typed), before and after each buddy&#39;s group of edits, an outside
+change, an undo and a restore, each credited to who made it. A version
+never changes: it names its <code>parent</code>, and only the oldest go once the
+history is full.</p>
+<p>An undo is one edit: a version&#39;s change taken back, from its parent&#39;s text
+to its own, merged by line with everything since (<code>merge3</code>), so lines
+someone changed since stay. Three ways, each saving a version first:</p>
+<ol>
+<li>Cmd+Z: the editor&#39;s own history, a person&#39;s own typing, mapped over
+others&#39; edits. Its result is typing, merged by character.</li>
+<li>Undo on a buddy&#39;s comment: the edits of its group, and no other
+comment&#39;s; then Redo, which undoes that undo.</li>
+<li>Undo in history, for a version or a row of them, whoever made it; or a
+restore, a <code>submit</code> back to an old version&#39;s text.</li>
+</ol>
+<h3 id="editing">Editing</h3>
+<p>What a person can count on when they edit, alone or with others. To a
+person, another writer is one of three: a teammate, a buddy, or an outside
+program. Editing alone always has the last two, so alone is the case of one
+person. Every rule holds for any number of people and any kind of other
+writer: there is one path for everyone (page → <code>web/client.js</code> → the door),
+and one set of tests covers it all, by parameters
+(<a href="testing-ci.html#editing-tests">testing</a>).</p>
+<p><strong>Scope.</strong> Docs within the views&#39; limits (below); up to 8 people editing at
+once; a one-way network delay up to 150 ms. Past it editing may be slower,
+but the A rules always hold and the person is told.</p>
+<p><strong>A. Data</strong>, with no tolerance:</p>
+<table>
+<thead>
+<tr>
+<th>Id</th>
+<th>Rule</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>A1</td>
+<td>Converge: once writers stop, every page&#39;s text is the host&#39;s text is the file.</td>
+</tr>
+<tr>
+<td>A2</td>
+<td>Nothing lost: what a person typed and nobody deleted ends up in the file, through crashes, power loss and dropped lines.</td>
+</tr>
+<tr>
+<td>A3</td>
+<td>Nothing twice: an edit lands at most once, through resends, restarts and write failures.</td>
+</tr>
+<tr>
+<td>A4</td>
+<td>Typing is never merged away: a window&#39;s edits (typing, a paste) merge by character, and nothing typed is lost. A whole text that arrives late (a run, an outside change, an undo) merges by line with the doc as it is when it lands: where both changed the same lines, the doc&#39;s lines stay, and the late text can be found in history. A window&#39;s edit on its way when one lands moves over it by character, as over anyone&#39;s.</td>
+</tr>
+<tr>
+<td>A5</td>
+<td>Text intact: no split surrogate pair, no U+FFFD; each line&#39;s end (LF, CRLF, CR), the BOM and the file&#39;s permissions kept; unchanged blocks saved byte for byte.</td>
+</tr>
+<tr>
+<td>A6</td>
+<td>Shown is saved: whatever the page shows as saved is in the file; anything not saved is marked, with the reason.</td>
+</tr>
+</tbody></table>
+<p><strong>B. Latency</strong>, median and p95, the network aside, within the limits. The
+numbers are <code>LATENCY</code> in <code>web/views/index.js</code>, which the tests read:</p>
+<table>
+<thead>
+<tr>
+<th>Id</th>
+<th>From</th>
+<th>To</th>
+<th>Within</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>B1</td>
+<td>the doc opened</td>
+<td>an editable view</td>
+<td>3 s</td>
+</tr>
+<tr>
+<td>B2</td>
+<td>a key</td>
+<td>its character on screen</td>
+<td>30 ms, 100 ms</td>
+</tr>
+<tr>
+<td>B3</td>
+<td>a key</td>
+<td>its character in the file</td>
+<td>50 ms, 100 ms</td>
+</tr>
+<tr>
+<td>B4</td>
+<td>another writer&#39;s edit arriving</td>
+<td>it shown</td>
+<td>50 ms, 100 ms</td>
+</tr>
+<tr>
+<td>B5</td>
+<td>a key</td>
+<td>its character shown at a teammate</td>
+<td>50 ms, 100 ms</td>
+</tr>
+<tr>
+<td>B6</td>
+<td>a person&#39;s cursor moving</td>
+<td>it shown at the others</td>
+<td>100 ms p95</td>
+</tr>
+<tr>
+<td>B7</td>
+<td>the doc opened</td>
+<td>the end of any one task that keeps the page busy</td>
+<td>500 ms</td>
+</tr>
+<tr>
+<td>B8</td>
+<td>a file clicked in the sidebar</td>
+<td>its doc drawn in place of the one before, for a doc of everyday size</td>
+<td>500 ms median</td>
+</tr>
+</tbody></table>
+<p><strong>C. Recovery:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Id</th>
+<th>Rule</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>C1</td>
+<td>Crash: killed and opened again, everything shown as saved is there; no file is half written.</td>
+</tr>
+<tr>
+<td>C2</td>
+<td>Close: typing not landed lands before a window closes.</td>
+</tr>
+<tr>
+<td>C3</td>
+<td>An outside change while typing: my text stays; the outside version goes to history.</td>
+</tr>
+<tr>
+<td>C4</td>
+<td>A write that fails (a read-only file, a lock, a full disk): the page says Not saved, and why. Once the file can be written, the typing is saved, exactly once.</td>
+</tr>
+<tr>
+<td>C5</td>
+<td>Reconnect: within 5 s of the line or the host coming back (30 s for a host waking from sleep), the page has caught up on text, comments, cursors and level. A window of the app whose doc host started again saves the typing done meanwhile, once; a teammate&#39;s page saves nothing typed before its line dropped (C6).</td>
+</tr>
+<tr>
+<td>C6</td>
+<td>Line down: a teammate&#39;s page whose line drops, a half-open socket included, is read only at once and says so within 15 s; typing not sent then is shown as it was left, to copy (as in C7), never sent later. It edits again once caught up on the line made again, unless it shows such typing: then once reloaded.</td>
+</tr>
+<tr>
+<td>C7</td>
+<td>Level: a level change applies within 2 s online, and on reconnect offline. Typing that can no longer be saved is never dropped silently: the page says so and shows that text, to copy.</td>
+</tr>
+<tr>
+<td>C8</td>
+<td>Isolation: one page&#39;s bad request or oversized message never disconnects the others. A doc too big for the relay (<code>MAX_MESSAGE</code> in <code>relay/worker.js</code>, room for the Plain view&#39;s longest) does not open through sharing, and its page says so; an event that big is left out.</td>
+</tr>
+</tbody></table>
+<p><strong>D. Editing</strong>, whoever the other writer is:</p>
+<table>
+<thead>
+<tr>
+<th>Id</th>
+<th>Rule</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>D1</td>
+<td>My caret stays: others&#39; edits never move my caret or selection off the character it is next to.</td>
+</tr>
+<tr>
+<td>D2</td>
+<td>My viewport stays: when others edit above me, the line I am looking at keeps its place on screen.</td>
+</tr>
+<tr>
+<td>D3</td>
+<td>My undo: Cmd+Z undoes only my typing, and still works after others split or restyle my paragraph.</td>
+</tr>
+<tr>
+<td>D4</td>
+<td>IME: nothing is saved or sent mid-composition, and others&#39; edits arriving meanwhile show once it ends (one in the text being composed would break it); they lose or double nothing.</td>
+</tr>
+<tr>
+<td>D5</td>
+<td>The view never rewrites: after <code>applyText(t)</code>, <code>getText() === t</code>; a view&#39;s own normalisation is never saved as anyone&#39;s edit.</td>
+</tr>
+<tr>
+<td>D6</td>
+<td>Clear marks: one unnamed cursor per teammate at work; a teammate&#39;s typing shows only by their cursor; a buddy&#39;s change, outside changes and restores glow.</td>
+</tr>
+<tr>
+<td>D7</td>
+<td>Drafts stay: a comment being written, and its anchor, survive others&#39; edits.</td>
+</tr>
+<tr>
+<td>D8</td>
+<td>Comments follow their text: a thread stays on its text through others&#39; edits, and through its buddy rewriting that text.</td>
+</tr>
+</tbody></table>
+<p><strong>E. State:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Id</th>
+<th>Rule</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>E1</td>
+<td>At any moment the page is in exactly one true state: Saved, Saving, Not saved (and why), Offline or Read-only. Alone too. The toolbar shows it (<code>paintSave</code> in <code>web/main.js</code>); other problems show apart, beside the doc&#39;s name.</td>
+</tr>
+</tbody></table>
+<p>A view keeps the B rules only up to a size, its <code>limits</code>:</p>
+<table>
+<thead>
+<tr>
+<th>View</th>
+<th>Up to</th>
+<th>Past it</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Markdown</td>
+<td>1,000,000 characters</td>
+<td>opens as plain text, and says so; the person may choose the Markdown view anyway, for that window</td>
+</tr>
+<tr>
+<td>Plain text</td>
+<td>5,000,000 characters</td>
+<td>opens read-only, and says so</td>
+</tr>
+<tr>
+<td>Plain text&#39;s colour</td>
+<td>no block over 10,000 characters</td>
+<td>the doc opens without colour</td>
+</tr>
+</tbody></table>
+<p>The desktop app opens text files up to 20 MB, room for the plain view&#39;s
+limit in any script. A view sends each change as it is made (<code>onEdit</code>),
+one edit on its way at a time: keys typed meanwhile go out together once it
+is answered, so typing reaches others while it goes on.</p>
+<h2 id="buddies">Buddies</h2>
+<p>A buddy runs only on docs open on this machine, and only for a person: on
+an ask, or while a person has it watch the doc. When it runs is the
+<a href="../runtime/README.html">agent runtime</a>&#39;s to decide; this section is the doc&#39;s
+side: who may ask, what asks and wakes a buddy, what a run is given, and
+how what it returns lands. The runtime reaches the doc only through its
+door, writing as the buddy, as a window writes as a person. A run
+lands nothing if one of those it ran for may no longer ask when it ends.</p>
+<p>A buddy has a controller on each doc open on this machine, and one run at
+a time there, given every thread that asks it; a comment written while it
+runs is for the next. The clock is a member too: its task is to settle
+people&#39;s typing. The runs and the limits are this machine&#39;s, in memory;
+what a restart needs is in <code>history/&lt;doc&gt;/</code>. Each time a controller
+starts, stops or does not start a run, <code>logs/agents.log</code> says what changed
+and why, and each run&#39;s end a line, never the doc&#39;s text; the log is
+trimmed like the others.</p>
+<h3 id="asks-and-watches">Asks and watches</h3>
+<p><strong>An ask.</strong> A person&#39;s comment asks a buddy until the buddy comments in its
+thread after it. A comment asks whom it @mentions; one that mentions no one
+asks the thread&#39;s buddies: the one that opened it, and each @mentioned
+there before. An empty one (resolving, reopening) asks no one. Only the
+comments of those who may write ask (the owner, a teammate who can edit),
+and only those the door took. Resolving a thread, which only people do,
+drops what it asked. A run answers each thread it was given with a comment
+of its buddy&#39;s: one it posted there, else &quot;Looked; nothing to change.&quot;, or
+if it failed &quot;Could not finish.&quot; (Failures). So a buddy that answers
+nothing is not run again and again, nor after a restart, until someone
+writes in the thread again.</p>
+<p><strong>A buddy&#39;s ask.</strong> A comment a run on this machine posted asks each other
+buddy it @mentions, and only them, a step deeper (see Depth and the
+limits). The asked run is for the people the asking run was for, while
+each of them may still ask, and lands at their level. Which comments those are is this machine&#39;s,
+kept with their people and depth in <code>history/&lt;doc&gt;/</code>, so they still ask
+after a restart: a buddy&#39;s comment found in the file asks no one.</p>
+<p><strong>A watch.</strong> A person sets a buddy watching the doc, or unsets it; nothing
+the buddy or the app does changes it. It is noted on this machine, <code>{ by }</code>
+with what its last run saw (the text&#39;s fingerprint) and named (its wake
+lines), never in the comments, and the buddy runs as whoever set it may,
+while they may ask. A watcher is due once set, then on another member&#39;s change since
+its last run started: people&#39;s once they pause for 5 s (<code>SETTLE_MS</code>, the
+clock&#39;s task); a file written outside the app at once, for it is whole
+(the door took it once it held still); a buddy&#39;s once that buddy&#39;s run has
+landed, its edits and comments at one rev. Its own change never
+wakes it, nor a change since undone: a watcher whose doc&#39;s text is as it
+was when its last run started is not due (typing then deleted wakes no
+one). A person editing again while a run only a watch started is on
+ends that run with no answer, for it saw the doc as it was. A file written
+outside the app does not: a program may write more often than a run lasts,
+which would end every run. The run lands, merged by line, and runs again on
+the change. Each run is told what changed since its last: in the text
+(<code>lineChanges</code>), and in the threads, each open one another member wrote in, whole (the ids of the comments it
+heard then are noted with <code>base</code>). It reads the rest in the comments
+itself, and comments where it will, as any member. A run may name, in
+<code>PONJO_WAKE</code>, lines of the doc that wake it (<a href="agent-config.html#wake">wake</a>):
+until its next run the watcher is due only while the doc holds one, whole.
+On opening, what changed while the app was closed is as a file written
+outside it: a watcher whose doc&#39;s text is not as its last run saw it runs
+once.</p>
+<p><strong>Depth and the limits.</strong> So that buddies cannot wake each other for
+ever, each run has a depth: 0 when a person&#39;s ask or change, or a file
+written outside the app, started it; when only a buddy&#39;s change or ask
+did, one more than that buddy&#39;s run. Past the doc&#39;s limit, 1,000, nothing
+wakes: a chain of buddies comes to rest, while two can still play a long
+game. A person&#39;s change or ask, or an outside one, starts again at 0. So
+that a loop the depth cannot see (a program that echoes a buddy) stops
+too, the limits count the runs a doc&#39;s buddies start since a person last
+acted there: past <code>pauseAfter</code> within <code>pauseWithin</code> minutes (300 in 10,
+Settings &gt; Agents), none starts (a watch is answered as not started, an
+ask with &quot;Could not finish.&quot;), the agent log and every window say the
+watches are paused, until a person acts in the doc or resumes them
+(<code>resume</code>), when each watch whose doc changed since its last run looks
+again. Both are this machine&#39;s, in memory.</p>
+<h3 id="a-run">A run</h3>
+<ol>
+<li>The executor copies the doc and its comments into a new private folder,
+at the doc&#39;s path in the project, which is how the prompt names them,
+and starts the <a href="agent-config.html">agent</a> there with the prompt on stdin:
+who the buddy is, the other members, the rules, every thread that asks
+it, and for a watcher what changed. In project mode it is given the
+project folder to read; what it may read there is up to the agent
+(<a href="agent-config.html#permissions">permissions</a>), and the folder holds no
+name starting with <code>.</code> the agent is shown.</li>
+<li>The agent edits the doc&#39;s copy and appends its comments to the
+comments&#39; copy, each comment&#39;s edits as a group
+(<a href="agent-config.html#groups">groups</a>). A run with nothing to do changes
+nothing.</li>
+<li>On exit 0, Translate turns the copies into changes: the new comments,
+each with its group of edits merged by line with the doc as it is now
+(<code>merge3</code>, the doc&#39;s lines win, the version says <code>conflict</code>). An agent
+that wrote no groups hangs its edits on its last comment; one that wrote
+no comment, on the one it left out (what the agent printed last, in
+one line of at most 280 characters, else &quot;Edited the doc.&quot;), in the
+first thread that asked it, or else on the whole doc: no edit lands
+without a comment. A thread that asked it where it posted nothing gets
+&quot;Looked; nothing to change.&quot;: every ask is answered by a comment. A reply in a thread resolved meanwhile is dropped, with its
+edits; a line that would resolve is ignored, as only people resolve. In
+a thread that asked it, its comments come just after the last comment
+it was given, so one written meanwhile is after them, still to answer.
+The doc&#39;s store lands them in one door call, as the buddy.</li>
+<li>The private folder is deleted, and the run gets a line in
+<code>logs/runs.jsonl</code>: its id, doc, buddy, threads, the comments it posted,
+start, duration, outcome (<code>ok</code>, <code>failed</code>, <code>timedOut</code>, <code>stopped</code>) and
+exit code, and, when its agent wrote them, its tokens and model, which
+Settings &gt; Usage sums. A log there past 10 MB keeps its newest half.
+With Trace runs on, it also leaves its trace (the prompt, the agent&#39;s
+steps, its output, the copies before and after, what landed) in
+<code>logs/traces/&lt;run&gt;.json</code>, the newest 200 kept, for the doc&#39;s runtime panel.</li>
+</ol>
+<p>A run that is ended (its asks resolved, its watch unset, its buddy deleted,
+a person typing while only a watch had it run) lands nothing. Runs of
+different buddies go on at once; their changes land one at a time, in the
+door&#39;s order.</p>
+<h3 id="actions">Actions</h3>
+<p>A comment a run posted may carry actions outside the doc
+(<a href="agent-config.html#actions">actions</a>). Once it lands, each is recorded in the
+config folder&#39;s <code>logs/actions.jsonl</code>, a line per step (<code>proposed</code>,
+<code>approved</code>, <code>declined</code>, <code>started</code>, <code>done</code>, <code>failed</code>), never in the sidecar.
+It waits for the owner&#39;s <code>approveAction</code> or <code>declineAction</code>, unless
+<code>settings.json</code>&#39;s <code>actions: { &lt;name&gt;: { ask: false } }</code> lets it run without
+asking and every person the run was for is the owner. Approved, it is
+carried out once; its result, or that it failed, is posted as its buddy&#39;s
+reply in its thread, asking at the run&#39;s depth + 1. One <code>started</code> with no
+end, as the host stopped, reads <code>unknown</code> and is never started again on its
+own: <code>retryAction</code> carries it out again, as it does one that failed. Anyone
+in the doc reads them (<code>actions</code>); only the owner decides. Undo takes back
+the comment&#39;s edits, never its actions.</p>
+<h3 id="failures">Failures</h3>
+<p>A run that fails (an exit other than 0, a timeout, a run the host could not
+start) lands nothing but its buddy&#39;s &quot;Could not finish.&quot; in each thread it
+was given that still asks it, just after the last comment it was given
+there; why (the end of the output, the script) is the owner&#39;s alone, in
+the run&#39;s trace and the agent log. That comment answers the ask, so it is
+not run again on its own, for it may well fail again at the same cost, nor
+after a restart: it runs again when someone writes in the thread. Retry,
+on that comment while it is the thread&#39;s latest, for whoever may ask, is
+that: it posts their reply <code>@&lt;buddy&gt; try again.</code>. A failed watch run is
+noted on the buddy (<code>watchFailed</code>), in memory, and shown on it with
+Retry (<code>retry({ buddy })</code>), why to the owner alone; it runs again on
+Retry, when the agent, its settings or its secrets change, and on the
+doc&#39;s next change. Errors an agent can outlast, such as a busy API, it retries
+itself (<a href="ponjo-agent.html">Ponjo agent</a>). After a restart, asks not answered
+run again.</p>
+<h2 id="sharing">Sharing</h2>
+<p>Sharing is hosting a room, as for an online game. In a project window the
+owner opens a room; teammates join from its link in a browser, at once; the
+room ends when the owner closes it or the project. The files stay on the
+owner&#39;s machine. Teammates are trusted: one who can edit does in a doc what
+the owner does. Doc mode has no sharing.</p>
+<ul>
+<li><strong>One host.</strong> A teammate&#39;s page is a client of the owner&#39;s doc host, as a
+window is: it keeps only what it shows, and a reload catches it up. A
+page whose line drops is read only at once and says so (C6): it notices a
+dropped or half-open line within 10 s, a ping unanswered; typing it had
+not sent is shown to copy, never sent later. It reconnects by itself and,
+caught up, edits again.</li>
+<li><strong>A room</strong> (<code>src/host/room.js</code>) is <code>{ locked, teammates: id → { name, level }, kicked }</code> in the doc host&#39;s memory, and dies with it. Opening
+one makes a fresh random secret and puts the host on the relay in the
+room named by its SHA-256. Closing it, or the project&#39;s last window,
+turns every page away (<code>closed</code>). The next room has a new secret, so an
+old link never opens a later room (<code>nohost</code>).</li>
+<li><strong>The relay</strong> (<code>relay/worker.js</code>, a Cloudflare Worker at
+<code>share.ponjo.app</code>, one Durable Object per room) joins the host&#39;s outgoing
+WebSocket to each page&#39;s, over TLS, and stores nothing. It serves the
+page too, so both share one origin. There is no encryption of our own:
+the relay is ours, and could read what passes. The relay numbers each
+page as a peer, which a page cannot forge. No credential is in an
+address: the host&#39;s first message is the secret, which the relay checks
+before it takes the host in; a page&#39;s first message is its key, name and
+doc. The app&#39;s relay is <code>wss://share.ponjo.app</code> unless <code>PONJO_RELAY</code>
+names another (empty: nothing is shared).</li>
+<li><strong>Limits</strong>, so the relay is no free pipe and stays within the Workers
+free plan: at most 20 pages in a room (<code>full</code>), no message over 8 MiB
+characters, at most 60 hosts and 120 pages a minute from one address.
+Sockets hibernate between messages; a page waiting for its host, and a
+host for the relay, try again twice as long each time, up to 30 s.</li>
+<li><strong>Versions.</strong> The page comes from the relay, deployed from main, and the
+host from the app its owner installed, so the two can be apart. Their
+messages have a version (<code>PROTOCOL</code>, <code>src/core/protocol.js</code>), raised by
+a change the other side would misread; a page told another one says
+which side to update.</li>
+<li><strong>Who.</strong> Everyone is <code>{ id, name, kind, level }</code>, set by the host from
+the connection. A teammate&#39;s id is the hash of a key made once in their
+browser, which only that browser and the host see, so no one who reads an
+id in a comment can pose as them; a buddy&#39;s is in its file. An id is for
+credit only; what it may do lives in the room. Names are unique on a
+project, people&#39;s and buddies&#39; together: a teammate whose name is taken
+gets a number (<code>Alice2</code>). A teammate joins at Edit; in the Team panel the
+owner sets each to Read or Edit, kicks one (that id cannot come back to
+this room), or locks the room (no new id gets in). A page hears its
+<code>level</code> when it changes and on every catch-up; typing it can no longer
+save is shown to copy, never dropped (C7).</li>
+<li><strong>Scope is the project folder</strong>, served by <code>ProjectService</code> to the
+owner&#39;s windows and teammates&#39; pages alike (<code>list</code>, <code>read</code>, <code>open</code>). A
+path is resolved to its real path and must be inside the root; a link
+out of it, or a name starting with <code>.</code>, is refused. A page names its doc
+by its path in the project; anyone but the owner gets the default
+settings and never a real path. A page turned away is told why
+(<code>closed</code>, <code>kicked</code>, <code>locked</code>, <code>not_found</code>, <code>hidden</code>, <code>full</code>) and keeps
+nothing of the room.</li>
+<li><strong>Presence.</strong> The host tells everyone on a project who has a window or
+page on any of its docs (<code>here</code>). Each person&#39;s cursor goes to the host
+once their typing has landed (<code>cursor</code>, on their rev), and to everyone on
+the doc (<code>cursors</code>); a page moves it over the edits it hears of, so it
+stays on its text.</li>
+</ul>
+<h2 id="processes-and-views">Processes and views</h2>
+<p>The app&#39;s processes, and the one seam between a page and the host:</p>
+<pre class="doc-diagram">flowchart TD
+  subgraph web[&quot;web/&quot;]
+    windows[&quot;Pages&quot;]
+    views[&quot;Views&lt;br&gt;web/views/&quot;]
+  end
+  shell[&quot;Shell&lt;br&gt;desktop/&quot;]
+  host[&quot;Doc, Doc store, Controllers,&lt;br&gt;Executor, ProjectService, Room&lt;br&gt;src/host/&quot;]
+  store[&quot;Store&lt;br&gt;src/store/&quot;]
+  core[&quot;Core&lt;br&gt;src/core/&quot;]
+  shell --&gt; host &amp; store &amp; core
+  host --&gt; store &amp; core
+  web --&gt; core
+  store --&gt; core
+  web -. IPC .- shell
+  web -. &quot;message port, or the relay&quot; .- host</pre>
+<p>A solid arrow is an import; <code>npm run lint</code> allows no others
+(<code>.dependency-cruiser.js</code>) and none in a circle. A dotted line is a message
+between processes. The doc host is the app&#39;s utility process. A page talks
+to it through <code>{ call, onEvent }</code>: in the app a message port, in a browser
+the relay (<code>web/relay.js</code>); the host serves both the same way (<code>serve</code> in
+<code>desktop/doc-host.js</code>), adding <code>who</code>. <code>team.html</code> is the doc page on the
+relay; in the <a href="https://github.com/ponjo-app/ponjo/tree/main/preview/">preview</a> <code>doc-stub.js</code> plays the host, and runs
+its buddies&#39; runs in the page through the relay&#39;s model door
+(<code>infer.ponjo.app</code>).</p>
+<p><strong>Views.</strong> A doc has one view, its editor, switched on or off alone
+(<code>settings.json</code>: <code>views</code>, by id). A view has state (caret, undo, marks),
+so it is built in, not an extension point.</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>View (<code>web/views/</code>)</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Declared</td>
+<td><code>{ id, name, about, extensions, always?, limits?, createView, settings }</code></td>
+</tr>
+<tr>
+<td>Picked by</td>
+<td><code>viewFor(name, settings)</code>: the first enabled view that claims the extension, else Plain text (<code>always</code>, any UTF-8 text file up to 20 MB), and only for a doc within its <code>limits</code></td>
+</tr>
+<tr>
+<td>Its settings</td>
+<td>an ordered list of fields <code>{ key, type: &#39;switch&#39; | &#39;choice&#39; | &#39;number&#39;, label, hint?, default, group?, when? }</code>, its page in Settings &gt; Views</td>
+</tr>
+<tr>
+<td>Must satisfy</td>
+<td>the view contract, <code>test/views.test.js</code>: <code>getText</code>, <code>applyText(text, { by, ops })</code> after which <code>getText()</code> is <code>text</code> and the line on top stays, <code>setMarks</code>, the selection, <code>composing()</code></td>
+</tr>
+</tbody></table>
+<p>Both views are one editor, CodeMirror, whose text is the doc&#39;s own
+(<code>web/views/codemirror.js</code>). Plain text (<code>web/views/plain/</code>) shows the text
+as it is; the <a href="markdown-view.html">Markdown view</a> (<code>web/views/markdown/</code>) is
+live preview, nothing but typing changing it. How edits merge does not
+depend on the view. To add a view: a folder in <code>web/views/</code> with its
+declaration, listed in <code>VIEWS</code>, passing the contract test.</p>
+<h2 id="code-map">Code map</h2>
+<table>
+<thead>
+<tr>
+<th>Part</th>
+<th>Where</th>
+<th>Its one thing</th>
+<th>Its calls</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Core</td>
+<td><code>src/core/</code></td>
+<td>compute on text, purely, the same in the host and the page: anchors, comments and asks, <code>diff</code>/<code>merge3</code>, <code>ot</code>, the prompt, Translate; the runtime&#39;s core (store, ledger, controllers) and the doc world (<code>view</code>, <code>apply</code>)</td>
+<td>functions</td>
+</tr>
+<tr>
+<td>Store</td>
+<td><code>src/store/</code></td>
+<td>read, write, watch and move files: docs, comments, history, settings, buddies, agents, logs</td>
+<td><code>read</code>, <code>write</code>, <code>watch</code>, <code>move</code>, each file&#39;s parser</td>
+</tr>
+<tr>
+<td>Doc</td>
+<td><code>src/host/doc-service.js</code></td>
+<td>order every change to one doc, and write it</td>
+<td>the door above; <code>door</code>, <code>subscribe(fn)</code></td>
+</tr>
+<tr>
+<td>Opener</td>
+<td><code>src/host/open-doc.js</code></td>
+<td>join a doc and its buddies</td>
+<td><code>openDoc</code></td>
+</tr>
+<tr>
+<td>Controllers</td>
+<td><code>src/host/buddy-runtime.js</code></td>
+<td>a controller per buddy of the doc, and the clock&#39;s (<code>src/core/controller.js</code>), with this machine&#39;s runs, logs, settings and limits</td>
+<td><code>watch</code>, <code>retry</code>, <code>resume</code>; events <code>agents</code>, <code>watches</code>, <code>runtime</code></td>
+</tr>
+<tr>
+<td>Doc store</td>
+<td><code>src/host/doc-store.js</code></td>
+<td>the doc world&#39;s state beside the door, each member&#39;s view and <code>wait</code>, and a run&#39;s answer landed in one door call</td>
+<td><code>client(member)</code>: <code>read</code>, <code>wait</code>, <code>commit</code></td>
+</tr>
+<tr>
+<td>Executor</td>
+<td><code>src/host/runner.js</code></td>
+<td>run the agent once on copies</td>
+<td><code>execute</code></td>
+</tr>
+<tr>
+<td>ProjectService</td>
+<td><code>src/host/project-service.js</code></td>
+<td>the project&#39;s files, the same for everyone</td>
+<td><code>list</code>, <code>read</code>, <code>open</code></td>
+</tr>
+<tr>
+<td>Room</td>
+<td><code>src/host/room.js</code></td>
+<td>who is in the room and at what level</td>
+<td>the owner&#39;s <code>openRoom</code>, <code>closeRoom</code>, <code>lockRoom</code>, <code>setLevel</code>, <code>kick</code>, <code>room</code></td>
+</tr>
+<tr>
+<td>Shell</td>
+<td><code>desktop/</code></td>
+<td>windows, menus, dialogs, recent docs; the owner&#39;s file changes; starts the doc host; the keychain</td>
+<td>IPC</td>
+</tr>
+<tr>
+<td>Pages</td>
+<td><code>web/</code></td>
+<td>the doc page and the home page: typing into operations and back (<code>client.js</code>), marks</td>
+<td><code>{ call, onEvent }</code></td>
+</tr>
+<tr>
+<td>Views</td>
+<td><code>web/views/</code></td>
+<td>a doc&#39;s editor</td>
+<td>the view contract</td>
+</tr>
+<tr>
+<td>Relay</td>
+<td><code>relay/</code></td>
+<td>join the host to teammates&#39; pages; serve the page</td>
+<td>WebSocket</td>
+</tr>
+<tr>
+<td>Agent</td>
+<td><code>agents/</code>, the config folder</td>
+<td>edit its copy, append its comments</td>
+<td>none</td>
+</tr>
+</tbody></table>
+</main>
+<script type="module" src="../../site.js?v=dd1545b"></script>
+<script type="module" src="../../preview/docs.js?v=dd1545b"></script>
+</body>
+</html>

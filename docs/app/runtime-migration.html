@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Runtime migration</title>
+<link rel="icon" href="../../build/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../dist/web/app.css?v=dd1545b">
+<link rel="stylesheet" href="../../site.css?v=dd1545b">
+</head>
+<body>
+<header class="site-header">
+  <a class="site-brand" href="../../index.html">Ponjo</a>
+  <nav class="site-nav" aria-label="Pages">
+    <a href="../../index.html">Download</a>
+    <a href="../../introduction.html">Introduction</a>
+    <a href="../../docs/" aria-current="page">Docs</a>
+    <details class="site-drop" name="site-menu">
+      <summary>Development<svg class="pj-icon" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></summary>
+      <div class="pj-block-menu site-menu">
+        <a href="../../architecture.html">Architecture</a>
+        <a href="../../design.html">Design system</a>
+        <a href="../../avatars.html">Avatar design</a>
+      </div>
+    </details>
+    <details class="site-drop" name="site-menu">
+      <summary>Preview<svg class="pj-icon" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></summary>
+      <div class="pj-block-menu site-menu">
+        <a href="../../preview/">Doc mode</a>
+        <a href="../../preview/?folder">Folder mode</a>
+        <a href="../../poker.html">Poker</a>
+        <a href="../../werewolf.html">Werewolf</a>
+        <a href="../../spy.html">Who's the Spy</a>
+      </div>
+    </details>
+  </nav>
+  <span class="pj-spacer"></span>
+  <a class="pj-icon-btn" href="https://github.com/ponjo-app/ponjo" aria-label="GitHub" title="GitHub"><svg class="pj-icon" viewBox="0 0 24 24"><path fill="currentColor" stroke="none" d="M12 2C6.48 2 2 6.58 2 12.23c0 4.52 2.87 8.35 6.84 9.7.5.1.68-.22.68-.49l-.01-1.7c-2.78.62-3.37-1.38-3.37-1.38-.46-1.18-1.11-1.5-1.11-1.5-.91-.64.07-.62.07-.62 1 .07 1.53 1.06 1.53 1.06.9 1.57 2.35 1.12 2.92.86.09-.67.35-1.12.64-1.38-2.22-.26-4.56-1.14-4.56-5.07 0-1.12.39-2.04 1.03-2.76-.1-.26-.45-1.3.1-2.71 0 0 .84-.28 2.75 1.05A9.36 9.36 0 0 1 12 6.98c.85 0 1.71.12 2.51.34 1.91-1.33 2.75-1.05 2.75-1.05.55 1.41.2 2.45.1 2.71.64.72 1.03 1.64 1.03 2.76 0 3.94-2.34 4.81-4.57 5.06.36.32.68.94.68 1.9l-.01 2.81c0 .27.18.6.69.49A10.1 10.1 0 0 0 22 12.23C22 6.58 17.52 2 12 2z"/></svg></a>
+  <button class="pj-icon-btn site-theme" type="button" aria-label="Switch theme" title="Switch theme"><svg class="pj-icon site-moon" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"/></svg><svg class="pj-icon site-sun" viewBox="0 0 24 24"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg></button>
+</header>
+<main class="doc-page">
+<h1 id="runtime-migration">Runtime migration</h1>
+<p>How Ponjo&#39;s code moved from the design before the <a href="../runtime/README.html">runtime
+reference</a> to it. Done; what still differs:
+<a href="../runtime/README.html#differs">Differs</a>. The worlds:
+<a href="worlds/doc.html">doc</a>, <a href="worlds/poker.html">poker</a>,
+<a href="worlds/werewolf.html">werewolf</a>, <a href="worlds/spy.html">spy</a>, <a href="worlds/rooms.html">rooms</a>.</p>
+<h2 id="steps">Steps</h2>
+<p>Each one issue and its pull request, with its tests, landing with the app
+working; a step that changed what people see or what is kept on disk
+waited for the person to agree to its design first.</p>
+<ol>
+<li>Doc answers survive a restart, on the old runtime: every ask answered by a comment (#500).</li>
+<li>The new core (<code>src/core/store.js</code>, <code>ledger.js</code>, <code>controller.js</code>), with spy as its first world (#501).</li>
+<li>Werewolf and poker on it, with one kit for the three games (#502).</li>
+<li>Game tables become rooms on the relay, each holding its store, AI seats and clock (#503).</li>
+<li>The doc on the new core; the old runtime deleted (#504).</li>
+<li>The docs say what the code does (issue #499).</li>
+</ol>
+<h2 id="why-this-order">Why this order</h2>
+<ul>
+<li><strong>Step 1 first, on the old runtime.</strong> It fixed the one fault that cost
+people money (a restart ran every open ask again) with a few changes in
+the doc world and no new parts.</li>
+<li><strong>The games before the doc.</strong> They use every new part (tasks, the
+ledger, the clock, people&#39;s controllers, hidden views) at the lowest
+stakes, so the core was proven before it reached the editor. Spy first:
+it has no deck and the fewest rules.</li>
+<li><strong>No adapter.</strong> The old runtime kept serving the doc while the games
+used the new core; each world moved whole. When the doc moved (step 5),
+the old runtime was deleted.</li>
+<li><strong>The door last.</strong> It holds the editor&#39;s typing and merging. It changed
+only once the core around it had run in three worlds.</li>
+</ul>
+</main>
+<script type="module" src="../../site.js?v=dd1545b"></script>
+</body>
+</html>

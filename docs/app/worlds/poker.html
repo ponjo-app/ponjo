@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Poker table</title>
+<link rel="icon" href="../../../build/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../../dist/web/app.css?v=dd1545b">
+<link rel="stylesheet" href="../../../site.css?v=dd1545b">
+</head>
+<body>
+<header class="site-header">
+  <a class="site-brand" href="../../../index.html">Ponjo</a>
+  <nav class="site-nav" aria-label="Pages">
+    <a href="../../../index.html">Download</a>
+    <a href="../../../introduction.html">Introduction</a>
+    <a href="../../../docs/" aria-current="page">Docs</a>
+    <details class="site-drop" name="site-menu">
+      <summary>Development<svg class="pj-icon" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></summary>
+      <div class="pj-block-menu site-menu">
+        <a href="../../../architecture.html">Architecture</a>
+        <a href="../../../design.html">Design system</a>
+        <a href="../../../avatars.html">Avatar design</a>
+      </div>
+    </details>
+    <details class="site-drop" name="site-menu">
+      <summary>Preview<svg class="pj-icon" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></summary>
+      <div class="pj-block-menu site-menu">
+        <a href="../../../preview/">Doc mode</a>
+        <a href="../../../preview/?folder">Folder mode</a>
+        <a href="../../../poker.html">Poker</a>
+        <a href="../../../werewolf.html">Werewolf</a>
+        <a href="../../../spy.html">Who's the Spy</a>
+      </div>
+    </details>
+  </nav>
+  <span class="pj-spacer"></span>
+  <a class="pj-icon-btn" href="https://github.com/ponjo-app/ponjo" aria-label="GitHub" title="GitHub"><svg class="pj-icon" viewBox="0 0 24 24"><path fill="currentColor" stroke="none" d="M12 2C6.48 2 2 6.58 2 12.23c0 4.52 2.87 8.35 6.84 9.7.5.1.68-.22.68-.49l-.01-1.7c-2.78.62-3.37-1.38-3.37-1.38-.46-1.18-1.11-1.5-1.11-1.5-.91-.64.07-.62.07-.62 1 .07 1.53 1.06 1.53 1.06.9 1.57 2.35 1.12 2.92.86.09-.67.35-1.12.64-1.38-2.22-.26-4.56-1.14-4.56-5.07 0-1.12.39-2.04 1.03-2.76-.1-.26-.45-1.3.1-2.71 0 0 .84-.28 2.75 1.05A9.36 9.36 0 0 1 12 6.98c.85 0 1.71.12 2.51.34 1.91-1.33 2.75-1.05 2.75-1.05.55 1.41.2 2.45.1 2.71.64.72 1.03 1.64 1.03 2.76 0 3.94-2.34 4.81-4.57 5.06.36.32.68.94.68 1.9l-.01 2.81c0 .27.18.6.69.49A10.1 10.1 0 0 0 22 12.23C22 6.58 17.52 2 12 2z"/></svg></a>
+  <button class="pj-icon-btn site-theme" type="button" aria-label="Switch theme" title="Switch theme"><svg class="pj-icon site-moon" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"/></svg><svg class="pj-icon site-sun" viewBox="0 0 24 24"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg></button>
+</header>
+<main class="doc-page">
+<h1 id="poker-table">Poker table</h1>
+<p>The poker page (<code>preview/poker.js</code>): No-Limit Hold&#39;em with the opener, AI
+players (<code>PERSONAS</code>), friends who join by a link, a dealer and chat: a
+world of members on the <a href="../../runtime/README.html">runtime</a>
+(<code>preview/poker-world.js</code>), stored in a <a href="rooms.html">room</a> where the AI
+seats, dealer and clock run.</p>
+<h2 id="state">State</h2>
+<pre><code>Table { players, slots, names, hand, handNo, button, topUp, joining, leaving,
+        chat, reactions, seats: { id → { thoughts: [{ hand, street, text, action }] } } }
+Line  { id, by, as, text, to (whom it names), depth, about, hand, at }
+hand  as in preview/poker-dealer.js, with no deck
+</code></pre>
+<p><code>thoughts</code> is the seat&#39;s state, written by <code>apply</code> from its own runs. The
+answer ledger (answered, tries, why) is the runtime wrapper&#39;s, in the state.
+A visitor&#39;s bankroll is their browser&#39;s, apart from the table.</p>
+<h2 id="store">Store</h2>
+<p>The room holds <code>{ rev, state }</code> and gives each member only <code>read(member)</code>:
+people&#39;s pages, AI seats, the dealer, the clock. <code>wait(member, rev)</code>
+returns once that member&#39;s view changed. <code>commit</code> sets <code>by</code> from the
+member&#39;s token and stamps <code>at</code>. A change is <code>{ by, at, as, base, answers, body }</code>; <code>base</code> of a move is <code>{ hand, n }</code>, the turn it was made on. No
+page, the opener&#39;s included, can read another seat&#39;s cards. <code>past</code> is
+unused: the hand and the chat are in the state. There are no effects.</p>
+<h2 id="world">World</h2>
+<pre><code>view(state, member, past)    → { content, actions, tasks, seen, rules }
+apply(state, change, past)   → { state, effects: [] } | { refused: why }
+fallback(state, task, at)    → state         a check, else a fold; for other tasks, nothing
+tries                        3
+</code></pre>
+<p>One <code>view</code> for every seat:</p>
+<ul>
+<li><code>content</code>: the table, this hand&#39;s actions and reactions, the last 24
+lines; its own hole cards, others&#39; at a showdown; for people, the AI
+seats&#39; cards and <code>thoughts</code> once the hand is over; for an AI seat, its
+own <code>thoughts</code> this hand, and why its last try was refused.</li>
+<li><code>actions</code>: on its turn <code>fold</code>, <code>check</code>, <code>call</code>, <code>bet</code>, <code>raise</code>, <code>allin</code>,
+with legal amounts; <code>say</code>, <code>react</code>; people&#39;s <code>sit</code>, <code>topup</code>, <code>leave</code>;
+the opener&#39;s <code>next</code>, <code>add</code>, <code>remove</code>, <code>invite</code>, <code>turnAway</code>.</li>
+<li><code>seen</code>: all presence, to all. <code>rules</code>: <code>RULES</code>, and a persona&#39;s style.</li>
+</ul>
+<table>
+<thead>
+<tr>
+<th><code>given</code></th>
+<th><code>as</code></th>
+<th><code>kind</code></th>
+<th>When</th>
+<th><code>from</code></th>
+<th><code>at</code></th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>turn:&lt;hand&gt;:&lt;n&gt;</code></td>
+<td>the one to act</td>
+<td>turn</td>
+<td>the hand is live</td>
+<td>—</td>
+<td>30 s after the turn began</td>
+</tr>
+<tr>
+<td><code>line:&lt;id&gt;</code></td>
+<td>an AI seat the line names</td>
+<td>ask</td>
+<td><code>depth</code> &lt; <code>DEPTH</code> (2)</td>
+<td>its people</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>line:&lt;id&gt;</code></td>
+<td>one AI seat, for a person&#39;s line to the whole table</td>
+<td>ask</td>
+<td>as above</td>
+<td>the person</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>react:&lt;hand&gt;</code></td>
+<td>the winner and one other still in, if AI</td>
+<td>turn</td>
+<td>a big hand ended</td>
+<td>—</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>deal:&lt;handNo&gt;</code></td>
+<td>the dealer</td>
+<td>turn, or ask after <code>next</code></td>
+<td>the opener sat, or chose <code>next</code></td>
+<td>the opener</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>board:&lt;hand&gt;:&lt;street&gt;</code></td>
+<td>the dealer</td>
+<td>turn</td>
+<td>a street closed, two or more still in</td>
+<td>—</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>timeout:&lt;hand&gt;:&lt;n&gt;</code></td>
+<td>the clock</td>
+<td>turn</td>
+<td>a turn is live</td>
+<td>—</td>
+<td>the turn&#39;s <code>at</code></td>
+</tr>
+</tbody></table>
+<p><code>depth</code> is 0 for a person&#39;s line or the rules&#39;, else one more than the
+agent line&#39;s. An agent&#39;s line carries on the <code>from</code> of the tasks its run
+answered. <code>DEPTH</code> is the table&#39;s rule; a hello is said at it, so it sets
+off nothing. A seat&#39;s turn and its lines are separate tasks; its
+controller batches them into one run and one change. <code>talk</code>: a line task is
+listed always for a person&#39;s line, else when a roll falls under the
+persona&#39;s <code>talk</code>.</p>
+<ul>
+<li>Open: the roll: a hash of the seat and <code>given</code>, as in the code
+(<code>rolls</code>), or a seed in <code>deal</code>.</li>
+<li>Open: who gets a person&#39;s whole-table line: the next AI seat after the
+speaker, as in the code (its <code>next</code>), or one picked by the roll.</li>
+<li>Open: a person alone with AI seats: 30 s too, or a longer <code>at</code>. In the
+code, none.</li>
+</ul>
+<p>Answers. <code>apply</code> lands a move only if <code>base</code> is still the turn and the
+dealer says it is legal; a stale or illegal change is refused, whoever
+sent it. A person sees why at once. For an AI seat the ledger counts a try
+and the turn is due again; at 3 tries, or when the run failed or the
+wallet would not start it, the <code>fallback</code> plays. A refused change lands
+nothing: not its line, not its reaction, not its thinking. A move that lands
+takes its reaction and its line with it.</p>
+<p>Time. The clock&#39;s <code>timeout</code>, with its base still the turn, plays the
+seat&#39;s <code>fallback</code>; stale, it is refused. No rule reads a clock: the time
+is the store&#39;s <code>at</code>.</p>
+<h2 id="members-and-controllers">Members and controllers</h2>
+<p>One controller per member: the opener and each friend on their pages; each
+AI seat, the dealer and the clock in the room. A person&#39;s screen shows every
+task (&quot;your turn&quot;, with its <code>at</code>); people also act unasked: chat, react, buy
+in, leave, <code>next</code>. The opener&#39;s <code>sit</code> lands the AI seats&#39; hellos as lines.</p>
+<h2 id="presence">Presence</h2>
+<p><code>thinking</code> is presence while a run goes, seen by all, never state. A run
+commits as soon as it ends. A screen may type a fresh line out.</p>
+<h2 id="system-members">System members</h2>
+<p>The dealer is a script in the room that holds the deck: on <code>deal</code> it
+shuffles and commits the hole cards and the hand, on <code>board</code> the street&#39;s
+cards. <code>act</code> (legal moves, pots, the showdown) stays pure in <code>apply</code> and
+deals from no deck. The clock wakes on the room&#39;s alarm at its next task&#39;s
+<code>at</code> and commits <code>timeout</code> with that turn as base.</p>
+<h2 id="agent-clients">Agent clients</h2>
+<p>AI seats run in the room, beside the store, with their wallets. The
+renderer gives the world&#39;s actions as the only tools, and <code>thinking</code> as
+text. A seat uses Ponjo&#39;s key, or that of the visitor who brought it, held
+by the room as <a href="rooms.html">rooms</a> says. The owner always pays; the
+wallet&#39;s policy on <code>from</code> says whose lines start a run. A turn it will not
+start is answered as not started and falls back; the breaker counts no
+turns. Capacity: one queue per key in the room, turns before lines.</p>
+<h2 id="differs">Differs</h2>
+<ul>
+<li>Its room&#39;s (<a href="rooms.html#differs">rooms</a>).</li>
+<li>The dealer keeps no deck: for <code>deal</code> and <code>board</code> it draws from a fresh
+shuffle of the cards not yet out (<code>draw</code>, <code>preview/poker-dealer.js</code>); its
+view lists every card out, and <code>apply</code> checks its cards are new and
+enough. Its task is <code>deal:&lt;n&gt;</code>, <code>n</code> counting deals, a hand or none for
+want of chips; the first has an <code>at</code>, once the hellos are said.</li>
+<li>An AI seat&#39;s program waits its persona&#39;s pace (<code>preview/game-tables.js</code>)
+after the model answers, so its change lands that much later.</li>
+</ul>
+</main>
+<script type="module" src="../../../site.js?v=dd1545b"></script>
+</body>
+</html>

@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The doc world</title>
+<link rel="icon" href="../../../build/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../../dist/web/app.css?v=dd1545b">
+<link rel="stylesheet" href="../../../site.css?v=dd1545b">
+</head>
+<body>
+<header class="site-header">
+  <a class="site-brand" href="../../../index.html">Ponjo</a>
+  <nav class="site-nav" aria-label="Pages">
+    <a href="../../../index.html">Download</a>
+    <a href="../../../introduction.html">Introduction</a>
+    <a href="../../../docs/" aria-current="page">Docs</a>
+    <details class="site-drop" name="site-menu">
+      <summary>Development<svg class="pj-icon" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></summary>
+      <div class="pj-block-menu site-menu">
+        <a href="../../../architecture.html">Architecture</a>
+        <a href="../../../design.html">Design system</a>
+        <a href="../../../avatars.html">Avatar design</a>
+      </div>
+    </details>
+    <details class="site-drop" name="site-menu">
+      <summary>Preview<svg class="pj-icon" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></summary>
+      <div class="pj-block-menu site-menu">
+        <a href="../../../preview/">Doc mode</a>
+        <a href="../../../preview/?folder">Folder mode</a>
+        <a href="../../../poker.html">Poker</a>
+        <a href="../../../werewolf.html">Werewolf</a>
+        <a href="../../../spy.html">Who's the Spy</a>
+      </div>
+    </details>
+  </nav>
+  <span class="pj-spacer"></span>
+  <a class="pj-icon-btn" href="https://github.com/ponjo-app/ponjo" aria-label="GitHub" title="GitHub"><svg class="pj-icon" viewBox="0 0 24 24"><path fill="currentColor" stroke="none" d="M12 2C6.48 2 2 6.58 2 12.23c0 4.52 2.87 8.35 6.84 9.7.5.1.68-.22.68-.49l-.01-1.7c-2.78.62-3.37-1.38-3.37-1.38-.46-1.18-1.11-1.5-1.11-1.5-.91-.64.07-.62.07-.62 1 .07 1.53 1.06 1.53 1.06.9 1.57 2.35 1.12 2.92.86.09-.67.35-1.12.64-1.38-2.22-.26-4.56-1.14-4.56-5.07 0-1.12.39-2.04 1.03-2.76-.1-.26-.45-1.3.1-2.71 0 0 .84-.28 2.75 1.05A9.36 9.36 0 0 1 12 6.98c.85 0 1.71.12 2.51.34 1.91-1.33 2.75-1.05 2.75-1.05.55 1.41.2 2.45.1 2.71.64.72 1.03 1.64 1.03 2.76 0 3.94-2.34 4.81-4.57 5.06.36.32.68.94.68 1.9l-.01 2.81c0 .27.18.6.69.49A10.1 10.1 0 0 0 22 12.23C22 6.58 17.52 2 12 2z"/></svg></a>
+  <button class="pj-icon-btn site-theme" type="button" aria-label="Switch theme" title="Switch theme"><svg class="pj-icon site-moon" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"/></svg><svg class="pj-icon site-sun" viewBox="0 0 24 24"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg></button>
+</header>
+<main class="doc-page">
+<h1 id="the-doc-world">The doc world</h1>
+<p>A text doc and its comment threads, which people and buddies co-author:
+Ponjo&#39;s world on the <a href="../../runtime/README.html">Blackboard Agent Runtime</a>.
+What a person sees: <a href="../host-spec.html#buddies">host spec</a>; what a run gets
+and returns: <a href="../agent-config.html">agent config</a>.</p>
+<h2 id="state">State</h2>
+<pre><code>State   { text, threads, record, watches, typed, settled, ledger }    at rev
+Watch   { by, seen (a text&#39;s hash), since (least depth of changes since), wake }
+</code></pre>
+<p><code>text</code> and <code>threads</code> are the doc and its <a href="https://github.com/ponjo-app/ponjo/blob/main/spec/SPEC.md">sidecar</a>.
+The rest is the door&#39;s own, kept with <code>rev</code> in <code>history/&lt;doc&gt;/</code>, so a
+restart finds the same tasks. <code>record</code> says who wrote each comment, as the
+door authenticated them, with its depth and, for a buddy&#39;s, the <code>from</code> of
+the tasks its run answered; a comment not in it is by <code>outside</code>. <code>typed</code> is
+when people last changed the text, <code>settled</code> the <code>typed</code> the clock last
+settled. <code>ledger</code> is the runtime&#39;s, kept by its wrapper around <code>apply</code>. A
+watch is never in the sidecar: in a file it would vouch for no one. With a
+sidecar of another version, nothing is due.</p>
+<h2 id="store">Store</h2>
+<p>The doc&#39;s door (<code>src/host/doc-service.js</code>), holding both files in memory,
+with the rest of the state and the ledger beside it (<code>src/host/doc-store.js</code>).</p>
+<pre><code>read(member)        → { rev, view }
+wait(member, rev)   → rev        once that member&#39;s view changed
+commit(change)      → { rev, effects } | { refused: why }
+Change  { by, at, as, base, answers, body }
+</code></pre>
+<p><code>commit</code> sets <code>by</code> from the connection (a window, a teammate&#39;s page
+through the relay, a buddy&#39;s or the clock&#39;s controller) and <code>at</code>, comments&#39;
+too. A window&#39;s <code>base</code> is a rev, a run&#39;s the hash of the text it was given.
+The past is history&#39;s versions by SHA-256: <code>apply</code> moves a window&#39;s
+operations by character over the edits since its base, and refuses one
+whose base is no longer kept (<code>stale</code>). A whole text (a run&#39;s group, an
+outside change, an undo) merges by line, <code>merge3</code>, the doc&#39;s lines winning.
+A run&#39;s change is one commit; each group is still a version, to undo
+alone. Any text or comment change wakes every member; a settle, only those
+whose tasks it moves.</p>
+<h2 id="world">World</h2>
+<p><code>src/core/doc-world.js</code>. <code>view(state, member, past)</code>:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>A person</th>
+<th>A buddy</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>content</code></td>
+<td>the text, the threads, the members</td>
+<td>the same</td>
+</tr>
+<tr>
+<td><code>actions</code></td>
+<td>type, comment, resolve, reopen, watch, undo, restore; the owner more</td>
+<td>comment <code>{ thread | anchor, body, edits }</code></td>
+</tr>
+<tr>
+<td><code>tasks</code></td>
+<td>Open, below</td>
+<td>its asks and its watch</td>
+</tr>
+<tr>
+<td><code>seen</code></td>
+<td>everyone in the doc</td>
+<td>everyone in the doc</td>
+</tr>
+<tr>
+<td><code>rules</code></td>
+<td>the help</td>
+<td>what any member can do and the etiquette (<code>buildPrompt</code>)</td>
+</tr>
+</tbody></table>
+<p>Tasks. One per <code>given</code>, <code>as</code> the buddy:</p>
+<ul>
+<li><code>ask</code>: <code>given</code> is a comment that asks it, until the buddy comments
+after it. A comment <code>record</code> has by a member who may write asks whom it
+@mentions, or with none the thread&#39;s buddies, <code>from</code> its author, <code>depth</code>
+0; a buddy&#39;s, each other buddy it @mentions, <code>from</code> its record&#39;s, <code>depth</code>
+its own + 1. An empty one asks no one; resolving drops the thread&#39;s asks.</li>
+<li><code>watch</code>: <code>given</code> is the watch and its <code>seen</code>; <code>from</code> its <code>by</code>; <code>depth</code>
+its <code>since</code>. Listed when <code>since</code> is set, the text&#39;s hash is not <code>seen</code>,
+the text holds a <code>wake</code> line if it has any, and <code>settled</code> is <code>typed</code>.</li>
+</ul>
+<p>A run takes every task the wallet lets start; a comment written meanwhile
+is a new task, for the next. No member waits on a buddy&#39;s task, so none
+has an <code>at</code>; a run that hangs fails at its timeout. Open: whether a
+comment that @mentions a person is a task for them.</p>
+<p>Answers. A buddy&#39;s change lands its groups, then its comments, a reply
+just after the latest comment given in its thread; one in a thread
+resolved meanwhile is dropped, with its edits. Every answer to an ask is a
+comment, by the rule the sidecar has: a run that posted none in a given
+thread gets &quot;Looked; nothing to change.&quot;; a failed one, or one the wallet
+did not start, &quot;Could not finish.&quot;, its why to the owner alone. Retry is a
+person asking again.</p>
+<p>The door moves a watch on every change that answers it, failed too:
+<code>seen</code> becomes the hash of the text it lands, or of the one given if
+another&#39;s change landed meanwhile; <code>since</code> clears; its <code>wake</code> lines are
+kept. Each text change lowers other watches&#39; <code>since</code>.</p>
+<p><code>apply</code> refuses an illegal change from anyone: a reply on no thread, a
+sidecar that may not be written, a stale base. <code>fallback</code> gives nothing:
+an ask or a watch past its tries is gone. Open: the doc&#39;s limit of tries.</p>
+<p>Time. The clock is a member on the doc host. While <code>typed</code> is past
+<code>settled</code> it has one <code>turn</code>, <code>given</code> that <code>typed</code>, <code>at</code> 5 s after
+(<code>SETTLE_MS</code>); its change sets <code>settled</code>, unless typing made it stale.
+Until then no watch is listed, so a run only a watch gave is stopped. An
+outside change is ready at once: the door took it whole.</p>
+<p>Disagreement. Open, as in the runtime: how buddies undoing each other for
+different people are seen.</p>
+<h2 id="members-and-controllers">Members and controllers</h2>
+<p>The owner, the room&#39;s teammates, the buddies (<code>buddies/</code>, a project&#39;s
+<code>.ponjo/buddies/</code>) and the clock, each with a controller. A person&#39;s is
+their window or page (<code>web/client.js</code>): it shows every task, and the
+person also acts of their own accord, which is most of what a doc sees. A
+buddy&#39;s runs on the owner&#39;s doc host, one per open doc, and acts only on
+its tasks; so does the clock&#39;s (<code>src/host/buddy-runtime.js</code>). A buddy file changed by <code>git pull</code> may rename it, changing whom
+an old <code>@name</code> names, but vouches for no ask.</p>
+<h2 id="presence">Presence</h2>
+<p>Cursors, <code>here</code>, typing, a buddy at work: shown to all, kept nowhere.</p>
+<h2 id="outside-programs">Outside programs</h2>
+<p>Another editor, <code>git pull</code>, a synced folder: members with no tasks, each
+<code>by: outside</code>. A doc file is taken once still for 50 ms, saved to history
+and merged by line from the text the file last held. A sidecar&#39;s new
+comments are in no <code>record</code> and ask no one. Another owner&#39;s Ponjo on the
+same files is one too: each door is a store, and sees the other&#39;s commits
+as outside writes, so no ask runs on both.</p>
+<h2 id="agent-clients">Agent clients</h2>
+<p>Renderers. Files, for a command-line agent: copies of the doc and sidecar
+in a private folder, the persona, <code>rules</code> and the tasks on stdin;
+Translate (<code>toChanges</code>) turns the copies and <code>PONJO_GROUPS</code>, <code>PONJO_WAKE</code>,
+<code>PONJO_ACTIONS</code> into one change, ids included. Tools: the Ponjo agent&#39;s
+<code>comment</code>, with its edits (<a href="../ponjo-agent.html">Ponjo agent</a>).</p>
+<p>Wallet, the config folder. The owner pays, for tasks whose <code>from</code> is
+themselves or teammates who can write; quotas per person (none yet); the
+depth limit and the breaker (Ponjo&#39;s numbers Open in the runtime); the
+agent, its settings and secrets; effects in <code>actions/</code>, records in
+<code>logs/actions.jsonl</code>. A change of the agent asks nothing again.</p>
+<p>Capacity. One queue per provider and key, for the Ponjo agent&#39;s calls. A
+command-line agent calls its provider itself and waits on its own.</p>
+<h2 id="differs">Differs</h2>
+<ul>
+<li>People have no controllers. Typing, comments, undo and outside files
+land at the door of its own accord; what they do to the watches and the
+typing to settle is the world&#39;s <code>noted</code>, not <code>apply</code>.</li>
+<li><code>rev</code> starts again at each opening; <code>typed</code>, <code>settled</code> and the ledger
+are in memory. Kept are <code>record</code> (the history&#39;s <code>taken.json</code> and
+<code>posted.json</code>) and the watches (<code>watching.json</code>, <code>seen</code> as <code>print</code>), a
+watch&#39;s <code>since</code> set again on opening.</li>
+<li>What a watcher is told is new since its last run (<code>newSince</code>), and why
+its last run failed, are in memory: after a restart it is a first look.</li>
+<li>The past is the last 1,000 edits in memory (<code>doc-service.js</code>), not
+history&#39;s versions by hash: a window&#39;s edit from before them is <code>stale</code>.</li>
+<li>The limits: a depth limit of 1,000 (<code>buddy-runtime.js</code>), and N is
+Settings &gt; Agents&#39; <code>pauseAfter</code> runs within <code>pauseWithin</code> minutes since a
+person last acted (300 in 10). Capacity is one run per buddy per doc;
+runs share no queue.</li>
+</ul>
+</main>
+<script type="module" src="../../../site.js?v=dd1545b"></script>
+</body>
+</html>

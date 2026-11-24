@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Architecture</title>
+<link rel="icon" href="../../build/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../dist/web/app.css?v=dd1545b">
+<link rel="stylesheet" href="../../site.css?v=dd1545b">
+</head>
+<body>
+<header class="site-header">
+  <a class="site-brand" href="../../index.html">Ponjo</a>
+  <nav class="site-nav" aria-label="Pages">
+    <a href="../../index.html">Download</a>
+    <a href="../../introduction.html">Introduction</a>
+    <a href="../../docs/" aria-current="page">Docs</a>
+    <details class="site-drop" name="site-menu">
+      <summary>Development<svg class="pj-icon" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></summary>
+      <div class="pj-block-menu site-menu">
+        <a href="../../architecture.html">Architecture</a>
+        <a href="../../design.html">Design system</a>
+        <a href="../../avatars.html">Avatar design</a>
+      </div>
+    </details>
+    <details class="site-drop" name="site-menu">
+      <summary>Preview<svg class="pj-icon" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></summary>
+      <div class="pj-block-menu site-menu">
+        <a href="../../preview/">Doc mode</a>
+        <a href="../../preview/?folder">Folder mode</a>
+        <a href="../../poker.html">Poker</a>
+        <a href="../../werewolf.html">Werewolf</a>
+        <a href="../../spy.html">Who's the Spy</a>
+      </div>
+    </details>
+  </nav>
+  <span class="pj-spacer"></span>
+  <a class="pj-icon-btn" href="https://github.com/ponjo-app/ponjo" aria-label="GitHub" title="GitHub"><svg class="pj-icon" viewBox="0 0 24 24"><path fill="currentColor" stroke="none" d="M12 2C6.48 2 2 6.58 2 12.23c0 4.52 2.87 8.35 6.84 9.7.5.1.68-.22.68-.49l-.01-1.7c-2.78.62-3.37-1.38-3.37-1.38-.46-1.18-1.11-1.5-1.11-1.5-.91-.64.07-.62.07-.62 1 .07 1.53 1.06 1.53 1.06.9 1.57 2.35 1.12 2.92.86.09-.67.35-1.12.64-1.38-2.22-.26-4.56-1.14-4.56-5.07 0-1.12.39-2.04 1.03-2.76-.1-.26-.45-1.3.1-2.71 0 0 .84-.28 2.75 1.05A9.36 9.36 0 0 1 12 6.98c.85 0 1.71.12 2.51.34 1.91-1.33 2.75-1.05 2.75-1.05.55 1.41.2 2.45.1 2.71.64.72 1.03 1.64 1.03 2.76 0 3.94-2.34 4.81-4.57 5.06.36.32.68.94.68 1.9l-.01 2.81c0 .27.18.6.69.49A10.1 10.1 0 0 0 22 12.23C22 6.58 17.52 2 12 2z"/></svg></a>
+  <button class="pj-icon-btn site-theme" type="button" aria-label="Switch theme" title="Switch theme"><svg class="pj-icon site-moon" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"/></svg><svg class="pj-icon site-sun" viewBox="0 0 24 24"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg></button>
+</header>
+<main class="doc-page">
+<h1 id="architecture">Architecture</h1>
+<p>How the Ponjo app is built. How buddies run is a separate design that sits
+on top of it: <a href="../runtime/README.html">agent runtime</a>. Every rule, limit and call
+is in the <a href="host-spec.html">host spec</a>.</p>
+<h2 id="principles">Principles</h2>
+<table>
+<thead>
+<tr>
+<th>Principle</th>
+<th>How the architecture follows it</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Files are the truth.</strong> Docs, comments and buddies are plain files; everything else is a cache or this machine&#39;s own.</td>
+<td>The doc host reads the files when a doc opens and writes them after every change. History, logs and runtime state live in the config folder and can be lost without losing a doc. A file changed by another program is merged in, not overwritten.</td>
+</tr>
+<tr>
+<td><strong>One door, one writer.</strong> Every change to a doc goes through one place, in one order.</td>
+<td>Each open doc has one Doc component that applies changes one at a time and numbers them (<code>rev</code>). Windows, teammates&#39; pages and the agent runtime all use the same door; none writes a file itself.</td>
+</tr>
+<tr>
+<td><strong>Never lose typing.</strong> What a person types survives other writers, crashes and failed writes.</td>
+<td>Typing is merged by character (OT); late whole texts by line (<code>merge3</code>), the doc&#39;s lines winning. Each edit lands at most once, by its id. Files are written atomically, before clients are told. A failed write keeps the change and retries.</td>
+</tr>
+<tr>
+<td><strong>Shared files are data, never instructions.</strong></td>
+<td>Nothing read from a doc, its comments or a buddy file can start a program here. <code>who</code> is set from the connection, never from a message; levels are checked once, at the door.</td>
+</tr>
+<tr>
+<td><strong>One component, one thing, through the fewest calls.</strong></td>
+<td>Each component in the table below owns one kind of state behind a few calls. Imports only go one way, which <code>npm run lint</code> enforces.</td>
+</tr>
+<tr>
+<td><strong>Stable ids, not names.</strong></td>
+<td>Members, buddies, comments and edits are joined by id; names, paths and colors are only shown.</td>
+</tr>
+</tbody></table>
+<h2 id="context">Context</h2>
+<pre class="doc-diagram">flowchart LR
+  win[&quot;App windows&quot;] -- message port --&gt; host
+  page[&quot;Teammates' pages&quot;] -- WebSocket --&gt; relay[&quot;Relay&quot;] --&gt; host
+  rt[&quot;Agent runtime&quot;] -- same door --&gt; host
+  host[&quot;Doc host&quot;] -- reads, writes --&gt; files[(&quot;Files&quot;)]
+  other[&quot;Other programs&quot;] -. change .-&gt; files</pre>
+<p>The doc host is the only process that writes docs. Everyone else is a
+client of it: app windows, teammates&#39; pages through the relay, and the
+agent runtime. Other programs may change the files; the host notices and
+merges their changes.</p>
+<h2 id="processes">Processes</h2>
+<table>
+<thead>
+<tr>
+<th>Process</th>
+<th>Code</th>
+<th>Does</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Shell</td>
+<td><code>desktop/</code></td>
+<td>Electron main: windows, menus, dialogs, the keychain; starts the doc host</td>
+</tr>
+<tr>
+<td>Pages</td>
+<td><code>web/</code></td>
+<td>the editor; turn typing into operations and back</td>
+</tr>
+<tr>
+<td>Doc host</td>
+<td><code>src/host/</code>, <code>desktop/doc-host.js</code></td>
+<td>holds open docs, does every write</td>
+</tr>
+<tr>
+<td>Relay</td>
+<td><code>relay/</code></td>
+<td>a Cloudflare Worker that forwards messages between the host and teammates&#39; pages, storing nothing of a doc; deployed again at infer.ponjo.app, it keeps the game pages&#39; tables, each in a room with its state (<a href="worlds/rooms.html">rooms</a>)</td>
+</tr>
+</tbody></table>
+<h2 id="components-in-the-doc-host">Components in the doc host</h2>
+<table>
+<thead>
+<tr>
+<th>Component</th>
+<th>Owns</th>
+<th>Interface</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Doc (<code>doc-service.js</code>)</td>
+<td>one open doc: its text, comments and change log, in memory</td>
+<td>the door (below)</td>
+</tr>
+<tr>
+<td>Opener (<code>open-doc.js</code>)</td>
+<td>joins a doc to its buddies on the <a href="../runtime/README.html">runtime&#39;s core</a>: the doc&#39;s store (<code>doc-store.js</code>) keeps the doc world&#39;s state beside the door and lands each run in one door call; a controller per buddy, and the clock&#39;s (<code>buddy-runtime.js</code>)</td>
+<td><code>openDoc</code></td>
+</tr>
+<tr>
+<td>History</td>
+<td>the doc&#39;s versions on disk</td>
+<td><code>record</code>, <code>list</code>, <code>read</code></td>
+</tr>
+<tr>
+<td>Store</td>
+<td>reading, writing and watching files</td>
+<td><code>read</code>, <code>write</code>, <code>watch</code>, <code>move</code></td>
+</tr>
+<tr>
+<td>ProjectService</td>
+<td>the project&#39;s file tree, as everyone sees it</td>
+<td><code>list</code>, <code>read</code>, <code>open</code></td>
+</tr>
+<tr>
+<td>Room</td>
+<td>who is in the shared room, at what level</td>
+<td><code>open</code>, <code>close</code>, <code>lock</code>, <code>setLevel</code>, <code>kick</code></td>
+</tr>
+</tbody></table>
+<h2 id="the-door">The door</h2>
+<p>Every client talks to a doc the same way:</p>
+<pre><code>call(type, arg, who)       who = { id, name, kind, level }, set by the host
+  state                    → { text, threads, rev, ... }; with { since }, the changes missed
+  submit / comment / undo  → a change, landed in order, told to all as an `ops` event
+subscribe(fn)              every change as it lands (a client in the doc host)
+</code></pre>
+<p><code>who</code> comes from the connection, never from the message. Levels are
+<code>read &lt; write &lt; owner</code>, checked once at the door.</p>
+<h2 id="consistency">Consistency</h2>
+<ul>
+<li><strong>One writer per doc.</strong> The doc applies changes one at a time and gives
+each a <code>rev</code>. A restart starts a new <code>epoch</code>.</li>
+<li><strong>Two ways to merge.</strong> A window&#39;s edit is a small operation on a recent
+<code>rev</code>; it is shifted over newer changes by character (OT). A whole text
+that arrives late (an agent&#39;s result, an outside change, an undo) is
+merged by line (<code>merge3</code>), and the doc&#39;s lines win where both changed.</li>
+<li><strong>At most once.</strong> Every edit has an id; a resend is answered, not landed
+again.</li>
+<li><strong>Catch up.</strong> A client that missed anything asks for the changes since its
+<code>rev</code>, or the whole text if the log no longer reaches back.</li>
+</ul>
+<h2 id="persistence-and-failure">Persistence and failure</h2>
+<ul>
+<li>The file is written after each change, before clients are told.</li>
+<li>Every write is atomic: a temp file, then rename. A crash never leaves a
+half-written file.</li>
+<li>A failed write keeps the change in memory, retries with backoff, and
+tells clients &quot;not saved&quot;.</li>
+<li>A file changed outside is saved to history, then merged like a late text.</li>
+</ul>
+<h2 id="security">Security</h2>
+<ul>
+<li>Shared files are data, never instructions: nothing in them can start a
+program on this machine.</li>
+<li>A teammate&#39;s id is the hash of a key made in their browser.</li>
+<li>The relay can read what passes through it; it is ours.</li>
+</ul>
+<h2 id="code-layout">Code layout</h2>
+<pre><code>src/core/   logic with no I/O of its own, shared by host, page and Worker
+src/store/  files
+src/host/   the doc host&#39;s components
+web/        pages and editors
+desktop/    the Electron shell
+</code></pre>
+<p>Imports only go down this list (<code>web/</code> and <code>desktop/</code> use the ones they
+need); <code>npm run lint</code> enforces it.</p>
+</main>
+<script type="module" src="../../site.js?v=dd1545b"></script>
+<script type="module" src="../../preview/docs.js?v=dd1545b"></script>
+</body>
+</html>

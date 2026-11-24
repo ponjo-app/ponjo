@@ -1,0 +1,367 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>User Experience</title>
+<link rel="icon" href="../../build/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../dist/web/app.css?v=dd1545b">
+<link rel="stylesheet" href="../../site.css?v=dd1545b">
+</head>
+<body>
+<header class="site-header">
+  <a class="site-brand" href="../../index.html">Ponjo</a>
+  <nav class="site-nav" aria-label="Pages">
+    <a href="../../index.html">Download</a>
+    <a href="../../introduction.html">Introduction</a>
+    <a href="../../docs/" aria-current="page">Docs</a>
+    <details class="site-drop" name="site-menu">
+      <summary>Development<svg class="pj-icon" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></summary>
+      <div class="pj-block-menu site-menu">
+        <a href="../../architecture.html">Architecture</a>
+        <a href="../../design.html">Design system</a>
+        <a href="../../avatars.html">Avatar design</a>
+      </div>
+    </details>
+    <details class="site-drop" name="site-menu">
+      <summary>Preview<svg class="pj-icon" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></summary>
+      <div class="pj-block-menu site-menu">
+        <a href="../../preview/">Doc mode</a>
+        <a href="../../preview/?folder">Folder mode</a>
+        <a href="../../poker.html">Poker</a>
+        <a href="../../werewolf.html">Werewolf</a>
+        <a href="../../spy.html">Who's the Spy</a>
+      </div>
+    </details>
+  </nav>
+  <span class="pj-spacer"></span>
+  <a class="pj-icon-btn" href="https://github.com/ponjo-app/ponjo" aria-label="GitHub" title="GitHub"><svg class="pj-icon" viewBox="0 0 24 24"><path fill="currentColor" stroke="none" d="M12 2C6.48 2 2 6.58 2 12.23c0 4.52 2.87 8.35 6.84 9.7.5.1.68-.22.68-.49l-.01-1.7c-2.78.62-3.37-1.38-3.37-1.38-.46-1.18-1.11-1.5-1.11-1.5-.91-.64.07-.62.07-.62 1 .07 1.53 1.06 1.53 1.06.9 1.57 2.35 1.12 2.92.86.09-.67.35-1.12.64-1.38-2.22-.26-4.56-1.14-4.56-5.07 0-1.12.39-2.04 1.03-2.76-.1-.26-.45-1.3.1-2.71 0 0 .84-.28 2.75 1.05A9.36 9.36 0 0 1 12 6.98c.85 0 1.71.12 2.51.34 1.91-1.33 2.75-1.05 2.75-1.05.55 1.41.2 2.45.1 2.71.64.72 1.03 1.64 1.03 2.76 0 3.94-2.34 4.81-4.57 5.06.36.32.68.94.68 1.9l-.01 2.81c0 .27.18.6.69.49A10.1 10.1 0 0 0 22 12.23C22 6.58 17.52 2 12 2z"/></svg></a>
+  <button class="pj-icon-btn site-theme" type="button" aria-label="Switch theme" title="Switch theme"><svg class="pj-icon site-moon" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"/></svg><svg class="pj-icon site-sun" viewBox="0 0 24 24"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg></button>
+</header>
+<main class="doc-page">
+<h1 id="user-experience">User Experience</h1>
+<p>How people and AI buddies write together in Ponjo. For why, see the
+<a href="product-vision.html">product vision</a>; for how it is built, see
+<a href="architecture.html">architecture</a>.</p>
+<h2 id="teammates">Teammates</h2>
+<p>A project is written by its team at the same time. Everyone on it
+is the <strong>owner</strong> (you), a <strong>teammate</strong> (another person) or an <strong>AI buddy</strong>,
+and in a doc they are alike: a face and a unique name, each edits and
+comments, can be @mentioned, and is named wherever the doc says who did
+something.</p>
+<ul>
+<li><strong>Teammates</strong> are the friends in the project&#39;s room while you host it
+(Sharing a project). They are trusted:
+one who can <strong>Edit</strong> does in a doc whatever you do (edit, comment,
+resolve, ask AI buddies); one who can only <strong>Read</strong> sees it all and
+changes nothing.</li>
+<li><strong>AI buddies</strong> are a name and who it is, in one markdown file. An agent on
+your computer does their work, when asked. They edit and comment as
+whoever asked them may; only people resolve.</li>
+<li>Only you rename, move, delete or create files, and change settings, AI
+buddies and agents.</li>
+</ul>
+<p>The <strong>Team</strong> button (after the faces) opens the panel: in a project, <strong>Open
+room</strong> or, once it is open, the room&#39;s link and <strong>Lock</strong> and <strong>Close room</strong>;
+You, the room&#39;s teammates, then the AI buddies, ending with <strong>New AI
+buddy</strong> (it starts with a random first name, which you can type over: Enter
+makes it and opens its card). Click a face anywhere for its card: a name that
+edits in place (yours, or an AI buddy&#39;s; a renamed AI buddy
+keeps its comments, face and color), for an AI buddy who it is, a field right
+under it saved when you leave it, then Read or Edit for a teammate. A teammate has <strong>Kick</strong>;
+an AI buddy has <strong>Delete</strong>, on its card and its row (its file is deleted). In a doc
+opened on its own the panel has only you and your AI buddies, and a new
+one is yours; on a teammate&#39;s page, only the owner changes the team and the
+AI buddies.</p>
+<h2 id="the-basic-loop">The basic loop</h2>
+<ol>
+<li><strong>Open a doc.</strong> Any <code>.md</code> file: File &gt; Open, a double-click in the OS,
+or a drag onto the app. Each doc gets its own window. The home page
+opens a <strong>project</strong> (a folder, or a new one made in the dialog) with its
+files in a sidebar, and lists the recent ones. A folder with no doc opens
+with only its files, and New doc and New folder in the page; nothing is
+made until you ask. A doc opened on its own is a
+quick editor for you and your AI buddies: no team, no sharing.</li>
+<li><strong>Write.</strong> Plain markdown, drawn formatted as you type (live preview):
+the syntax shows only on the lines you are editing. What you see is the
+file: saving is automatic and changes nothing you did not type, so <code>git diff</code> stays clean. Any other text file (code, config, notes) opens as
+plain text, and comments and AI buddies work the same there. The
+Markdown editor is a view (see Views below): switched off, Markdown
+opens as plain text too. A doc too long to write in smoothly in a view
+opens in the next one, and says so in a banner: past 1,000,000
+characters, Markdown opens as plain text, and the banner offers the
+Markdown view anyway, warning that typing may lag; past 5,000,000, any
+doc opens read-only.</li>
+<li><strong>Comment.</strong> Select text and click the comment button at the page edge
+(Ctrl+Alt+M). The comment sits in the margin beside its text and follows
+it as the text changes. A thread not open is folded to its first comment
+and a line on what followed (who replied, the edits made, a buddy at work,
+a run that failed); the open one is whole, beside its text, and the
+others make way. The threads with no place in the text, on the whole doc
+or whose text was deleted, are one comment icon with their number at the
+top of the margin, opened in place.</li>
+<li><strong>Someone answers.</strong> A person replies in the thread. <code>@Clippy</code> in a
+comment asks the AI buddy Clippy: it replies in the thread, with the
+edits its reply says why it made, and may comment on other passages. Its
+reply answers you: it runs again when you write in the thread again. A
+buddy whose part is to follow your writing (one you chat with as you
+write, a proofreader) can watch the doc instead: turn on <strong>Watch this
+doc</strong> in its card. It looks at once, then each time you pause, and
+comments where it will, as any member; it wears glasses
+for as long as it watches, at work or not, and stops only when you
+turn it off. If you start
+typing again while it works, it stops and looks again at your next
+pause. If a run fails, its card says &quot;Watch failed&quot;, with why and
+<strong>Retry</strong>. Each buddy watching also runs when another buddy changes
+the doc, so two can play a game there, a long one. Should a doc&#39;s
+buddies run very often (300 runs in 10 minutes; Settings &gt; Agents sets
+both), its watches pause and the status bar says &quot;Watches paused&quot;, with
+<strong>Resume</strong>. Why a buddy ran or did not is in Settings &gt; Agents &gt;
+<strong>Agent log</strong>.</li>
+<li><strong>Anyone allowed decides.</strong> Keep an edit, undo it from the comment it
+came with, reply again, or resolve the thread, whoever asked and
+whoever answered.</li>
+</ol>
+<h2 id="sharing-a-project">Sharing a project</h2>
+<p>Sharing is hosting a room, as for an online game. In a project window,
+<strong>Open room</strong> in the Team panel gives a link; <strong>Copy link</strong> copies it.
+Whoever opens it, in a browser with no install and no account, picks a
+name once (one already on the project gets a number: <code>Alice2</code>) and is in
+at once, at Edit, on the project&#39;s first doc, with the project&#39;s sidebar:
+the same tree you see, where a click opens any doc in it (another file
+shows read only; the doc shown stays until the next is drawn) and nothing
+can be renamed, moved, deleted or made.
+Which folders are open, and whether the sidebar shows, are kept in their
+browser.</p>
+<p>The panel lists who is in, live. For each you pick Read or Edit, or
+<strong>Kick</strong>: their pages close and that browser cannot come back to this
+room. <strong>Lock</strong> lets no one new in, once everyone is: those in can still
+come back after a dropped line. <strong>Close room</strong>, or closing the project,
+ends the room at once: every page is cleared and says only &quot;The host
+closed the room&quot;. The next room has a new link; an old one never works
+again. Nothing about who was in is kept.</p>
+<p>A page turned away says why: the room closed, kicked, the room locked, a
+doc not in the project, a name the project never shares (starting with
+<code>.</code>, or out of it). A teammate who can only read sees no tool that would
+be refused: no formatting, no reply box, Resolve, Undo or Restore.</p>
+<p>Your computer is the host, so the room is there only while it is awake
+and the project is open. A teammate whose line drops goes read only at
+once and says so; what they typed that had not reached you is shown as
+they left it, to copy, and never sent later. Their page reconnects by
+itself and, caught up, edits again (after a reload, if it shows such
+typing).</p>
+<h2 id="ai-buddies">AI buddies</h2>
+<p>An AI buddy is a name and who it is, in one markdown file, <code>&lt;Name&gt;.md</code>. The
+file name is its name; its text, given to its agent as is, says who it is,
+and the first line shows next to its name.</p>
+<ul>
+<li><strong>Yours</strong> live in <code>buddies/</code> in your config folder and answer in every
+doc. The first run makes one, <strong>Clippy</strong>, a general writing assistant;
+rename, change or delete it like any other.</li>
+<li><strong>A project&#39;s</strong> AI buddies live in its <code>.ponjo/buddies/</code> and travel with
+the folder (commit them). They answer only in that project&#39;s docs, and
+win over one of yours with the same name.</li>
+<li>A doc opened on its own (from Finder, say) reaches only yours, even if it
+sits inside a project folder.</li>
+<li>Each has its own face and color, the same on every machine with the same
+AI buddies: up to eight in a doc get eight colors.</li>
+</ul>
+<p>Editing the files by hand works too: the app picks up changes at once. What
+runs every AI buddy is the agent picked in Settings &gt; Agents (Claude Code,
+Codex, or the Ponjo agent, which runs a cloud model you pick): a
+program in <code>agents/</code> in your config folder that you may edit (see
+<a href="agent-config.html">agent config</a>). The one picked shows its settings there,
+under it (a model, an API key), kept apart from its program; an API key
+shows only its last 4 characters. Test runs it once and says whether it
+works, or what went wrong. Settings &gt; Usage shows what the Ponjo agent&#39;s
+runs used of the Claude API: runs, input and output tokens, the share read
+from the prompt cache and an estimate of the cost, for today and the last 7
+and 30 days, and by model.</p>
+<h2 id="who-asks-whom">Who asks whom</h2>
+<ul>
+<li><code>@name</code> in a comment asks that AI buddy.</li>
+<li>A reply with no <code>@</code> asks the AI buddies already in its <strong>thread</strong>: a first
+comment on a passage and the replies under it.</li>
+<li>A comment asks until the AI buddy replies in its thread: it runs once,
+answers, and runs again only when someone writes there again, never on
+its own, on an edit or on a clock. Resolving the thread, which only
+people do, stops a buddy working on it at once, and nothing it did there
+lands. Reopening asks no one.</li>
+<li>Work starts with people&#39;s comments: yours, and a teammate&#39;s who can
+edit. A turn acts as whoever asked it may when it ends: if they were
+removed or set to Read meanwhile, nothing it did lands. An AI buddy&#39;s
+reply asks only an AI buddy it <code>@</code>mentions, for that same person; an
+<code>@name</code> typed in the doc&#39;s text asks no one.</li>
+<li>A comment that reached the file from outside Ponjo (a <code>git pull</code>, another
+editor, another computer) asks no one.</li>
+<li>A comment that mentions several AI buddies asks each; they work at once.
+Each works on every thread that asks it in one run, one run at a time.</li>
+<li>Every run starts fresh with the doc, who the AI buddy is, who is in the
+doc and the threads that ask it. Nothing is remembered in private;
+anything worth keeping is written in the doc or the threads.</li>
+</ul>
+<h2 id="everyone-edits-and-every-edit-can-be-undone">Everyone edits, and every edit can be undone</h2>
+<ul>
+<li>A person&#39;s typing lands in the doc as they type. An AI buddy edits a copy
+of the doc; when it is done, its changes are merged into the doc as it is
+then, at once, and glow for a moment with its name, as anyone&#39;s do.</li>
+<li>An AI buddy comments as people do: on any passage, or in any thread. It
+never resolves. Its comments ask no one.</li>
+<li><strong>No edit without a comment.</strong> Every edit an AI buddy makes comes with a
+comment, its own reply or one the app posts for it, empty, when its agent
+said nothing. Under that comment the app shows how many places it edited; clicking
+it shows them in the text as a revision (and scrolls to them): new text in
+its color, removed text grey and struck through where it was, until you
+type, press Escape or click it again. Edits changed since are left out.
+The comment only says why, or what you need to decide.</li>
+<li><strong>Nothing a person types is lost.</strong> When two people change the same place
+at once, both edits stay, in the order they reached the host. Text one
+deletes while the other types inside it keeps what was typed. If both
+replace the same word, both new words stay, to fix by hand.</li>
+<li><strong>A person&#39;s typing is trusted.</strong> It is not marked by who typed it, and
+when two people disagree they settle it outside the app, in a call.</li>
+<li><strong>People win over AI buddies.</strong> Where a person changed the same lines
+while an AI buddy worked, the person&#39;s lines stay, the rest of its change
+lands, and its comment says part of it was not applied: ask it again to
+redo it. A change from outside merges the same way.</li>
+<li><strong>Undo is one thing</strong>, for your typing, an AI buddy&#39;s run, a teammate&#39;s
+change or one from outside: it takes those edits back, all at once, and
+keeps everything written since; where someone changed those lines since,
+their lines stay. <strong>Cmd+Z</strong> (Ctrl+Z) undoes your own typing, never anyone
+else&#39;s. <strong>Undo</strong> on an AI buddy&#39;s comment undoes the edits it came with,
+and no other comment&#39;s; the comment stays; <strong>Redo</strong> there puts them back,
+by undoing that undo.
+<strong>Undo this change</strong> in history undoes any version, or a burst of typing.
+It works in every window of the team.</li>
+<li><strong>A failed run</strong> changes nothing in the doc: in each thread that asked
+it, the buddy replies &quot;Could not finish.&quot; in red, with <strong>Retry</strong>, which
+asks it again as you (&quot;@Clippy try again.&quot;). Only you see why (the end
+of its output), in the run&#39;s trace. It runs again only when someone
+writes in the thread. A buddy that found nothing to do says so: &quot;Looked;
+nothing to change.&quot;</li>
+<li><strong>Actions outside the doc.</strong> An AI buddy acts outside the doc (posts a
+message, opens an issue) only by proposing an action with its comment,
+never by itself. The action shows under that comment: what it is, its
+input in full, and that it waits. You, and only you, <strong>Approve</strong> or
+<strong>Decline</strong> it: it runs on your computer, with your keys, once. Then it
+says who approved it and when, and its result is the buddy&#39;s reply in the
+thread. One that failed, or that was running when Ponjo stopped and may
+have run, shows in red with <strong>Retry</strong>; it never runs again on its own.
+Undo on the comment takes back its edits, never its actions. <strong>Settings &gt;
+Actions</strong> lists the actions installed on this computer (none come with
+Ponjo), each with <strong>Ask first</strong>, on by default; off, that action runs at
+once, and only for what you asked.</li>
+</ul>
+<h2 id="seeing-teammates-work">Seeing teammates work</h2>
+<ul>
+<li><strong>Presence.</strong> People&#39;s avatars are circles in a hat: the owner&#39;s a crown,
+a teammate&#39;s a top hat. Each AI buddy&#39;s is a soft blob with a face. The
+header has one queue of them, every face alike (point at it for its name
+card, click for its card), then yours, then Team. It is ordered by what
+each is doing: who is working first (an AI buddy running, a person who
+moved or typed in the last few seconds), then who is here, then who is
+away (a person on another doc, or for the owner a teammate not in the
+project); a face moves only when its state changes. A face shows its
+state wherever it appears, the same for everyone: while working it grows,
+its body rolls and its eyes turn focused; where an AI buddy cannot answer or a person
+is away it is greyed out; and when a run fails it shakes and flashes red
+once. No dots or badges. In the Team panel you see which teammates are
+here; a teammate sees who is here with them.</li>
+<li><strong>Cursor.</strong> Every teammate at work in the doc has one cursor, a blinking
+line in their color with no name: a person&#39;s while they move or type and
+a few seconds after, where they are typing; an AI buddy&#39;s while its run
+goes, at the passage it was last asked about or the end of its last edit.
+A cursor follows the text as it changes, and is hidden where its text
+is gone. It is only drawn: never in the file, and it takes no clicks.</li>
+</ul>
+<h2 id="around-the-doc">Around the doc</h2>
+<ul>
+<li><strong>Find and replace</strong> (Ctrl+F; Ctrl+Alt+F with Replace), in every view and
+in history: what a reader sees, every match marked, Enter for the next.
+It finds what is typed, case ignored; <strong>Aa</strong> matches case, <strong>ab</strong> whole
+words, <strong>.*</strong> a regular expression (then <code>$1</code> in Replace is its first
+group). The three are one choice for every find bar and the sidebar&#39;s
+search. Replacing is your own edit, undone with Ctrl+Z.</li>
+<li><strong>Print and Export as PDF</strong> (File menu): the doc as a reader sees it,
+light, without the app around it, its comments or anyone&#39;s marks.</li>
+<li><strong>Version history</strong> (clock button, Ctrl+Alt+Shift+H): every version with
+who made it (you, a teammate, both when you typed together, an AI buddy
+with the comment it answered, or a program outside Ponjo), a diff against the one before, Undo this change and
+Restore. A version is saved each time typing pauses (a burst of typing
+shows as one), before and after each buddy edit, before each change from
+outside Ponjo, and for each undo and restore, so any of them can be undone
+or restored.
+History is kept in the config folder, never next to the doc.</li>
+<li><strong>Changes from outside</strong> (a <code>git pull</code>, another editor) show up live and
+merge with your typing, line by line. Where they changed a line you
+changed too, your line stays and their version is in history.</li>
+<li><strong>Settings</strong> (name and theme, views, shortcuts, agent) are
+the same dialog in every window, the home page too (it has no Views:
+those come with a doc), and a change applies at once to all of
+them. How a doc looks and what its editor offers are its view&#39;s
+settings, not global ones. Buddies are not in Settings: they are changed
+on their cards.</li>
+<li><strong>Views.</strong> A doc has a <strong>view</strong>, its editor, switched on or off in
+Settings &gt; Views (it lists the views with their files, what they do and
+whether they are on; a view&#39;s page has its switch and its own settings).
+Every text file opens in the Plain text view (always on) unless a view
+gives its format an editor of its own; the built-in one is for Markdown
+and on by default. How changes merge is the same in every view.
+The <strong>Markdown view</strong> (<a href="markdown-view.html">design</a>) is live preview: the
+file&#39;s own text drawn formatted, its syntax shown only where it is
+being edited: a span&#39;s while the selection touches it, a block&#39;s markers
+in the margin. All of CommonMark and GFM, and footnotes, are drawn
+(#358). Typed Markdown formats as it is typed; the toolbar types it too,
+and so do the standard keys (Mod+B, Mod+I, Mod+E, Mod+Shift+X, Mod+K, and Mod+Alt+0–3, Mod+Alt+Q, Mod+Alt+C, Mod+Shift+7–9 for the block styles).
+Its toolbar, outline and focus mode (Ctrl+Shift+.) are part of it.
+Pasted formatted text is turned into Markdown as it is pasted; plain text
+goes in as it is. To see the whole file as source, switch the view off
+(Ctrl+Shift+T, again to switch back); <code>.md</code> then opens in the plain
+editor.
+The plain editor&#39;s settings: line numbers, wrapping, font size, whitespace
+marks (in the selection, everywhere or off) and indent guides, and
+indentation: Tab types the file&#39;s indent (found from the file, or tabs or
+spaces as set), Tab and Shift+Tab (or Mod+] and Mod+[) indent and outdent
+selected lines, and Enter keeps the line&#39;s indent. In a code file Mod+/
+comments out the lines and back, Alt+↑ and Alt+↓ move them, Mod+Shift+K
+deletes them (elsewhere Mod+/ shows the shortcuts). While comments show,
+a hairline on its right edge is where its text ends. It has a status bar with the caret&#39;s line
+and column, the size of the selection, the indent Tab types (a menu of
+others, for what you type next, never the file) and Wrap and Whitespace
+toggles that change the same settings. The Markdown view&#39;s: the page&#39;s font
+and width, Outline and Focus mode. Every doc has a status bar under the
+page: in the Markdown view the doc&#39;s word count (of the selection too,
+when there is one), and which buddies are working while their turns run.
+Switching a view applies at once to every open doc: a Markdown doc turns to
+plain text and back, comments still in the margin, and nothing is written.</li>
+<li><strong>Files.</strong> New Doc and Rename (the comments move too). Opening an already
+open doc focuses its window. If the file is moved or deleted outside the
+app, a banner says so and saving pauses.</li>
+<li><strong>A project&#39;s sidebar</strong> shows every file and folder as it is on disk,
+except names starting with <code>.</code> and comment files, each folder read as you
+open it. What git ignores (build output, installed packages) is dimmed.
+Mod+P finds a file by its path in the sidebar&#39;s filter (a regular
+expression): the matches show in their folders, those git ignores
+dimmed and last (not inside a folder it ignores), and Enter opens the
+first. Ctrl+Shift+F (or the button before the field) turns the field to
+search the files&#39; text, as the find bar finds: each file it is in, then
+each line with its number, the match marked; what git ignores is not
+searched, and past 1,000 matches it says so. A line opens its file with
+the find bar at that match. Everyone on the team sees the same tree. A
+doc opens in the editor; any other file shows read only in its place,
+an image as the image, up to 5 MB (Escape goes back). A file&#39;s path in a
+comment, as Copy Path writes it, is a link that opens it; in the link popover, typing finds the
+project&#39;s files and links one by its path from the doc.
+Its menu, the same for every row and only yours: New File and New Folder
+(in a folder; <code>/</code> in a name makes folders), Rename (F2), Copy Path (relative to the
+project, as AI buddies read it), Reveal, and Delete (to the Trash). Drag a
+row onto a folder to move it. A file&#39;s comments go with it when it is
+renamed, moved or deleted here.</li>
+<li><strong>Comments</strong> are in <code>X.md.comments.jsonl</code> next to the doc, one per line, so
+they merge in git (<a href="https://github.com/ponjo-app/ponjo/blob/main/spec/SPEC.md">format</a>). Moving a doc outside the app,
+move this file with it.</li>
+</ul>
+</main>
+<script type="module" src="../../site.js?v=dd1545b"></script>
+</body>
+</html>

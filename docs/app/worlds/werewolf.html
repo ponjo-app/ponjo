@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Werewolf world</title>
+<link rel="icon" href="../../../build/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../../dist/web/app.css?v=dd1545b">
+<link rel="stylesheet" href="../../../site.css?v=dd1545b">
+</head>
+<body>
+<header class="site-header">
+  <a class="site-brand" href="../../../index.html">Ponjo</a>
+  <nav class="site-nav" aria-label="Pages">
+    <a href="../../../index.html">Download</a>
+    <a href="../../../introduction.html">Introduction</a>
+    <a href="../../../docs/" aria-current="page">Docs</a>
+    <details class="site-drop" name="site-menu">
+      <summary>Development<svg class="pj-icon" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></summary>
+      <div class="pj-block-menu site-menu">
+        <a href="../../../architecture.html">Architecture</a>
+        <a href="../../../design.html">Design system</a>
+        <a href="../../../avatars.html">Avatar design</a>
+      </div>
+    </details>
+    <details class="site-drop" name="site-menu">
+      <summary>Preview<svg class="pj-icon" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></summary>
+      <div class="pj-block-menu site-menu">
+        <a href="../../../preview/">Doc mode</a>
+        <a href="../../../preview/?folder">Folder mode</a>
+        <a href="../../../poker.html">Poker</a>
+        <a href="../../../werewolf.html">Werewolf</a>
+        <a href="../../../spy.html">Who's the Spy</a>
+      </div>
+    </details>
+  </nav>
+  <span class="pj-spacer"></span>
+  <a class="pj-icon-btn" href="https://github.com/ponjo-app/ponjo" aria-label="GitHub" title="GitHub"><svg class="pj-icon" viewBox="0 0 24 24"><path fill="currentColor" stroke="none" d="M12 2C6.48 2 2 6.58 2 12.23c0 4.52 2.87 8.35 6.84 9.7.5.1.68-.22.68-.49l-.01-1.7c-2.78.62-3.37-1.38-3.37-1.38-.46-1.18-1.11-1.5-1.11-1.5-.91-.64.07-.62.07-.62 1 .07 1.53 1.06 1.53 1.06.9 1.57 2.35 1.12 2.92.86.09-.67.35-1.12.64-1.38-2.22-.26-4.56-1.14-4.56-5.07 0-1.12.39-2.04 1.03-2.76-.1-.26-.45-1.3.1-2.71 0 0 .84-.28 2.75 1.05A9.36 9.36 0 0 1 12 6.98c.85 0 1.71.12 2.51.34 1.91-1.33 2.75-1.05 2.75-1.05.55 1.41.2 2.45.1 2.71.64.72 1.03 1.64 1.03 2.76 0 3.94-2.34 4.81-4.57 5.06.36.32.68.94.68 1.9l-.01 2.81c0 .27.18.6.69.49A10.1 10.1 0 0 0 22 12.23C22 6.58 17.52 2 12 2z"/></svg></a>
+  <button class="pj-icon-btn site-theme" type="button" aria-label="Switch theme" title="Switch theme"><svg class="pj-icon site-moon" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"/></svg><svg class="pj-icon site-sun" viewBox="0 0 24 24"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg></button>
+</header>
+<main class="doc-page">
+<h1 id="werewolf-world">Werewolf world</h1>
+<p>The werewolf page (<code>preview/werewolf.js</code>): the opener, friends who join by a
+link, and AI players round one table, on the <a href="../../runtime/README.html">runtime</a>
+in a <a href="rooms.html">room</a>. By night two wolves who know each other pick a kill,
+the seer checks, the witch saves or poisons; by day each living seat speaks
+in turn, then all vote at once. Rules <code>preview/werewolf-rules.js</code>, world
+<code>preview/werewolf-world.js</code>.</p>
+<h2 id="state">State</h2>
+<pre><code>Table { rev, people, names, no, lines, game, ledger }
+Game  { players, seats: [{ role, alive }], day, phase, step, round, picks, victim,
+        saved, poisoned, potions, speaker, order, votes, acted, log, winner,
+        since, called: { step, at }, minds: [{ thoughts }] }
+Line  { id, by, text, to, depth, about, game, after }
+</code></pre>
+<ul>
+<li>The table is the world; a game is a change, the dealer&#39;s <code>deal</code>. <code>game</code>
+is the last one, kept for the chat about it.</li>
+<li>A <code>log</code> entry&#39;s <code>to</code> is the seats that may see it; none, all. The pack,
+<code>to: wolves(game)</code>, is seats, people and agents alike, that <code>view</code> reads.</li>
+<li><code>turn(game)</code> is the moment (<code>day:phase:step round</code>, or the speaker), the
+same through a vote or the wolves&#39; pick; <code>since</code>, the stamp of its first
+change. <code>called</code>: the narrator&#39;s call, and when it began.</li>
+<li><code>minds[seat]</code>: that seat&#39;s thinking. <code>ledger</code>: the answers and tries,
+kept by the runtime&#39;s wrapper around <code>apply</code>, not by this world.</li>
+</ul>
+<h2 id="store">Store</h2>
+<p>The room on the relay holds <code>{ rev, Table }</code> and gives each client, the
+opener&#39;s page included, only <code>read(member)</code>. <code>by</code> is the member whose token
+sent a change. <code>wait(member, rev)</code> wakes a seat only when its view changed:
+a wolf&#39;s pick wakes the pack, not the village.</p>
+<pre><code>Change { by, at, as: seat, base: turn or line, answers, body: { action, say, thinking } }
+</code></pre>
+<p><code>apply</code> refuses a change whose <code>base</code> is not <code>turn(game)</code>: a vote or kill on
+a phase the game has left. Votes in one vote do not move the turn, so none
+makes another stale; the last tallies in the same commit.</p>
+<h2 id="world">World</h2>
+<pre><code>view(state, member, past)   → { content, actions, tasks, seen, rules }
+apply(state, change, past)  → { state, effects: [] } | { refused: why }
+fallback(state, task, at)   → state      the rules&#39; fallback for task.as
+tries                       3
+</code></pre>
+<p><strong><code>view</code></strong> is the seat&#39;s. <code>content</code> is the rules&#39; <code>view(game, seat)</code>: its
+role; for a wolf, the pack, its picks, lines and kill; the seer&#39;s checks;
+the witch&#39;s potions and, while she has the save, whom the wolves attacked;
+who is alive; who has voted, and its own vote; a death at dawn as &quot;died in
+the night&quot;, how only to the pack and the witch. The night&#39;s step is
+<code>called</code>, not the rules&#39; step. Then its mind, its last try&#39;s why, and the
+chat; once over, all. A member with no seat sees what all see. <code>rules</code> is
+<code>RULES</code>; a persona is its agent&#39;s prompt. <code>actions</code>: what the rules&#39; <code>due</code>
+lets the seat do now; <code>say</code> outside a game; <code>sit</code>, <code>leave</code> between games;
+<code>start { size }</code>, for the opener. No effects.</p>
+<p><strong>Tasks.</strong></p>
+<pre><code>turn:&lt;turn&gt;:&lt;seat&gt;  { kind: turn, as: seat, from: [], depth: 0, at: since + TURN, or the call&#39;s end }
+line:&lt;id&gt;           { kind: ask, as: member, from: the line&#39;s people, depth: the line&#39;s }
+</code></pre>
+<p>A turn task while a seat is in the rules&#39; <code>due(game)</code>, a person&#39;s as an
+agent&#39;s: a person&#39;s is their &quot;your turn&quot;, its <code>at</code> the ring. <code>as</code> gives its
+view and rights, so an AI wolf sees the pack whoever owns it. A line task
+while a line names the member under <code>DEPTH</code>; a person&#39;s line to all is
+listed for one AI player, the one whose last line is oldest, ties in seat
+order. A turn comes first; with no chat during a game, a seat never has a
+turn and a line at once.</p>
+<p>Open: whether chat before a game wakes AI players. In the code it wakes
+none; only chat after one does.</p>
+<p><strong>Answers.</strong> The ledger&#39;s. Accepted, a change goes through the rules&#39;
+<code>act</code>: the seat joins <code>acted</code>, and <code>settle</code> ends a phase once no one is
+due, so the barrier is the rules&#39;. Refused (illegal, stale, a turn with no
+action), it is a try, its why in the seat&#39;s next view; at 3 tries,
+<code>fallback</code>. A turn that failed, that the wallet will not start, or whose
+run made nothing, is its <code>fallback</code> at once. Its thinking lands in <code>minds</code>
+with a change that lands.</p>
+<h2 id="members-and-controllers">Members and controllers</h2>
+<p>One per member. People&#39;s pages connect with their token and show every
+task, with its ring; the AI seats run in the room, with their wallet.</p>
+<ul>
+<li><strong>Clock</strong>, in the room: its tasks carry <code>at</code>. <code>expire:&lt;turn&gt;</code> at the
+turn&#39;s <code>at</code>: all still due take the fallback. <code>call:&lt;day&gt;:&lt;step&gt;</code>: the
+narrator calls dusk for 3 s, then each night role, alive or not, for
+exactly <code>CALL_MS</code> (8 s), so a call&#39;s length tells nothing; a night turn&#39;s
+<code>at</code> is its call&#39;s end. <code>hello:&lt;seat&gt;</code>: the hellos before the first
+night, one each <code>HELLO_MS</code>.</li>
+<li><strong>Dealer</strong>, a system member with a script, in the room: after <code>start</code>,
+its task <code>deal:&lt;no&gt;</code>; it commits <code>deal { roles }</code> by
+<code>crypto.getRandomValues</code>; <code>apply</code> checks it shuffles <code>cast(size)</code>.</li>
+<li><strong>Room</strong>: commits <code>leave</code> for a person gone past <code>RECONNECT_MS</code>, as
+presence says; their turns take the fallback.</li>
+</ul>
+<p>Open: whether the narrator&#39;s call gates AI players or only paces what
+views show. In the code it gates every night turn, an AI seat&#39;s as a
+person&#39;s: listed once its step is called, due by the call&#39;s end; the rules
+hold the night at the witch&#39;s step until the last call (<code>daybreak</code>), so
+the day never begins before dawn is called.</p>
+<h2 id="presence">Presence</h2>
+<p><code>seen</code>: by day, all; at night, a seat itself and, a wolf, its pack.</p>
+<h2 id="agent-clients">Agent clients</h2>
+<p>Tools: <code>content</code>, <code>rules</code> and the persona as the prompt; the world&#39;s
+actions as the only tools (one, <code>DECIDE</code>). A run: a model call, the
+player&#39;s thinking time (at night at most <code>NIGHT_THINK</code>), a speech&#39;s typing
+time, told as presence. The wallet, in the room: Ponjo&#39;s key or a visitor&#39;s,
+the room&#39;s budget and rate, the depth limit; the breaker counts no turn.</p>
+<h2 id="differs">Differs</h2>
+<ul>
+<li>Its room&#39;s (<a href="rooms.html#differs">rooms</a>).</li>
+<li>There is no dealer member: the room deals in the opener&#39;s
+<code>start { size }</code>, adding <code>roles</code>; <code>apply</code> checks they are a shuffle of
+<code>cast(size)</code>.</li>
+<li>The table keeps <code>call { day, step, at }</code>, <code>since</code> and <code>thoughts</code> beside
+the game, not in it, for <code>called</code>, <code>since</code> and <code>minds</code>; the tasks carry
+the game&#39;s <code>no</code>: <code>turn:&lt;no&gt;:&lt;turn&gt;</code>, <code>line:&lt;no&gt;:&lt;id&gt;</code>,
+<code>call:&lt;no&gt;:&lt;day&gt;:&lt;step&gt;</code>, <code>hello:&lt;no&gt;:&lt;seat&gt;</code>, <code>begin:&lt;no&gt;</code>,
+<code>expire:&lt;no&gt;:&lt;turn&gt;</code>.</li>
+</ul>
+</main>
+<script type="module" src="../../../site.js?v=dd1545b"></script>
+</body>
+</html>
