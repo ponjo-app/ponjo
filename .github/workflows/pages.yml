@@ -1,5 +1,6 @@
 # The site (gh-pages) is site/ on main: the download page and the design
-# system, rendered with the app's own stylesheet and faces. Its pages point
+# system, rendered with the app's own stylesheet and faces, and the docs
+# (docs/) as pages under docs/ (scripts/build-docs.js). Its pages point
 # at ../dist/web/ and ../build/ in the repo; here those live next to them.
 # preview/ is the app's pages in a plain browser, for trying the UX
 # (preview/build.js); nothing links to it.
@@ -11,7 +12,7 @@ name: Pages
 on:
   push:
     branches: [main]
-    paths: [site/**, build/icon.svg, build/icon.png, build/document.svg, web/**, src/core/**, desktop/start.*, preview/**, scripts/build.js]
+    paths: [site/**, docs/**, scripts/build-docs.js, build/icon.svg, build/icon.png, build/document.svg, web/**, src/core/**, desktop/start.*, preview/**, scripts/build.js]
   workflow_dispatch:
 
 permissions:
@@ -31,9 +32,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Build the stylesheet, faces, fonts and preview
+      - name: Build the stylesheet, faces, fonts, preview and docs
         working-directory: main
-        run: npm ci && npm run build && node preview/build.js
+        run: npm ci && npm run build && node preview/build.js && node scripts/build-docs.js ${GITHUB_SHA::7}
         env:
           ELECTRON_SKIP_BINARY_DOWNLOAD: 1
       - name: Copy, and push if anything changed
@@ -41,12 +42,13 @@ jobs:
         run: |
           cp ../main/site/* .
           # ?v= makes browsers fetch each deploy's CSS and scripts instead of cached ones.
-          sed -i "s#\.\./dist/web/#./dist/web/#g; s#\.\./build/#./build/#g; s#\.\./dist/preview/#preview/#g; s#\.css\"#.css?v=${GITHUB_SHA::7}\"#g; s#\.js\([\"']\)#.js?v=${GITHUB_SHA::7}\1#g" *.html
+          sed -i "s#\.\./dist/web/#./dist/web/#g; s#\.\./build/#./build/#g; s#\.\./dist/preview/#preview/#g; s#\.\./dist/docs/#docs/#g; s#\.css\"#.css?v=${GITHUB_SHA::7}\"#g; s#\.js\([\"']\)#.js?v=${GITHUB_SHA::7}\1#g" *.html
           mkdir -p build dist/web/fonts
           cp ../main/build/icon.svg ../main/build/icon.png ../main/build/document.svg build/
           cp ../main/dist/web/app.css ../main/dist/web/faces.js dist/web/
           cp ../main/dist/web/fonts/* dist/web/fonts/
           rm -rf preview && cp -R ../main/dist/preview preview
+          rm -rf docs && cp -R ../main/dist/docs docs
           git add -A
           git diff --cached --quiet && exit 0
           git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m "Site from main @ ${GITHUB_SHA::7}"
