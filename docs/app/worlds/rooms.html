@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Game rooms</title>
 <link rel="icon" href="../../../build/icon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="../../../dist/web/app.css?v=dd1545b">
-<link rel="stylesheet" href="../../../site.css?v=dd1545b">
+<link rel="stylesheet" href="../../../dist/web/app.css?v=6c63f4f">
+<link rel="stylesheet" href="../../../site.css?v=6c63f4f">
 </head>
 <body>
 <header class="site-header">
@@ -68,6 +68,12 @@ as the host; a friend joins by the link.</p>
 the member whose token sent the change. A page that comes back with its
 token is in its seat again; one without is a new member.</p>
 </li>
+<li><p><strong>Closing.</strong> The host&#39;s New table closes the table: the room closes
+every page on it and deletes it, and the host&#39;s page keeps a new secret,
+so the old link opens nothing and the new table has a new link. It is
+how the host starts over: one sent away, a link given too widely, a
+table that is full.</p>
+</li>
 <li><p><strong>Leaving.</strong> The room is itself a member that watches presence: a player
 whose page has been gone for <code>RECONNECT_MS</code> it commits as <code>leave</code>, and
 the rules play the fallback on their turns.</p>
@@ -121,6 +127,6 @@ tasks itself, at once or on its alarm.</li>
 <li>A visitor cannot set their key&#39;s budget or rate; they are the relay&#39;s.</li>
 </ul>
 </main>
-<script type="module" src="../../../site.js?v=dd1545b"></script>
+<script type="module" src="../../../site.js?v=6c63f4f"></script>
 </body>
 </html>
