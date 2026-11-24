@@ -4,7 +4,7 @@
 // votes round a table, as arrows. Their markup and styles are poker.css's
 // .pk-setup and .pk-feed, and werewolf.css's .ww-votes.
 
-/* global document */
+/* global document, window */
 
 import { keep, load } from './game-kit.js';
 
@@ -120,6 +120,11 @@ export function aiNote(ai) {
   if (ai?.waiting) return 'The AI players wait for the host\'s key: on their turns, they pass when time is up.';
   if (ai?.until) return `This table has used its model calls for the hour: the AI players pass until ${new Date(ai.until).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}.`;
   return '';
+}
+
+// The host closes the table and opens a new one (`sit`'s close), once they say so.
+export function closeTable(seat) {
+  if (window.confirm('Close this table and open a new one?\n\nEvery page on it closes at once, and its link stops working. The new table has a new link.')) seat.close();
 }
 
 // The line a page shows while it has no line to the table's room, or `why` it was turned away.

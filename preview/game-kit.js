@@ -159,7 +159,8 @@ const hex = (bytes) => [...new Uint8Array(bytes)].map((b) => b.toString(16).padS
  * deployed, a dropped line), or the room's reason for turning the page away.
  * Returns { joined (the room a friend's page joins, or null), link() → the
  * link friends join by, act(base, body), send(message), giveKey() once
- * the visitor changed their key }.
+ * the visitor changed their key, close() the host's: the room closes the
+ * table, and the page opens a new one, with a new secret and a new link }.
  */
 export function sit(game, host, { key, hello, heard, away }) {
   const joined = new URLSearchParams(location.hash.slice(1)).get('join');
@@ -168,6 +169,7 @@ export function sit(game, host, { key, hello, heard, away }) {
   if (!joined) keep(mine, kept);
   const room = joined ? Promise.resolve(joined) : crypto.subtle.digest('SHA-256', new TextEncoder().encode(mine.secret)).then(hex);
   let line = null;
+  let closing = false;
   const send = (message) => line?.send(JSON.stringify(message));
   const giveKey = () => send({ type: 'key', key: key() });
   room.then((r) => {
@@ -187,6 +189,10 @@ export function sit(game, host, { key, hello, heard, away }) {
         heard(message);
       },
       ended(code, reason) {
+        if (closing) {
+          location.reload();
+          return true;
+        }
         const final = TURNED_AWAY.includes(code);
         away(final ? reason : 'line');
         return final;
@@ -204,6 +210,12 @@ export function sit(game, host, { key, hello, heard, away }) {
     act: (base, body) => send({ type: 'act', base, body }),
     send,
     giveKey,
+    // The old table goes once the room has closed it; a room not reached is deleted when idle.
+    close() {
+      keep({ secret: hex(crypto.getRandomValues(new Uint8Array(32))) }, kept);
+      closing = true;
+      if (!send({ type: 'close' })) location.reload();
+    },
   };
 }
 
@@ -239,5 +251,5 @@ function connect(url, { open, heard, ended }) {
     });
   }
   again();
-  return { send: (text) => ws.readyState === WebSocket.OPEN && ws.send(text) };
+  return { send: (text) => ws.readyState === WebSocket.OPEN && (ws.send(text), true) };
 }

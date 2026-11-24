@@ -14,7 +14,7 @@
 
 import { agentFace, personFace, setBuddies, setOwner } from '../web/faces.js';
 import { icon } from '../web/icons.js';
-import { $, arrows, el, message, models, notice, typingMessage, unreached } from './game-page.js';
+import { $, arrows, closeTable, el, message, models, notice, typingMessage, unreached } from './game-page.js';
 import { keep, load, sit, typer } from './game-kit.js';
 import { HUMAN, MAX_CLUE, MAX_LINES, PERSONAS, TALK, TURN, isPerson } from './spy-world.js';
 
@@ -592,6 +592,7 @@ document.addEventListener('click', (event) => {
   else if (action === 'key') ai.open();
   else if (action === 'invite') invite();
   else if (action === 'invite-done') closeInvite();
+  else if (action === 'new-table') closeTable(table);
   else if (action === 'copy') {
     inviting.elements.link.select();
     navigator.clipboard?.writeText(inviting.elements.link.value).catch(() => {});

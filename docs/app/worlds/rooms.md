@@ -25,6 +25,11 @@ turn-based games with hidden information. Each is a store of the
 - **Identity.** The room gives each member a token when they sit. `by` is
   the member whose token sent the change. A page that comes back with its
   token is in its seat again; one without is a new member.
+- **Closing.** The host's New table closes the table: the room closes
+  every page on it and deletes it, and the host's page keeps a new secret,
+  so the old link opens nothing and the new table has a new link. It is
+  how the host starts over: one sent away, a link given too widely, a
+  table that is full.
 - **Leaving.** The room is itself a member that watches presence: a player
   whose page has been gone for `RECONNECT_MS` it commits as `leave`, and
   the rules play the fallback on their turns.

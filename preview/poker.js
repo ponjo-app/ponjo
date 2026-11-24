@@ -13,7 +13,7 @@
 
 /* global document, location, matchMedia, innerWidth, innerHeight, HTMLDialogElement */
 
-import { $, el, message, models, notice, typingMessage, unreached } from './game-page.js';
+import { $, closeTable, el, message, models, notice, typingMessage, unreached } from './game-page.js';
 import { keep, load, sit, typer } from './game-kit.js';
 import { agentFace, personFace, setBuddies, setOwner } from '../web/faces.js';
 import { icon } from '../web/icons.js';
@@ -663,6 +663,7 @@ document.addEventListener('click', (event) => {
   else if (action === 'key') ai.open();
   else if (action === 'invite') invite();
   else if (action === 'invite-done') closeInvite();
+  else if (action === 'new-table') closeTable(room);
   else if (action === 'copy') copyLink();
   else if (action === 'fold') play({ type: 'fold' });
   else if (action === 'call') play({ type: table.legal.check ? 'check' : 'call' });
