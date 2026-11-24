@@ -60,8 +60,7 @@ if (!siteHeader.includes('href="../dist/docs/"')) throw new Error('site/index.ht
 const header = (up) => siteHeader
   .replace(/ aria-current="[^"]*"/g, '')
   .replace(/href="(?!https?:)([^"]*)"/g, (_, href) => `href="${up}${href.replace(/^\.\.\/dist\//, '')}"`) // ../dist/preview/ is preview/ there
-  .replace(`href="${up}docs/"`, `href="${up}docs/" aria-current="page"`)
-  .replace(/(<summary)(>Development)/, '$1 aria-current="true"$2');
+  .replace(`href="${up}docs/"`, `href="${up}docs/" aria-current="page"`);
 
 const page = ({ title, up, body, diagrams }) => `<!doctype html>
 <html lang="en">
