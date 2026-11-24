@@ -14,7 +14,7 @@
 // chat, and the AI players of the game just played answer.
 
 import { MAX_CLUE, MAX_LINES, act, due, endTalk, fallback as sayNothing, linesLeft, newGame, turn, view as seatView } from './spy-rules.js';
-import { DEPTH, MAX_LINE, after as next, latest, line as newLine, named, think as thought, deadline } from './game-kit.js';
+import { DEPTH, LANGS, MAX_LINE, after as next, latest, line as newLine, named, speak, think as thought, deadline } from './game-kit.js';
 
 export const HUMAN = 'you';
 export const CLOCK = 'clock'; // the member whose tasks are the table's deadlines
@@ -25,7 +25,7 @@ const HELLO_MS = 1800; // ms from one AI player's hello to the next, and from th
 
 // Each AI player: who they are (`blurb`, shown on the page), how they talk
 // and how they clue, what they do when they think they are the spy, and the
-// line they greet the table with.
+// line they greet the table with; `zh`, their blurb and hello at a table in Chinese.
 export const PERSONAS = [
   {
     id: 'Ivy',
@@ -34,6 +34,7 @@ export const PERSONAS = [
     play: 'You keep your clues just vague enough that only those who share your word will see it. You vote for whoever gave a clue that fits a different word.',
     spy: 'You give a clue so general it fits both words, and quietly agree with the most common reading.',
     hello: 'Ivy. Seven letters, "a liar among friends". Any guesses?',
+    zh: { blurb: '出谜语的填字游戏编者', hello: 'Ivy。打一词：“朋友堆里的骗子”。谁猜得出？' },
   },
   {
     id: 'Max',
@@ -42,6 +43,7 @@ export const PERSONAS = [
     play: 'Your clues are too specific: you nearly give the word away. You vote fast for whoever sounds odd to you.',
     spy: 'You go on the attack: you name someone as the spy before anyone can look at you.',
     hello: 'Max. Let\'s get this done, people! Clues short, votes fast!',
+    zh: { blurb: '话太多的直脾气教练', hello: 'Max。赶紧开始！描述要短，投票要快！' },
   },
   {
     id: 'Juno',
@@ -50,6 +52,7 @@ export const PERSONAS = [
     play: 'Your clues paint a scene or a feeling, not a fact. You vote with your gut and say so with a flourish.',
     spy: 'You hide behind a mood: a clue all feeling and no fact, which could be either word.',
     hello: 'Juno! Darlings, a game of secrets. I was born for this.',
+    zh: { blurb: '什么都要演一下的戏剧生', hello: 'Juno！亲爱的们，一场关于秘密的游戏，我就是为此而生的。' },
   },
   {
     id: 'Sam',
@@ -58,6 +61,7 @@ export const PERSONAS = [
     play: 'Your clues are one or two flat words. You keep a tally of whose clue fits what, and vote on it.',
     spy: 'You give the flattest, safest clue you can, and vote with the majority.',
     hello: 'Sam. Let\'s keep this efficient.',
+    zh: { blurb: '面无表情的会计', hello: 'Sam。效率第一。' },
   },
   {
     id: 'Lou',
@@ -66,6 +70,7 @@ export const PERSONAS = [
     play: 'Your clues come from the kitchen whenever they can. You trust people too easily and vote late.',
     spy: 'You change the subject to cooking, and agree loudly with whoever sounds sure.',
     hello: 'Lou here! If anyone needs a snack after, my kitchen\'s open.',
+    zh: { blurb: '三句不离吃的话痨厨师', hello: 'Lou 来啦！散场后谁饿了，我的厨房随时开着。' },
   },
   {
     id: 'Remy',
@@ -74,6 +79,7 @@ export const PERSONAS = [
     play: 'You weigh each clue against the others, then name your suspect with your reasons.',
     spy: 'You build a careful case against a civilian whose clue was a little off.',
     hello: 'Remy. Thirty years on the force. Somebody here is lying, and I will find them.',
+    zh: { blurb: '谁都怀疑的退休侦探', hello: 'Remy。干了三十年刑警。这里有人在撒谎，我一定会找出来。' },
   },
   {
     id: 'Pip',
@@ -82,6 +88,7 @@ export const PERSONAS = [
     play: 'Your clues are what the thing is like in everyday life. You change your vote when someone convinces you.',
     spy: 'You copy the shape of the others\' clues and hope no one notices.',
     hello: 'Hi hi! Pip! I love this game! Is it my turn yet?',
+    zh: { blurb: '永远像个孩子的开心果', hello: '嗨嗨！我是 Pip！我超爱这个游戏！轮到我了吗？' },
   },
 ];
 export const isPerson = (id) => !PERSONAS.some((p) => p.id === id);
@@ -98,9 +105,10 @@ export const isPerson = (id) => !PERSONAS.some((p) => p.id === id);
  * game or after it (`chat`, `after`). `thoughts`: each AI player's
  * thinking. `heard`: the discussion task each player last answered, with a
  * line or a pass. `since`: the `at` of the change that began the moment (`moment`).
+ * `lang`: the table's language, what its AI players speak and its words are in.
  */
 export function newTable() {
-  return { people: [HUMAN], names: {}, players: [], gameNo: 0, greeting: false, intros: [], hellos: [], game: null, lines: [], thoughts: {}, heard: {}, since: 0 };
+  return { lang: 'en', people: [HUMAN], names: {}, players: [], gameNo: 0, greeting: false, intros: [], hellos: [], game: null, lines: [], thoughts: {}, heard: {}, since: 0 };
 }
 
 const playing = (t) => Boolean(t.game) && t.game.phase !== 'over' && !t.greeting; // the game is on, past the hellos
@@ -179,10 +187,10 @@ function actionsOf(t, id, seat) {
  */
 function view(t, member) {
   const seat = t.players.indexOf(member);
-  const { people, names, players, gameNo, greeting, hellos } = t;
+  const { lang, people, names, players, gameNo, greeting, hellos } = t;
   return {
     content: {
-      people, names, players, gameNo, greeting, hellos,
+      lang, people, names, players, gameNo, greeting, hellos,
       game: t.game && seatView(t.game, seat < 0 ? null : seat),
       lines: t.lines.filter((l) => l.kind === 'chat'), // a discussion's are in the game's log
       thoughts: t.game?.phase === 'over' ? t.thoughts : seat < 0 ? {} : { [member]: latest(t.thoughts, member) },
@@ -202,6 +210,7 @@ function view(t, member) {
  *   start { size, dealt, ais }  the host: a game, dealt as the rules `deal`,
  *                               the people at the table first, then `ais`
  *                               ([{ id, hello }]) in the seats left
+ *   lang { lang }               the host: the table's language, from now on
  *   join { name }               a person sits at the table, or renames
  *   leave                       a friend leaves: in a game, each of their turns is taken as doing nothing
  *   clue { text }, say { text }, pass, vote { target }, chat { text }
@@ -226,6 +235,7 @@ function step(t, { by, base, answers = [], body }) {
   if (by === CLOCK) return tick(t, answers[0]);
   const b = body ?? {};
   if (b.type === 'start') return start(t, by, b);
+  if (b.type === 'lang') return by === HUMAN && LANGS.includes(b.lang) ? { ...t, lang: b.lang } : { refused: 'Only the host sets the table\'s language.' };
   if (b.type === 'join') return join(t, by, b.name);
   if (b.type === 'leave') return leave(t, by);
   if (base !== moment(t)) return { refused: 'Stale: the game moved on before your action landed.' };
@@ -381,7 +391,7 @@ export function prompt({ content: c, tasks, rules: how }, id) {
   const seat = v.seat;
   const persona = PERSONAS.find((p) => p.id === id);
   const rules = [
-    `${how}\n\nYou are ${id}, in seat ${seat + 1}: ${persona.blurb.toLowerCase()}.`,
+    `${how}${speak(c.lang)}\n\nYou are ${id}, in seat ${seat + 1}: ${persona.blurb.toLowerCase()}.`,
     `How you talk: ${persona.voice}`,
     `How you play: ${persona.play}`,
     `When you think you are the spy: ${persona.spy}`,

@@ -9,7 +9,8 @@
 //
 // A page connects with a WebSocket to /tables/<room>, the room the hex
 // SHA-256 of a secret the opener's page keeps. Its first message says who it is:
-//   { game, secret }   the opener, the game's host; the first one opens the table
+//   { game, secret, lang }   the opener, the game's host; the first one opens
+//                      the table; `lang` the table's language, what its AI players speak
 //   { game, token? }   anyone with the link: the member its token was given
 //                      to, or a new one, given a token
 // and the room answers { type: 'hello', me, token? }, then { type: 'state',
@@ -56,7 +57,7 @@ import { INFER } from '../agents/ponjo-core.mjs';
 import { control, limits } from '../src/core/controller.js';
 import { ledger } from '../src/core/ledger.js';
 import { createStore } from '../src/core/store.js';
-import { agent } from '../preview/game-kit.js';
+import { LANGS, agent } from '../preview/game-kit.js';
 import { GAMES, RECONNECT_MS } from '../preview/game-tables.js';
 
 const HOUR = 3_600_000;
@@ -209,7 +210,7 @@ export class Table {
 
   // ---- members ----
 
-  async #hello(socket, { room, ip }, { game, secret, token }) {
+  async #hello(socket, { room, ip }, { game, secret, token, lang }) {
     if (!GAMES[game]) return close(socket, 1008, 'No such game');
     let id;
     let given;
@@ -220,6 +221,7 @@ export class Table {
       else if (this.game !== GAMES[game]) return close(socket, 4003, 'Forbidden');
       else if (this.opener !== address) this.ctx.storage.put('opener', this.opener = address);
       id = this.game.host;
+      if (LANGS.includes(lang) && lang !== (this.state.world.lang ?? 'en')) this.store.client(id).commit({ body: { type: 'lang', lang } });
     } else {
       if (this.game !== GAMES[game]) return close(socket, 4004, 'This table is gone. Ask for a new link.');
       id = typeof token === 'string' ? this.members[await sha256(token)] : undefined;

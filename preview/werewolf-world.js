@@ -22,7 +22,7 @@
 // players of it answer what concerns them.
 
 import { MAX_SPEECH, SIZES, act, cast, daybreak, due, fallback as sayNothing, newGame, turn, view as seatView } from './werewolf-rules.js';
-import { DEPTH, MAX_LINE, deadline, latest, line as newLine, named, think as thought } from './game-kit.js';
+import { DEPTH, LANGS, MAX_LINE, deadline, latest, line as newLine, named, speak, think as thought } from './game-kit.js';
 
 export const HUMAN = 'you';
 export const CLOCK = 'clock'; // the member whose tasks are the deadlines and the narrator's calls
@@ -35,7 +35,8 @@ const HELLO_MS = 2200; // ms from one AI player's hello to the next, and from th
 // Each AI player's character: who they are (`blurb`, shown on the page),
 // how they talk and how long they go on (`voice`, `words`), how they play,
 // how they lie as a werewolf, what they do with a seer's or witch's secret,
-// and the line they greet the table with.
+// and the line they greet the table with; `zh`, the blurb and the hello in
+// Chinese, for a table that plays in it.
 export const PERSONAS = [
   {
     id: 'Rosa',
@@ -46,6 +47,7 @@ export const PERSONAS = [
     wolf: 'You build a careful, reasonable-sounding case against a villager, and keep your own record perfectly straight so no one catches you out.',
     claim: 'As the seer you reveal yourself early, with a numbered list of your checks. As the witch you keep quiet unless telling would save the village.',
     hello: 'Good evening, everyone. Rosa. I\'ll be keeping notes, so do try to be consistent.',
+    zh: { blurb: '一位记录一切的退休教师', hello: '大家晚上好，我是 Rosa。我会做笔记，所以请大家前后一致。' },
   },
   {
     id: 'Jax',
@@ -56,6 +58,7 @@ export const PERSONAS = [
     wolf: 'You attack hard to look like the most eager villager, and pick a fight with whoever suspects you.',
     claim: 'You can\'t keep a secret: as the seer you announce your check straight away; as the witch you say so the moment it helps.',
     hello: 'Jax! Let\'s go. I can smell a wolf already.',
+    zh: { blurb: '嗓门大、出手快，总是第一个指认', hello: '我是 Jax！开始吧，我已经闻到狼味了。' },
   },
   {
     id: 'Wen',
@@ -66,6 +69,7 @@ export const PERSONAS = [
     wolf: 'You say even less than usual and let your images drift toward a villager, never quite accusing anyone.',
     claim: 'You hint at your role instead of saying it ("I have looked into one heart tonight") until hinting is no longer enough.',
     hello: 'Wen. The fire is warm tonight. Some of us are not.',
+    zh: { blurb: '一位会看人的安静诗人', hello: '我是 Wen。今晚的火很暖，有些人的心却不是。' },
   },
   {
     id: 'Otis',
@@ -76,6 +80,7 @@ export const PERSONAS = [
     wolf: 'You spin an elaborate theory that points at whoever claims a power, and wrap your own partner into it as a fellow victim.',
     claim: 'You claim your role loudly, then suspect anyone else who claims one.',
     hello: 'Otis. Hear me out: seven strangers round a fire in the woods? Nobody else finds that suspicious?',
+    zh: { blurb: '觉得什么背后都有阴谋', hello: '我是 Otis。听我说：七个陌生人围着林子里的篝火？就没人觉得可疑吗？' },
   },
   {
     id: 'Priya',
@@ -86,6 +91,7 @@ export const PERSONAS = [
     wolf: 'You cross-examine a villager until they look guilty. If a seer accuses you, you claim seer too and attack their credibility.',
     claim: 'You hold your role back as evidence and reveal it when it will win the vote.',
     hello: 'Priya. Let the record show I am here to find the truth, and I will be asking questions.',
+    zh: { blurb: '擅长盘问的出庭律师', hello: '我是 Priya。请记录在案：我来这里是为了找出真相，我会一个个问。' },
   },
   {
     id: 'Bo',
@@ -96,6 +102,7 @@ export const PERSONAS = [
     wolf: 'You stay friendly, gently defend your partner, and never accuse first; you just go along with a case someone else made.',
     claim: 'You tell the plain truth about your role as soon as anyone asks.',
     hello: 'Evening, folks. Bo. Don\'t reckon any of you are wolves, but we\'ll see.',
+    zh: { blurb: '心善、容易信人的农夫', hello: '晚上好，各位。我是 Bo。我不觉得你们谁是狼，不过走着瞧。' },
   },
   {
     id: 'Nell',
@@ -106,6 +113,7 @@ export const PERSONAS = [
     wolf: 'You get a little flustered and over-explain why you can\'t be a wolf, then nudge suspicion onto someone quiet.',
     claim: 'You are scared to claim a role and do so only when cornered or when it clearly matters.',
     hello: 'Um, hi. I\'m Nell. Sorry, I\'ve never played this with, um, strangers before.',
+    zh: { blurb: '想太多的紧张学生', hello: '呃，大家好，我是 Nell。抱歉，我从没跟，呃，陌生人玩过这个。' },
   },
 ];
 export const isPerson = (id) => !PERSONAS.some((p) => p.id === id);
@@ -119,9 +127,10 @@ export const isPerson = (id) => !PERSONAS.some((p) => p.id === id);
  * `lines`: the chat, each line marked with the `game` it goes with and
  * whether it was said `after` it. `thoughts`: each AI player's thinking.
  * `since`: the `at` of the change that began the moment (`moment`).
+ * `lang`: what the AI players speak, the host's page's (LANGS).
  */
 export function newTable() {
-  return { people: [HUMAN], names: {}, players: [], no: 0, greeting: false, intros: [], hellos: [], game: null, call: null, lines: [], thoughts: {}, since: 0 };
+  return { lang: 'en', people: [HUMAN], names: {}, players: [], no: 0, greeting: false, intros: [], hellos: [], game: null, call: null, lines: [], thoughts: {}, since: 0 };
 }
 
 const playing = (t) => Boolean(t.game) && t.game.phase !== 'over' && !t.greeting; // the game is on, past the hellos
@@ -206,12 +215,12 @@ function gameView(t, seat) {
  */
 function view(t, member) {
   const seat = t.players.indexOf(member);
-  const { people, names, players, no, greeting, hellos, lines } = t;
+  const { people, names, players, no, greeting, hellos, lines, lang = 'en' } = t;
   const game = t.game && gameView(t, seat);
   const night = playing(t) && t.game.phase === 'night';
   return {
     content: {
-      people, names, players, no, greeting, hellos, lines, game,
+      lang, people, names, players, no, greeting, hellos, lines, game,
       call: night ? { ...t.call, ends: ends(t) } : null,
       thoughts: t.game?.phase === 'over' ? t.thoughts : seat < 0 ? {} : { [member]: latest(t.thoughts, member) },
       moment: moment(t),
@@ -230,6 +239,7 @@ function view(t, member) {
  *                                the rules' `cast(size)`), the people at the
  *                                table first, then AI players in the seats left
  *   join { name }                a person sits at the table, or renames
+ *   lang { lang }                the host: what the AI players speak from now on
  *   leave                        a friend leaves: in a game, each of their turns is taken as doing nothing
  *   kill { target, text? }, check { target }, save, poison { target }, pass,
  *   speak { text }, vote { target }, abstain, chat { text }
@@ -256,6 +266,7 @@ function step(t, { by, at, base, answers = [], body }) {
   if (b.type === 'start') return start(t, by, b);
   if (b.type === 'join') return join(t, by, b.name);
   if (b.type === 'leave') return leave(t, by);
+  if (b.type === 'lang') return by === HUMAN && LANGS.includes(b.lang) ? { ...t, lang: b.lang } : { refused: 'Only the host sets the language.' };
   if (base !== moment(t)) return { refused: 'Stale: the game moved on before your action landed.' };
   if (b.type === 'chat') return chat(t, by, b, answers);
   if (!playing(t)) return { refused: t.greeting ? 'Wait for everyone to say hello.' : 'There is no game on: chat instead.' };
@@ -298,7 +309,7 @@ function start(t, by, { size, roles }) {
   if (!SIZES.includes(size) || !Array.isArray(roles) || [...roles].sort().join() !== cast(size).sort().join()) return { refused: `A game is ${SIZES.join(', ')} seats, dealt their roles.` };
   const people = t.people.slice(0, size);
   const seated = PERSONAS.slice(0, size - people.length);
-  return { ...t, players: [...people, ...seated.map((p) => p.id)], game: newGame(roles), no: t.no + 1, greeting: true, intros: seated.map(({ id, hello }) => ({ id, text: hello })), hellos: [], call: null, thoughts: {} };
+  return { ...t, players: [...people, ...seated.map((p) => p.id)], game: newGame(roles), no: t.no + 1, greeting: true, intros: seated.map(({ id, hello, zh }) => ({ id, text: t.lang === 'zh' ? zh.hello : hello })), hellos: [], call: null, thoughts: {} };
 }
 
 // A person sits at the table as `name`, and plays from the next game; one there already takes the name.
@@ -436,7 +447,7 @@ export function prompt({ content: c, tasks, rules: how }, id) {
   const seat = v.seat;
   const persona = PERSONAS.find((p) => p.id === id);
   const rules = [
-    `${how}\n\nYou are ${id}, in seat ${seat + 1}: ${persona.blurb.toLowerCase()}.`,
+    `${how}${speak(c.lang)}\n\nYou are ${id}, in seat ${seat + 1}: ${persona.blurb.toLowerCase()}.`,
     `How you talk: ${persona.voice} Your speeches run to about ${persona.words} words.`,
     `How you play: ${persona.play}`,
     `As a werewolf: ${persona.wolf}`,

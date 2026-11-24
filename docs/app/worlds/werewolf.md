@@ -62,6 +62,12 @@ chat; once over, all. A member with no seat sees what all see. `rules` is
 lets the seat do now; `say` outside a game; `sit`, `leave` between games;
 `start { size }`, for the opener. No effects.
 
+**Language.** `lang` (`en` or `zh`) is what the AI players speak: the
+room commits `lang { lang }` as the host when the host's page comes in
+with another. A Chinese table adds `speak(lang)` to the rules and seats
+the personas with their Chinese hellos. Each page draws the table, the log
+and the refusals in its own language (`preview/lang.js`).
+
 **Tasks.**
 
 ```

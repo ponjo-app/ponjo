@@ -10,7 +10,7 @@ world `preview/spy-world.js`, page `preview/spy.js`.
 ## State
 
 ```
-{ rev, people, names, players, gameNo, hellos, game, lines, thoughts, since }
+{ rev, lang, people, names, players, gameNo, hellos, game, lines, thoughts, since }
 game      { seats: [{ role, word, alive }], words, first, round, phase, runoff,
             order, speaker, acted, votes, said, log, winner }
 thoughts  { member → [{ round, kind, text }] }
@@ -18,7 +18,9 @@ thoughts  { member → [{ round, kind, text }] }
 
 `turn(game)` names the moment (round, phase, runoff, speaker); lines and
 votes do not move it. `lines`: the discussion and the chat (`game-kit.js`).
-`since`: the `at` of the change that began the turn. The answer ledger is
+`since`: the `at` of the change that began the turn. `lang`: the table's
+language, `en` or `zh`, the host's page's ([rooms](rooms.md)): the AI
+seats speak it, and the words and hellos are in it. The answer ledger is
 the generic wrapper's.
 
 ## Store
@@ -44,7 +46,9 @@ not for whom; the log; the lines; its last 8 thoughts and the ledger's why
 for its last try. Once the game is over, everything, all thoughts included.
 `past` gives the lines since the seat last answered. `actions`: `clue {
 text }`, `say { text }`, `pass`, `vote { target }`, `chat { text }`.
-`rules`: `RULES`.
+`rules`: `RULES`, and in Chinese, to speak it. The host's `lang { lang }`
+sets the table's language. A word is said when a clue has it as a word
+of its own, or, in Chinese, anywhere.
 
 **Tasks.** For any seat, a person's too, in priority order:
 
@@ -104,8 +108,8 @@ their turns takes its `fallback`.
 ## System members
 
 The dealer, a script in the room, has a `deal:<gameNo>` task on the
-opener's `start { size }` and commits `dealt`: the word pair, which is the
-spies', the sides, the first speaker, by `cryptoRandom`. The clock, the
+opener's `start { size }` and commits `dealt`: the word pair, in the
+table's language, which is the spies', the sides, the first speaker, by `cryptoRandom`. The clock, the
 room's alarm, commits its tasks at their `at`.
 The hello lines come in `start`, from each AI seat's persona; the clock
 commits each `by` itself, `as` that seat.

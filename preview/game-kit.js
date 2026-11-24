@@ -16,6 +16,7 @@
 export const DEPTH = 2; // nobody replies to a reply forever
 export const MAX_LINE = 240; // characters of a line of chat
 const THOUGHTS_SHOWN = 8; // a player's own latest thinking its view has
+export const LANGS = ['en', 'zh']; // a table's languages: what its AI players speak, the host's page's (lang.js)
 
 // ---- in a world ----
 
@@ -43,6 +44,9 @@ export const deadline = (given, as, at, why) => ({ given, as, kind: 'turn', from
 // `thoughts` with `by`'s `thought` added; and the latest a seat's view has.
 export const think = (thoughts, by, thought) => ({ ...thoughts, [by]: [...(thoughts[by] ?? []), thought] });
 export const latest = (thoughts, id) => (thoughts[id] ?? []).slice(-THOUGHTS_SHOWN);
+
+// What a table's `lang` adds to its AI players' rules.
+export const speak = (lang) => (lang === 'zh' ? '\n\nThis table plays in Chinese: write everything, your thinking included, in Simplified Chinese (简体中文). Players\' names stay as they are.' : '');
 
 // ---- on a page ----
 
@@ -151,7 +155,8 @@ const hex = (bytes) => [...new Uint8Array(bytes)].map((b) => b.toString(16).padS
  * The page that opened the table keeps its secret in this browser
  * (`ponjo-<game>-room`), plays as `host` and gives the room `key()`, the
  * visitor's own key for the AI players (or null for Ponjo's), each time it
- * comes in and whenever the room asks for it again; a friend's page,
+ * comes in and whenever the room asks for it again, and its `lang`, the
+ * table's language, each time it comes in; a friend's page,
  * opened at `#join=<room>`, keeps the token the room gave it for this tab,
  * so a reload is back in its seat. `hello(me)` once the room says who the
  * page plays as; `heard(message)` for each of the room's messages; `away(why)`
@@ -162,7 +167,7 @@ const hex = (bytes) => [...new Uint8Array(bytes)].map((b) => b.toString(16).padS
  * the visitor changed their key, close() the host's: the room closes the
  * table, and the page opens a new one, with a new secret and a new link }.
  */
-export function sit(game, host, { key, hello, heard, away }) {
+export function sit(game, host, { key, lang, hello, heard, away }) {
   const joined = new URLSearchParams(location.hash.slice(1)).get('join');
   const kept = joined ? `ponjo-seat:${joined}` : `ponjo-${game}-room`;
   let mine = joined ? load(kept, sessionStorage) : load(kept) ?? { secret: hex(crypto.getRandomValues(new Uint8Array(32))) };
@@ -174,7 +179,7 @@ export function sit(game, host, { key, hello, heard, away }) {
   const giveKey = () => send({ type: 'key', key: key() });
   room.then((r) => {
     line = connect(`${relay()}/tables/${r}`, {
-      open: (ws) => ws.send(JSON.stringify({ game, ...(joined ? { token: mine?.token } : { secret: mine.secret }) })),
+      open: (ws) => ws.send(JSON.stringify({ game, ...(joined ? { token: mine?.token } : { secret: mine.secret, lang }) })),
       heard(text) {
         const message = JSON.parse(text);
         if (message.type === 'hello') {
