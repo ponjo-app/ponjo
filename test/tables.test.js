@@ -274,6 +274,25 @@ test('a page is let in only from Ponjo\'s pages, to a table that is there, as th
   host.close();
 });
 
+test('the host closes a table: every page on it closes, and its link opens nothing', async (t) => {
+  const relay = await tables(t);
+  const { secret, room } = newRoom();
+  const host = page(relay, room, { game: 'spy', secret });
+  await until(() => host.view(), 'the host\'s first view');
+  const friend = page(relay, room, { game: 'spy' });
+  await until(() => friend.me(), 'the friend\'s hello');
+  friend.send({ type: 'close' });
+  friend.act({ type: 'join', name: 'Ann' });
+  await until(() => host.view().content.people.includes(friend.me()), 'the friend could not close it');
+  host.send({ type: 'close' });
+  await until(() => host.closed && friend.closed, 'both pages closed');
+  assert.deepEqual([host.closed.code, friend.closed.code], [4004, 4004]);
+  assert.equal(friend.closed.reason, 'The host closed this table. Ask for a new link.');
+  const back = page(relay, room, { game: 'spy', token: friend.frames[0].token });
+  await until(() => back.closed, 'the old link');
+  assert.equal(back.closed.code, 4004);
+});
+
 test('a visitor\'s OpenAI-compatible key is taken only for a known provider\'s host: any other is refused and never called', async (t) => {
   const relay = await tables(t);
   // A host the relay may not call: any line opened to it is counted.

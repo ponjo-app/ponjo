@@ -22,8 +22,10 @@
 //   { type: 'key', key }          the host: the AI players run on this key,
 //                                 { provider, key, model, endpoint? }, or on Ponjo's (null)
 //   { type: 'away', id }          the host asks member `id` to leave
+//   { type: 'close' }             the host closes the table: every page on it
+//                                 closes, and its link opens nothing again
 // A page is closed with 4003 when its secret is wrong, 4004 when there is
-// no table at a link, and 4001 with the reason when it is turned away.
+// no table at a link or it was closed, and 4001 with the reason when it is turned away.
 // `ping` is answered `pong` without waking the room.
 //
 // Keys. Ponjo's (the ANTHROPIC_API_KEY secret) never leaves the Worker. A
@@ -109,6 +111,7 @@ export class Table {
     if (what.id !== this.game.host) return;
     if (message.type === 'key') return this.#useKey(socket, message.key);
     if (message.type === 'away') return this.#sendAway(String(message.id));
+    if (message.type === 'close') return this.#close();
   }
 
   webSocketClose(socket) {
@@ -184,6 +187,16 @@ export class Table {
     const kept = { game, table: first, members: {}, own: false, spent: { hour: 0, ponjo: 0, own: 0 }, gone: {}, touched: Date.now(), opener: ip };
     this.ctx.storage.put(kept);
     this.#open(kept);
+  }
+
+  // The host closes the table: its pages go, and it is deleted. Its secret is
+  // the host's page's no more, so its link never opens a table again.
+  #close() {
+    for (const page of this.#pages()) {
+      page.serializeAttachment(null);
+      close(page, 4004, 'The host closed this table. Ask for a new link.');
+    }
+    return this.#delete();
   }
 
   async #delete() {
