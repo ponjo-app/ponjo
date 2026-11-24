@@ -68,6 +68,8 @@ In the [online demo](https://ponjo.app/preview/), a buddy asked answers on NVIDI
 
 ## Learn more
 
+Every doc in docs/ is also on the web at [ponjo.app/docs](https://ponjo.app/docs/), published from `main` with the site ([pages.yml](.github/workflows/pages.yml)).
+
 - [Product vision](docs/app/product-vision.md)
 - [User experience](docs/app/user-experience.md)
 - [Architecture](docs/app/architecture.md)

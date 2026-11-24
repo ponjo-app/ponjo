@@ -110,6 +110,37 @@ a { color: var(--accent); }
 .intro-page .intro-cta { margin-top: 32px; }
 .intro-page .intro-cta a { height: 40px; padding: 0 16px; font-size: 14px; text-decoration: none; }
 
+/* ---- docs: the Markdown in docs/ as pages (scripts/build-docs.js), set as the Markdown view sets a doc (web/app.css, .pj-md) ---- */
+
+.doc-page { max-width: var(--page-w); margin: 0 auto; padding: 40px var(--page-pad) 120px; font-family: var(--doc-font); font-size: var(--doc-size); line-height: var(--doc-leading); letter-spacing: var(--doc-tracking); color: var(--text); overflow-wrap: break-word; }
+@media (max-width: 760px) { .doc-page { padding: 32px 16px 80px; } }
+.doc-page :is(h1, h2, h3, h4, h5, h6) { margin: 0; font-weight: 600; line-height: 1.3; letter-spacing: -0.012em; scroll-margin-top: 64px; }
+.doc-page h1 { font-size: 1.875em; padding: 0.9em 0 0.2em; }
+.doc-page > h1:first-child { font-size: 2.35em; line-height: 1.18; letter-spacing: -0.022em; padding-top: 0; }
+.doc-page h2 { font-size: 1.5em; padding: 0.8em 0 0.1em; }
+.doc-page h3 { font-size: 1.25em; padding-top: 0.6em; }
+.doc-page :is(h4, h5, h6) { font-size: 1.05em; padding-top: 0.5em; }
+.doc-page h6 { color: var(--text-soft); }
+.doc-page :is(p, ul, ol, blockquote, pre, table, .pj-diagram) { margin: 0 0 0.6em; }
+.doc-page :is(ul, ol) { padding-left: 1.5em; }
+.doc-page li > :is(ul, ol, p) { margin: 0; }
+.doc-page li::marker { color: var(--text-soft); font-variant-numeric: tabular-nums; }
+.doc-page strong { font-weight: 600; }
+.doc-page a { color: var(--accent); text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--accent) 40%, transparent); text-underline-offset: 0.18em; }
+.doc-page a:hover { text-decoration-color: currentColor; }
+.doc-page code { font-family: var(--mono); font-size: 0.85em; background: var(--bg-soft); padding: 0.15em 0.2em; border-radius: 4px; }
+.doc-page pre { padding: 8px 16px; border-radius: 6px; background: var(--bg-soft); font: 0.88em/1.55 var(--mono); letter-spacing: 0; overflow-x: auto; }
+.doc-page pre code { padding: 0; background: none; font-size: inherit; }
+.doc-page blockquote { padding-left: 1em; border-left: 3px solid var(--text); }
+.doc-page hr { margin: 1em 0; border: 0; border-top: 1px solid var(--border-strong); }
+.doc-page img { display: block; max-width: 100%; height: auto; border-radius: 6px; }
+.doc-page table { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse; font-family: var(--ui-font); font-size: 0.86em; } /* wider than a phone: it slides, not the page */
+.doc-page :is(th, td) { border: 1px solid var(--border-strong); padding: 6px 12px; vertical-align: top; }
+.doc-page th { background: var(--bg-soft); font-weight: 600; }
+.doc-page .doc-list { list-style: none; padding: 0; }
+.doc-list li { margin: 0 0 0.3em; }
+.doc-list code { margin-left: 0.4em; background: none; color: var(--text-faint); font-size: 0.75em; }
+
 /* ---- architecture page: a story in chapters, a scene each (preview/arch-story.js) ---- */
 
 /* on a wide screen, the chapters are a stack of pages under the header and the bar of parts
