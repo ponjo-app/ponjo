@@ -24,6 +24,7 @@ const api = { requests: [], answer: null };
 function play(situation) {
   const vote = situation.match(/action vote, with the target's seat number, one of (\d+)/);
   if (vote) return { thinking: 'secret thought', action: { type: 'vote', target: Number(vote[1]) } };
+  if (/say hello/.test(situation)) return { thinking: 'secret thought', action: { type: 'say' }, say: 'Hello, all.' };
   if (/action clue/.test(situation)) return { thinking: 'secret thought', action: { type: 'clue' }, say: 'Something round.' };
   if (/It is your turn/.test(situation)) return { thinking: 'secret thought', action: { type: /You may: fold, check/.test(situation) ? 'check' : 'call' } };
   return { thinking: 'secret thought', action: { type: 'say' }, say: '' };
@@ -112,19 +113,20 @@ test('a table is kept in its room: with no page open its clock goes on, and afte
   assert.match(id, /^f[0-9a-f]{8}$/);
   friend.act({ type: 'join', name: 'Ann' });
   await until(() => host.view().content.people.includes(id), 'the friend at the table');
-  host.act({ type: 'start', size: 5 });
-  await until(() => host.view().content.greeting, 'the hellos');
+  host.act({ type: 'size', size: 5 });
+  await until(() => host.view().content.seated.length === 5, 'five seats');
+  const ais = host.view().content.seated.slice(2);
 
-  // The hellos and the first clue are the clock's deadlines, which the room's alarm keeps with no page open.
+  // The AI players at the table say hello in the room, which its alarm keeps awake with no page open.
   host.close();
   friend.close();
   await new Promise((r) => setTimeout(r, 15_000));
   const back = page(relay, room, { game: 'spy', secret });
   await until(() => back.view(), 'the host back');
-  const { greeting, hellos, game } = back.view().content;
-  assert.equal(greeting, false, 'the game began with no page open');
-  assert.equal(hellos.length, 3, 'each AI player\'s hello');
-  assert.ok(game.log.some((e) => e.type === 'round'), 'the first round began');
+  const { lines } = back.view().content;
+  assert.deepEqual(ais.filter((ai) => lines.some((l) => l.by === ai && l.text === 'Hello, all.')), ais, 'each AI player\'s hello, with no page open');
+  back.act({ type: 'start', size: 5 });
+  await until(() => back.view().content.game?.log.some((e) => e.type === 'round'), 'the first round');
   back.close();
 
   // A restart of the relay: the room is read again from its storage.
@@ -214,17 +216,17 @@ test('each page is sent only its own seat\'s view, acts only as its own member, 
 test('a table calls the model at most its budget a clock hour; past it, the AI players\' turns take the fallback', async (t) => {
   const relay = await tables(t, { RUNS_AN_HOUR: '3' });
   const { secret, room } = newRoom();
+  const calls = api.requests.length;
   const host = page(relay, room, { game: 'spy', secret });
   await until(() => host.view(), 'the host\'s first view');
-  const calls = api.requests.length;
   host.act({ type: 'start', size: 5 });
   await until(() => {
     host.playAlong();
     return host.view().content.game?.log.filter((e) => e.type === 'clue').length >= 5;
   }, 'every clue', 60_000);
   const clues = host.view().content.game.log.filter((e) => e.type === 'clue');
-  assert.equal(api.requests.length - calls, 3, 'three calls, then none');
-  assert.equal(clues.filter((e) => e.silent).length, 1, 'the fourth AI player gave no clue');
+  assert.equal(api.requests.length - calls, 3, 'three calls (hellos, then clues), then none');
+  assert.ok(clues.some((e) => e.silent), 'past them, an AI player gave no clue');
   const { until: when } = host.frames.findLast((f) => f.type === 'state').ai;
   assert.ok(when > Date.now() && when <= Date.now() + 3_600_000, 'the pages are told until when');
   host.close();

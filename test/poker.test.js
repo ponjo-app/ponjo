@@ -199,14 +199,17 @@ const pokerworld = ledger(world);
 // A table in a store, kept as the page keeps it: `box.kept` is what it last
 // saved; `now`, the store's clock. `as(id)` is member `id`'s client. A new
 // table is `newTable(ids)`, as `edit` changes it.
-function open({ ids, edit = () => {}, kept } = {}) {
+// A new table's AI players have said hello, quietly, unless `hellos` is false.
+function open({ ids, edit = () => {}, kept, hellos = true } = {}) {
   const fresh = newTable(ids);
   edit(fresh);
   const box = { kept: kept ?? { rev: 0, state: pokerworld.wrap(fresh) }, now: 1000 };
   const store = createStore(pokerworld, { load: () => box.kept, save: (k) => (box.kept = k), now: () => box.now });
   const clients = new Map();
   const as = (id) => clients.get(id) ?? clients.set(id, store.client(id)).get(id);
-  return { box, as, state: () => box.kept.state.world, hand: () => box.kept.state.world.hand };
+  const t = { box, as, state: () => box.kept.state.world, hand: () => box.kept.state.world.hand };
+  if (!kept && hellos) for (const { id } of lineup(fresh)) if (isAI(id)) runs(t, id, null);
+  return t;
 }
 const view_ = (t, id) => t.as(id).read().view;
 const tasks = (t, id) => view_(t, id).tasks;
@@ -351,17 +354,17 @@ test('an AI player out of chips buys back in; the host buys in themselves, and a
   assert.equal(t.hand(), null, 'no person with chips: no hand');
 });
 
-test('with no person holding chips there is no hand; the AI players\' hellos are said when the host first sits, and ask no one', () => {
-  const t = open();
+test('with no person holding chips there is no hand; each AI player at the table says hello from when it opens, in its own words, once', () => {
+  const t = open({ hellos: false });
+  assert.deepEqual(['Gary', 'Duke', 'Penny'].map((id) => tasks(t, id).map((x) => [x.kind, x.given])), [[['ask', 'hello:Gary']], [['ask', 'hello:Duke']], [['ask', 'hello:Penny']]]);
+  assert.match(prompt(view_(t, 'Gary'), 'Gary').situation, /Why you are woken: you just sat down at the table: say hello\./);
+  runs(t, 'Gary', { say: 'Hi folks!' });
+  assert.deepEqual([tasks(t, 'Gary'), t.state().chat.map((l) => [l.by, l.text])], [[], [['Gary', 'Hi folks!']]], 'once');
   does(t, HUMAN, { type: 'next' });
   deals(t);
   assert.equal(t.hand(), null, 'no chips, no hand');
   does(t, HUMAN, { type: 'sit', buyIn: 500 });
-  assert.deepEqual(t.state().chat.map((l) => [l.by, l.depth]), [['Gary', 2], ['Duke', 2], ['Penny', 2], ['Gary', 2]], 'each says hello in seat order, then more');
-  assert.deepEqual(['Gary', 'Duke', 'Penny'].map((id) => tasks(t, id)), [[], [], []], 'no one is due');
-  assert.deepEqual(tasks(t, DEALER).map((x) => [x.given, x.at]), [['deal:2', 1000 + 4 * 1400]], 'the first hand, once they are said');
-  does(t, HUMAN, { type: 'sit', buyIn: 200 });
-  assert.equal(t.state().chat.length, 4, 'once');
+  assert.deepEqual(tasks(t, DEALER).map((x) => [x.given, x.at]), [['deal:2', undefined]], 'the first hand, at once');
 });
 
 test('a player reacts with one of the table\'s emoji, which the others see and which asks no one', () => {
@@ -380,7 +383,8 @@ test('players come and go between hands: a seat is taken at the next hand, given
   assert.match(does(t, HUMAN, { type: 'add', id: 'Gary' }).refused, /no seat/, 'already here');
   assert.match(does(t, HUMAN, { type: 'add', id: 'Nobody' }).refused, /no seat/);
   assert.equal(does(t, HUMAN, { type: 'add', id: 'Mabel' }).refused, undefined);
-  assert.equal(t.state().chat.at(-1).by, 'Mabel', 'she says hello');
+  assert.deepEqual(tasks(t, 'Mabel').map((x) => x.given), ['hello:Mabel'], 'she says hello');
+  runs(t, 'Mabel', null);
   assert.match(t.as('Mabel').commit({ body: { type: 'add', id: 'Lex' } }).refused, /host/);
   does(t, HUMAN, { type: 'sit', buyIn: 500 });
   deals(t);
@@ -389,9 +393,11 @@ test('players come and go between hands: a seat is taken at the next hand, given
   does(t, HUMAN, { type: 'add', id: 'Lex' });
   assert.deepEqual(freeSeats(t.state()), []);
   does(t, HUMAN, { type: 'remove', id: 'Duke' });
+  assert.ok(tasks(t, 'Duke').some((x) => x.kind === 'ask' && x.given.startsWith('bye:Duke:')), 'he says goodbye, in his own words');
+  assert.match(prompt(view_(t, 'Duke'), 'Duke').situation, /the host asked you to leave the table once this hand is over: say goodbye/);
   assert.match(does(t, HUMAN, { type: 'add', id: 'Hank' }).refused, /no seat/, 'his seat is his till the hand ends');
   assert.deepEqual(lineup(t.state()).map((p) => [p.id, p.joining, p.leaving]), [[HUMAN, false, false], ['Gary', false, false], ['Mabel', false, false], ['Duke', false, true], ['Penny', false, false], ['Lex', true, false]]);
-  assert.deepEqual(tasks(t, 'Lex'), [], 'not seated yet: never due');
+  assert.deepEqual(tasks(t, 'Lex').map((x) => x.given), ['hello:Lex'], 'not seated yet: due only to say hello');
   does(t, HUMAN, { type: 'add', id: 'Duke' });
   assert.ok(!t.state().leaving.includes('Duke'), 'asked back before the hand ends, Duke stays');
   does(t, HUMAN, { type: 'remove', id: 'Duke' });
@@ -610,18 +616,17 @@ test('on the core: the AI players\', the dealer\'s and the clock\'s controllers 
   assert.ok(dukeRuns > 0, 'Duke, turned away three times, is checked or folded for by the dealer');
 });
 
-test('the host sets the table\'s language: the AI players say hello and goodbye in it, and are told to speak it', () => {
+test('the host sets the table\'s language: the AI players are told to speak it, their hellos and goodbyes too', () => {
   const t = open();
   assert.equal(view_(t, 'Gary').content.lang, 'en');
   assert.doesNotMatch(prompt(view_(t, 'Gary'), 'Gary').rules, /Chinese/);
   assert.match(t.as('fa').commit({ body: { type: 'lang', lang: 'zh' } }).refused, /host/, 'a friend may not');
   assert.match(does(t, HUMAN, { type: 'lang', lang: 'fr' }).refused, /language/);
   assert.equal(does(t, HUMAN, { type: 'lang', lang: 'zh' }).refused, undefined);
-  does(t, HUMAN, { type: 'sit', buyIn: 500 });
-  assert.deepEqual(t.state().chat.map((l) => l.text), [...PERSONAS[0].zh.hello.slice(0, 1), PERSONAS[1].zh.hello[0], PERSONAS[2].zh.hello[0], PERSONAS[0].zh.hello[1]]);
+  does(t, HUMAN, { type: 'add', id: 'Mabel' });
+  assert.match(prompt(view_(t, 'Mabel'), 'Mabel').rules, /Simplified Chinese/, 'her hello');
   does(t, HUMAN, { type: 'remove', id: 'Duke' });
-  assert.equal(t.state().chat.at(-1).text, PERSONAS[1].zh.bye);
-  assert.match(prompt(view_(t, 'Gary'), 'Gary').rules, /Simplified Chinese/);
+  assert.match(prompt(view_(t, 'Duke'), 'Duke').rules, /Simplified Chinese/, 'his goodbye');
 });
 
 test('a hand is named in Chinese for a Chinese page', () => {

@@ -19,8 +19,7 @@ hand  as in preview/poker-dealer.js, with no deck
 answer ledger (answered, tries, why) is the runtime wrapper's, in the state.
 A visitor's bankroll is their browser's, apart from the table.
 `lang` is the table's language, `en` or `zh`: the room sets it from the
-opener's page ([rooms](rooms.md)); the AI seats speak it, and say their
-hellos and goodbyes in it. Each page draws the table in its own language,
+opener's page ([rooms](rooms.md)); the AI seats speak it. Each page draws the table in its own language,
 the dealer's lines too.
 
 ## Store
@@ -66,8 +65,10 @@ One `view` for every seat:
 
 `depth` is 0 for a person's line or the rules', else one more than the
 agent line's. An agent's line carries on the `from` of the tasks its run
-answered. `DEPTH` is the table's rule; a hello is said at it, so it sets
-off nothing. A seat's turn and its lines are separate tasks; its
+answered. `DEPTH` is the table's rule. An AI seat at the table that has
+said no line has a `hello:<id>` ask, from when it sits down, a hand on or
+not; one the opener asked to leave, a `bye:<id>:<deals>` ask until it is
+gone. No line is written for them. A seat's turn and its lines are separate tasks; its
 controller batches them into one run and one change. `talk`: a line task is
 listed always for a person's line, else when a roll falls under the
 persona's `talk`.
@@ -96,7 +97,7 @@ is the store's `at`.
 One controller per member: the opener and each friend on their pages; each
 AI seat, the dealer and the clock in the room. A person's screen shows every
 task ("your turn", with its `at`); people also act unasked: chat, react, buy
-in, leave, `next`. The opener's `sit` lands the AI seats' hellos as lines.
+in, leave, `next`.
 
 ## Presence
 
@@ -128,6 +129,6 @@ turns. Capacity: one queue per key in the room, turns before lines.
   shuffle of the cards not yet out (`draw`, `preview/poker-dealer.js`); its
   view lists every card out, and `apply` checks its cards are new and
   enough. Its task is `deal:<n>`, `n` counting deals, a hand or none for
-  want of chips; the first has an `at`, once the hellos are said.
+  want of chips.
 - An AI seat's program waits its persona's pace (`preview/game-tables.js`)
   after the model answers, so its change lands that much later.

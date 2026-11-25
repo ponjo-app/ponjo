@@ -3,24 +3,27 @@
 Who's the Spy on the [Blackboard Agent Runtime](../../runtime/README.md).
 Each seat gets a secret word, the spies a different one. A round: a clue
 from each living seat in order, a discussion, a vote of all at once; chat
-before and after. The table is a [room](rooms.md) on the relay; the
+out of a game. The table is a [room](rooms.md) on the relay; the
 *opener* starts games, friends join by a link. Rules `preview/spy-rules.js`,
 world `preview/spy-world.js`, page `preview/spy.js`.
 
 ## State
 
 ```
-{ rev, lang, people, names, players, gameNo, hellos, game, lines, thoughts, since }
+{ rev, lang, people, names, size, players, gameNo, game, lines, thoughts, since }
 game      { seats: [{ role, word, alive }], words, first, round, phase, runoff,
             order, speaker, acted, votes, said, log, winner }
 thoughts  { member → [{ round, kind, text }] }
 ```
 
 `turn(game)` names the moment (round, phase, runoff, speaker); lines and
-votes do not move it. `lines`: the discussion and the chat (`game-kit.js`).
+votes do not move it. `lines`: the discussion and the chat (`game-kit.js`),
+each with the last game begun when it was said. `size`: the next game's
+seats; the people fill them first, AI players the rest, and those sit at
+the table from then on.
 `since`: the `at` of the change that began the turn. `lang`: the table's
 language, `en` or `zh`, the host's page's ([rooms](rooms.md)): the AI
-seats speak it, and the words and hellos are in it. The answer ledger is
+seats speak it, and the words are in it. The answer ledger is
 the generic wrapper's.
 
 ## Store
@@ -45,7 +48,9 @@ its side; who is alive, and the side of each seat voted out; who has voted,
 not for whom; the log; the lines; its last 8 thoughts and the ledger's why
 for its last try. Once the game is over, everything, all thoughts included.
 `past` gives the lines since the seat last answered. `actions`: `clue {
-text }`, `say { text }`, `pass`, `vote { target }`, `chat { text }`.
+text }`, `say { text }`, `pass`, `vote { target }`, `chat { text }` (out of a
+game, for whoever is at the table); `size { size }`, `start { size }`, for
+the opener.
 `rules`: `RULES`, and in Chinese, to speak it. The host's `lang { lang }`
 sets the table's language. A word is said when a clue has it as a word
 of its own, or, in Chinese, anywhere.
@@ -57,7 +62,8 @@ of its own, or, in Chinese, anywhere.
 | clue | turn | `turn:<gameNo>:<turn>` | it is the speaker and has not spoken | `since + TURN` |
 | vote | turn | `turn:<gameNo>:<turn>` | it is alive and has not voted | `since + TURN` |
 | talk | turn | `talk:<gameNo>:<round>:<line>` | it is alive, has lines left, and has not answered the opening (line 0) or a line that asks it | `since + TALK` |
-| chat | ask | `chat:<gameNo>:<line>` | a line after the game names it, below `DEPTH` (2) | none |
+| hello | ask | `hello:<member>` | out of a game, an AI seat new to the table: no line yet, not in the last game | none |
+| chat | ask | `chat:<gameNo>:<line>` | out of a game, a line since the last began names it, below `DEPTH` (2) | none |
 
 - `from` is empty for a clue or vote, which the rules set off and the
   owner pays for; else whoever set off the line it answers. `depth` is 0
@@ -72,7 +78,7 @@ of its own, or, in Chinese, anywhere.
   every seat to take part: the runaway count skips it; the line budget and
   depth limit end it.
 - Every voter is due at once: a barrier, tallied once no one is due.
-- A person's line to everyone, after a game, is one chat task, for the
+- A person's line to everyone, out of a game, is one chat task, for the
   first AI seat after the speaker in seat order (the first AI seat, if the
   speaker has none).
 - The discussion ends when no one is due: every living seat, people
@@ -87,8 +93,7 @@ failed run, a task the wallet will not start, or nothing on a turn: its
 `fallback` at once. `thinking` lands with the change, into `thoughts`. A
 person's refused `act` lands nothing; they see why at once.
 
-**Time.** The clock's tasks, each with its base: `hello:<gameNo>:<seat>`
-at `start.at` plus `HELLO_MS` each, then `begin`; `expire:<gameNo>:<turn>` at
+**Time.** The clock's tasks, each with its base: `expire:<gameNo>:<turn>` at
 `since + TURN` (each seat still due takes its `fallback`); `vote-called`
 at `since + TALK`. Each lands only if its turn is still the game's.
 
@@ -111,8 +116,6 @@ The dealer, a script in the room, has a `deal:<gameNo>` task on the
 opener's `start { size }` and commits `dealt`: the word pair, in the
 table's language, which is the spies', the sides, the first speaker, by `cryptoRandom`. The clock, the
 room's alarm, commits its tasks at their `at`.
-The hello lines come in `start`, from each AI seat's persona; the clock
-commits each `by` itself, `as` that seat.
 
 ## Agent clients
 

@@ -47,8 +47,8 @@ const ai = models(() => {
 
 const typeTime = (text) => Math.min(6000, Math.max(1200, text.length * 60));
 
-// A new game, dealt by the room: the AI players fill the seats the people
-// leave, each with its hello, which the clock says for it round the table; then the first clue.
+// A new game, dealt by the room: the people at the table and the AI players
+// sitting with them, in the seats the host picked; then the first clue.
 function startGame(size) {
   myVote = null;
   table.act('', { type: 'start', size });
@@ -56,7 +56,7 @@ function startGame(size) {
 
 // ---- what this page draws: its seat's view of the table ----
 
-const EMPTY = { content: { people: [], names: {}, players: [], gameNo: 0, greeting: false, hellos: [], game: null, lines: [], thoughts: {}, moment: '', ends: 0 }, actions: [], tasks: [] };
+const EMPTY = { content: { people: [], names: {}, size: 6, seated: [], players: [], gameNo: 0, game: null, lines: [], thoughts: {}, moment: '', ends: 0 }, actions: [], tasks: [] };
 // The view this page draws (`t` its content, `v` the game as its seat sees it), and the presence it may see.
 function picture() {
   const view = shown?.view ?? EMPTY;
@@ -125,19 +125,21 @@ function seatNode(t, id, i, n, mine) {
   node.append(face, plate);
   return node;
 }
+// The seats of a game round the table, or before any, of whoever sits at it.
 function layout(t) {
-  const key = `${t.gameNo}:${t.players.join()}`;
+  const ids = t.game ? t.players : t.seated;
+  const key = `${t.gameNo}:${ids.join()}`;
   if (key === seatsFor) return;
   seatsFor = key;
   for (const node of seats) node.remove();
-  const mine = Math.max(0, t.players.indexOf(me));
-  seats = t.players.map((id, i) => seatNode(t, id, i, t.players.length, mine));
+  const mine = Math.max(0, ids.indexOf(me));
+  seats = ids.map((id, i) => seatNode(t, id, i, ids.length, mine));
   $('.ww-ring').append(...seats);
 }
 
 // The last vote, while it shows: from its result until the next vote begins.
 const lastVote = (v) => (v.phase === 'vote' ? null : v.log.findLast((e) => e.type === 'vote'));
-const canVote = (t, v, i) => !t.greeting && v.due?.kind === 'vote' && v.due.targets.includes(i);
+const canVote = (t, v, i) => v.due?.kind === 'vote' && v.due.targets.includes(i);
 
 // A badge on a face: changed, it flips in; gone, it goes.
 function badge(node, mark) {
@@ -160,9 +162,9 @@ function drawSeats(t, v, view) {
     const out = v.log.findLast((e) => e.type === 'vote' && e.out === i);
     const dots = vote ? Object.values(vote.votes).filter((x) => x === i).length : 0;
     node.toggleAttribute('data-dead', !s.alive);
-    node.toggleAttribute('data-turn', !t.greeting && v.phase === 'clue' && v.speaker === i);
+    node.toggleAttribute('data-turn', v.phase === 'clue' && v.speaker === i);
     node.toggleAttribute('data-pickable', canVote(t, v, i));
-    $('.pj-agent-face', node).dataset.presence = !s.alive ? 'away' : present[id]?.working || typing.has(id) || (!t.greeting && v.phase === 'clue' && v.speaker === i) || (i === v.seat && v.due && !t.greeting) ? 'working' : 'idle';
+    $('.pj-agent-face', node).dataset.presence = !s.alive ? 'away' : present[id]?.working || typing.has(id) || (v.phase === 'clue' && v.speaker === i) || (i === v.seat && v.due) ? 'working' : 'idle';
     const status = out ? [`out:${out.round}`, () => symbol('ww-ballot'), 'dead', L(`Voted out, round ${out.round}`, `第 ${out.round} 轮被投出`)]
       : v.voted.includes(i) ? ['voted', () => symbol('ww-ballot'), 'voted', L('Has voted', '已投票')] : null;
     badge($('[data-at="status"]', node), status);
@@ -210,13 +212,12 @@ addEventListener('resize', () => draw());
 function drawCenter(t, v, view) {
   const over = v?.phase === 'over';
   const mine = v && v.seat !== null ? v.seats[v.seat].role : null;
-  $('.ww-phase-text').textContent = !v || t.greeting ? L('Who\'s the Spy', '谁是卧底') : over ? (v.winner === 'civilians' ? L('The civilians win', '平民获胜') : L(`The ${v.seats.filter((s) => s.role === 'spy').length > 1 ? 'spies win' : 'spy wins'}`, '卧底获胜')) : L(`Round ${v.round}`, `第 ${v.round} 轮`);
+  $('.ww-phase-text').textContent = !v ? L('Who\'s the Spy', '谁是卧底') : over ? (v.winner === 'civilians' ? L('The civilians win', '平民获胜') : L(`The ${v.seats.filter((s) => s.role === 'spy').length > 1 ? 'spies win' : 'spy wins'}`, '卧底获胜')) : L(`Round ${v.round}`, `第 ${v.round} 轮`);
   const name = v && v.speaker !== null && v.speaker !== v.seat ? label(t, t.players[v.speaker]) : null;
   const speaker = name ? L(`${name}'s clue`, `轮到 ${name} 描述`) : L('Your clue', '轮到你描述');
   const tied = v?.runoff ? list(v.runoff.map((i) => (i === v.seat ? L('you', '你') : label(t, t.players[i])))) : '';
   const [key, mark, words] = !v ? [`wait:${away}`, null, away || (ROOM ? L('Waiting for the host to start a game', '等房主开局') : '')]
-    : t.greeting ? ['hello', null, L('Everyone says hello', '大家打个招呼')]
-      : over ? ['over', null, mine ? ((mine === 'spy') === (v.winner === 'spies') ? L('You won', '你赢了') : L('You lost', '你输了')) : '']
+    : over ? ['over', null, mine ? ((mine === 'spy') === (v.winner === 'spies') ? L('You won', '你赢了') : L('You lost', '你输了')) : '']
         : v.phase === 'vote' ? [`vote:${v.runoff}`, symbol('ww-ballot'), v.runoff ? L(`Vote between ${tied}`, `在${tied}之间投票`) : L('Vote for the spy', '投出卧底')]
           : v.phase === 'talk' ? ['talk', icon('users'), L(`Discussion · ${Math.max(0, Math.ceil((t.ends - Date.now()) / 1000))}s, then the vote`, `讨论 · 还有 ${Math.max(0, Math.ceil((t.ends - Date.now()) / 1000))} 秒，然后投票`)]
             : [`clue:${v.speaker}`, null, v.runoff ? L(`A tie: ${cap(tied)} give one more clue. ${speaker}`, `平票：${tied}再各描述一次。${speaker}`) : speaker];
@@ -255,7 +256,7 @@ function drawMe(t, v) {
   const seated = v && v.seat !== null;
   const voted = v?.phase === 'vote' && v.voted.includes(v.seat);
   $('.ww-ask').textContent = away || (!v ? (ROOM && t.people.includes(me) ? L('You are at the table: you play from the next game.', '你已在牌桌上：从下一局起上场。') : '')
-    : t.greeting || v.phase === 'over' ? ''
+    : v.phase === 'over' ? ''
       : !seated ? (t.people.includes(me) ? L('Watching: you play from the next game.', '观战中：从下一局起上场。') : L('Watching.', '观战中。'))
         : !v.alive ? L('You are out: watch the rest.', '你出局了：看他们打完吧。')
           : v.due?.kind === 'clue' ? L('Your turn: give a clue to your word in the chat, without saying it.', '轮到你了：在聊天里描述你的词，但不能说出它。')
@@ -285,8 +286,7 @@ function drawChat(t, v, view) {
   const speaker = v && v.speaker !== null && v.speaker !== v.seat ? label(t, t.players[v.speaker]) : null;
   const why = mine ? [icon('users'), !talking ? L('Everyone at the table hears you.', '桌上所有人都听得到你。') : says(view) === 'say' ? L(`Everyone hears you · ${v.due.left} line${v.due.left === 1 ? '' : 's'} left.`, `所有人都听得到你 · 还能说 ${v.due.left} 句。`) : L('Everyone hears your clue.', '所有人都听得到你的描述。')]
     : [symbol('ww-muted'), !v ? L('Join the table to chat.', '加入牌桌才能聊天。')
-      : t.greeting ? L('Muted while everyone says hello.', '大家打招呼时先别说话。')
-        : v.phase === 'over' ? L('Join the table to chat.', '加入牌桌才能聊天。')
+      : v.phase === 'over' ? L('Join the table to chat.', '加入牌桌才能聊天。')
           : v.seat === null ? L('Watching: you play from the next game.', '观战中：从下一局起上场。')
             : !v.alive ? L('You are out: the out don\'t clue.', '你出局了：出局的人不再描述。')
               : v.phase === 'vote' ? L('Muted while everyone votes.', '投票时不能说话。')
@@ -382,8 +382,8 @@ function drawFeed(t, v, view) {
   // Whether line `key` shows yet; if not, its player is typing it.
   typed.clear();
   const shows = (key, id, text) => isPerson(id) || typed.shows(key, id, text);
-  // the chat: before this game (or the next, before any), and after it
-  const chatted = (after) => t.lines.filter((l) => l.kind === 'chat' && l.after === after && l.game === (v || after ? t.gameNo : t.gameNo + 1));
+  // the chat: before this game (or before any), and after it
+  const chatted = (no) => t.lines.filter((l) => l.game === no);
   const chatLines = (list) => {
     for (const l of list) {
       if (!shows(`l:${l.id}`, l.by, l.text)) continue;
@@ -391,11 +391,7 @@ function drawFeed(t, v, view) {
       last = l.by;
     }
   };
-  chatLines(chatted(false));
-  for (const h of t.hellos) {
-    say(h.id, h.text, last === h.id);
-    last = h.id;
-  }
+  chatLines(chatted(v ? t.gameNo - 1 : t.gameNo));
   for (const [k, e] of (v?.log ?? []).entries()) {
     if ((e.type === 'clue' && !e.silent) || e.type === 'line') {
       if (!shows(`g:${t.gameNo}:${k}`, t.players[e.seat], e.text)) continue;
@@ -420,7 +416,7 @@ function drawFeed(t, v, view) {
         : L(`The spies made it: they win. The civilians' word was "${e.words.civilian}"; the spies', "${e.words.spy}".`, `卧底撑到了最后：卧底获胜。平民的词是“${e.words.civilian}”，卧底的是“${e.words.spy}”。`)));
     }
   }
-  if (v) chatLines(chatted(true));
+  if (v) chatLines(chatted(t.gameNo));
   for (const id of typing) rows.push(typingMessage(faceOf(t, id), id));
   for (const [id, p] of Object.entries(presence())) {
     if (!p.failed) continue;
@@ -518,35 +514,29 @@ function showThinking() {
 // ---- a new game: how many players, with whoever is at the table ----
 
 const starting = $('.ww-start');
-let size = 6;
 function openStart() {
   starting.hidden = false;
   document.body.classList.add('pk-buying-in');
   drawStart();
 }
-// The sizes the people at the table fit, and who they are.
+// The table's size, and who is at it.
 function drawStart() {
   const { t } = picture();
-  const people = t.people.length;
-  size = Math.max(size, people, 5);
-  for (const b of starting.querySelectorAll('[data-size]')) {
-    b.setAttribute('aria-checked', String(Number(b.dataset.size) === size));
-    b.disabled = Number(b.dataset.size) < people;
-  }
+  const people = Math.min(t.people.length, t.size);
+  for (const b of starting.querySelectorAll('[data-size]')) b.setAttribute('aria-checked', String(Number(b.dataset.size) === t.size));
   const names = t.people.map((id) => label(t, id));
-  $('.sp-people').textContent = L(`At the table: ${names.join(', ')}. AI players take the ${size - people === 1 ? 'other seat' : `other ${size - people} seats`}.`, `桌上：${names.join('、')}。其余 ${size - people} 个座位由 AI 玩家坐。`);
+  const watch = t.people.length > t.size ? L(` The last ${t.people.length - t.size === 1 ? 'one watches' : `${t.people.length - t.size} watch`}.`, `最后 ${t.people.length - t.size} 人观战。`) : '';
+  $('.sp-people').textContent = L(`At the table: ${names.join(', ')}.${watch} AI players take the ${t.size - people === 1 ? 'other seat' : `other ${t.size - people} seats`}.`, `桌上：${names.join('、')}。${watch}其余 ${t.size - people} 个座位由 AI 玩家坐。`);
 }
 starting.addEventListener('click', (event) => {
   const b = event.target.closest('[data-size]');
-  if (!b || b.disabled) return;
-  size = Number(b.dataset.size);
-  drawStart();
+  if (b) table.act('', { type: 'size', size: Number(b.dataset.size) }); // AI players sit down or get up for it
 });
 starting.addEventListener('submit', (event) => {
   event.preventDefault();
   starting.hidden = true;
   document.body.classList.remove('pk-buying-in');
-  startGame(size);
+  startGame(picture().t.size);
 });
 // ---- the table's room: the host's page invites friends; a friend's page joins ----
 
@@ -580,10 +570,8 @@ joining.addEventListener('submit', (event) => {
   closeJoin();
 });
 
-// This page's seat at the table. Its first view: the host's page, with no
-// game on, offers to start one; a friend's page that was at the table (a
+// This page's seat at the table. A friend's page that was at the table (a
 // reload) is back in its seat, by the name it had.
-let opened = false;
 const table = sit('spy', HUMAN, {
   key: ai.key,
   lang: LANG,
@@ -600,11 +588,7 @@ const table = sit('spy', HUMAN, {
     }
     if (message.type !== 'state') return;
     shown = message;
-    const { people, names, game } = message.view.content;
-    if (!opened) {
-      opened = true;
-      if (!ROOM && !game) openStart();
-    }
+    const { people, names } = message.view.content;
     if (ROOM && !joining.hidden && names[me]) {
       closeJoin();
       if (!people.includes(me)) table.act('', { type: 'join', name: names[me] });

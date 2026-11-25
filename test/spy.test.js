@@ -35,7 +35,7 @@ test('a deal: one pair, a spy or two by size, the sides shuffled', () => {
   for (const lang of ['en', 'zh']) assert.ok(PAIRS[lang].every(([a, b]) => !says(a, b) && !says(b, a)), `no word in a ${lang} pair says the other`);
 });
 
-test('a table in Chinese: its words, its own-word check, its hellos', () => {
+test('a table in Chinese: its words, its own-word check', () => {
   const { words } = deal(6, 'zh');
   assert.ok(PAIRS.zh.some(([a, b]) => [a, b].includes(words.civilian) && [a, b].includes(words.spy)));
   assert.ok(says('早上来一杯咖啡', '咖啡'), 'a Chinese word, anywhere in the text');
@@ -43,7 +43,6 @@ test('a table in Chinese: its words, its own-word check, its hellos', () => {
   const t = { ...newTable(), lang: 'zh' };
   const start = GAMES.spy.body({ type: 'start', size: 5 }, t);
   assert.ok(PAIRS.zh.flat().includes(start.dealt.words.civilian));
-  assert.deepEqual(start.ais.map((a) => a.hello), PERSONAS.slice(0, 4).map((p) => p.zh.hello));
 });
 
 test('clues go round in seat order, never saying the word; then everyone votes at once', () => {
@@ -162,7 +161,6 @@ test('a seat sees its own word, never its side, nor another\'s word, until the g
 // ---- the table as a world, on the core ----
 
 const spy = ledger(world);
-const AIS = PERSONAS.map(({ id, hello }) => ({ id, hello }));
 // A table in a store, kept as the page keeps it: `box.kept` is what it last
 // saved. `as(id)` is member `id`'s client.
 function open(kept = { rev: 0, state: spy.wrap(newTable()) }) {
@@ -186,11 +184,12 @@ function tick(t) {
   const [task] = tasks(t, CLOCK);
   return t.as(CLOCK).commit({ as: task.as, answers: [task.given], body: {} });
 }
-// A game of `roles` (c, s) with the people at the table first, the first clue
-// seat `first`'s, its hellos said.
+// A game of `roles` (c, s) with the people at the table first, the first
+// clue seat `first`'s, once the AI players at the table have said hello.
 function play(t, roles = 'csccc', first = 0) {
-  does(t, HUMAN, { type: 'start', size: roles.length, dealt: { words: WORDS, roles: [...roles].map((r) => (r === 's' ? 'spy' : 'civilian')), first }, ais: AIS });
-  while (t.state().greeting) tick(t);
+  does(t, HUMAN, { type: 'size', size: roles.length });
+  for (const id of view_(t, HUMAN).content.seated) if (tasks(t, id).some((x) => x.given.startsWith('hello:'))) runs(t, id, null);
+  does(t, HUMAN, { type: 'start', size: roles.length, dealt: { words: WORDS, roles: [...roles].map((r) => (r === 's' ? 'spy' : 'civilian')), first } });
   return t;
 }
 const seatOf = (t, id) => t.state().players.indexOf(id);
@@ -300,16 +299,10 @@ test('a discussion costs about a run per seat and one per line: five AI players 
   assert.deepEqual([calls, stopped], [5 + lines, 0], 'not five runs a line');
 });
 
-test('the clock: the hellos one by one, then the first clue; a turn\'s time up takes everyone still due as doing nothing; a discussion\'s, the vote', () => {
+test('the clock: a turn\'s time up takes everyone still due as doing nothing; a discussion\'s, the vote', () => {
   const t = open();
-  does(t, HUMAN, { type: 'start', size: 5, dealt: { words: WORDS, roles: ['spy', 'civilian', 'civilian', 'civilian', 'civilian'], first: 0 }, ais: AIS });
-  assert.deepEqual(tasks(t, CLOCK).map((x) => [x.given, x.as]), [['hello:1:1', 'Ivy']]);
-  assert.match(does(t, HUMAN, { type: 'clue', text: 'Mornings' }).refused, /hello/, 'no clue till the hellos are over');
+  does(t, HUMAN, { type: 'start', size: 5, dealt: { words: WORDS, roles: ['spy', 'civilian', 'civilian', 'civilian', 'civilian'], first: 0 } });
   assert.match(t.as(CLOCK).commit({ as: CLOCK, answers: ['begin:1'], body: {} }).refused, /Not due/);
-  for (let k = 0; k < 4; k++) tick(t);
-  assert.deepEqual(t.state().hellos.map((h) => h.id), ['Ivy', 'Max', 'Juno', 'Sam']);
-  assert.deepEqual(tasks(t, CLOCK).map((x) => x.given), ['begin:1']);
-  tick(t);
   assert.deepEqual(tasks(t, HUMAN).map((x) => x.why), ['Your clue']);
   assert.ok(tasks(t, CLOCK)[0].given.startsWith('expire:'));
   tick(t);
@@ -392,14 +385,22 @@ test('a friend\'s page gets their own seat\'s view: their word, no other, and no
   assert.deepEqual(view_(t, 'fann').content.thoughts, { fann: [] });
 });
 
-test('outside a game the table chats: before it, the people; once it is over, the AI players answer what names them, one a line to everyone', () => {
+test('the table chats outside a game: each AI player at it says hello as it sits down; once a game is over, the AI players answer what names them, one a line to everyone', () => {
   const t = open();
   does(t, 'fann', { type: 'join', name: 'Ann' });
-  assert.equal(does(t, 'fann', { type: 'chat', text: 'Hi! Ready?' }).refused, undefined, 'before any game, a friend chats');
+  assert.deepEqual(view_(t, HUMAN).content.seated, [HUMAN, 'fann', 'Ivy', 'Max', 'Juno', 'Sam'], 'before any game, the AI players sit with the people');
+  does(t, HUMAN, { type: 'size', size: 5 });
+  assert.deepEqual([tasks(t, 'Sam'), view_(t, 'Sam').actions], [[], []], 'one seat less: Sam gets up');
+  assert.deepEqual(tasks(t, 'Ivy').map((x) => x.given), ['hello:Ivy']);
+  assert.match(prompt(view_(t, 'Ivy'), 'Ivy').situation, /Now: You just sat down at the table: say hello/);
+  for (const id of ['Ivy', 'Max', 'Juno']) runs(t, id, null);
+  assert.equal(does(t, 'fann', { type: 'chat', text: '用中文好吗' }).refused, undefined, 'before any game, a friend chats');
+  assert.deepEqual(['Ivy', 'Max', 'Juno'].map((id) => tasks(t, id).length), [1, 0, 0], 'a line to everyone: the first AI player after the speaker');
+  runs(t, 'Ivy', { type: 'chat', text: '好的' });
   assert.equal(does(t, 'fbob', { type: 'chat', text: 'Me too' }).refused, 'You are not at the table.');
-  assert.deepEqual(t.state().lines.map((l) => [l.by, l.game, l.after]), [['fann', 1, false]], 'it goes with the next game');
   play(t, 'cccsc'); // Max, in seat 3, is the spy
   assert.match(does(t, HUMAN, { type: 'chat', text: 'Hello' }).refused, /game is on/);
+  assert.match(prompt(view_(t, 'Juno'), 'Juno').situation, /The table's chat, latest last:\n- Ann, a person: "用中文好吗"\n- Ivy: "好的"/, 'what the table agreed, through the game');
   playRound(t, { [HUMAN]: 3, fann: 3, Ivy: 3, Max: 0, Juno: 3 });
   assert.equal(t.state().game.winner, 'civilians');
   does(t, HUMAN, { type: 'chat', text: 'Max, were you the spy?' });
@@ -415,7 +416,7 @@ test('outside a game the table chats: before it, the people; once it is over, th
   assert.deepEqual(['Ivy', 'Max', 'Juno'].map((id) => tasks(t, id).length), [1, 0, 0], 'a line to everyone: the first AI player after the speaker');
   runs(t, 'Ivy', null);
   assert.deepEqual(tasks(t, 'Ivy'), [], 'quiet answers it');
-  assert.ok(t.state().lines.filter((l) => l.kind === 'chat' && l.after).every((l) => l.game === 1));
+  assert.deepEqual(t.state().lines.filter((l) => l.kind === 'chat').map((l) => l.game), [0, 0, 1, 1, 1, 1], 'each line with the last game begun');
 });
 
 // A model for the AI players: Max always says his word, which the rules

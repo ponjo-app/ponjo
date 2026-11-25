@@ -9,11 +9,14 @@
 // is a member whose tasks are the deadlines.
 //
 // The people are the host (HUMAN), whose page opened the table, and any
-// friends who joined it by a link; the AI players fill the seats left.
-// Outside a game, before it and once it is over, the people at the table
-// chat, and the AI players of the game just played answer.
+// friends who joined it by a link; the AI players fill the seats left, and
+// sit at the table from when it opens, each saying hello as it sits down.
+// The table chats whenever the game does not mute it: in a game, only its
+// discussion is open, to the players still in. An AI player at it answers
+// what concerns it, and plays by what the table agreed there, as far as the
+// rules allow.
 
-import { MAX_CLUE, MAX_LINES, act, due, endTalk, fallback as sayNothing, linesLeft, newGame, turn, view as seatView } from './spy-rules.js';
+import { MAX_CLUE, MAX_LINES, SIZES, act, due, endTalk, fallback as sayNothing, linesLeft, newGame, turn, view as seatView } from './spy-rules.js';
 import { DEPTH, LANGS, MAX_LINE, after as next, latest, line as newLine, named, speak, think as thought, deadline } from './game-kit.js';
 
 export const HUMAN = 'you';
@@ -21,11 +24,12 @@ export const CLOCK = 'clock'; // the member whose tasks are the table's deadline
 export const MAX_PEOPLE = 8;
 export const TURN = 90_000; // ms a turn may take; then everyone still due is taken as doing nothing
 export const TALK = 90_000; // ms a discussion may last; then the vote
-const HELLO_MS = 1800; // ms from one AI player's hello to the next, and from the last to the first clue
+const SIZE = 6; // the seats of a new table's game, until the host picks another
+const CHAT_SHOWN = 40; // the table's latest lines an AI player is shown
 
 // Each AI player: who they are (`blurb`, shown on the page), how they talk
-// and how they clue, what they do when they think they are the spy, and the
-// line they greet the table with; `zh`, their blurb and hello at a table in Chinese.
+// and how they clue, and what they do when they think they are the spy;
+// `zh`, their blurb at a table in Chinese.
 export const PERSONAS = [
   {
     id: 'Ivy',
@@ -33,8 +37,7 @@ export const PERSONAS = [
     voice: 'You set crosswords for a living. Your clues are short, clever and a little cryptic, often wordplay or a double meaning, and you enjoy it when no one gets them.',
     play: 'You keep your clues just vague enough that only those who share your word will see it. You vote for whoever gave a clue that fits a different word.',
     spy: 'You give a clue so general it fits both words, and quietly agree with the most common reading.',
-    hello: 'Ivy. Seven letters, "a liar among friends". Any guesses?',
-    zh: { blurb: '出谜语的填字游戏编者', hello: 'Ivy。打一词：“朋友堆里的骗子”。谁猜得出？' },
+    zh: { blurb: '出谜语的填字游戏编者' },
   },
   {
     id: 'Max',
@@ -42,8 +45,7 @@ export const PERSONAS = [
     voice: 'You are a loud, blunt sports coach. Short sentences, no patience, the odd exclamation mark.',
     play: 'Your clues are too specific: you nearly give the word away. You vote fast for whoever sounds odd to you.',
     spy: 'You go on the attack: you name someone as the spy before anyone can look at you.',
-    hello: 'Max. Let\'s get this done, people! Clues short, votes fast!',
-    zh: { blurb: '话太多的直脾气教练', hello: 'Max。赶紧开始！描述要短，投票要快！' },
+    zh: { blurb: '话太多的直脾气教练' },
   },
   {
     id: 'Juno',
@@ -51,8 +53,7 @@ export const PERSONAS = [
     voice: 'You are a theatrical drama student. You speak in big, dramatic images, as if on stage.',
     play: 'Your clues paint a scene or a feeling, not a fact. You vote with your gut and say so with a flourish.',
     spy: 'You hide behind a mood: a clue all feeling and no fact, which could be either word.',
-    hello: 'Juno! Darlings, a game of secrets. I was born for this.',
-    zh: { blurb: '什么都要演一下的戏剧生', hello: 'Juno！亲爱的们，一场关于秘密的游戏，我就是为此而生的。' },
+    zh: { blurb: '什么都要演一下的戏剧生' },
   },
   {
     id: 'Sam',
@@ -60,8 +61,7 @@ export const PERSONAS = [
     voice: 'You are a dry, precise accountant. As few words as possible, no jokes.',
     play: 'Your clues are one or two flat words. You keep a tally of whose clue fits what, and vote on it.',
     spy: 'You give the flattest, safest clue you can, and vote with the majority.',
-    hello: 'Sam. Let\'s keep this efficient.',
-    zh: { blurb: '面无表情的会计', hello: 'Sam。效率第一。' },
+    zh: { blurb: '面无表情的会计' },
   },
   {
     id: 'Lou',
@@ -69,8 +69,7 @@ export const PERSONAS = [
     voice: 'You are a warm, chatty chef. You relate everything to food, cooking and your kitchen.',
     play: 'Your clues come from the kitchen whenever they can. You trust people too easily and vote late.',
     spy: 'You change the subject to cooking, and agree loudly with whoever sounds sure.',
-    hello: 'Lou here! If anyone needs a snack after, my kitchen\'s open.',
-    zh: { blurb: '三句不离吃的话痨厨师', hello: 'Lou 来啦！散场后谁饿了，我的厨房随时开着。' },
+    zh: { blurb: '三句不离吃的话痨厨师' },
   },
   {
     id: 'Remy',
@@ -78,8 +77,7 @@ export const PERSONAS = [
     voice: 'You are a retired detective. You speak slowly, as if reading from a notebook ("Interesting. Noted.").',
     play: 'You weigh each clue against the others, then name your suspect with your reasons.',
     spy: 'You build a careful case against a civilian whose clue was a little off.',
-    hello: 'Remy. Thirty years on the force. Somebody here is lying, and I will find them.',
-    zh: { blurb: '谁都怀疑的退休侦探', hello: 'Remy。干了三十年刑警。这里有人在撒谎，我一定会找出来。' },
+    zh: { blurb: '谁都怀疑的退休侦探' },
   },
   {
     id: 'Pip',
@@ -87,8 +85,7 @@ export const PERSONAS = [
     voice: 'You are bubbly and excitable, like a kid at a party. Lots of energy, simple words.',
     play: 'Your clues are what the thing is like in everyday life. You change your vote when someone convinces you.',
     spy: 'You copy the shape of the others\' clues and hope no one notices.',
-    hello: 'Hi hi! Pip! I love this game! Is it my turn yet?',
-    zh: { blurb: '永远像个孩子的开心果', hello: '嗨嗨！我是 Pip！我超爱这个游戏！轮到我了吗？' },
+    zh: { blurb: '永远像个孩子的开心果' },
   },
 ];
 export const isPerson = (id) => !PERSONAS.some((p) => p.id === id);
@@ -96,29 +93,31 @@ export const isPerson = (id) => !PERSONAS.some((p) => p.id === id);
 /**
  * A new table: the host alone, before a game. `people` are the host and the
  * friends at the table, in the order they joined; `names` their names.
- * `game` is the rules' game once one starts, `players` its seats' ids,
- * `intros` the AI players' hellos still to say and `hellos` those said.
- * `lines`: what is said that is not a clue, each { id (its place, from 1),
- * by, text, to (the players it names), depth, from (the people who set it
- * off), game, kind }: in a discussion (`talk`, with its `round`, and, if
- * it names no one, the AI player it asks, `next`), or in the chat before a
- * game or after it (`chat`, `after`). `thoughts`: each AI player's
+ * `size`: the seats of the next game. `game` is the rules' game once one
+ * starts, number `gameNo`, `players` its seats' ids. `lines`: what is said
+ * that is not a clue, each { id (its place, from 1), by, text, to (the
+ * players it names), depth, from (the people who set it off), game (the
+ * last game begun), kind }: in a discussion (`talk`, with its `round`, and,
+ * if it names no one, the AI player it asks, `next`), or in the chat out of
+ * a game (`chat`). `thoughts`: each AI player's
  * thinking. `heard`: the discussion task each player last answered, with a
  * line or a pass. `since`: the `at` of the change that began the moment (`moment`).
  * `lang`: the table's language, what its AI players speak and its words are in.
  */
 export function newTable() {
-  return { lang: 'en', people: [HUMAN], names: {}, players: [], gameNo: 0, greeting: false, intros: [], hellos: [], game: null, lines: [], thoughts: {}, heard: {}, since: 0 };
+  return { lang: 'en', people: [HUMAN], names: {}, size: SIZE, players: [], gameNo: 0, game: null, lines: [], thoughts: {}, heard: {}, since: 0 };
 }
 
-const playing = (t) => Boolean(t.game) && t.game.phase !== 'over' && !t.greeting; // the game is on, past the hellos
+const playing = (t) => Boolean(t.game) && t.game.phase !== 'over'; // the game is on
+// Who sits at the table for the next game: the people first, then AI players in the seats left.
+const seated = (t) => [...t.people.slice(0, t.size), ...PERSONAS.slice(0, Math.max(0, t.size - t.people.length)).map((p) => p.id)];
 const here = (t, id) => !isPerson(id) || t.people.includes(id); // a friend who left plays on as doing nothing
 const nameOf = (t, id) => (isPerson(id) ? t.names[id] ?? (id === HUMAN ? 'the host' : 'a friend') : id);
 // The players a line names, by the names they go by at the table.
-const namedIn = (t, text) => named([...new Set([...t.players, ...t.people])], (id) => (!isPerson(id) || t.names[id] ? nameOf(t, id) : ''), text);
+const namedIn = (t, text) => named([...new Set([...(playing(t) ? t.players : seated(t)), ...t.people])], (id) => (!isPerson(id) || t.names[id] ? nameOf(t, id) : ''), text);
 // The moment the table is at: a change made on another is stale. It moves
-// with each hello, and with each turn of the game (`turn`, spy-rules.js).
-const moment = (t) => (t.game ? `${t.gameNo}:${t.greeting ? `hello:${t.hellos.length}` : turn(t.game)}` : '');
+// with each turn of the game (`turn`, spy-rules.js).
+const moment = (t) => (t.game ? `${t.gameNo}:${turn(t.game)}` : '');
 const ends = (t) => t.since + (t.game.phase === 'talk' ? TALK : TURN);
 // The first AI player after `by` in seat order (from the first seat, if `by` has none) that `ok` takes.
 const after = (t, by, ok) => next(t.players, by, (p) => !isPerson(p) && ok(p));
@@ -134,13 +133,12 @@ const hear = (t, by, given, latest) => ({ ...t.heard, [by]: isPerson(by) ? talk(
  * What player `id`, in `seat`, is due to do, in order: its clue or its vote
  * (a turn the rules ask); in a discussion, while it has lines left, the
  * first it has not answered of the discussion's opening and each line that
- * asks it (names it, or names no one and is to it as `next`); once the game is over, each line in the chat after it that names it, or a
- * person's line to everyone if it is the first AI player after the speaker.
+ * asks it (names it, or names no one and is to it as `next`); out of a
+ * game, an AI player at the table, its hello and each line that asks it.
  */
 function tasksOf(t, id, seat) {
-  if (seat < 0) return [];
-  if (t.game?.phase === 'over') return isPerson(id) ? [] : chatTasks(t, id);
-  if (!playing(t) || !here(t, id)) return [];
+  if (!playing(t)) return isPerson(id) || !seated(t).includes(id) ? [] : chatTasks(t, id);
+  if (seat < 0 || !here(t, id)) return [];
   const mine = due(t.game).find((d) => d.seat === seat);
   if (mine) return [{ given: `turn:${moment(t)}`, as: id, kind: 'turn', from: [], depth: 0, at: ends(t), why: mine.kind === 'clue' ? 'Your clue' : 'Your vote' }];
   if (!linesLeft(t.game, seat)) return [];
@@ -152,17 +150,21 @@ function tasksOf(t, id, seat) {
   return [{ given: key + line.id, as: id, kind: 'turn', from: line.from, depth: line.depth, at: ends(t), why: line.id ? `${nameOf(t, line.by)} said "${line.text}"` : 'The discussion begins' }];
 }
 
+// An AI player new to the table, which has said no line at it and did not
+// play the last game, says hello. A line
+// in the chat since the last game began asks the AI players it names,
+// under DEPTH; a person's line to everyone, the first AI player after them.
 function chatTasks(t, id) {
-  return t.lines.filter((l) => l.kind === 'chat' && l.after && l.game === t.gameNo && l.by !== id && l.depth < DEPTH && (l.to.includes(id) || (isPerson(l.by) && !l.to.length && after(t, l.by, () => true) === id)))
-    .map((l) => ({ given: `chat:${t.gameNo}:${l.id}`, as: id, kind: 'ask', from: l.from, depth: l.depth, why: `${nameOf(t, l.by)} said "${l.text}"${l.to.length ? '' : ' to everyone'}` }));
+  const hello = t.lines.some((l) => l.by === id) || t.players.includes(id) ? [] : [{ given: `hello:${id}`, as: id, kind: 'ask', from: [], depth: 0, why: 'You just sat down at the table: say hello' }];
+  const first = (by) => next(seated(t), by, (p) => !isPerson(p));
+  return [...hello, ...t.lines.filter((l) => l.kind === 'chat' && l.game === t.gameNo && l.by !== id && l.depth < DEPTH && (l.to.includes(id) || (isPerson(l.by) && !l.to.length && first(l.by) === id)))
+    .map((l) => ({ given: `chat:${t.gameNo}:${l.id}`, as: id, kind: 'ask', from: l.from, depth: l.depth, why: `${nameOf(t, l.by)} said "${l.text}"${l.to.length ? '' : ' to everyone'}` }))];
 }
 
-// The clock's: each hello in turn, `as` its player, then the first clue;
-// the end of a turn, when everyone still due takes the rules' fallback; the
-// end of a discussion, when the vote is called.
+// The clock's: the end of a turn, when everyone still due takes the rules'
+// fallback; the end of a discussion, when the vote is called.
 function clockTasks(t) {
   const task = (...a) => [deadline(...a)];
-  if (t.greeting) return t.intros.length ? task(`hello:${t.gameNo}:${t.players.indexOf(t.intros[0].id)}`, t.intros[0].id, t.since + HELLO_MS, 'A hello') : task(`begin:${t.gameNo}`, CLOCK, t.since + HELLO_MS, 'The first clue');
   if (!playing(t)) return [];
   return t.game.phase === 'talk' ? task(`vote-called:${moment(t)}`, CLOCK, ends(t), 'The vote') : task(`expire:${moment(t)}`, CLOCK, ends(t), 'The turn is up');
 }
@@ -173,7 +175,7 @@ function actionsOf(t, id, seat) {
     const mine = seat < 0 ? null : due(t.game).find((d) => d.seat === seat);
     return mine ? [mine.kind] : linesLeft(t.game, seat) ? ['say', 'pass'] : [];
   }
-  return !t.greeting && (t.people.includes(id) || (t.game && seat >= 0)) ? ['chat'] : [];
+  return t.people.includes(id) || seated(t).includes(id) ? ['chat'] : [];
 }
 
 // ---- the world ----
@@ -187,10 +189,10 @@ function actionsOf(t, id, seat) {
  */
 function view(t, member) {
   const seat = t.players.indexOf(member);
-  const { lang, people, names, players, gameNo, greeting, hellos } = t;
+  const { lang, people, names, size, players, gameNo } = t;
   return {
     content: {
-      lang, people, names, players, gameNo, greeting, hellos,
+      lang, people, names, size, seated: seated(t), players, gameNo,
       game: t.game && seatView(t.game, seat < 0 ? null : seat),
       lines: t.lines.filter((l) => l.kind === 'chat'), // a discussion's are in the game's log
       thoughts: t.game?.phase === 'over' ? t.thoughts : seat < 0 ? {} : { [member]: latest(t.thoughts, member) },
@@ -207,9 +209,10 @@ function view(t, member) {
 /**
  * Lands `change` ({ by, at, base, answers, body }), or { refused: why }.
  * `body`, by `type`:
- *   start { size, dealt, ais }  the host: a game, dealt as the rules `deal`,
- *                               the people at the table first, then `ais`
- *                               ([{ id, hello }]) in the seats left
+ *   start { size, dealt }       the host: a game, dealt as the rules `deal`,
+ *                               the people at the table first, then AI
+ *                               players in the seats left
+ *   size { size }               the host: the next game's seats
  *   lang { lang }               the host: the table's language, from now on
  *   join { name }               a person sits at the table, or renames
  *   leave                       a friend leaves: in a game, each of their turns is taken as doing nothing
@@ -235,12 +238,13 @@ function step(t, { by, base, answers = [], body }) {
   if (by === CLOCK) return tick(t, answers[0]);
   const b = body ?? {};
   if (b.type === 'start') return start(t, by, b);
+  if (b.type === 'size') return resize(t, by, b.size);
   if (b.type === 'lang') return by === HUMAN && LANGS.includes(b.lang) ? { ...t, lang: b.lang } : { refused: 'Only the host sets the table\'s language.' };
   if (b.type === 'join') return join(t, by, b.name);
   if (b.type === 'leave') return leave(t, by);
   if (base !== moment(t)) return { refused: 'Stale: the game moved on before your action landed.' };
   if (b.type === 'chat') return chat(t, by, b, answers);
-  if (!playing(t)) return { refused: t.greeting ? 'Wait for everyone to say hello.' : 'There is no game on: chat instead.' };
+  if (!playing(t)) return { refused: 'There is no game on: chat instead.' };
   const seat = t.players.indexOf(by);
   if (b.type === 'pass') {
     const task = tasksOf(t, by, seat)[0];
@@ -273,18 +277,24 @@ function settle(t, before, at) {
 function tick(t, given) {
   if (!clockTasks(t).some((task) => task.given === given)) return { refused: 'Not due.' };
   const kind = given.split(':')[0];
-  if (kind === 'hello') return { ...t, intros: t.intros.slice(1), hellos: [...t.hellos, t.intros[0]] };
-  if (kind === 'begin') return { ...t, greeting: false };
   if (kind === 'vote-called') return { ...t, game: endTalk(t.game) };
   return { ...t, game: sayNothing(t.game) };
 }
 
-function start(t, by, { dealt, size, ais }) {
+function start(t, by, { dealt, size }) {
   if (by !== HUMAN) return { refused: 'Only the host starts a game.' };
-  if (t.game && t.game.phase !== 'over') return { refused: 'A game is on.' };
-  const people = t.people.slice(0, size);
-  const seated = ais.slice(0, size - people.length);
-  return { ...t, players: [...people, ...seated.map((a) => a.id)], game: newGame(dealt), gameNo: t.gameNo + 1, greeting: true, intros: seated.map(({ id, hello }) => ({ id, text: hello })), hellos: [], thoughts: {}, heard: {} };
+  if (playing(t)) return { refused: 'A game is on.' };
+  if (!SIZES.includes(size)) return { refused: `A game has ${SIZES.join(', ')} seats.` };
+  const next = { ...t, size };
+  return { ...next, players: seated(next), game: newGame(dealt), gameNo: t.gameNo + 1, thoughts: {}, heard: {} };
+}
+
+// The host picks how many seats the next game has: AI players sit down or get up for it.
+function resize(t, by, size) {
+  if (by !== HUMAN) return { refused: 'Only the host sets the table.' };
+  if (playing(t)) return { refused: 'A game is on.' };
+  if (!SIZES.includes(size)) return { refused: `A game has ${SIZES.join(', ')} seats.` };
+  return { ...t, size };
 }
 
 // A person sits at the table as `name`, and plays from the next game; one there already takes the name.
@@ -300,15 +310,13 @@ function leave(t, by) {
   return { ...t, people: t.people.filter((p) => p !== by) };
 }
 
-// A line in the chat out of a game, by someone at the table, or an AI
-// player of the game just played: before any game, it goes with the next.
+// A line in the chat out of a game, by someone at the table.
 function chat(t, by, b, answers) {
-  if (t.greeting || playing(t)) return { refused: 'Not now: the game is on.' };
-  if (!t.people.includes(by) && !(t.game && t.players.includes(by))) return { refused: 'You are not at the table.' };
+  if (playing(t)) return { refused: 'Not now: the game is on.' };
+  if (!actionsOf(t, by, -1).includes('chat')) return { refused: 'You are not at the table.' };
   const text = String(b.text ?? '').trim().slice(0, MAX_LINE);
   if (!text) return { refused: 'Say something.' };
-  const after = Boolean(t.game);
-  return think({ ...t, lines: [...t.lines, line(t, by, text, answers, { kind: 'chat', after, game: after ? t.gameNo : t.gameNo + 1 })] }, t, by, b);
+  return think({ ...t, lines: [...t.lines, line(t, by, text, answers, { kind: 'chat' })] }, t, by, b);
 }
 
 // A line `by` says, answering the tasks `answers`: a person's sets off
@@ -339,6 +347,8 @@ You are woken when you have something to do. Each time, answer with one call to 
 - thinking: your private reasoning in one to three short sentences: which word the others seem to have, which side you think you are on, and whom you suspect. No one sees it until the game is over.
 - action: what you do now, always. { "type": "clue" } with your clue in say, { "type": "say" } with a line in the discussion, or { "type": "vote", "target": a seat number }.
 - say: your clue or your line, in your own voice: one sentence, under 20 words, never your word or its plural. In the discussion, leave it empty to stay quiet: speak only when you have something worth saying, and at most one of you usually answers a line said to the whole table. A reply needs no reply. Left out when you vote.
+
+The table also chats, outside a game: you say hello when you sit down, and answer when someone asks you or speaks to everyone. Whatever the table agreed there holds through the games, as far as these rules allow: the language to speak above all. Speak the language the table speaks.
 
 Play to win for your side, as yourself. Talk only in your own voice. Be quick.`;
 
@@ -383,42 +393,49 @@ const SIDE = { civilian: 'a civilian', spy: 'a spy' };
 /**
  * What AI player `id` is shown, from its `view` alone, so another player's
  * word or side can reach it only once the rules show it: the rules and its
- * own style, then the game as its seat sees it, and what its tasks ask.
+ * own style, then the table's chat, the game as its seat sees it, and
+ * what its tasks ask.
  * Returns { rules, situation }; the rules stay the same run to run, so they cache.
  */
 export function prompt({ content: c, tasks, rules: how }, id) {
   const v = c.game;
-  const seat = v.seat;
+  const seat = v ? v.seat : -1;
   const persona = PERSONAS.find((p) => p.id === id);
   const rules = [
-    `${how}${speak(c.lang)}\n\nYou are ${id}, in seat ${seat + 1}: ${persona.blurb.toLowerCase()}.`,
+    `${how}${speak(c.lang)}\n\nYou are ${id}${seat >= 0 ? `, in seat ${seat + 1}` : ''}: ${persona.blurb.toLowerCase()}.`,
     `How you talk: ${persona.voice}`,
     `How you play: ${persona.play}`,
     `When you think you are the spy: ${persona.spy}`,
   ].join('\n');
-  const who = (i) => `seat ${i + 1}, ${i === seat ? 'you' : nameOf(c, c.players[i])}`;
-  const parts = [`Your word: "${v.word}".`];
-  parts.push(['The players, in seat order:', ...v.seats.map((s, i) => `- ${who(i)}: ${s.alive ? 'in' : `out, was ${SIDE[s.role]}`}`)].join('\n'));
-  const rounds = [];
-  for (const e of v.log) {
-    if (e.type === 'round') rounds.push(`Round ${e.round}:`);
-    else if (e.type === 'clue') rounds.push(`- ${who(e.seat)}${e.silent ? ' gave no clue.' : `: "${e.text}"`}`);
-    else if (e.type === 'talk') rounds.push('The discussion:');
-    else if (e.type === 'line') rounds.push(`  - ${who(e.seat)} says: "${e.text}"`);
-    else if (e.type === 'vote') {
-      const votes = Object.entries(e.votes).map(([s, t]) => `${who(Number(s))} → ${t === null ? 'no vote' : who(t)}`);
-      rounds.push(`- The vote${e.second ? ' between the tied' : ''}: ${votes.join('; ')}. ${e.out !== null ? `${who(e.out)} is out: ${SIDE[e.role]}.` : e.runoff ? `A tie between ${e.runoff.map(who).join('; ')}: one more clue each, then a vote between them.` : 'No one is out.'}`);
+  const name = (p) => (p === id ? 'you' : isPerson(p) ? `${nameOf(c, p)}, a person` : p);
+  const parts = [];
+  const chat = c.lines.slice(-CHAT_SHOWN);
+  if (chat.length) parts.push(['The table\'s chat, latest last:', ...chat.map((l) => `- ${name(l.by)}: "${l.text}"`)].join('\n'));
+  if (v && seat >= 0) {
+    const who = (i) => `seat ${i + 1}, ${i === seat ? 'you' : nameOf(c, c.players[i])}`;
+    parts.push(`Your word: "${v.word}".`);
+    parts.push(['The players, in seat order:', ...v.seats.map((s, i) => `- ${who(i)}: ${s.alive ? 'in' : `out, was ${SIDE[s.role]}`}`)].join('\n'));
+    const rounds = [];
+    for (const e of v.log) {
+      if (e.type === 'round') rounds.push(`Round ${e.round}:`);
+      else if (e.type === 'clue') rounds.push(`- ${who(e.seat)}${e.silent ? ' gave no clue.' : `: "${e.text}"`}`);
+      else if (e.type === 'talk') rounds.push('The discussion:');
+      else if (e.type === 'line') rounds.push(`  - ${who(e.seat)} says: "${e.text}"`);
+      else if (e.type === 'vote') {
+        const votes = Object.entries(e.votes).map(([s, t]) => `${who(Number(s))} → ${t === null ? 'no vote' : who(t)}`);
+        rounds.push(`- The vote${e.second ? ' between the tied' : ''}: ${votes.join('; ')}. ${e.out !== null ? `${who(e.out)} is out: ${SIDE[e.role]}.` : e.runoff ? `A tie between ${e.runoff.map(who).join('; ')}: one more clue each, then a vote between them.` : 'No one is out.'}`);
+      }
     }
+    parts.push(['What has happened:', ...rounds].join('\n'));
+    const mine = c.thoughts[id] ?? [];
+    if (mine.length) parts.push(['Your own earlier thinking:', ...mine.map((t) => `- Round ${t.round}: ${t.text}`)].join('\n'));
+    if (v.phase === 'over') parts.push('The game is over: everyone\'s word and side are shown above.');
   }
-  parts.push(['What has happened:', ...rounds].join('\n'));
-  if (v.phase === 'over') {
-    const after = c.lines.filter((l) => l.after && l.game === c.gameNo);
-    parts.push(`The game is over: everyone's word and side are shown above. ${after.length ? ['The chat since:', ...after.map((l) => `- ${l.by === id ? 'you' : nameOf(c, l.by)}: "${l.text}"`)].join('\n') : ''}`);
-    parts.push(`Now: ${tasks.map((t) => t.why).join(', and ')}. Answer if you will, as yourself, about the game just played: action say, with one short line in say, or an empty say to stay quiet.`);
+  if (!v || v.phase === 'over') {
+    parts.push(`At the table now: ${c.seated.map(name).join(', ')}.`);
+    parts.push(`Now: ${tasks.map((t) => t.why).join(', and ')}. Answer if you will, as yourself: action say, with one short line in say, or an empty say to stay quiet.`);
   }
-  const mine = c.thoughts[id] ?? [];
-  if (mine.length) parts.push(['Your own earlier thinking:', ...mine.map((t) => `- Round ${t.round}: ${t.text}`)].join('\n'));
-  if (v.due) {
+  if (v?.due) {
     const ask = v.due.kind === 'clue'
       ? `It is your turn to give a clue${v.runoff ? ' (you are in a tie: this clue may decide the vote)' : ''}: action clue, with it in say.`
       : v.due.kind === 'talk'

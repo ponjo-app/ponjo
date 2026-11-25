@@ -157,7 +157,7 @@ buyin.addEventListener('submit', (event) => {
     const name = buyin.elements.name.value.trim().slice(0, 20) || L('Friend', '朋友');
     keep(name, NAME);
     perform({ type: 'sit', seat: Number(buyin.dataset.slot), name, buyIn: amount });
-  } else perform(kind === 'topup' ? { type: 'topup', amount } : { type: 'sit', buyIn: amount }); // the host's buying in deals the next hand; the first time, after the players' hellos
+  } else perform(kind === 'topup' ? { type: 'topup', amount } : { type: 'sit', buyIn: amount }); // the host's buying in deals the next hand
   saveWallet();
   closeBuyIn();
 });
@@ -778,7 +778,7 @@ const room = sit('poker', HUMAN, {
     saveWallet();
     if (!opened) {
       opened = true;
-      if (!ROOM && !chipsOfMine()) buyIn(table.greeted ? 'rebuy' : 'sit');
+      if (!ROOM && !chipsOfMine()) buyIn(table.sat ? 'rebuy' : 'sit');
     }
     drawModel();
     draw();

@@ -48,12 +48,11 @@ export const GAMES = {
     ais: spy.PERSONAS.map(({ id }) => id),
     seat: () => ({ tool: spy.DECIDE, prompt: spy.prompt, decide: (args, view) => spy.decided(args, view.actions) }),
     pace: (id) => between(SPY_PACE[id]),
-    // A new game, dealt here in the table's language: the AI players fill the seats the people leave, each with its hello.
+    // A new game, dealt here in the table's language.
     body(b, t) {
-      if (b.type !== 'start') return said(b);
+      if (b.type !== 'start') return { ...said(b), ...number(b, 'size') };
       if (!SPY_SIZES.includes(b.size)) return { refused: `A game has ${SPY_SIZES.join(', ')} seats.` };
-      const ais = spy.PERSONAS.slice(0, Math.max(0, b.size - t.people.length)).map(({ id, hello, zh }) => ({ id, hello: t.lang === 'zh' ? zh.hello : hello }));
-      return { type: 'start', size: b.size, dealt: dealWords(b.size, t.lang), ais };
+      return { type: 'start', size: b.size, dealt: dealWords(b.size, t.lang) };
     },
   },
   werewolf: {
@@ -67,7 +66,7 @@ export const GAMES = {
     // A night action less, to fit in its call.
     pace: (id, tasks, view) => between(WEREWOLF_PACE[id].think.map((ms) => (view.content.game?.phase === 'night' ? Math.min(ms, NIGHT_THINK) : ms))),
     body(b) {
-      if (b.type !== 'start') return said(b);
+      if (b.type !== 'start') return { ...said(b), ...number(b, 'size') };
       try {
         return { type: 'start', size: b.size, roles: dealRoles(b.size) };
       } catch (error) {
