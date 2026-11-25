@@ -8,6 +8,7 @@ import { ledger } from '../src/core/ledger.js';
 import { createStore } from '../src/core/store.js';
 import { MAX_LINES, PAIRS, SIZES, act, deal, due, endTalk, fallback, newGame, says, spiesFor, targets, view } from '../preview/spy-rules.js';
 import { CLOCK, HUMAN, MAX_PEOPLE, PERSONAS, TURN, decided, newTable, prompt, world } from '../preview/spy-world.js';
+import { GAMES } from '../preview/game-tables.js';
 import { until } from './helpers.js';
 
 const WORDS = { civilian: 'coffee', spy: 'tea' };
@@ -28,10 +29,20 @@ test('a deal: one pair, a spy or two by size, the sides shuffled', () => {
     const { words, roles } = deal(size);
     assert.equal(roles.length, size);
     assert.equal(roles.filter((r) => r === 'spy').length, spiesFor(size));
-    assert.ok(PAIRS.some(([a, b]) => (a === words.civilian && b === words.spy) || (b === words.civilian && a === words.spy)));
+    assert.ok(PAIRS.en.some(([a, b]) => (a === words.civilian && b === words.spy) || (b === words.civilian && a === words.spy)));
   }
   assert.throws(() => deal(4));
-  assert.ok(PAIRS.every(([a, b]) => !says(a, b) && !says(b, a)), 'no word in a pair says the other');
+  for (const lang of ['en', 'zh']) assert.ok(PAIRS[lang].every(([a, b]) => !says(a, b) && !says(b, a)), `no word in a ${lang} pair says the other`);
+});
+
+test('a table in Chinese: its words, its own-word check', () => {
+  const { words } = deal(6, 'zh');
+  assert.ok(PAIRS.zh.some(([a, b]) => [a, b].includes(words.civilian) && [a, b].includes(words.spy)));
+  assert.ok(says('早上来一杯咖啡', '咖啡'), 'a Chinese word, anywhere in the text');
+  assert.ok(!says('早上来一杯奶茶', '咖啡'));
+  const t = { ...newTable(), lang: 'zh' };
+  const start = GAMES.spy.body({ type: 'start', size: 5 }, t);
+  assert.ok(PAIRS.zh.flat().includes(start.dealt.words.civilian));
 });
 
 test('clues go round in seat order, never saying the word; then everyone votes at once', () => {
@@ -315,6 +326,19 @@ test('a prompt is built from the seat\'s view alone: its word and the clues, nev
     assert.ok(!/was a (spy|civilian)/.test(situation));
     assert.ok(rules.includes(`You are ${id}`));
   }
+});
+
+test('the host sets the table\'s language, and its AI players are told to speak it', () => {
+  const t = open();
+  does(t, 'f1', { type: 'join', name: 'Ann' });
+  assert.match(does(t, 'f1', { type: 'lang', lang: 'zh' }).refused, /Only the host/);
+  assert.match(does(t, HUMAN, { type: 'lang', lang: 'fr' }).refused, /Only the host/);
+  assert.equal(view_(t, HUMAN).content.lang, 'en');
+  play(t);
+  assert.ok(!prompt(view_(t, 'Ivy'), 'Ivy').rules.includes('Chinese'));
+  does(t, HUMAN, { type: 'lang', lang: 'zh' });
+  assert.equal(view_(t, 'f1').content.lang, 'zh');
+  assert.match(prompt(view_(t, 'Ivy'), 'Ivy').rules, /in Simplified Chinese/);
 });
 
 test('the model\'s answer as a change: seats from 1 to 0; an empty line a pass in a discussion, nothing in the chat', () => {

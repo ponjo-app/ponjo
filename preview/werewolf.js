@@ -18,9 +18,10 @@
 
 import { agentFace, personFace, setBuddies, setOwner } from '../web/faces.js';
 import { icon } from '../web/icons.js';
-import { $, arrows, closeTable, el, message, models, notice, typingMessage, unreached } from './game-page.js';
+import { $, arrows, closeTable, el, message, models, notice, translate, typingMessage, unreached } from './game-page.js';
+import { L, LANG, list } from './lang.js';
 import { MAX_LINE, keep, load, sit } from './game-kit.js';
-import { CALL_MS, HUMAN, MAX_SPEECH, PERSONAS, ROLE_NAMES, TURN, cast, isPerson } from './werewolf-world.js';
+import { CALL_MS, HUMAN, MAX_SPEECH, PERSONAS, TURN, cast, isPerson } from './werewolf-world.js';
 
 const SVG = 'http://www.w3.org/2000/svg';
 const NAME = 'ponjo-poker-name'; // the visitor's name at a friend's table, as the poker page keeps it
@@ -59,10 +60,16 @@ function picture() {
 const presence = () => shown?.presence ?? {};
 
 const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
-const label = (t, id) => (id === me ? 'You' : isPerson(id) ? t.names[id] ?? (id === HUMAN ? 'Host' : 'Friend') : id);
+const YOU = L('You', '你');
+const label = (t, id) => (id === me ? YOU : isPerson(id) ? t.names[id] ?? (id === HUMAN ? L('Host', '房主') : L('Friend', '朋友')) : id);
 const cap = (text) => text[0].toUpperCase() + text.slice(1);
-const roleName = (role) => cap(ROLE_NAMES[role]);
-const WORD = { wolf: 'Wolf', seer: 'Seer', witch: 'Witch', villager: 'Villager', good: 'Good' }; // a role on its token; good: the seer found them no wolf
+const ROLE = { wolf: L('Werewolf', '狼人'), seer: L('Seer', '预言家'), witch: L('Witch', '女巫'), villager: L('Villager', '村民') };
+const roleName = (role) => ROLE[role];
+const WORD = { wolf: L('Wolf', '狼人'), seer: L('Seer', '预言家'), witch: L('Witch', '女巫'), villager: L('Villager', '村民'), good: L('Good', '好人') }; // a role on its token; good: the seer found them no wolf
+const blurb = (id) => {
+  const p = PERSONAS.find((x) => x.id === id);
+  return L(p.blurb, p.zh.blurb);
+};
 // One of the page's symbols (site/werewolf.html): a role's, the claw or the ballot.
 function symbol(name) {
   const mark = document.createElementNS(SVG, 'svg');
@@ -118,7 +125,7 @@ function seatNode(t, id, at, i, n) {
   }
   const plate = el('div', 'pk-plate');
   const name = el('span', 'pk-name');
-  name.append(Object.assign(el('span', 'pk-position', String(i + 1)), { title: `Seat ${i + 1}` }), label(t, id));
+  name.append(Object.assign(el('span', 'pk-position', String(i + 1)), { title: L(`Seat ${i + 1}`, `${i + 1} 号位`) }), label(t, id));
   const roles = el('span', 'ww-idents');
   roles.append(mark('ww-ident', 'fact'), mark('ww-ident', 'note'));
   plate.append(name, roles, el('span', 'ww-dots'), el('span', 'pk-tag'));
@@ -147,11 +154,11 @@ function layout(t) {
 function actionOn(v, i) {
   if (!v.due || !v.seats[i].alive) return null;
   const k = v.due.kind;
-  if (k === 'kill' && !v.pack.includes(i)) return { verb: 'Kill', type: 'kill' };
+  if (k === 'kill' && !v.pack.includes(i)) return { verb: L('Kill', '刀'), type: 'kill' };
   if (i === v.seat) return null;
-  if (k === 'check') return { verb: 'Check', type: 'check' };
-  if (k === 'vote') return { verb: 'Vote out', type: 'vote' };
-  if (k === 'potion' && v.due.poison) return { verb: 'Poison', type: 'poison' };
+  if (k === 'check') return { verb: L('Check', '查验'), type: 'check' };
+  if (k === 'vote') return { verb: L('Vote out', '投票放逐'), type: 'vote' };
+  if (k === 'potion' && v.due.poison) return { verb: L('Poison', '毒'), type: 'poison' };
   return null;
 }
 
@@ -169,21 +176,21 @@ function marks(t, v, i) {
   const id = t.players[i];
   const out = { ...identity(v, i), status: null, claw: null, dots: 0, words: [] };
   for (const e of v.log) {
-    if (e.type === 'save' && e.target === i && v.seats[i].alive) out.status = [`saved:${e.day}`, () => symbol('witch'), '', `You saved them, night ${e.day}`];
+    if (e.type === 'save' && e.target === i && v.seats[i].alive) out.status = [`saved:${e.day}`, () => symbol('witch'), '', L(`You saved them, night ${e.day}`, `第 ${e.day} 夜你救了他们`)];
   }
   const death = deathOf(v, i);
   if (death) out.status = [`${death.how}:${death.day}`, () => deathMark(death.how), death.how, deathText(death)];
-  if (v.phase === 'vote' && v.voted.includes(i)) out.status = ['voted', () => symbol('ballot'), 'voted', 'Has voted'];
+  if (v.phase === 'vote' && v.voted.includes(i)) out.status = ['voted', () => symbol('ballot'), 'voted', L('Has voted', '已投票')];
   const tonight = (type) => v.phase === 'night' && v.log.some((e) => e.type === type && e.day === v.day && e.target === i);
-  if ((tonight('kill') && v.pack) || tonight('attacked')) out.claw = v.pack ? 'The pack\'s kill tonight' : 'Attacked tonight';
+  if ((tonight('kill') && v.pack) || tonight('attacked')) out.claw = v.pack ? L('The pack\'s kill tonight', '狼队今晚的刀口') : L('Attacked tonight', '今晚被袭击');
   const vote = lastVote(v);
   if (vote) {
     out.dots = Object.values(vote.votes).filter((x) => x === i).length;
-    if (i in vote.votes) out.words.push(vote.votes[i] === null ? 'Abstained' : `Voted ${label(t, t.players[vote.votes[i]])}`);
-    if (out.dots) out.words.push(`${out.dots} vote${out.dots > 1 ? 's' : ''}`);
+    if (i in vote.votes) out.words.push(vote.votes[i] === null ? L('Abstained', '弃票') : L(`Voted ${label(t, t.players[vote.votes[i]])}`, `投给了 ${label(t, t.players[vote.votes[i]])}`));
+    if (out.dots) out.words.push(L(`${out.dots} vote${out.dots > 1 ? 's' : ''}`, `${out.dots} 票`));
   }
   out.words.unshift(...[out.fact, out.status, out.note].filter(Boolean).map((m) => m[3]), ...(out.claw ? [out.claw] : []));
-  if (!isPerson(id)) out.words.push(PERSONAS.find((p) => p.id === id).blurb);
+  if (!isPerson(id)) out.words.push(blurb(id));
   return out;
 }
 
@@ -196,8 +203,8 @@ function identity(v, i) {
   const guess = v.phase === 'over' ? null : notes.get(i);
   return {
     fact: role ? [`role:${role}`, () => token(role), '', roleName(role)]
-      : check ? [`check:${check.wolf}`, () => token(check.wolf ? 'wolf' : 'good'), '', check.wolf ? 'The seer found a werewolf' : 'The seer found them good'] : null,
-    note: guess ? [`note:${guess}`, () => token(guess, true), '', `Your guess: ${roleName(guess)}`] : null,
+      : check ? [`check:${check.wolf}`, () => token(check.wolf ? 'wolf' : 'good'), '', check.wolf ? L('The seer found a werewolf', '预言家查出是狼人') : L('The seer found them good', '预言家查出是好人')] : null,
+    note: guess ? [`note:${guess}`, () => token(guess, true), '', L(`Your guess: ${roleName(guess)}`, `你猜：${roleName(guess)}`)] : null,
   };
 }
 
@@ -220,10 +227,10 @@ function deathOf(v, i) {
 }
 // A death's mark: the claw, the poison, both, the ballot, or the moon for a death not yet told.
 const deathMark = (how) => (how === 'vote' ? symbol('ballot') : how === 'night' ? icon('moon') : how === 'both' ? [symbol('claw'), symbol('poison')] : symbol(how === 'wolves' ? 'claw' : 'poison'));
-const HOW = { wolves: 'killed by the wolves', poison: 'poisoned by the witch', both: 'attacked by the wolves and poisoned by the witch' };
+const HOW = { wolves: L('killed by the wolves', '被狼人杀害'), poison: L('poisoned by the witch', '被女巫毒死'), both: L('attacked by the wolves and poisoned by the witch', '被狼人袭击，又被女巫毒死') };
 function deathText({ how, day, votes }) {
-  if (how === 'vote') return `Voted out on day ${day}, by ${votes} vote${votes === 1 ? '' : 's'}`;
-  return how === 'night' ? `Died in night ${day}: how stays secret until the game ends` : `${cap(HOW[how])}, night ${day}`;
+  if (how === 'vote') return L(`Voted out on day ${day}, by ${votes} vote${votes === 1 ? '' : 's'}`, `第 ${day} 天以 ${votes} 票被放逐`);
+  return how === 'night' ? L(`Died in night ${day}: how stays secret until the game ends`, `死于第 ${day} 夜：死因在游戏结束前保密`) : L(`${cap(HOW[how])}, night ${day}`, `第 ${day} 夜${HOW[how]}`);
 }
 
 // A player dies: a start, then the fall, and over the face, how: the claw
@@ -289,7 +296,7 @@ function drawRing(t, v, view) {
     const dots = $('.ww-dots', node);
     if (dots.childElementCount !== m.dots) dots.replaceChildren(...Array.from({ length: m.dots }, (_, k) => Object.assign(el('i'), { style: `animation-delay: ${votesIn + k * 120}ms` })));
     // only a model that can't be reached is said in words
-    $('.pk-tag', node).textContent = presence()[t.players[i]]?.failed ? 'Can\'t reach the model' : '';
+    $('.pk-tag', node).textContent = presence()[t.players[i]]?.failed ? L('Can\'t reach the model', '连不上模型') : '';
     $('.pk-tag', node).dataset.kind = 'failed';
   }
   drawTimer(t, v, view);
@@ -333,10 +340,10 @@ addEventListener('resize', () => draw());
 // Over the clearing: the sun or the moon and the day, and one line that
 // changes with the moment: the narrator's call, the vote, last words.
 const CALL_TEXT = {
-  dusk: 'Night falls. Everyone, close your eyes.',
-  wolves: 'Werewolves, open your eyes and pick a kill.',
-  seer: 'Seer, open your eyes and check a player.',
-  witch: 'Witch, open your eyes.',
+  dusk: L('Night falls. Everyone, close your eyes.', '天黑请闭眼。'),
+  wolves: L('Werewolves, open your eyes and pick a kill.', '狼人请睁眼，选择要杀的人。'),
+  seer: L('Seer, open your eyes and check a player.', '预言家请睁眼，选择要查验的人。'),
+  witch: L('Witch, open your eyes.', '女巫请睁眼。'),
 };
 function drawCenter(t, v) {
   const night = v.phase === 'night';
@@ -345,13 +352,13 @@ function drawCenter(t, v) {
   const time = $('.ww-time');
   if (time.dataset.icon !== (night ? 'moon' : 'sun')) time.replaceChildren(icon(night ? 'moon' : 'sun'));
   time.dataset.icon = night ? 'moon' : 'sun';
-  $('.ww-phase-text').textContent = v.phase === 'over' ? (v.winner === 'village' ? 'The village wins' : 'The werewolves win') : `${night ? 'Night' : 'Day'} ${v.day}`;
+  $('.ww-phase-text').textContent = v.phase === 'over' ? (v.winner === 'village' ? L('The village wins', '好人胜利') : L('The werewolves win', '狼人胜利')) : night ? L(`Night ${v.day}`, `第 ${v.day} 夜`) : L(`Day ${v.day}`, `第 ${v.day} 天`);
   const call = t.call?.step ?? 'dusk';
   const [key, mark, words] = away ? ['away', null, away]
-    : v.phase === 'over' ? ['over', null, v.seat < 0 ? '' : (v.role === 'wolf') === (v.winner === 'wolves') ? 'You won' : 'You lost']
+    : v.phase === 'over' ? ['over', null, v.seat < 0 ? '' : (v.role === 'wolf') === (v.winner === 'wolves') ? L('You won', '你赢了') : L('You lost', '你输了')]
         : night ? [`call:${call}`, call === 'dusk' ? null : symbol(call === 'wolves' ? 'wolf' : call), CALL_TEXT[call]]
-          : v.phase === 'vote' ? ['vote', symbol('ballot'), 'Vote']
-            : v.phase === 'last' ? ['last', null, 'Last words'] : ['day', null, ''];
+          : v.phase === 'vote' ? ['vote', symbol('ballot'), L('Vote', '投票')]
+            : v.phase === 'last' ? ['last', null, L('Last words', '遗言')] : ['day', null, ''];
   const sub = $('.ww-sub');
   if (sub.dataset.key !== key) {
     sub.dataset.key = key;
@@ -377,18 +384,18 @@ function drawMe(t, v) {
   }
   const kind = v.due.kind;
   const attacked = v.log.findLast((e) => e.type === 'attacked' && e.day === v.day);
-  const victim = attacked && (attacked.target === v.seat ? 'You were' : `${label(t, t.players[attacked.target])} was`);
+  const victim = attacked && (attacked.target === v.seat ? L('You were', '你') : L(`${label(t, t.players[attacked.target])} was`, label(t, t.players[attacked.target])));
   $('.ww-ask').textContent = {
-    kill: () => (v.due.round === 2 ? 'The pack disagreed: pick again.' : 'Pick tonight\'s kill.'),
-    check: () => 'Pick a player to check.',
-    potion: () => (attacked ? `${victim} attacked tonight.` : 'Use a potion?'),
-    speak: () => 'Your turn to speak: say it in the chat.',
-    last: () => 'Your last words: say them in the chat.',
-    vote: () => 'Pick a player to vote out.',
+    kill: () => (v.due.round === 2 ? L('The pack disagreed: pick again.', '狼队意见不一：再选一次。') : L('Pick tonight\'s kill.', '选择今晚要杀的人。')),
+    check: () => L('Pick a player to check.', '选一名玩家查验。'),
+    potion: () => (attacked ? L(`${victim} attacked tonight.`, `${victim}今晚被袭击了。`) : L('Use a potion?', '要用药吗？')),
+    speak: () => L('Your turn to speak: say it in the chat.', '轮到你发言了：在聊天框里说。'),
+    last: () => L('Your last words: say them in the chat.', '你的遗言：在聊天框里说。'),
+    vote: () => L('Pick a player to vote out.', '选一名玩家放逐。'),
   }[kind]();
   $('[data-do="abstain"]', form).hidden = kind !== 'vote';
   $('[data-do="save"]', form).hidden = kind !== 'potion' || !v.due.save;
-  if (attacked) $('[data-do="save"]', form).textContent = `Save ${label(t, t.players[attacked.target])}`;
+  if (attacked) $('[data-do="save"]', form).textContent = L(`Save ${label(t, t.players[attacked.target])}`, `救 ${label(t, t.players[attacked.target])}`);
   $('[data-do="pass"]', form).hidden = kind !== 'potion';
 }
 
@@ -409,18 +416,18 @@ function drawChat(t, v, view) {
   chat.dataset.audience = audience;
   box.disabled = audience === 'muted';
   box.maxLength = kind ? MAX_SPEECH : MAX_LINE;
-  box.placeholder = { all: !kind ? 'Chat with the table…' : kind === 'last' ? 'Your last words…' : 'Speak to the village…', pack: 'A line to the pack, sent with your pick', muted: '' }[audience];
+  box.placeholder = { all: !kind ? L('Chat with the table…', '和大家聊聊…') : kind === 'last' ? L('Your last words…', '你的遗言…') : L('Speak to the village…', '对村子发言…'), pack: L('A line to the pack, sent with your pick', '给狼队的一句话，随刀口一起发出'), muted: '' }[audience];
   $('[type=submit]', chat).disabled = audience !== 'all' || !box.value.trim();
   const speaker = v?.speaker == null ? null : label(t, t.players[v.speaker]);
-  const why = audience === 'all' ? [icon('users'), kind ? 'Everyone hears you.' : 'Everyone at the table hears you.']
-    : audience === 'pack' ? [token('wolf'), 'Only the pack hears you.']
-      : [symbol('muted'), !v ? 'Join the table to chat.'
-        : v.seat < 0 && v.phase !== 'over' ? 'You are watching: you play from the next game.'
-          : !v.alive && !['over', 'last'].includes(v.phase) ? 'You are out: the dead don\'t speak.'
-            : v.phase === 'over' ? 'The game is over: you watched it.'
-              : v.phase === 'night' ? 'Muted: it is night, and everyone\'s eyes are shut.'
-                  : v.phase === 'vote' ? 'Muted while everyone votes.'
-                    : speaker ? `Muted: ${speaker} ${speaker === 'You' ? 'have' : 'has'} the floor. You speak in turn.` : 'Muted.'];
+  const why = audience === 'all' ? [icon('users'), kind ? L('Everyone hears you.', '所有人都听得到你。') : L('Everyone at the table hears you.', '桌上所有人都听得到你。')]
+    : audience === 'pack' ? [token('wolf'), L('Only the pack hears you.', '只有狼队听得到你。')]
+      : [symbol('muted'), !v ? L('Join the table to chat.', '加入牌桌才能聊天。')
+        : v.seat < 0 && v.phase !== 'over' ? L('You are watching: you play from the next game.', '你在观战：下一局开始参与。')
+          : !v.alive && !['over', 'last'].includes(v.phase) ? L('You are out: the dead don\'t speak.', '你已出局：死者不能说话。')
+            : v.phase === 'over' ? L('The game is over: you watched it.', '游戏结束了：你观看了这一局。')
+              : v.phase === 'night' ? L('Muted: it is night, and everyone\'s eyes are shut.', '不能发言：现在是夜晚，大家都闭着眼。')
+                  : v.phase === 'vote' ? L('Muted while everyone votes.', '投票时不能发言。')
+                    : speaker ? L(`Muted: ${speaker} ${speaker === YOU ? 'have' : 'has'} the floor. You speak in turn.`, `不能发言：${speaker}正在发言。请按顺序发言。`) : L('Muted.', '不能发言。')];
   const line = $('.ww-audience');
   if (line.dataset.key !== `${audience}:${why.at(-1)}`) {
     line.dataset.key = `${audience}:${why.at(-1)}`;
@@ -454,9 +461,40 @@ function perform(type, target) {
   table.act(t.moment, body);
   draw();
 }
+// What the world and the rules say when they turn a change away, in Chinese (game-page.js, `translate`).
+const ONLY = { kill: '刀人', check: '查验', 'save, poison or pass': '救人、毒人或跳过', speak: '发言', 'vote or abstain': '投票或弃票' };
+const KNOWN = [
+  ['Stale: the game moved on before your action landed.', '慢了一步：你的操作送达前，游戏已经往下走了。'],
+  ['Wait for everyone to say hello.', '等大家打完招呼。'],
+  ['There is no game on: chat instead.', '现在没有对局：聊聊天吧。'],
+  ['Wait for the narrator to call you.', '等主持人叫到你。'],
+  ['Only the host starts a game.', '只有房主能开局。'],
+  ['A game is on.', '已经有一局在进行。'],
+  [/^A game (?:is|has) ([\d, ]+) seats(?:, dealt their roles)?\.$/, '一局有 $1 个座位。'],
+  ['Only a person sits at the table.', '只有真人能入座。'],
+  ['You are not at the table.', '你不在桌上。'],
+  ['Not now: the game is on.', '现在不行：游戏正在进行。'],
+  ['Say something.', '说点什么。'],
+  ['Only the host sets the language.', '只有房主能设置语言。'],
+  ['Say something: a speech is your turn.', '说点什么：轮到你发言了。'],
+  [/^Too long: at most (\d+) characters, you wrote (\d+)\.$/, '太长了：最多 $1 个字符，你写了 $2 个。'],
+  ['The game is over.', '游戏已经结束。'],
+  ['You have acted already: wait for the others.', '你已经行动过了：等其他人。'],
+  ['It is not your turn.', '还没轮到你。'],
+  [/^Now you may only (.+)\.$/, (_, words) => `现在你只能${ONLY[words] ?? words}。`],
+  ['Pick a living player to kill.', '选一名活着的玩家刀。'],
+  ['That player is a wolf: pick someone else.', '那是狼人：换一个人。'],
+  ['Pick another living player to check.', '选另一名活着的玩家查验。'],
+  ['Your save potion is used.', '你的解药已经用过了。'],
+  ['No one was attacked tonight.', '今晚没有人被袭击。'],
+  ['You may not save yourself.', '你不能救自己。'],
+  ['Your poison is used.', '你的毒药已经用过了。'],
+  ['Pick another living player to poison.', '选另一名活着的玩家下毒。'],
+  ['Vote for another living player, or abstain.', '投给另一名活着的玩家，或弃票。'],
+];
 function refused(why) {
   const error = $('.ww-error');
-  error.textContent = why ?? '';
+  error.textContent = why ? translate(why, KNOWN) : '';
   error.hidden = !why;
   if (why) myVote = null;
 }
@@ -495,7 +533,7 @@ function openMenu(node) {
   const head = el('li', 'pk-menu-head');
   const who = el('span', 'pk-menu-text');
   who.append(el('b', '', label(t, id)));
-  if (!isPerson(id)) who.append(el('span', '', PERSONAS.find((p) => p.id === id).blurb));
+  if (!isPerson(id)) who.append(el('span', '', blurb(id)));
   head.append(faceOf(t, id), who);
   const items = [head];
   if (act) {
@@ -505,7 +543,7 @@ function openMenu(node) {
   }
   if (i !== v.seat && v.phase !== 'over') {
     items.push(...['wolf', 'seer', 'witch', 'villager'].map(guess));
-    if (notes.has(i)) items.push(item('Clear the note', () => {
+    if (notes.has(i)) items.push(item(L('Clear the note', '清除标记'), () => {
       notes.delete(i);
       draw();
     }));
@@ -535,15 +573,16 @@ const SECRET = { pick: 'wolf', kill: 'wolf', check: 'seer', attacked: 'witch', s
 function drawFeed(t, v) {
   const feed = $('.pk-feed');
   const stick = feed.scrollHeight - feed.scrollTop - feed.clientHeight < 40;
-  const name = (i) => (i === v.seat ? 'you' : label(t, t.players[i]));
+  const name = (i) => (i === v.seat ? L('you', '你') : label(t, t.players[i]));
   const Name = (i) => cap(name(i));
-  const names = (list) => list.map(Name).join(' and ');
+  const names = (seats) => list(seats.map(Name));
+  const mine = (i) => i === v.seat; // English says "you want", "you were": its verbs agree with you
   const rows = [];
   let last = null; // who said the row before, to run their bubbles together
   const known = (i) => Object.values(identity(v, i)).filter(Boolean).map((m) => m[1]());
   const say = (i, text, note, pack = false) => {
     const id = t.players[i];
-    const row = message({ face: id !== me && faceOf(t, id), name: [label(t, id), ...known(i)], text, note: pack ? el('span', 'ww-only', 'only the pack') : note, mine: id === me, more: last === i && !pack });
+    const row = message({ face: id !== me && faceOf(t, id), name: [label(t, id), ...known(i)], text, note: pack ? el('span', 'ww-only', L('only the pack', '仅狼队')) : note, mine: id === me, more: last === i && !pack });
     if (pack) row.dataset.audience = 'pack';
     rows.push(row);
     last = pack ? null : i;
@@ -555,7 +594,7 @@ function drawFeed(t, v) {
     if (secret) {
       row.dataset.secret = '';
       row.prepend(token(secret), ' ');
-      if (v.phase !== 'over') row.append(el('span', 'ww-only', secret === 'wolf' ? 'only the pack' : 'only you'));
+      if (v.phase !== 'over') row.append(el('span', 'ww-only', secret === 'wolf' ? L('only the pack', '仅狼队') : L('only you', '仅你可见')));
     }
     rows.push(row);
     last = null;
@@ -571,29 +610,30 @@ function drawFeed(t, v) {
   chatted(t.no - 1).forEach(chatLine);
   for (const e of v.log) {
     const secret = SECRET[e.type];
-    if (e.type === 'night') line(`Night ${e.day} falls. Everyone closes their eyes.`);
+    if (e.type === 'night') line(L(`Night ${e.day} falls. Everyone closes their eyes.`, `第 ${e.day} 夜降临。大家闭上眼睛。`));
     else if (e.type === 'pick') {
-      line(`${Name(e.seat)} ${e.seat === v.seat ? 'want' : 'wants'} to kill ${name(e.target)}${e.round === 2 ? ' (second pick)' : ''}.`, secret);
+      line(L(`${Name(e.seat)} ${mine(e.seat) ? 'want' : 'wants'} to kill ${name(e.target)}${e.round === 2 ? ' (second pick)' : ''}.`, `${Name(e.seat)}想杀 ${name(e.target)}${e.round === 2 ? '（第二次选择）' : ''}。`), secret);
       if (e.text) say(e.seat, e.text, '', true);
-    } else if (e.type === 'kill') line(e.target === null ? 'The pack kills no one.' : `The pack kills ${name(e.target)}.`, secret);
-    else if (e.type === 'check') line(`${Name(e.seat)} checked ${name(e.target)}: `, secret, token(e.wolf ? 'wolf' : 'good'));
-    else if (e.type === 'attacked') line(`The wolves attacked ${name(e.target)}.`, secret);
-    else if (e.type === 'save') line(`${Name(e.seat)} saved ${name(e.target)}.`, secret);
-    else if (e.type === 'poison') line(`${Name(e.seat)} poisoned ${name(e.target)}.`, secret);
+    } else if (e.type === 'kill') line(e.target === null ? L('The pack kills no one.', '狼队今晚空刀。') : L(`The pack kills ${name(e.target)}.`, `狼队杀了 ${name(e.target)}。`), secret);
+    else if (e.type === 'check') line(L(`${Name(e.seat)} checked ${name(e.target)}: `, `${Name(e.seat)}查验了 ${name(e.target)}：`), secret, token(e.wolf ? 'wolf' : 'good'));
+    else if (e.type === 'attacked') line(L(`The wolves attacked ${name(e.target)}.`, `狼人袭击了 ${name(e.target)}。`), secret);
+    else if (e.type === 'save') line(L(`${Name(e.seat)} saved ${name(e.target)}.`, `${Name(e.seat)}救了 ${name(e.target)}。`), secret);
+    else if (e.type === 'poison') line(L(`${Name(e.seat)} poisoned ${name(e.target)}.`, `${Name(e.seat)}毒了 ${name(e.target)}。`), secret);
     else if (e.type === 'dawn') {
       // how, to whoever may know it (deathOf): the pack its kill, the witch her poison, everyone once the game is over
       const told = e.deaths.map((i) => [i, deathOf(v, i)?.how ?? 'night']);
       const known = told.filter(([, how]) => how !== 'night');
       const rest = told.filter(([, how]) => how === 'night').map(([i]) => i);
-      const said = [...known.map(([i, how]) => `${Name(i)} ${i === v.seat ? 'were' : 'was'} ${HOW[how]}`), ...(rest.length ? [`${names(rest)} died in the night`] : [])];
-      line(`Day ${e.day}. ${said.length ? `${said.join('. ')}.` : 'No one died in the night.'}`);
+      const said = [...known.map(([i, how]) => L(`${Name(i)} ${mine(i) ? 'were' : 'was'} ${HOW[how]}`, `${Name(i)}${HOW[how]}`)), ...(rest.length ? [L(`${names(rest)} died in the night`, `${names(rest)}在夜里死了`)] : [])];
+      line(said.length ? L(`Day ${e.day}. ${said.join('. ')}.`, `第 ${e.day} 天。${said.join('。')}。`) : L(`Day ${e.day}. No one died in the night.`, `第 ${e.day} 天。昨晚是平安夜。`));
     } else if (e.type === 'speech' || e.type === 'last') {
-      if (e.silent) line(`${Name(e.seat)} said nothing${e.type === 'last' ? ' as last words' : ''}.`);
-      else say(e.seat, e.text, e.type === 'last' ? 'last words' : '');
+      if (e.silent) line(e.type === 'last' ? L(`${Name(e.seat)} said nothing as last words.`, `${Name(e.seat)}没有留遗言。`) : L(`${Name(e.seat)} said nothing.`, `${Name(e.seat)}什么也没说。`));
+      else say(e.seat, e.text, e.type === 'last' ? L('last words', '遗言') : '');
     } else if (e.type === 'vote') {
-      const votes = Object.entries(e.votes).map(([s, x]) => `${Name(Number(s))} → ${x === null ? 'abstained' : name(x)}`);
-      line(`The vote: ${votes.join(', ')}. ${e.out === null ? 'A tie: no one is out.' : `${Name(e.out)} ${e.out === v.seat ? 'are' : 'is'} out.`}`);
-    } else if (e.type === 'over') line(e.winner === 'village' ? 'Every werewolf is dead: the village wins.' : 'The werewolves are as many as the rest: they win.');
+      const votes = Object.entries(e.votes).map(([s, x]) => `${Name(Number(s))} → ${x === null ? L('abstained', '弃票') : name(x)}`);
+      const out = e.out === null ? L('A tie: no one is out.', '平票：无人出局。') : L(`${Name(e.out)} ${mine(e.out) ? 'are' : 'is'} out.`, `${Name(e.out)}出局。`);
+      line(L(`The vote: ${votes.join(', ')}. ${out}`, `投票：${votes.join('，')}。${out}`));
+    } else if (e.type === 'over') line(e.winner === 'village' ? L('Every werewolf is dead: the village wins.', '狼人全部出局：好人胜利。') : L('The werewolves are as many as the rest: they win.', '狼人与其他人一样多：狼人胜利。'));
   }
   chatted(t.no).forEach(chatLine);
   rows.push(...working(t));
@@ -606,7 +646,7 @@ function working(t) {
   return Object.entries(presence()).flatMap(([id, p]) => {
     if (p.typing) return [typingMessage(faceOf(t, id), id)];
     if (!p.failed) return [];
-    const row = notice(`${id} could not reach the model: ${p.failed}`);
+    const row = notice(L(`${id} could not reach the model: ${p.failed}`, `${id} 连不上模型：${p.failed}`));
     row.dataset.failed = '';
     return [row];
   });
@@ -614,7 +654,7 @@ function working(t) {
 
 // Before any game, the log is the chat of everyone at the table.
 function drawLobby(t) {
-  $('.ww-phase-text').textContent = away || (ROOM ? 'Waiting for the host to start a game' : 'Round the fire');
+  $('.ww-phase-text').textContent = away || (ROOM ? L('Waiting for the host to start a game', '等房主开始一局') : L('Round the fire', '围坐篝火'));
   $('.ww-over').hidden = Boolean(ROOM); // before any game, the host's way to start one
   $('[data-action="thinking"]').hidden = true;
   $('.ww-hint').hidden = true; // no roles to guess yet
@@ -651,10 +691,12 @@ function draw() {
 
 // ---- their thinking, after the game ----
 
+// An action in a player's thinking, in words.
+const ACTION = { kill: L('kill', '刀'), check: L('check', '查验'), save: L('save', '救'), poison: L('poison', '毒'), pass: L('pass', '跳过'), speak: L('speak', '发言'), vote: L('vote', '投票'), abstain: L('abstain', '弃票') };
 function showThinking() {
   const { t, v } = picture();
   const dialog = $('.pk-thinking');
-  $('h2', dialog).textContent = 'Their thinking';
+  $('h2', dialog).textContent = L('Their thinking', '他们的想法');
   $('.pk-thinking-body', dialog).replaceChildren(...t.players.filter((id) => !isPerson(id)).map((id) => {
     const seat = t.players.indexOf(id);
     const part = el('details', 'pj-trace-part');
@@ -662,14 +704,15 @@ function showThinking() {
     const summary = el('summary');
     const meta = el('span', 'pj-trace-meta');
     if (v.seats[seat].role) meta.append(token(v.seats[seat].role)); // the game is over: every role shows
-    meta.append(v.seats[seat].alive ? ' alive' : ' dead');
+    meta.append(v.seats[seat].alive ? L(' alive', ' 存活') : L(' dead', ' 死亡'));
     summary.append(icon('chevron'), faceOf(t, id), el('span', 'pj-trace-title', id), meta);
     part.append(summary);
     const thoughts = t.thoughts[id] ?? [];
-    if (!thoughts.length) part.append(el('p', 'pj-empty', 'No decisions.'));
+    if (!thoughts.length) part.append(el('p', 'pj-empty', L('No decisions.', '没有决定。')));
     for (const th of thoughts) {
       const target = Number.isInteger(th.action?.target) ? ` ${label(t, t.players[th.action.target])}` : '';
-      part.append(el('h3', 'pj-setting-group', `${th.phase === 'night' ? 'Night' : 'Day'} ${th.day}${th.action ? ` · ${th.action.type}${target}` : ''}`));
+      const when = th.phase === 'night' ? L(`Night ${th.day}`, `第 ${th.day} 夜`) : L(`Day ${th.day}`, `第 ${th.day} 天`);
+      part.append(el('h3', 'pj-setting-group', `${when}${th.action ? ` · ${ACTION[th.action.type] ?? th.action.type}${target}` : ''}`));
       part.append(el('pre', 'pj-trace-text pj-trace-thinking', th.text));
     }
     return part;
@@ -695,9 +738,11 @@ function drawStart() {
     return li;
   }));
   const seated = Math.min(people.length, size);
-  const list = people.map((id) => label(picture().t, id));
-  const watch = people.length > size ? ` The last ${people.length - size === 1 ? 'one watches' : `${people.length - size} watch`}.` : '';
-  $('.ww-people').textContent = people.length <= 1 ? '' : `At the table: ${list.slice(0, -1).join(', ')} and ${list.at(-1)}.${watch} AI players take the ${size - seated === 1 ? 'other seat' : `other ${size - seated} seats`}.`;
+  const here = list(people.map((id) => label(picture().t, id)));
+  const over = people.length - size;
+  const watch = over > 0 ? L(` The last ${over === 1 ? 'one watches' : `${over} watch`}.`, `最后 ${over} 位观战。`) : '';
+  const rest = size - seated;
+  $('.ww-people').textContent = people.length <= 1 ? '' : L(`At the table: ${here}.${watch} AI players take the ${rest === 1 ? 'other seat' : `other ${rest} seats`}.`, `桌上有：${here}。${watch}其余 ${rest} 个座位由 AI 玩家坐。`);
 }
 starting.addEventListener('click', (event) => {
   const b = event.target.closest('[data-size]');
@@ -736,7 +781,7 @@ function closeJoin() {
 }
 joining.addEventListener('submit', (event) => {
   event.preventDefault();
-  const name = joining.elements.name.value.trim().slice(0, 20) || 'Friend';
+  const name = joining.elements.name.value.trim().slice(0, 20) || L('Friend', '朋友');
   keep(name, NAME);
   table.act('', { type: 'join', name });
   closeJoin();
@@ -746,6 +791,7 @@ joining.addEventListener('submit', (event) => {
 // reload) is back in its seat, by the name it had.
 const table = sit('werewolf', HUMAN, {
   key: ai.key,
+  lang: LANG,
   hello(id) {
     me = id;
     draw();

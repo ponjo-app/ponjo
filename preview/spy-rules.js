@@ -26,26 +26,37 @@ export const MAX_CLUE = 200; // characters of a clue, or a line in a discussion
 export const MAX_LINES = 3; // lines a player may say in one discussion
 export const spiesFor = (size) => (size >= 7 ? 2 : 1);
 
-// The words, civilians' and spies' in either order: close enough to blur, far enough to tell.
-export const PAIRS = [
+// The words, civilians' and spies' in either order: close enough to blur,
+// far enough to tell; a table's in its language (`lang`, the world's).
+export const PAIRS = {
+  en: [
   ['coffee', 'tea'], ['beach', 'pool'], ['guitar', 'violin'], ['pizza', 'burger'], ['lion', 'tiger'],
   ['pen', 'pencil'], ['train', 'bus'], ['rain', 'snow'], ['piano', 'organ'], ['wolf', 'dog'],
   ['butter', 'cheese'], ['honey', 'syrup'], ['ketchup', 'mustard'], ['chess', 'checkers'], ['bicycle', 'scooter'],
   ['library', 'bookstore'], ['dentist', 'doctor'], ['sofa', 'bed'], ['apple', 'pear'], ['socks', 'gloves'],
   ['candle', 'lamp'], ['zoo', 'aquarium'], ['umbrella', 'raincoat'], ['Halloween', 'Christmas'], ['wedding', 'birthday'],
   ['email', 'letter'], ['popcorn', 'chips'], ['moon', 'star'], ['football', 'rugby'], ['airport', 'station'],
-];
+  ],
+  zh: [
+    ['牛奶', '豆浆'], ['饺子', '包子'], ['眉毛', '胡子'], ['蝴蝶', '蜜蜂'], ['口红', '唇膏'],
+    ['警察', '保安'], ['麻雀', '燕子'], ['橙子', '橘子'], ['玫瑰', '月季'], ['情人节', '七夕'],
+    ['火锅', '麻辣烫'], ['筷子', '叉子'], ['电梯', '扶梯'], ['西瓜', '哈密瓜'], ['结婚', '订婚'],
+    ['地铁', '公交'], ['老虎', '狮子'], ['钢琴', '电子琴'], ['风筝', '气球'], ['围巾', '手套'],
+    ['雨伞', '雨衣'], ['图书馆', '书店'], ['牙刷', '梳子'], ['短信', '邮件'], ['春节', '中秋'],
+    ['枕头', '被子'], ['咖啡', '奶茶'], ['饼干', '薯片'], ['啤酒', '红酒'], ['月亮', '星星'],
+  ],
+};
 
 /**
- * The words and sides for a table of `size`: a pair at random, which word
+ * The words and sides for a table of `size`: a pair in `lang` at random, which word
  * is the spies' at random, and the sides shuffled (Fisher–Yates on
  * `random(n)`, a fair whole number below n), and the seat that gives the
  * first clue at random: the first to speak has heard no one. Returns
  * { words: { civilian, spy }, roles, first }.
  */
-export function deal(size, random = cryptoRandom) {
+export function deal(size, lang = 'en', random = cryptoRandom) {
   if (!SIZES.includes(size)) throw new Error(`A game has ${SIZES.join(', ')} seats.`);
-  const pair = PAIRS[random(PAIRS.length)];
+  const pair = PAIRS[lang][random(PAIRS[lang].length)];
   const [civilian, spy] = random(2) ? pair : [pair[1], pair[0]];
   const roles = [...Array(spiesFor(size)).fill('spy'), ...Array(size - spiesFor(size)).fill('civilian')];
   for (let i = roles.length - 1; i > 0; i--) {
@@ -94,8 +105,9 @@ export const linesLeft = (game, seat) => (game.phase === 'talk' && alive(game, s
 // Whom `seat` may vote for: another living player; in a runoff, one of the tied.
 export const targets = (game, seat) => (game.runoff ?? game.seats.map((_, i) => i)).filter((i) => i !== seat && alive(game, i));
 
-// Whether `text` says `word`, or its plural, as a word of its own.
-export const says = (text, word) => new RegExp(`\\b${word.replace(/\W/g, '\\$&')}(e?s)?\\b`, 'i').test(text);
+// Whether `text` says `word`, or its plural, as a word of its own; a
+// Chinese word, anywhere in it (Chinese has no spaces between words).
+export const says = (text, word) => (/^[\x00-\x7f]*$/.test(word) ? new RegExp(`\\b${word.replace(/\W/g, '\\$&')}(e?s)?\\b`, 'i').test(text) : text.includes(word));
 
 // What a clue or a line says, or an error: something, not too long, never the speaker's word.
 function words(game, seat, action, what) {

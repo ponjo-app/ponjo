@@ -232,6 +232,29 @@ test('a table calls the model at most its budget a clock hour; past it, the AI p
   host.close();
 });
 
+test('a table speaks the host\'s language: its AI players are told it, and only the host\'s page sets it', async (t) => {
+  const relay = await tables(t);
+  const { secret, room } = newRoom();
+  const host = page(relay, room, { game: 'spy', secret, lang: 'zh' });
+  await until(() => host.view()?.content.lang === 'zh', 'a Chinese table');
+  const friend = page(relay, room, { game: 'spy' });
+  await until(() => friend.me(), 'the friend\'s hello');
+  friend.act({ type: 'lang', lang: 'en' });
+  await until(() => friend.frames.some((f) => f.type === 'rejected'), 'the friend\'s change refused');
+  const calls = api.requests.length;
+  host.act({ type: 'start', size: 5 });
+  await until(() => {
+    host.playAlong();
+    return api.requests.length > calls;
+  }, 'an AI player\'s call', 30_000);
+  assert.ok(JSON.stringify(api.requests.at(-1).body).includes('简体中文'), 'the AI players are told to speak Chinese');
+  assert.match(host.view().content.game.word, /\p{Script=Han}/u, 'a Chinese word');
+  host.close();
+  const back = page(relay, room, { game: 'spy', secret, lang: 'en' });
+  await until(() => back.view()?.content.lang === 'en', 'the host switched to English');
+  for (const p of [back, friend]) p.close();
+});
+
 test('the room\'s alarm keeps a turn\'s deadline: an AI player whose model never answers is checked or folded for', async (t) => {
   const relay = await tables(t);
   const { secret, room } = newRoom();

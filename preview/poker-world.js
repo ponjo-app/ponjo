@@ -14,7 +14,7 @@
 // between hands as the host asks. Anyone may chat and react at any time.
 
 import { act, board, describeLegal, legal, owed, shuffled, startHand, view as handView } from './poker-dealer.js';
-import { DEPTH, MAX_LINE, after, deadline, line as newLine, named, think as thought } from './game-kit.js';
+import { DEPTH, LANGS, MAX_LINE, after, deadline, line as newLine, named, speak, think as thought } from './game-kit.js';
 
 export const HUMAN = 'you';
 export const DEALER = 'dealer'; // the member who deals: its changes bring the cards
@@ -80,12 +80,13 @@ export const isPerson = (id) => !PERSONAS.some((p) => p.id === id);
  * `thoughts`: each AI player's thinking. `sat`: the host has bought in.
  * `dealing`: the dealer is to deal the next hand; `deals`, how many it
  * dealt, a hand or none for want of chips. `since`: the `at` of the change that
- * began the turn.
+ * began the turn. `lang`: the table's language (LANGS), the host's, which
+ * the AI players speak.
  */
 export function newTable(ids = FIRST) {
   const players = [{ id: HUMAN, stack: 0 }, ...ids.map((id) => ({ id, stack: STACK }))];
   const slots = Object.fromEntries([[HUMAN, 0], ...ids.map((id, k) => [id, ids.length === 3 ? 2 * k + 1 : k + 1])]);
-  return { players, slots, names: {}, hand: null, handNo: 0, button: -1, topUp: {}, joining: [], leaving: [], chat: [], reactions: [], thoughts: {}, sat: false, dealing: false, deals: 0, since: 0 };
+  return { players, slots, names: {}, hand: null, handNo: 0, button: -1, topUp: {}, joining: [], leaving: [], chat: [], reactions: [], thoughts: {}, sat: false, dealing: false, deals: 0, since: 0, lang: 'en' };
 }
 
 // The seats no one has, or will have at the next hand.
@@ -197,7 +198,7 @@ function view(t, member) {
   return {
     ...base,
     content: {
-      players, slots, names, handNo, button, joining, leaving, sat, dealing, hand,
+      players, slots, names, handNo, button, joining, leaving, sat, dealing, hand, lang: t.lang ?? 'en',
       topUp: { [member]: t.topUp[member] ?? 0 },
       chat: person ? t.chat : t.chat.slice(-CHAT_SHOWN),
       reactions: t.reactions,
@@ -226,6 +227,7 @@ function view(t, member) {
  *   next                         the host: the next hand
  *   add { id, seat }, remove { id }   the host: an AI player sits down at
  *                                the next hand, or gives up its seat after this one
+ *   lang { lang }                the host: the table's language (the room's, from the host's page)
  * The dealer's change answers its task with `cards`, the clock's its own.
  */
 function apply(state, change) {
@@ -337,13 +339,18 @@ function command(t, by, b) {
   }
   if (b.type === 'add') return addPlayer(t, String(b.id), b.seat) ? undefined : { refused: 'There is no seat for them.' };
   if (b.type === 'remove') return removePlayer(t, String(b.id)) ? undefined : { refused: 'A table needs someone to play against.' };
+  if (b.type === 'lang') {
+    if (!LANGS.includes(b.lang)) return { refused: `No language "${b.lang}".` };
+    t.lang = b.lang;
+    return;
+  }
   return { refused: `No action "${b.type}".` };
 }
 
 // A line of chat by `by` (a person, an AI player answering the tasks
-// `asked`, or the dealer), at `depth` if given.
-function say(t, by, text, asked = [], depth) {
-  const l = newLine(t.chat, { by, text, to: by === DEALER ? [] : names(t, text), person: isPerson(by), asked, hand: t.hand?.id ?? 0 });
+// `asked`, or the dealer), at `depth` if given, with `marks`.
+function say(t, by, text, asked = [], depth, marks = {}) {
+  const l = newLine(t.chat, { by, text, to: by === DEALER ? [] : names(t, text), person: isPerson(by), asked, hand: t.hand?.id ?? 0, ...marks });
   if (depth !== undefined) l.depth = depth;
   else if (isPerson(by) && by !== DEALER && !l.to.length) l.next = after(t.players.map((p) => p.id), by, (p) => !isPerson(p)); // to the whole table: one AI player answers
   t.chat.push(l);
@@ -415,7 +422,7 @@ function deal(t, cards) {
   for (const p of players) {
     if (p.stack || isPerson(p.id)) continue;
     p.stack = STACK;
-    say(t, DEALER, `${p.id} buys back in for $${STACK.toLocaleString('en')}.`, [], DEPTH);
+    say(t, DEALER, `${p.id} buys back in for $${STACK.toLocaleString('en')}.`, [], DEPTH, { rebuy: p.id }); // `rebuy`: the page words it
   }
   t.handNo++;
   t.hand = startHand({ id: t.handNo, players, button: t.button, blinds: BLINDS, deck: cards });
@@ -492,7 +499,7 @@ function actionText(c, a, me) {
  */
 export function prompt({ content: c, tasks, rules: how }, id) {
   const persona = PERSONAS.find((p) => p.id === id);
-  const rules = `${how}\n\nYou are ${id}. ${persona.style}`;
+  const rules = `${how}${speak(c.lang)}\n\nYou are ${id}. ${persona.style}`;
   const parts = [];
   const v = c.hand;
   const turn = tasks.some((t) => t.given.startsWith('turn:'));

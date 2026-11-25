@@ -24,7 +24,7 @@
 // it, and plays by what the table agreed there, as far as the rules allow.
 
 import { MAX_SPEECH, SIZES, act, cast, daybreak, due, fallback as sayNothing, newGame, turn, view as seatView } from './werewolf-rules.js';
-import { DEPTH, MAX_LINE, deadline, latest, line as newLine, named, think as thought } from './game-kit.js';
+import { DEPTH, LANGS, MAX_LINE, deadline, latest, line as newLine, named, speak, think as thought } from './game-kit.js';
 
 export const HUMAN = 'you';
 export const CLOCK = 'clock'; // the member whose tasks are the deadlines and the narrator's calls
@@ -37,7 +37,8 @@ const CHAT_SHOWN = 40; // the table's latest lines an AI player is shown
 
 // Each AI player's character: who they are (`blurb`, shown on the page),
 // how they talk and how long they go on (`voice`, `words`), how they play,
-// how they lie as a werewolf, and what they do with a seer's or witch's secret.
+// how they lie as a werewolf, and what they do with a seer's or witch's secret;
+// `zh`, the blurb in Chinese, for a table that plays in it.
 export const PERSONAS = [
   {
     id: 'Rosa',
@@ -47,6 +48,7 @@ export const PERSONAS = [
     play: 'You keep score of who claimed what and who voted for whom, and suspect whoever\'s words and votes do not match. You vote on evidence and rarely change your mind.',
     wolf: 'You build a careful, reasonable-sounding case against a villager, and keep your own record perfectly straight so no one catches you out.',
     claim: 'As the seer you reveal yourself early, with a numbered list of your checks. As the witch you keep quiet unless telling would save the village.',
+    zh: { blurb: '一位记录一切的退休教师' },
   },
   {
     id: 'Jax',
@@ -56,6 +58,7 @@ export const PERSONAS = [
     play: 'You accuse on your first hunch and vote early. If your case falls apart, you jump to the loudest case at the table without any embarrassment.',
     wolf: 'You attack hard to look like the most eager villager, and pick a fight with whoever suspects you.',
     claim: 'You can\'t keep a secret: as the seer you announce your check straight away; as the witch you say so the moment it helps.',
+    zh: { blurb: '嗓门大、出手快，总是第一个指认' },
   },
   {
     id: 'Wen',
@@ -65,6 +68,7 @@ export const PERSONAS = [
     play: 'You watch for small things: who hesitated, who changed the subject, who was too quick to agree. You rarely accuse outright; you point at something and let others see it, and you often vote last.',
     wolf: 'You say even less than usual and let your images drift toward a villager, never quite accusing anyone.',
     claim: 'You hint at your role instead of saying it ("I have looked into one heart tonight") until hinting is no longer enough.',
+    zh: { blurb: '一位会看人的安静诗人' },
   },
   {
     id: 'Otis',
@@ -74,6 +78,7 @@ export const PERSONAS = [
     play: 'You trust nobody, least of all whoever sounds most reasonable or whom everyone agrees with. You often vote against the crowd.',
     wolf: 'You spin an elaborate theory that points at whoever claims a power, and wrap your own partner into it as a fellow victim.',
     claim: 'You claim your role loudly, then suspect anyone else who claims one.',
+    zh: { blurb: '觉得什么背后都有阴谋' },
   },
   {
     id: 'Priya',
@@ -83,6 +88,7 @@ export const PERSONAS = [
     play: 'You press whoever is quietest or contradicts themselves, and vote for whoever dodged your questions.',
     wolf: 'You cross-examine a villager until they look guilty. If a seer accuses you, you claim seer too and attack their credibility.',
     claim: 'You hold your role back as evidence and reveal it when it will win the vote.',
+    zh: { blurb: '擅长盘问的出庭律师' },
   },
   {
     id: 'Bo',
@@ -92,6 +98,7 @@ export const PERSONAS = [
     play: 'You tend to believe people and stand up for anyone being piled on. You hate voting someone out and abstain when you are unsure; you vote only on clear evidence.',
     wolf: 'You stay friendly, gently defend your partner, and never accuse first; you just go along with a case someone else made.',
     claim: 'You tell the plain truth about your role as soon as anyone asks.',
+    zh: { blurb: '心善、容易信人的农夫' },
   },
   {
     id: 'Nell',
@@ -101,6 +108,7 @@ export const PERSONAS = [
     play: 'You reason it through step by step, and your reads are often right, but you second-guess yourself and sometimes switch your vote at the last moment.',
     wolf: 'You get a little flustered and over-explain why you can\'t be a wolf, then nudge suspicion onto someone quiet.',
     claim: 'You are scared to claim a role and do so only when cornered or when it clearly matters.',
+    zh: { blurb: '想太多的紧张学生' },
   },
 ];
 export const isPerson = (id) => !PERSONAS.some((p) => p.id === id);
@@ -113,10 +121,10 @@ export const isPerson = (id) => !PERSONAS.some((p) => p.id === id);
  * call tonight, { day, step, at }. `lines`: the chat, each line marked with
  * the `no` of the last game begun when it was said. `thoughts`: each AI
  * player's thinking. `since`: the `at` of the change that began the moment
- * (`moment`).
+ * (`moment`). `lang`: what the AI players speak, the host's page's (LANGS).
  */
 export function newTable() {
-  return { people: [HUMAN], names: {}, size: SIZE, players: [], no: 0, game: null, call: null, lines: [], thoughts: {}, since: 0 };
+  return { lang: 'en', people: [HUMAN], names: {}, size: SIZE, players: [], no: 0, game: null, call: null, lines: [], thoughts: {}, since: 0 };
 }
 
 const playing = (t) => Boolean(t.game) && t.game.phase !== 'over'; // the game is on
@@ -202,12 +210,12 @@ function gameView(t, seat) {
  */
 function view(t, member) {
   const seat = t.players.indexOf(member);
-  const { people, names, size, players, no, lines } = t;
+  const { people, names, size, players, no, lines, lang = 'en' } = t;
   const game = t.game && gameView(t, seat);
   const night = playing(t) && t.game.phase === 'night';
   return {
     content: {
-      people, names, size, seated: seated(t), players, no, lines, game,
+      lang, people, names, size, seated: seated(t), players, no, lines, game,
       call: night ? { ...t.call, ends: ends(t) } : null,
       thoughts: t.game?.phase === 'over' ? t.thoughts : seat < 0 ? {} : { [member]: latest(t.thoughts, member) },
       moment: moment(t),
@@ -227,6 +235,7 @@ function view(t, member) {
  *                                table first, then AI players in the seats left
  *   size { size }                the host: the next game's seats
  *   join { name }                a person sits at the table, or renames
+ *   lang { lang }                the host: what the AI players speak from now on
  *   leave                        a friend leaves: in a game, each of their turns is taken as doing nothing
  *   kill { target, text? }, check { target }, save, poison { target }, pass,
  *   speak { text }, vote { target }, abstain, chat { text }
@@ -254,6 +263,7 @@ function step(t, { by, at, base, answers = [], body }) {
   if (b.type === 'size') return resize(t, by, b.size);
   if (b.type === 'join') return join(t, by, b.name);
   if (b.type === 'leave') return leave(t, by);
+  if (b.type === 'lang') return by === HUMAN && LANGS.includes(b.lang) ? { ...t, lang: b.lang } : { refused: 'Only the host sets the language.' };
   if (base !== moment(t)) return { refused: 'Stale: the game moved on before your action landed.' };
   if (b.type === 'chat') return chat(t, by, b, answers);
   if (!playing(t)) return { refused: 'There is no game on: chat instead.' };
@@ -439,7 +449,7 @@ export function prompt({ content: c, tasks, rules: how }, id) {
   const seat = v ? v.seat : -1;
   const persona = PERSONAS.find((p) => p.id === id);
   const rules = [
-    `${how}\n\nYou are ${id}${seat >= 0 ? `, in seat ${seat + 1}` : ''}: ${persona.blurb.toLowerCase()}.`,
+    `${how}${speak(c.lang)}\n\nYou are ${id}${seat >= 0 ? `, in seat ${seat + 1}` : ''}: ${persona.blurb.toLowerCase()}.`,
     `How you talk: ${persona.voice} Your speeches run to about ${persona.words} words.`,
     `How you play: ${persona.play}`,
     `As a werewolf: ${persona.wolf}`,

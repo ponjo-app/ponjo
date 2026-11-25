@@ -341,8 +341,10 @@ const cap = (text) => text[0].toUpperCase() + text.slice(1);
 
 // What a player holds, as a player says it: "Pocket kings" or "Ace-king
 // suited" before the flop, then the best hand with the board, "Pair of
-// kings", "Queens full of fours".
-export function handName(hole, board = []) {
+// kings", "Queens full of fours"; in Chinese (`lang` 'zh'), as a Chinese
+// player says it, "口袋对 K", "一对 K", "葫芦，Q 带 4".
+export function handName(hole, board = [], lang = 'en') {
+  if (lang === 'zh') return handNameZh(hole, board);
   if (board.length < 3) {
     const [a, b] = hole.map(rankOf).sort((x, y) => y - x);
     return a === b ? `Pocket ${many(a)}` : `${cap(WORDS[a])}-${WORDS[b]} ${hole[0][1] === hole[1][1] ? 'suited' : 'offsuit'}`;
@@ -359,4 +361,15 @@ export function handName(hole, board = []) {
     () => `Four ${many(r1)}`,
     () => (r1 === 14 ? 'Royal flush' : `Straight flush, ${WORDS[r1]} high`),
   ][kind]();
+}
+
+const RANK = (r) => (r === 10 ? '10' : RANKS[r - 2]);
+function handNameZh(hole, board) {
+  if (board.length < 3) {
+    const [a, b] = hole.map(rankOf).sort((x, y) => y - x);
+    return a === b ? `口袋对 ${RANK(a)}` : `${RANK(a)}${RANK(b)} ${hole[0][1] === hole[1][1] ? '同花' : '杂色'}`;
+  }
+  const [kind, r1, r2] = bestHand([...hole, ...board]).score;
+  const [a, b] = [RANK(r1), RANK(r2)];
+  return [`高牌 ${a}`, `一对 ${a}`, `两对，${a} 和 ${b}`, `三条 ${a}`, `顺子，${a} 高`, `同花，${a} 高`, `葫芦，${a} 带 ${b}`, `四条 ${a}`, r1 === 14 ? '皇家同花顺' : `同花顺，${a} 高`][kind];
 }

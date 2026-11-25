@@ -10,7 +10,7 @@ world `preview/spy-world.js`, page `preview/spy.js`.
 ## State
 
 ```
-{ rev, people, names, size, players, gameNo, game, lines, thoughts, since }
+{ rev, lang, people, names, size, players, gameNo, game, lines, thoughts, since }
 game      { seats: [{ role, word, alive }], words, first, round, phase, runoff,
             order, speaker, acted, votes, said, log, winner }
 thoughts  { member → [{ round, kind, text }] }
@@ -21,7 +21,9 @@ votes do not move it. `lines`: the discussion and the chat (`game-kit.js`),
 each with the last game begun when it was said. `size`: the next game's
 seats; the people fill them first, AI players the rest, and those sit at
 the table from then on.
-`since`: the `at` of the change that began the turn. The answer ledger is
+`since`: the `at` of the change that began the turn. `lang`: the table's
+language, `en` or `zh`, the host's page's ([rooms](rooms.md)): the AI
+seats speak it, and the words are in it. The answer ledger is
 the generic wrapper's.
 
 ## Store
@@ -49,7 +51,9 @@ for its last try. Once the game is over, everything, all thoughts included.
 text }`, `say { text }`, `pass`, `vote { target }`, `chat { text }` (out of a
 game, for whoever is at the table); `size { size }`, `start { size }`, for
 the opener.
-`rules`: `RULES`.
+`rules`: `RULES`, and in Chinese, to speak it. The host's `lang { lang }`
+sets the table's language. A word is said when a clue has it as a word
+of its own, or, in Chinese, anywhere.
 
 **Tasks.** For any seat, a person's too, in priority order:
 
@@ -109,8 +113,8 @@ their turns takes its `fallback`.
 ## System members
 
 The dealer, a script in the room, has a `deal:<gameNo>` task on the
-opener's `start { size }` and commits `dealt`: the word pair, which is the
-spies', the sides, the first speaker, by `cryptoRandom`. The clock, the
+opener's `start { size }` and commits `dealt`: the word pair, in the
+table's language, which is the spies', the sides, the first speaker, by `cryptoRandom`. The clock, the
 room's alarm, commits its tasks at their `at`.
 
 ## Agent clients

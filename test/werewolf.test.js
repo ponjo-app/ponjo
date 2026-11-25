@@ -593,3 +593,16 @@ test('a line to the whole table costs a bounded number of model calls: one answe
   assert.ok(ran.length <= 4, `one answer, then the three it names at depth 1: ${ran.length} runs`);
   assert.equal(ran[0], 'Rosa', 'the first AI player in seat order: no one has said a line');
 });
+
+test('the host sets the table\'s language: the AI players are told to speak it, their hellos too', () => {
+  const t = open();
+  assert.equal(view_(t, HUMAN).content.lang, 'en');
+  assert.ok(t.as('fmia').commit({ body: { type: 'join', name: 'Mia' } }).rev);
+  assert.match(t.as('fmia').commit({ body: { type: 'lang', lang: 'zh' } }).refused, /Only the host/);
+  assert.match(t.as(HUMAN).commit({ body: { type: 'lang', lang: 'fr' } }).refused, /Only the host/);
+  assert.ok(t.as(HUMAN).commit({ body: { type: 'lang', lang: 'zh' } }).rev);
+  assert.match(prompt(view_(t, 'Rosa'), 'Rosa').rules, /plays in Chinese/, 'her hello');
+  begins(t);
+  assert.match(prompt(view_(t, 'Rosa'), 'Rosa').rules, /plays in Chinese: write everything, your thinking included, in Simplified Chinese/);
+  assert.doesNotMatch(prompt(view_(begins(open()), 'Rosa'), 'Rosa').rules, /plays in Chinese/, 'an English table is told nothing');
+});

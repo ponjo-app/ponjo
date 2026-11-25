@@ -13,11 +13,12 @@
 
 /* global document, location, matchMedia, innerWidth, innerHeight, HTMLDialogElement */
 
-import { $, closeTable, el, message, models, notice, typingMessage, unreached } from './game-page.js';
+import { $, closeTable, el, message, models, notice, translate, typingMessage, unreached } from './game-page.js';
 import { keep, load, sit, typer } from './game-kit.js';
 import { agentFace, personFace, setBuddies, setOwner } from '../web/faces.js';
 import { icon } from '../web/icons.js';
-import { handName } from './poker-dealer.js';
+import { handName as nameOfHand } from './poker-dealer.js';
+import { L, LANG, list } from './lang.js';
 import { DEALER, HUMAN, MAX_BUY, MAX_SEATS, MIN_BUY, PERSONAS, STACK, freeSeats, isPerson, lineup, myChips, newTable } from './poker-world.js';
 
 const WALLET = 'ponjo-poker-bankroll';
@@ -26,6 +27,33 @@ const money = (n) => `$${n.toLocaleString('en')}`;
 const SLOTS = ['bottom', 'left', 'top-left', 'top', 'top-right', 'right']; // the six seats round the table, from the one this page sits in
 const NAME = 'ponjo-poker-name';
 const SUIT = { s: '♠', h: '♥', d: '♦', c: '♣' };
+const handName = (hole, board) => nameOfHand(hole, board, LANG);
+const STREET = { preflop: L('Preflop', '翻牌前'), flop: L('Flop', '翻牌'), turn: L('Turn', '转牌'), river: L('River', '河牌'), done: L('After the hand', '牌局结束后') };
+// What the rules say when they refuse a change (poker-world.js, poker-dealer.js), in Chinese (game-page.js, `translate`).
+const KNOWN = [
+  ['Stale: the table moved on before your action landed.', '慢了一步：你的操作到达前，牌桌已经往下走了。'],
+  ['It is your turn and you gave no action.', '轮到你了，但你没有操作。'],
+  ['Say something.', '说点什么吧。'],
+  [/^Buy in for (\d+) to (\d+)\.$/, '买入金额在 $1 到 $2 之间。'],
+  ['That seat is taken.', '这个座位有人了。'],
+  [/^You may hold up to (\d+) on the table\.$/, '桌上最多只能有 $1。'],
+  ['You are not at the table.', '你不在牌桌上。'],
+  ['Leave once the hand is over.', '这手牌结束后再离开。'],
+  ['Only the host does that.', '只有房主能这样做。'],
+  ['The hand is not over.', '这手牌还没结束。'],
+  ['There is no seat for them.', '没有空位给他们了。'],
+  ['A table needs someone to play against.', '牌桌上得有人和你对局。'],
+  ['The hand is over.', '这手牌已经结束。'],
+  ['It is not your turn.', '还没轮到你。'],
+  [/^You cannot check: (\d+) to call\.$/, '不能过牌：需要跟注 $1。'],
+  ['Nothing to call: check, or bet.', '没有可跟的注：过牌或下注。'],
+  ['You cannot raise here: check.', '这里不能加注：请过牌。'],
+  ['You cannot raise now: the betting is not open to you again.', '现在不能加注：这一轮下注没有重新轮到你。'],
+  [/^You have only (\d+) in all for this street\.$/, '这一轮你总共只有 $1。'],
+  [/^Too small: the least you can raise to is (\d+)\.$/, '太少了：最少加注到 $1。'],
+  [/^Too small: the least you can bet is (\d+)\.$/, '太少了：最少下注 $1。'],
+  [/^No action "(.*)"\.$/, '没有“$1”这个操作。'],
+];
 
 setBuddies(PERSONAS.map(({ id }) => ({ id, name: id })));
 setOwner(HUMAN);
@@ -79,11 +107,11 @@ function buyIn(kind, slot) {
   const room = kind === 'topup' ? Math.min(wallet.bankroll, MAX_BUY - chipsOfMine()) : Math.min(wallet.bankroll, MAX_BUY);
   const broke = kind !== 'topup' && wallet.bankroll < MIN_BUY;
   const net = chipsOfMine() + session.cashed - session.bought;
-  const title = { sit: 'Sit down', rebuy: 'You are out of chips', topup: 'Top up', left: 'You left the table' }[kind];
-  const text = broke ? `Your bankroll is ${money(wallet.bankroll)}, under the ${money(MIN_BUY)} buy-in. It is play money: start again with ${money(BANKROLL)}.`
-    : kind === 'left' ? `${net >= 0 ? 'Up' : 'Down'} ${money(Math.abs(net))} over ${session.hands} hand${session.hands === 1 ? '' : 's'}${session.biggest ? `, your biggest pot ${money(session.biggest)}` : ''}. Your bankroll is ${money(wallet.bankroll)}.`
-      : kind === 'topup' ? `Add chips from your bankroll (${money(wallet.bankroll)}), up to ${money(MAX_BUY)} on the table. They land before the next hand.`
-        : `Blinds ${money(10)}/${money(20)}. Buy in for ${money(MIN_BUY)} to ${money(MAX_BUY)} from your bankroll of ${money(wallet.bankroll)}. Play money only.`;
+  const title = { sit: L('Sit down', '入座'), rebuy: L('You are out of chips', '你的筹码输光了'), topup: L('Top up', '加筹码'), left: L('You left the table', '你离开了牌桌') }[kind];
+  const text = broke ? L(`Your bankroll is ${money(wallet.bankroll)}, under the ${money(MIN_BUY)} buy-in. It is play money: start again with ${money(BANKROLL)}.`, `你的资金只剩 ${money(wallet.bankroll)}，不够 ${money(MIN_BUY)} 的买入。反正是游戏币：用 ${money(BANKROLL)} 重新开始吧。`)
+    : kind === 'left' ? L(`${net >= 0 ? 'Up' : 'Down'} ${money(Math.abs(net))} over ${session.hands} hand${session.hands === 1 ? '' : 's'}${session.biggest ? `, your biggest pot ${money(session.biggest)}` : ''}. Your bankroll is ${money(wallet.bankroll)}.`, `${session.hands} 手牌，${net >= 0 ? '赢了' : '输了'} ${money(Math.abs(net))}${session.biggest ? `，最大的底池 ${money(session.biggest)}` : ''}。你的资金现在是 ${money(wallet.bankroll)}。`)
+      : kind === 'topup' ? L(`Add chips from your bankroll (${money(wallet.bankroll)}), up to ${money(MAX_BUY)} on the table. They land before the next hand.`, `从你的资金（${money(wallet.bankroll)}）里加筹码，桌上最多 ${money(MAX_BUY)}。下一手牌开始前到账。`)
+        : L(`Blinds ${money(10)}/${money(20)}. Buy in for ${money(MIN_BUY)} to ${money(MAX_BUY)} from your bankroll of ${money(wallet.bankroll)}. Play money only.`, `盲注 ${money(10)}/${money(20)}。从你的 ${money(wallet.bankroll)} 资金里买入 ${money(MIN_BUY)} 到 ${money(MAX_BUY)}。只用游戏币。`);
   $('.pk-setup-title', buyin).textContent = title;
   $('.pk-buyin-text', buyin).textContent = text;
   const slider = buyin.elements.amount;
@@ -91,12 +119,12 @@ function buyIn(kind, slot) {
   Object.assign(slider, { min, max: room, value: kind === 'topup' ? room : room });
   $('.pk-buyin-amount', buyin).hidden = broke || kind === 'left' || room < min;
   buyin.dataset.kind = broke ? 'restart' : kind;
-  $('[type=submit]', buyin).textContent = broke ? `Start again with ${money(BANKROLL)}` : kind === 'left' ? 'Sit down again' : kind === 'topup' ? 'Add' : 'Sit down';
+  $('[type=submit]', buyin).textContent = broke ? L(`Start again with ${money(BANKROLL)}`, `用 ${money(BANKROLL)} 重新开始`) : kind === 'left' ? L('Sit down again', '重新入座') : kind === 'topup' ? L('Add', '加上') : L('Sit down', '入座');
   $('[data-action="buyin-cancel"]', buyin).hidden = kind !== 'topup' && !(ROOM && kind === 'sit');
   const name = $('.pk-name-field', buyin);
   name.hidden = !ROOM || kind !== 'sit' || broke;
   name.querySelector('input').value ||= load(NAME) ?? '';
-  if (ROOM && kind === 'left') $('[type=submit]', buyin).textContent = 'Keep watching';
+  if (ROOM && kind === 'left') $('[type=submit]', buyin).textContent = L('Keep watching', '继续观看');
   drawBuyValue();
   buyin.hidden = false;
   document.body.classList.add('pk-buying-in');
@@ -104,7 +132,7 @@ function buyIn(kind, slot) {
 function drawBuyValue() {
   $('.pk-buyin-value', buyin).textContent = money(Number(buyin.elements.amount.value));
   const kind = buyin.dataset.kind;
-  if (kind === 'sit' || kind === 'rebuy') $('[type=submit]', buyin).textContent = `Sit down with ${money(Number(buyin.elements.amount.value))}`;
+  if (kind === 'sit' || kind === 'rebuy') $('[type=submit]', buyin).textContent = L(`Sit down with ${money(Number(buyin.elements.amount.value))}`, `带 ${money(Number(buyin.elements.amount.value))} 入座`);
 }
 function closeBuyIn() {
   buyin.hidden = true;
@@ -126,7 +154,7 @@ buyin.addEventListener('submit', (event) => {
   if (kind === 'sit') Object.assign(session, { bought: 0, hands: 0, biggest: 0, cashed: 0 });
   session.bought += amount;
   if (ROOM && kind === 'sit') {
-    const name = buyin.elements.name.value.trim().slice(0, 20) || 'Friend';
+    const name = buyin.elements.name.value.trim().slice(0, 20) || L('Friend', '朋友');
     keep(name, NAME);
     perform({ type: 'sit', seat: Number(buyin.dataset.slot), name, buyIn: amount });
   } else perform(kind === 'topup' ? { type: 'topup', amount } : { type: 'sit', buyIn: amount }); // the host's buying in deals the next hand
@@ -148,10 +176,10 @@ const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const seats = new Map(); // a player's id → its seat
 const bets = new Map(); // a player's id → its bet on the felt
 // What a player is called here: "You" for this page's own, the host's name, a friend's, an AI player's.
-const label = (id) => (id === me ? 'You' : isPerson(id) ? table.names[id] ?? 'Host' : id);
+const label = (id) => (id === me ? L('You', '你') : isPerson(id) ? table.names[id] ?? L('Host', '房主') : id);
 function faceOf(id) {
   const avatar = el('span', `pj-avatar${isPerson(id) ? '' : ' pj-avatar-agent'}`);
-  avatar.append(isPerson(id) ? personFace(id === me ? 'You' : label(id), id) : agentFace(id));
+  avatar.append(isPerson(id) ? personFace(label(id), id) : agentFace(id));
   return avatar;
 }
 function seatNode(id) {
@@ -172,9 +200,9 @@ function seatNode(id) {
 // An empty seat: a player can be asked to sit there.
 const empties = SLOTS.map((pos, k) => {
   const node = el('button', 'pk-empty');
-  Object.assign(node, { type: 'button', hidden: true, title: 'Add a player' });
+  Object.assign(node, { type: 'button', hidden: true, title: L('Add a player', '加一位玩家') });
   Object.assign(node.dataset, { pos, slot: k });
-  node.append(el('span', 'pk-empty-ring', '+'), el('span', 'pk-empty-label', 'Add player'));
+  node.append(el('span', 'pk-empty-ring', '+'), el('span', 'pk-empty-label', L('Add player', '加玩家')));
   return node;
 });
 $('.pk-seats').append(...empties);
@@ -204,7 +232,7 @@ function layout() {
   for (const [k, node] of empties.entries()) {
     node.hidden = !free.includes(k) || (ROOM && seatedNow(me));
     node.dataset.pos = posOf(k);
-    $('.pk-empty-label', node).textContent = ROOM ? 'Sit here' : 'Add player';
+    $('.pk-empty-label', node).textContent = ROOM ? L('Sit here', '坐这里') : L('Add player', '加玩家');
   }
 }
 
@@ -212,7 +240,7 @@ const cardText = (c) => `${c[0] === 'T' ? '10' : c[0]}${SUIT[c[1]]}`;
 function card(c) {
   const node = el('span', c ? 'pk-card' : 'pk-card pk-card-back');
   node.dataset.key = c ?? 'back';
-  node.setAttribute('aria-label', c ? cardText(c) : 'Face down');
+  node.setAttribute('aria-label', c ? cardText(c) : L('Face down', '背面朝上'));
   if (!c) return node;
   const rank = el('span', 'pk-rank', c[0] === 'T' ? '10' : c[0]);
   rank.append(el('small', '', SUIT[c[1]]));
@@ -262,24 +290,25 @@ function fly(from, to, amount, { delay = 0, hide = false } = {}) {
   });
 }
 
-const TAG = { fold: 'Fold', check: 'Check', call: 'Call', bet: 'Bet', raise: 'Raise to' };
+const TAG = { fold: L('Fold', '弃牌'), check: L('Check', '过牌'), call: L('Call', '跟注'), bet: L('Bet', '下注'), raise: L('Raise to', '加注到') };
+const ACTION = { ...TAG, raise: L('Raise', '加注'), allin: L('All in', '全下') }; // a move, in their thinking
 // What a seat shows over its face: what it is doing or just did.
 function tag(hand, i, { id, joining, leaving }) {
-  if (joining) return ['Sits in next hand', 'wait'];
-  if (leaving && (!hand || hand.street === 'done')) return ['Leaving', 'fold'];
-  if (presence()[id]?.failed) return ['Can\'t reach the model', 'failed'];
-  if (table.ends && hand?.street !== 'done' && hand?.toAct === i) return [`${Math.max(0, Math.ceil((table.ends - Date.now()) / 1000))}s to act`, 'wait'];
-  if (presence()[id]?.working && hand?.toAct === i) return ['Thinking…', 'wait'];
+  if (joining) return [L('Sits in next hand', '下一手入座'), 'wait'];
+  if (leaving && (!hand || hand.street === 'done')) return [L('Leaving', '离开中'), 'fold'];
+  if (presence()[id]?.failed) return [L('Can\'t reach the model', '连不上模型'), 'failed'];
+  if (table.ends && hand?.street !== 'done' && hand?.toAct === i) return [L(`${Math.max(0, Math.ceil((table.ends - Date.now()) / 1000))}s to act`, `还剩 ${Math.max(0, Math.ceil((table.ends - Date.now()) / 1000))} 秒`), 'wait'];
+  if (presence()[id]?.working && hand?.toAct === i) return [L('Thinking…', '思考中…'), 'wait'];
   if (!hand) return ['', ''];
   if (hand.street === 'done') {
     const won = hand.result.won[i];
-    if (won) return [`Wins ${money(won)}`, ''];
+    if (won) return [L(`Wins ${money(won)}`, `赢得 ${money(won)}`), ''];
     const shown = hand.result.showdown && hand.result.hands[i];
-    return shown ? [handName(hand.seats[i].hole, hand.board), 'wait'] : hand.seats[i].folded ? ['Fold', 'fold'] : ['', ''];
+    return shown ? [handName(hand.seats[i].hole, hand.board), 'wait'] : hand.seats[i].folded ? [TAG.fold, 'fold'] : ['', ''];
   }
   const s = hand.seats[i];
-  if (s.allIn) return ['All in', ''];
-  if (s.folded) return ['Fold', 'fold'];
+  if (s.allIn) return [L('All in', '全下'), ''];
+  if (s.folded) return [TAG.fold, 'fold'];
   const a = hand.actions.findLast((x) => x.seat === i && x.street === hand.street && TAG[x.type]);
   return a ? [`${TAG[a.type]}${a.type === 'bet' || a.type === 'raise' ? ` ${money(a.amount)}` : ''}`, ''] : ['', ''];
 }
@@ -332,7 +361,7 @@ function draw() {
   const sameHand = hand && hand.id === draw.hand;
   layout();
   for (const [id, shown] of shownBets) if (sameHand && shown && !hand.seats.find((s) => s.id === id)?.bet) fly(bets.get(id), potNode, shown);
-  if (sameHand && hand.street !== draw.street) banner(hand.street === 'done' ? (hand.result.showdown ? 'Showdown' : '') : hand.street[0].toUpperCase() + hand.street.slice(1));
+  if (sameHand && hand.street !== draw.street) banner(hand.street === 'done' ? (hand.result.showdown ? L('Showdown', '摊牌') : '') : STREET[hand.street]);
   if (!hand?.result?.showdown && hand?.street === 'done') $('.pk-street').hidden = true;
   draw.hand = hand?.id;
   draw.street = hand?.street;
@@ -353,7 +382,7 @@ function draw() {
     $('.pj-agent-face', node).dataset.presence = presence()[id]?.working || (isPerson(id) && hand?.street !== 'done' && hand?.toAct === i) ? 'working' : out || s?.folded ? 'away' : 'idle';
     const stack = isPerson(id) ? myChips(table, id) : s ? s.stack : i >= 0 ? table.players[i].stack : STACK;
     const stackNode = $('.pk-stack', node);
-    stackNode.textContent = out ? 'Out' : money(stack);
+    stackNode.textContent = out ? L('Out', '出局') : money(stack);
     if (before.stack !== null && stack !== before.stack) delta(stackNode, stack - before.stack);
     before.stack = stack;
     const acts = s ? hand.actions.filter((a) => a.seat === i && TAG[a.type]).length : 0;
@@ -383,7 +412,7 @@ function draw() {
   setCards($('.pk-board'), hand?.board ?? []);
   const pot = hand ? hand.seats.reduce((sum, s) => sum + s.total, 0) : 0;
   potNode.hidden = !pot || hand.street === 'done';
-  if (pot) $('.pk-pot-amount', potNode).textContent = `Pot ${money(pot)}`;
+  if (pot) $('.pk-pot-amount', potNode).textContent = L(`Pot ${money(pot)}`, `底池 ${money(pot)}`);
   if (pot && potNode.dataset.amount !== `${pot}`) {
     $('.pk-chip', potNode).replaceWith(chips(pot, 'gold'));
     if (sameHand) replay(potNode, 'pk-bump');
@@ -425,8 +454,8 @@ function drawResult() {
   const net = chipsOfMine() + session.cashed - session.bought;
   $('.pk-bank').innerHTML = '';
   if (away) $('.pk-bank').append(el('span', 'pk-away', away));
-  else if (ROOM && !seatedNow(me)) $('.pk-bank').append(el('span', 'pk-away', 'Watching. Pick an empty seat to sit down.'));
-  for (const [name, value] of [['Bankroll', money(wallet.bankroll)], ['On the table', money(chipsOfMine())], ['This session', `${net >= 0 ? '+' : '−'}${money(Math.abs(net))}`]]) {
+  else if (ROOM && !seatedNow(me)) $('.pk-bank').append(el('span', 'pk-away', L('Watching. Pick an empty seat to sit down.', '观看中。选一个空位入座。')));
+  for (const [name, value] of [[L('Bankroll', '资金'), money(wallet.bankroll)], [L('On the table', '桌上'), money(chipsOfMine())], [L('This session', '本场'), `${net >= 0 ? '+' : '−'}${money(Math.abs(net))}`]]) {
     const item = el('span', '', `${name} `);
     item.append(el('b', '', value));
     $('.pk-bank').append(item);
@@ -438,16 +467,16 @@ function drawResult() {
 // The hand's result, as the table says it: who won what, with which hand.
 function resultText() {
   const hand = table.hand;
-  if (!hand) return 'Play money only.';
+  if (!hand) return L('Play money only.', '只用游戏币。');
   if (hand.street !== 'done') return '';
   const { result } = hand;
   const lines = result.pots.map((p, k) => {
     const names = p.winners.map((i) => label(hand.seats[i].id));
     const with_ = result.showdown ? ` · ${handName(hand.seats[p.winners[0]].hole, hand.board)}` : '';
-    return `${k ? 'Side pot: ' : ''}${names.join(' and ')} ${names.length > 1 || names[0] === 'You' ? 'win' : 'wins'} ${money(p.amount)}${with_}`;
+    return L(`${k ? 'Side pot: ' : ''}${list(names)} ${names.length > 1 || names[0] === 'You' ? 'win' : 'wins'} ${money(p.amount)}${with_}`, `${k ? '边池：' : ''}${list(names)}赢得 ${money(p.amount)}${with_}`);
   });
-  if (seatedNow(me) && !chipsOfMine()) lines.push('You are out of chips.');
-  return lines.join('. ');
+  if (seatedNow(me) && !chipsOfMine()) lines.push(L('You are out of chips.', '你的筹码输光了。'));
+  return lines.join(L('. ', '。'));
 }
 
 // ---- you: your cards, what you hold, and what you may do ----
@@ -457,21 +486,21 @@ function drawMe() {
   const s = hand?.seats[seatOf(me)];
   setCards($('.pk-hole-mine'), s?.inHand ? s.hole : []);
   $('.pk-hole-mine').style.opacity = s?.folded ? 0.5 : '';
-  $('.pk-strength').textContent = !s?.inHand ? '' : s.folded ? 'Folded' : handName(s.hole, hand.board);
+  $('.pk-strength').textContent = !s?.inHand ? '' : s.folded ? L('Folded', '已弃牌') : handName(s.hole, hand.board);
   const actor = hand?.street !== 'done' && hand?.seats[hand.toAct]?.id;
   const mine = myTurn() && !away;
-  const stage = hand?.street === 'done' ? (hand.result.showdown ? 'Showdown' : 'Hand complete') : hand?.street;
-  $('.pk-phase').textContent = hand ? `Hand ${hand.id} · ${stage[0].toUpperCase() + stage.slice(1)}` : '';
+  const stage = hand?.street === 'done' ? (hand.result.showdown ? L('Showdown', '摊牌') : L('Hand complete', '本手结束')) : STREET[hand?.street];
+  $('.pk-phase').textContent = hand ? L(`Hand ${hand.id} · ${stage}`, `第 ${hand.id} 手 · ${stage}`) : '';
   let status = away;
-  if (!status && mine) status = 'Your turn';
-  else if (!status && actor) status = `Waiting for ${label(actor)}`;
-  else if (!status && !hand && chipsOfMine()) status = 'Waiting for the first deal';
+  if (!status && mine) status = L('Your turn', '轮到你了');
+  else if (!status && actor) status = L(`Waiting for ${label(actor)}`, `等待 ${label(actor)}`);
+  else if (!status && !hand && chipsOfMine()) status = L('Waiting for the first deal', '等待第一次发牌');
   const turn = $('.pk-turn');
   if (turn.textContent !== status) turn.textContent = status;
   $('.pk-controls').hidden = !mine;
   if (!mine) return;
   const l = table.legal;
-  $('[data-action="call"]').textContent = l.check ? 'Check' : `Call ${money(l.call)}${l.call === s.stack ? ' · all in' : ''}`;
+  $('[data-action="call"]').textContent = l.check ? TAG.check : `${TAG.call} ${money(l.call)}${l.call === s.stack ? L(' · all in', ' · 全下') : ''}`;
   $('[data-action="raise"]').hidden = !l.raise;
   $('.pk-sizes').hidden = !l.raise || l.raise.min === l.raise.max;
   if (!l.raise) return;
@@ -486,8 +515,8 @@ function drawRaise() {
   const to = Number($('.pk-slider').value);
   $('.pk-slider').setAttribute('aria-valuetext', money(to));
   const seat = hand.seats[seatOf(me)];
-  $('.pk-sizing').textContent = seat.bet ? `Wager · add ${money(to - seat.bet)} to your ${money(seat.bet)}` : 'Wager size';
-  $('[data-action="raise"]').textContent = to >= l.raise.max ? `All in ${money(seat.stack)}` : `${hand.currentBet ? 'Raise to' : 'Bet'} ${money(to)}`;
+  $('.pk-sizing').textContent = seat.bet ? L(`Wager · add ${money(to - seat.bet)} to your ${money(seat.bet)}`, `下注额 · 在你的 ${money(seat.bet)} 上再加 ${money(to - seat.bet)}`) : L('Wager size', '下注额');
+  $('[data-action="raise"]').textContent = to >= l.raise.max ? L(`All in ${money(seat.stack)}`, `全下 ${money(seat.stack)}`) : `${hand.currentBet ? TAG.raise : TAG.bet} ${money(to)}`;
 }
 // A raise of a size a player names: the least, half the pot, the pot, all in.
 function size(name) {
@@ -517,14 +546,14 @@ function drawFeed() {
   for (; drawn < table.chat.length; drawn++) {
     const line = table.chat[drawn];
     if (!isPerson(line.by) && !typed.shows(`l:${line.id}`, line.by, line.text)) break;
-    feed.append(line.by === DEALER ? notice(line.text) : chatLine(line, feed.lastElementChild?.dataset.by === line.by));
+    feed.append(line.by === DEALER ? notice(line.rebuy ? L(line.text, `${line.rebuy} 重新买入 ${money(STACK)}。`) : line.text) : chatLine(line, feed.lastElementChild?.dataset.by === line.by));
   }
   if (shown) popped ??= table.reactions.length;
   for (; popped < table.reactions.length; popped++) pop(table.reactions[popped].by, table.reactions[popped].emoji);
   const hand = table.hand;
   if (hand?.street === 'done' && posted !== hand.id) {
     posted = hand.id;
-    feed.append(notice(`Hand ${hand.id}: ${resultText()}`));
+    feed.append(notice(L(`Hand ${hand.id}: ${resultText()}`, `第 ${hand.id} 手：${resultText()}`)));
   }
   for (const id of typed.typing) feed.append(typingMessage(faceOf(id), id));
   if (stick) feed.scrollTop = feed.scrollHeight;
@@ -564,26 +593,28 @@ function item(content, run, disabled = '') {
   });
   return li;
 }
+// What each AI player is, in Chinese (their `blurb` in poker-world.js).
+const BLURB = { Gary: '什么牌都打的游客', Duke: '粗鲁、凶狠、爱嘲讽', Penny: '谨慎，每个筹码都算', Mabel: '会设陷阱的慈祥奶奶', Lex: '满口理论的线上职业玩家', Hank: '爱大诈唬的牛仔' };
 function who(id) {
   const persona = PERSONAS.find((p) => p.id === id);
   const avatar = el('span', 'pj-avatar pj-avatar-agent');
   avatar.append(agentFace(id));
   const text = el('span', 'pk-menu-text');
-  text.append(el('b', '', id), el('span', '', persona.blurb));
+  text.append(el('b', '', id), el('span', '', L(persona.blurb, BLURB[id])));
   return [avatar, text];
 }
 // The menu by `anchor`: for an empty seat, the players who could sit there; for a player, to leave or stay.
 function openMenu(anchor, { slot, id }) {
   const here = lineup(table);
   if (id && isPerson(id)) {
-    menu.replaceChildren(el('li', 'pk-menu-head', ''), item([el('span', '', 'Ask to leave the table')], () => sendAway(id)));
+    menu.replaceChildren(el('li', 'pk-menu-head', ''), item([el('span', '', L('Ask to leave the table', '请对方离开牌桌'))], () => sendAway(id)));
     menu.firstChild.append(faceOf(id), el('b', '', label(id)));
   } else if (id) {
     const p = here.find((q) => q.id === id);
     const others = here.filter((q) => q.id !== HUMAN && !q.leaving).length;
     menu.replaceChildren(el('li', 'pk-menu-head', ''), p.leaving
-      ? item([el('span', '', 'Stay at the table')], () => perform({ type: 'add', id }))
-      : item([el('span', '', p.joining ? 'Don\'t sit down' : table.hand && table.hand.street !== 'done' ? 'Leave after this hand' : 'Leave the table')], () => perform({ type: 'remove', id }), others < 2 ? 'A table needs someone to play against' : ''));
+      ? item([el('span', '', L('Stay at the table', '留在牌桌'))], () => perform({ type: 'add', id }))
+      : item([el('span', '', p.joining ? L('Don\'t sit down', '先别入座') : table.hand && table.hand.street !== 'done' ? L('Leave after this hand', '这手牌后离开') : L('Leave the table', '离开牌桌'))], () => perform({ type: 'remove', id }), others < 2 ? L('A table needs someone to play against', '牌桌上得有人和你对局') : ''));
     menu.firstChild.append(...who(id));
   } else {
     const out = PERSONAS.filter((q) => !here.some((h) => h.id === q.id));
@@ -617,7 +648,7 @@ document.addEventListener('keydown', (event) => {
 function showThinking() {
   const hand = table.hand;
   const dialog = $('.pk-thinking');
-  $('h2', dialog).textContent = `Their thinking, hand ${hand.id}`;
+  $('h2', dialog).textContent = L(`Their thinking, hand ${hand.id}`, `第 ${hand.id} 手，他们的想法`);
   const body = $('.pk-thinking-body', dialog);
   body.replaceChildren(...hand.seats.filter((s) => !isPerson(s.id)).map(({ id }) => {
     const seat = hand.seats.findIndex((s) => s.id === id);
@@ -628,11 +659,11 @@ function showThinking() {
     const avatar = el('span', 'pj-avatar pj-avatar-agent');
     avatar.append(agentFace(id));
     const held = hand.seats[seat].hole ?? [];
-    summary.append(icon('chevron'), avatar, el('span', 'pj-trace-title', id), el('span', 'pj-trace-meta', held.length ? `held ${held.map(cardText).join(' ')}` : 'sat out'));
+    summary.append(icon('chevron'), avatar, el('span', 'pj-trace-title', id), el('span', 'pj-trace-meta', held.length ? L(`held ${held.map(cardText).join(' ')}`, `手牌 ${held.map(cardText).join(' ')}`) : L('sat out', '没参与')));
     part.append(summary);
-    if (!thoughts.length) part.append(el('p', 'pj-empty', 'No decisions this hand.'));
+    if (!thoughts.length) part.append(el('p', 'pj-empty', L('No decisions this hand.', '这手牌没有决定。')));
     for (const t of thoughts) {
-      part.append(el('h3', 'pj-setting-group', [t.street === 'done' ? 'After the hand' : t.street[0].toUpperCase() + t.street.slice(1), t.action && t.action.type].filter(Boolean).join(' · ')));
+      part.append(el('h3', 'pj-setting-group', [STREET[t.street], t.action && (ACTION[t.action.type] ?? t.action.type)].filter(Boolean).join(' · ')));
       part.append(el('pre', 'pj-trace-text pj-trace-thinking', t.text));
     }
     return part;
@@ -721,6 +752,7 @@ const sendAway = (id) => room.send({ type: 'away', id });
 let opened = false;
 const room = sit('poker', HUMAN, {
   key: ai.key,
+  lang: LANG,
   hello(id) {
     me = id;
     draw();
@@ -733,7 +765,7 @@ const room = sit('poker', HUMAN, {
         wallet.bankroll += back;
         saveWallet();
       }
-      $('.pk-turn').textContent = message.why;
+      $('.pk-turn').textContent = translate(message.why, KNOWN);
       return draw();
     }
     if (message.type !== 'state') return;

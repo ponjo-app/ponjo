@@ -615,3 +615,23 @@ test('on the core: the AI players\', the dealer\'s and the clock\'s controllers 
   assert.deepEqual(leaks, []);
   assert.ok(dukeRuns > 0, 'Duke, turned away three times, is checked or folded for by the dealer');
 });
+
+test('the host sets the table\'s language: the AI players are told to speak it, their hellos and goodbyes too', () => {
+  const t = open();
+  assert.equal(view_(t, 'Gary').content.lang, 'en');
+  assert.doesNotMatch(prompt(view_(t, 'Gary'), 'Gary').rules, /Chinese/);
+  assert.match(t.as('fa').commit({ body: { type: 'lang', lang: 'zh' } }).refused, /host/, 'a friend may not');
+  assert.match(does(t, HUMAN, { type: 'lang', lang: 'fr' }).refused, /language/);
+  assert.equal(does(t, HUMAN, { type: 'lang', lang: 'zh' }).refused, undefined);
+  does(t, HUMAN, { type: 'add', id: 'Mabel' });
+  assert.match(prompt(view_(t, 'Mabel'), 'Mabel').rules, /Simplified Chinese/, 'her hello');
+  does(t, HUMAN, { type: 'remove', id: 'Duke' });
+  assert.match(prompt(view_(t, 'Duke'), 'Duke').rules, /Simplified Chinese/, 'his goodbye');
+});
+
+test('a hand is named in Chinese for a Chinese page', () => {
+  assert.equal(handName(['Ks', 'Kd'], [], 'zh'), '口袋对 K');
+  assert.equal(handName(['As', 'Ks'], [], 'zh'), 'AK 同花');
+  assert.equal(handName(['Qs', 'Qd'], ['Qh', '4c', '4s'], 'zh'), '葫芦，Q 带 4');
+  assert.equal(handName(['Ts', '9s'], ['8s', '7s', '6s'], 'zh'), '同花顺，10 高');
+});

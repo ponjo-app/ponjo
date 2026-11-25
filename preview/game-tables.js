@@ -48,11 +48,11 @@ export const GAMES = {
     ais: spy.PERSONAS.map(({ id }) => id),
     seat: () => ({ tool: spy.DECIDE, prompt: spy.prompt, decide: (args, view) => spy.decided(args, view.actions) }),
     pace: (id) => between(SPY_PACE[id]),
-    // A new game, dealt here.
-    body(b) {
+    // A new game, dealt here in the table's language.
+    body(b, t) {
       if (b.type !== 'start') return { ...said(b), ...number(b, 'size') };
       if (!SPY_SIZES.includes(b.size)) return { refused: `A game has ${SPY_SIZES.join(', ')} seats.` };
-      return { type: 'start', size: b.size, dealt: dealWords(b.size) };
+      return { type: 'start', size: b.size, dealt: dealWords(b.size, t.lang) };
     },
   },
   werewolf: {

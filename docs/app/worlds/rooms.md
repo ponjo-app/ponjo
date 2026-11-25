@@ -69,6 +69,12 @@ turn-based games with hidden information. Each is a store of the
   ask them. No line is written for them. The table's latest lines are in
   every prompt, in a game too, so what the people agree there (the
   language to speak, house rules) holds, as far as the rules allow.
+- **Language.** A table speaks English or Chinese: the host's page says
+  which (`lang` in its hello, its visitor's pick, `preview/lang.js`), and
+  the room commits it, as the host, when it differs from the table's. Its
+  AI players speak it, and the spy's words are dealt in it. Each page draws
+  in its own visitor's language, the refusals in English from the rules
+  and the room included.
 - **Presence** goes to the room, which passes it on as each view's `seen`
   allows, and keeps none.
 

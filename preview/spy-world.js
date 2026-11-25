@@ -17,7 +17,7 @@
 // rules allow.
 
 import { MAX_CLUE, MAX_LINES, SIZES, act, due, endTalk, fallback as sayNothing, linesLeft, newGame, turn, view as seatView } from './spy-rules.js';
-import { DEPTH, MAX_LINE, after as next, latest, line as newLine, named, think as thought, deadline } from './game-kit.js';
+import { DEPTH, LANGS, MAX_LINE, after as next, latest, line as newLine, named, speak, think as thought, deadline } from './game-kit.js';
 
 export const HUMAN = 'you';
 export const CLOCK = 'clock'; // the member whose tasks are the table's deadlines
@@ -28,7 +28,8 @@ const SIZE = 6; // the seats of a new table's game, until the host picks another
 const CHAT_SHOWN = 40; // the table's latest lines an AI player is shown
 
 // Each AI player: who they are (`blurb`, shown on the page), how they talk
-// and how they clue, and what they do when they think they are the spy.
+// and how they clue, and what they do when they think they are the spy;
+// `zh`, their blurb at a table in Chinese.
 export const PERSONAS = [
   {
     id: 'Ivy',
@@ -36,6 +37,7 @@ export const PERSONAS = [
     voice: 'You set crosswords for a living. Your clues are short, clever and a little cryptic, often wordplay or a double meaning, and you enjoy it when no one gets them.',
     play: 'You keep your clues just vague enough that only those who share your word will see it. You vote for whoever gave a clue that fits a different word.',
     spy: 'You give a clue so general it fits both words, and quietly agree with the most common reading.',
+    zh: { blurb: '出谜语的填字游戏编者' },
   },
   {
     id: 'Max',
@@ -43,6 +45,7 @@ export const PERSONAS = [
     voice: 'You are a loud, blunt sports coach. Short sentences, no patience, the odd exclamation mark.',
     play: 'Your clues are too specific: you nearly give the word away. You vote fast for whoever sounds odd to you.',
     spy: 'You go on the attack: you name someone as the spy before anyone can look at you.',
+    zh: { blurb: '话太多的直脾气教练' },
   },
   {
     id: 'Juno',
@@ -50,6 +53,7 @@ export const PERSONAS = [
     voice: 'You are a theatrical drama student. You speak in big, dramatic images, as if on stage.',
     play: 'Your clues paint a scene or a feeling, not a fact. You vote with your gut and say so with a flourish.',
     spy: 'You hide behind a mood: a clue all feeling and no fact, which could be either word.',
+    zh: { blurb: '什么都要演一下的戏剧生' },
   },
   {
     id: 'Sam',
@@ -57,6 +61,7 @@ export const PERSONAS = [
     voice: 'You are a dry, precise accountant. As few words as possible, no jokes.',
     play: 'Your clues are one or two flat words. You keep a tally of whose clue fits what, and vote on it.',
     spy: 'You give the flattest, safest clue you can, and vote with the majority.',
+    zh: { blurb: '面无表情的会计' },
   },
   {
     id: 'Lou',
@@ -64,6 +69,7 @@ export const PERSONAS = [
     voice: 'You are a warm, chatty chef. You relate everything to food, cooking and your kitchen.',
     play: 'Your clues come from the kitchen whenever they can. You trust people too easily and vote late.',
     spy: 'You change the subject to cooking, and agree loudly with whoever sounds sure.',
+    zh: { blurb: '三句不离吃的话痨厨师' },
   },
   {
     id: 'Remy',
@@ -71,6 +77,7 @@ export const PERSONAS = [
     voice: 'You are a retired detective. You speak slowly, as if reading from a notebook ("Interesting. Noted.").',
     play: 'You weigh each clue against the others, then name your suspect with your reasons.',
     spy: 'You build a careful case against a civilian whose clue was a little off.',
+    zh: { blurb: '谁都怀疑的退休侦探' },
   },
   {
     id: 'Pip',
@@ -78,6 +85,7 @@ export const PERSONAS = [
     voice: 'You are bubbly and excitable, like a kid at a party. Lots of energy, simple words.',
     play: 'Your clues are what the thing is like in everyday life. You change your vote when someone convinces you.',
     spy: 'You copy the shape of the others\' clues and hope no one notices.',
+    zh: { blurb: '永远像个孩子的开心果' },
   },
 ];
 export const isPerson = (id) => !PERSONAS.some((p) => p.id === id);
@@ -94,9 +102,10 @@ export const isPerson = (id) => !PERSONAS.some((p) => p.id === id);
  * a game (`chat`). `thoughts`: each AI player's
  * thinking. `heard`: the discussion task each player last answered, with a
  * line or a pass. `since`: the `at` of the change that began the moment (`moment`).
+ * `lang`: the table's language, what its AI players speak and its words are in.
  */
 export function newTable() {
-  return { people: [HUMAN], names: {}, size: SIZE, players: [], gameNo: 0, game: null, lines: [], thoughts: {}, heard: {}, since: 0 };
+  return { lang: 'en', people: [HUMAN], names: {}, size: SIZE, players: [], gameNo: 0, game: null, lines: [], thoughts: {}, heard: {}, since: 0 };
 }
 
 const playing = (t) => Boolean(t.game) && t.game.phase !== 'over'; // the game is on
@@ -180,10 +189,10 @@ function actionsOf(t, id, seat) {
  */
 function view(t, member) {
   const seat = t.players.indexOf(member);
-  const { people, names, size, players, gameNo } = t;
+  const { lang, people, names, size, players, gameNo } = t;
   return {
     content: {
-      people, names, size, seated: seated(t), players, gameNo,
+      lang, people, names, size, seated: seated(t), players, gameNo,
       game: t.game && seatView(t.game, seat < 0 ? null : seat),
       lines: t.lines.filter((l) => l.kind === 'chat'), // a discussion's are in the game's log
       thoughts: t.game?.phase === 'over' ? t.thoughts : seat < 0 ? {} : { [member]: latest(t.thoughts, member) },
@@ -204,6 +213,7 @@ function view(t, member) {
  *                               the people at the table first, then AI
  *                               players in the seats left
  *   size { size }               the host: the next game's seats
+ *   lang { lang }               the host: the table's language, from now on
  *   join { name }               a person sits at the table, or renames
  *   leave                       a friend leaves: in a game, each of their turns is taken as doing nothing
  *   clue { text }, say { text }, pass, vote { target }, chat { text }
@@ -229,6 +239,7 @@ function step(t, { by, base, answers = [], body }) {
   const b = body ?? {};
   if (b.type === 'start') return start(t, by, b);
   if (b.type === 'size') return resize(t, by, b.size);
+  if (b.type === 'lang') return by === HUMAN && LANGS.includes(b.lang) ? { ...t, lang: b.lang } : { refused: 'Only the host sets the table\'s language.' };
   if (b.type === 'join') return join(t, by, b.name);
   if (b.type === 'leave') return leave(t, by);
   if (base !== moment(t)) return { refused: 'Stale: the game moved on before your action landed.' };
@@ -391,7 +402,7 @@ export function prompt({ content: c, tasks, rules: how }, id) {
   const seat = v ? v.seat : -1;
   const persona = PERSONAS.find((p) => p.id === id);
   const rules = [
-    `${how}\n\nYou are ${id}${seat >= 0 ? `, in seat ${seat + 1}` : ''}: ${persona.blurb.toLowerCase()}.`,
+    `${how}${speak(c.lang)}\n\nYou are ${id}${seat >= 0 ? `, in seat ${seat + 1}` : ''}: ${persona.blurb.toLowerCase()}.`,
     `How you talk: ${persona.voice}`,
     `How you play: ${persona.play}`,
     `When you think you are the spy: ${persona.spy}`,
