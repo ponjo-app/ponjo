@@ -63,7 +63,8 @@ One `view` for every seat:
 agent line's. An agent's line carries on the `from` of the tasks its run
 answered. `DEPTH` is the table's rule. An AI seat at the table that has
 said no line has a `hello:<id>` ask, from when it sits down, a hand on or
-not. A seat's turn and its lines are separate tasks; its
+not; one the opener asked to leave, a `bye:<id>:<deals>` ask until it is
+gone. No line is written for them. A seat's turn and its lines are separate tasks; its
 controller batches them into one run and one change. `talk`: a line task is
 listed always for a person's line, else when a roll falls under the
 persona's `talk`.

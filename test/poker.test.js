@@ -393,6 +393,8 @@ test('players come and go between hands: a seat is taken at the next hand, given
   does(t, HUMAN, { type: 'add', id: 'Lex' });
   assert.deepEqual(freeSeats(t.state()), []);
   does(t, HUMAN, { type: 'remove', id: 'Duke' });
+  assert.ok(tasks(t, 'Duke').some((x) => x.kind === 'ask' && x.given.startsWith('bye:Duke:')), 'he says goodbye, in his own words');
+  assert.match(prompt(view_(t, 'Duke'), 'Duke').situation, /the host asked you to leave the table once this hand is over: say goodbye/);
   assert.match(does(t, HUMAN, { type: 'add', id: 'Hank' }).refused, /no seat/, 'his seat is his till the hand ends');
   assert.deepEqual(lineup(t.state()).map((p) => [p.id, p.joining, p.leaving]), [[HUMAN, false, false], ['Gary', false, false], ['Mabel', false, false], ['Duke', false, true], ['Penny', false, false], ['Lex', true, false]]);
   assert.deepEqual(tasks(t, 'Lex').map((x) => x.given), ['hello:Lex'], 'not seated yet: due only to say hello');

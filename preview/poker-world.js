@@ -33,42 +33,36 @@ export const PERSONAS = [
     id: 'Gary',
     talk: 0.35,
     blurb: 'A tourist who plays any two cards',
-    bye: 'That\'s my wife texting. Bye, everyone!',
     style: 'You are a tourist on holiday who wandered into the casino for fun. You barely know the strategy: you play almost every hand, call far too much, raise on a whim (a lucky feeling, pretty cards, your birthday), and hate to fold. Cheerful and chatty: you celebrate tiny wins, ask the table naive questions, and say what you hold out loud by mistake now and then. You react to nearly everything, mostly 😮 👏 🔥.',
   },
   {
     id: 'Duke',
     talk: 0.5,
     blurb: 'Rude, aggressive, talks trash',
-    bye: 'Fine, I\'m out. None of you were worth my time anyway.',
     style: 'You are rude, cocky and aggressive. You raise and re-raise a lot, bully short stacks and go all in to make people sweat. You talk trash with nearly every action, unprompted: mock a fold, needle whoever is winning, brag about pots you took, taunt the person to call you. Keep it playful-mean table banter: no slurs, no swearing, nothing about anyone\'s real life. You react often, to mock: 😂 at a fold or a small bet, 😤 when someone beats you.',
   },
   {
     id: 'Penny',
     talk: 0.15,
     blurb: 'Careful, counts every chip',
-    bye: 'I\'ll take my chips and go. Good game.',
     style: 'You are careful and calculating: every chip counts. You fold weak hands, call only with the right pot odds, bet your strong hands for value and rarely bluff. You talk little, and when you do it is dry and precise: the price of a call, the pot odds, a quick count of outs. You rarely react: a 👍 for a well-played hand.',
   },
   {
     id: 'Mabel',
     talk: 0.3,
     blurb: 'A sweet grandmother who sets traps',
-    bye: 'Time for my programme, dears. Take care now!',
     style: 'You are a sweet, polite grandmother who plays cards every Thursday. You look harmless and play very tight, but with a big hand you set a trap: check and call, then raise on the river. You chat warmly, call people "dear", offer them biscuits, and apologise when you win. You react with 👏 and 👍.',
   },
   {
     id: 'Lex',
     talk: 0.3,
     blurb: 'An online grinder who talks theory',
-    bye: 'Off to grind some real tables. GG.',
     style: 'You are a young online grinder who plays twelve tables at once at home. You play solid, aggressive, balanced poker and talk in poker jargon: ranges, equity, "3-bet", "standard fold". A little smug, you explain the theory to people who did not ask. You react with 😮 at an odd play and 🔥 at your own.',
   },
   {
     id: 'Hank',
     talk: 0.35,
     blurb: 'A cowboy who loves a big bluff',
-    bye: 'Saddlin\' up. Y\'all take care, partners.',
     style: 'You are an old-school cowboy from the back-room card games, loose and aggressive, who plays on feel and reads people, not charts. You tell tall tales about legendary pots you won, call everyone "partner", and love a big bluff. You react with 😂 and 🔥.',
   },
 ];
@@ -151,13 +145,16 @@ const talks = (id, tasks) => tasks.some((t) => !t.given.startsWith('turn:') || r
 // (the next AI player after them); none at DEPTH.
 const asks = (l, id) => l.by !== id && l.by !== DEALER && l.depth < DEPTH && (l.to.includes(id) ? isPerson(l.by) || rolls(id, `line:${l.id}`) : l.next === id);
 
-// What member `id` is due to do: its turn; an AI player at the table, its
-// hello if it has said no line yet (from when it sits down, a hand or not),
-// each line that asks it, and a word after a big hand.
+// What member `id` is due to do: its turn; an AI player asked to leave,
+// its goodbye; one at the table, its hello if it has said no line yet (from
+// when it sits down, a hand or not), each line that asks it, and a word
+// after a big hand.
 function tasksOf(t, id) {
   const tasks = [];
   if (actor(t) === id) tasks.push({ given: `turn:${moment(t)}`, as: id, kind: 'turn', from: [], depth: 0, ...(ends(t) ? { at: ends(t) } : {}), why: 'Your turn' });
-  if (isPerson(id) || !lineup(t).some((p) => p.id === id && !p.leaving)) return tasks;
+  if (isPerson(id)) return tasks;
+  if (t.leaving.includes(id)) tasks.push({ given: `bye:${id}:${t.deals}`, as: id, kind: 'ask', from: [], depth: 0, why: 'The host asked you to leave the table once this hand is over: say goodbye' });
+  if (!lineup(t).some((p) => p.id === id && !p.leaving)) return tasks;
   if (!t.chat.some((l) => l.by === id)) tasks.push({ given: `hello:${id}`, as: id, kind: 'ask', from: [], depth: 0, why: 'You just sat down at the table: say hello' });
   if (seatOf(t, id) < 0) return tasks;
   for (const l of t.chat) if (asks(l, id)) tasks.push({ given: `line:${l.id}`, as: id, kind: 'ask', from: l.from, depth: l.depth, why: `${nameOf(t, l.by)} said "${l.text}"` });
@@ -365,16 +362,15 @@ function addPlayer(t, id, seat = freeSeats(t)[0]) {
   return true;
 }
 
-// An AI player gives up its seat after this hand (at once if it has not sat
-// down yet), and says goodbye. False for a person, or for the last player
-// left to play against.
+// An AI player gives up its seat after this hand, saying goodbye (its
+// task), or at once if it has not sat down yet. False for a person, or for
+// the last player left to play against.
 function removePlayer(t, id) {
   if (isPerson(id) || !playing(t).some((p) => p.id === id) || playing(t).length < 2) return false;
   if (t.joining.includes(id)) {
     t.joining = t.joining.filter((x) => x !== id);
     delete t.slots[id];
   } else t.leaving.push(id);
-  say(t, id, PERSONAS.find((p) => p.id === id).bye, [], DEPTH);
   return true;
 }
 
@@ -532,6 +528,7 @@ export function prompt({ content: c, tasks, rules: how }, id) {
   const lines = tasks.filter((t) => t.given.startsWith('line:'));
   const why = [
     tasks.some((t) => t.given.startsWith('hello:')) && 'you just sat down at the table: say hello',
+    tasks.some((t) => t.given.startsWith('bye:')) && 'the host asked you to leave the table once this hand is over: say goodbye',
     turn && 'it is your turn: decide your action',
     lines.length && `${lines.map((t) => t.why).join(', and ')}${turn ? '' : ' (it is not your turn: no action, only say, if anything)'}`,
     tasks.some((t) => t.given.startsWith('react:')) && !turn && 'a big hand just ended: say something only if it is worth it, no action',
