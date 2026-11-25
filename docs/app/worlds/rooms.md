@@ -60,6 +60,12 @@ turn-based games with hidden information. Each is a store of the
   say until when. Each call on Ponjo's key also counts against the address
   that opened the table, at most 60 a minute (`INFER`), and an address
   opens at most 60 lines to tables a minute (`SEATS`).
+- **Language.** A table speaks English or Chinese: the host's page says
+  which (`lang` in its hello, its visitor's pick, `preview/lang.js`), and
+  the room commits it, as the host, when it differs from the table's. Its
+  AI players speak it, and the games deal and greet in it. Each page draws
+  in its own visitor's language, the refusals in English from the rules
+  and the room included.
 - **Presence** goes to the room, which passes it on as each view's `seen`
   allows, and keeps none.
 

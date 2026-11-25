@@ -10,7 +10,7 @@ seats, dealer and clock run.
 
 ```
 Table { players, slots, names, hand, handNo, button, topUp, joining, leaving,
-        chat, reactions, seats: { id → { thoughts: [{ hand, street, text, action }] } } }
+        chat, reactions, lang, seats: { id → { thoughts: [{ hand, street, text, action }] } } }
 Line  { id, by, as, text, to (whom it names), depth, about, hand, at }
 hand  as in preview/poker-dealer.js, with no deck
 ```
@@ -18,6 +18,10 @@ hand  as in preview/poker-dealer.js, with no deck
 `thoughts` is the seat's state, written by `apply` from its own runs. The
 answer ledger (answered, tries, why) is the runtime wrapper's, in the state.
 A visitor's bankroll is their browser's, apart from the table.
+`lang` is the table's language, `en` or `zh`: the room sets it from the
+opener's page ([rooms](rooms.md)); the AI seats speak it, and say their
+hellos and goodbyes in it. Each page draws the table in its own language,
+the dealer's lines too.
 
 ## Store
 
@@ -46,8 +50,9 @@ One `view` for every seat:
   own `thoughts` this hand, and why its last try was refused.
 - `actions`: on its turn `fold`, `check`, `call`, `bet`, `raise`, `allin`,
   with legal amounts; `say`, `react`; people's `sit`, `topup`, `leave`;
-  the opener's `next`, `add`, `remove`, `invite`, `turnAway`.
-- `seen`: all presence, to all. `rules`: `RULES`, and a persona's style.
+  the opener's `next`, `add`, `remove`, `invite`, `turnAway`, `lang`.
+- `seen`: all presence, to all. `rules`: `RULES`, a line to speak the
+  table's language if it is Chinese, and a persona's style.
 
 | `given` | `as` | `kind` | When | `from` | `at` |
 | --- | --- | --- | --- | --- | --- |

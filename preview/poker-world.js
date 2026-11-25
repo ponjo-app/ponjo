@@ -14,7 +14,7 @@
 // between hands as the host asks. Anyone may chat and react at any time.
 
 import { act, board, describeLegal, legal, owed, shuffled, startHand, view as handView } from './poker-dealer.js';
-import { DEPTH, MAX_LINE, after, deadline, line as newLine, named, think as thought } from './game-kit.js';
+import { DEPTH, LANGS, MAX_LINE, after, deadline, line as newLine, named, speak, think as thought } from './game-kit.js';
 
 export const HUMAN = 'you';
 export const DEALER = 'dealer'; // the member who deals: its changes bring the cards
@@ -36,6 +36,7 @@ export const PERSONAS = [
     blurb: 'A tourist who plays any two cards',
     hello: ['Hi folks! Gary, first time at a real table. My wife is at the slots.', 'Quick one: a flush is the all-same-colour thing, right?'],
     bye: 'That\'s my wife texting. Bye, everyone!',
+    zh: { hello: ['大家好！我是 Gary，第一次上真正的牌桌。我老婆在玩老虎机。', '问一下：同花就是颜色全一样那个，对吧？'], bye: '我老婆发消息催了。拜拜，各位！' }, // at a table that plays in Chinese
     style: 'You are a tourist on holiday who wandered into the casino for fun. You barely know the strategy: you play almost every hand, call far too much, raise on a whim (a lucky feeling, pretty cards, your birthday), and hate to fold. Cheerful and chatty: you celebrate tiny wins, ask the table naive questions, and say what you hold out loud by mistake now and then. You react to nearly everything, mostly 😮 👏 🔥.',
   },
   {
@@ -44,6 +45,7 @@ export const PERSONAS = [
     blurb: 'Rude, aggressive, talks trash',
     hello: ['Name\'s Duke. Sit down, empty your wallet, try not to cry.'],
     bye: 'Fine, I\'m out. None of you were worth my time anyway.',
+    zh: { hello: ['我是 Duke。坐下，掏空钱包，别哭就行。'], bye: '行，我不玩了。反正你们谁都不值得我花时间。' }, // at a table that plays in Chinese
     style: 'You are rude, cocky and aggressive. You raise and re-raise a lot, bully short stacks and go all in to make people sweat. You talk trash with nearly every action, unprompted: mock a fold, needle whoever is winning, brag about pots you took, taunt the person to call you. Keep it playful-mean table banter: no slurs, no swearing, nothing about anyone\'s real life. You react often, to mock: 😂 at a fold or a small bet, 😤 when someone beats you.',
   },
   {
@@ -52,6 +54,7 @@ export const PERSONAS = [
     blurb: 'Careful, counts every chip',
     hello: ['Penny. I count every chip, so don\'t expect gifts.'],
     bye: 'I\'ll take my chips and go. Good game.',
+    zh: { hello: ['Penny。每个筹码我都算着，别指望我送礼。'], bye: '我带着筹码走了。打得不错。' }, // at a table that plays in Chinese
     style: 'You are careful and calculating: every chip counts. You fold weak hands, call only with the right pot odds, bet your strong hands for value and rarely bluff. You talk little, and when you do it is dry and precise: the price of a call, the pot odds, a quick count of outs. You rarely react: a 👍 for a well-played hand.',
   },
   {
@@ -60,6 +63,7 @@ export const PERSONAS = [
     blurb: 'A sweet grandmother who sets traps',
     hello: ['Hello, dears. Mabel. Don\'t mind me, I only play for fun.'],
     bye: 'Time for my programme, dears. Take care now!',
+    zh: { hello: ['你好呀，亲爱的们。我是 Mabel。别管我，我就是玩个开心。'], bye: '我的节目要开始了，亲爱的们。保重哦！' }, // at a table that plays in Chinese
     style: 'You are a sweet, polite grandmother who plays cards every Thursday. You look harmless and play very tight, but with a big hand you set a trap: check and call, then raise on the river. You chat warmly, call people "dear", offer them biscuits, and apologise when you win. You react with 👏 and 👍.',
   },
   {
@@ -68,6 +72,7 @@ export const PERSONAS = [
     blurb: 'An online grinder who talks theory',
     hello: ['Lex. I usually play twelve tables online, so this is a holiday.'],
     bye: 'Off to grind some real tables. GG.',
+    zh: { hello: ['Lex。我平时线上同时开十二桌，这儿就当度假了。'], bye: '去打几桌正经的了。GG。' }, // at a table that plays in Chinese
     style: 'You are a young online grinder who plays twelve tables at once at home. You play solid, aggressive, balanced poker and talk in poker jargon: ranges, equity, "3-bet", "standard fold". A little smug, you explain the theory to people who did not ask. You react with 😮 at an odd play and 🔥 at your own.',
   },
   {
@@ -76,12 +81,15 @@ export const PERSONAS = [
     blurb: 'A cowboy who loves a big bluff',
     hello: ['Howdy, partners. Hank. Been playin\' cards since before y\'all were born.'],
     bye: 'Saddlin\' up. Y\'all take care, partners.',
+    zh: { hello: ['伙计们好啊。我是 Hank。你们还没出生我就在打牌了。'], bye: '备马走人了。伙计们保重。' }, // at a table that plays in Chinese
     style: 'You are an old-school cowboy from the back-room card games, loose and aggressive, who plays on feel and reads people, not charts. You tell tall tales about legendary pots you won, call everyone "partner", and love a big bluff. You react with 😂 and 🔥.',
   },
 ];
 const FIRST = ['Gary', 'Duke', 'Penny']; // the players at a new table, in seats 1, 3 and 5
 // Seat numbers go round the table from the host's, 0: six seats, a player keeps its own.
 export const isPerson = (id) => !PERSONAS.some((p) => p.id === id);
+// What persona `id` says at table `t`: its `hello` and `bye`, in the table's language.
+const words = (t, id) => ((p) => (t.lang === 'zh' ? p.zh : p))(PERSONAS.find((p) => p.id === id));
 
 /**
  * A new table: the host, with no chips until they buy in (`sit`), and
@@ -93,12 +101,13 @@ export const isPerson = (id) => !PERSONAS.some((p) => p.id === id);
  * `thoughts`: each AI player's thinking. `dealing`: the dealer is to deal
  * the next hand, at `dealAt` if set; `deals`, how many it dealt, a hand or
  * none for want of chips. `since`: the `at` of the change that
- * began the turn.
+ * began the turn. `lang`: the table's language (LANGS), the host's, which
+ * the AI players speak.
  */
 export function newTable(ids = FIRST) {
   const players = [{ id: HUMAN, stack: 0 }, ...ids.map((id) => ({ id, stack: STACK }))];
   const slots = Object.fromEntries([[HUMAN, 0], ...ids.map((id, k) => [id, ids.length === 3 ? 2 * k + 1 : k + 1])]);
-  return { players, slots, names: {}, hand: null, handNo: 0, button: -1, topUp: {}, joining: [], leaving: [], chat: [], reactions: [], thoughts: {}, greeted: false, dealing: false, dealAt: 0, deals: 0, since: 0 };
+  return { players, slots, names: {}, hand: null, handNo: 0, button: -1, topUp: {}, joining: [], leaving: [], chat: [], reactions: [], thoughts: {}, greeted: false, dealing: false, dealAt: 0, deals: 0, since: 0, lang: 'en' };
 }
 
 // The seats no one has, or will have at the next hand.
@@ -204,7 +213,7 @@ function view(t, member) {
   return {
     ...base,
     content: {
-      players, slots, names, handNo, button, joining, leaving, greeted, dealing, hand,
+      players, slots, names, handNo, button, joining, leaving, greeted, dealing, hand, lang: t.lang ?? 'en',
       topUp: { [member]: t.topUp[member] ?? 0 },
       chat: person ? t.chat : t.chat.slice(-CHAT_SHOWN),
       reactions: t.reactions,
@@ -234,6 +243,7 @@ function view(t, member) {
  *   next                         the host: the next hand
  *   add { id, seat }, remove { id }   the host: an AI player sits down at
  *                                the next hand, or gives up its seat after this one
+ *   lang { lang }                the host: the table's language (the room's, from the host's page)
  * The dealer's change answers its task with `cards`, the clock's its own.
  */
 function apply(state, change) {
@@ -345,13 +355,18 @@ function command(t, by, b, at) {
   }
   if (b.type === 'add') return addPlayer(t, String(b.id), b.seat) ? undefined : { refused: 'There is no seat for them.' };
   if (b.type === 'remove') return removePlayer(t, String(b.id)) ? undefined : { refused: 'A table needs someone to play against.' };
+  if (b.type === 'lang') {
+    if (!LANGS.includes(b.lang)) return { refused: `No language "${b.lang}".` };
+    t.lang = b.lang;
+    return;
+  }
   return { refused: `No action "${b.type}".` };
 }
 
 // A line of chat by `by` (a person, an AI player answering the tasks
-// `asked`, or the dealer), at `depth` if given.
-function say(t, by, text, asked = [], depth) {
-  const l = newLine(t.chat, { by, text, to: by === DEALER ? [] : names(t, text), person: isPerson(by), asked, hand: t.hand?.id ?? 0 });
+// `asked`, or the dealer), at `depth` if given, with `marks`.
+function say(t, by, text, asked = [], depth, marks = {}) {
+  const l = newLine(t.chat, { by, text, to: by === DEALER ? [] : names(t, text), person: isPerson(by), asked, hand: t.hand?.id ?? 0, ...marks });
   if (depth !== undefined) l.depth = depth;
   else if (isPerson(by) && by !== DEALER && !l.to.length) l.next = after(t.players.map((p) => p.id), by, (p) => !isPerson(p)); // to the whole table: one AI player answers
   t.chat.push(l);
@@ -361,7 +376,7 @@ function say(t, by, text, asked = [], depth) {
 // its first line in seat order, then any more: lines written for them, so
 // they ask no one. The first hand is dealt once they are said, from `at`.
 function greet(t, at) {
-  const here = playing(t).filter((p) => !isPerson(p.id)).map(({ id }) => PERSONAS.find((p) => p.id === id));
+  const here = playing(t).filter((p) => !isPerson(p.id)).map(({ id }) => ({ id, hello: words(t, id).hello }));
   const lines = [...here.map((p) => [p.id, p.hello[0]]), ...here.flatMap((p) => p.hello.slice(1).map((text) => [p.id, text]))];
   for (const [id, text] of lines) say(t, id, text, [], DEPTH);
   t.greeted = true;
@@ -378,7 +393,7 @@ function addPlayer(t, id, seat = freeSeats(t)[0]) {
     t.joining.push(id);
     t.slots[id] = seat;
   } else return false;
-  say(t, id, persona.hello[0], [], DEPTH);
+  say(t, id, words(t, id).hello[0], [], DEPTH);
   return true;
 }
 
@@ -391,7 +406,7 @@ function removePlayer(t, id) {
     t.joining = t.joining.filter((x) => x !== id);
     delete t.slots[id];
   } else t.leaving.push(id);
-  say(t, id, PERSONAS.find((p) => p.id === id).bye, [], DEPTH);
+  say(t, id, words(t, id).bye, [], DEPTH);
   return true;
 }
 
@@ -437,7 +452,7 @@ function deal(t, cards) {
   for (const p of players) {
     if (p.stack || isPerson(p.id)) continue;
     p.stack = STACK;
-    say(t, DEALER, `${p.id} buys back in for $${STACK.toLocaleString('en')}.`, [], DEPTH);
+    say(t, DEALER, `${p.id} buys back in for $${STACK.toLocaleString('en')}.`, [], DEPTH, { rebuy: p.id }); // `rebuy`: the page words it
   }
   t.handNo++;
   t.hand = startHand({ id: t.handNo, players, button: t.button, blinds: BLINDS, deck: cards });
@@ -514,7 +529,7 @@ function actionText(c, a, me) {
  */
 export function prompt({ content: c, tasks, rules: how }, id) {
   const persona = PERSONAS.find((p) => p.id === id);
-  const rules = `${how}\n\nYou are ${id}. ${persona.style}`;
+  const rules = `${how}${speak(c.lang)}\n\nYou are ${id}. ${persona.style}`;
   const parts = [];
   const v = c.hand;
   const turn = tasks.some((t) => t.given.startsWith('turn:'));
