@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Poker table</title>
 <link rel="icon" href="../../../build/icon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="../../../dist/web/app.css?v=5829782">
-<link rel="stylesheet" href="../../../site.css?v=5829782">
+<link rel="stylesheet" href="../../../dist/web/app.css?v=616dbb6">
+<link rel="stylesheet" href="../../../site.css?v=616dbb6">
 </head>
 <body>
 <header class="site-header">
@@ -55,8 +55,7 @@ hand  as in preview/poker-dealer.js, with no deck
 answer ledger (answered, tries, why) is the runtime wrapper&#39;s, in the state.
 A visitor&#39;s bankroll is their browser&#39;s, apart from the table.
 <code>lang</code> is the table&#39;s language, <code>en</code> or <code>zh</code>: the room sets it from the
-opener&#39;s page (<a href="rooms.html">rooms</a>); the AI seats speak it, and say their
-hellos and goodbyes in it. Each page draws the table in its own language,
+opener&#39;s page (<a href="rooms.html">rooms</a>); the AI seats speak it. Each page draws the table in its own language,
 the dealer&#39;s lines too.</p>
 <h2 id="store">Store</h2>
 <p>The room holds <code>{ rev, state }</code> and gives each member only <code>read(member)</code>:
@@ -153,8 +152,10 @@ table&#39;s language if it is Chinese, and a persona&#39;s style.</li>
 </tbody></table>
 <p><code>depth</code> is 0 for a person&#39;s line or the rules&#39;, else one more than the
 agent line&#39;s. An agent&#39;s line carries on the <code>from</code> of the tasks its run
-answered. <code>DEPTH</code> is the table&#39;s rule; a hello is said at it, so it sets
-off nothing. A seat&#39;s turn and its lines are separate tasks; its
+answered. <code>DEPTH</code> is the table&#39;s rule. An AI seat at the table that has
+said no line has a <code>hello:&lt;id&gt;</code> ask, from when it sits down, a hand on or
+not; one the opener asked to leave, a <code>bye:&lt;id&gt;:&lt;deals&gt;</code> ask until it is
+gone. No line is written for them. A seat&#39;s turn and its lines are separate tasks; its
 controller batches them into one run and one change. <code>talk</code>: a line task is
 listed always for a person&#39;s line, else when a roll falls under the
 persona&#39;s <code>talk</code>.</p>
@@ -180,7 +181,7 @@ is the store&#39;s <code>at</code>.</p>
 <p>One controller per member: the opener and each friend on their pages; each
 AI seat, the dealer and the clock in the room. A person&#39;s screen shows every
 task (&quot;your turn&quot;, with its <code>at</code>); people also act unasked: chat, react, buy
-in, leave, <code>next</code>. The opener&#39;s <code>sit</code> lands the AI seats&#39; hellos as lines.</p>
+in, leave, <code>next</code>.</p>
 <h2 id="presence">Presence</h2>
 <p><code>thinking</code> is presence while a run goes, seen by all, never state. A run
 commits as soon as it ends. A screen may type a fresh line out.</p>
@@ -205,11 +206,11 @@ turns. Capacity: one queue per key in the room, turns before lines.</p>
 shuffle of the cards not yet out (<code>draw</code>, <code>preview/poker-dealer.js</code>); its
 view lists every card out, and <code>apply</code> checks its cards are new and
 enough. Its task is <code>deal:&lt;n&gt;</code>, <code>n</code> counting deals, a hand or none for
-want of chips; the first has an <code>at</code>, once the hellos are said.</li>
+want of chips.</li>
 <li>An AI seat&#39;s program waits its persona&#39;s pace (<code>preview/game-tables.js</code>)
 after the model answers, so its change lands that much later.</li>
 </ul>
 </main>
-<script type="module" src="../../../site.js?v=5829782"></script>
+<script type="module" src="../../../site.js?v=616dbb6"></script>
 </body>
 </html>

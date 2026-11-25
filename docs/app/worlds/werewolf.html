@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Werewolf world</title>
 <link rel="icon" href="../../../build/icon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="../../../dist/web/app.css?v=5829782">
-<link rel="stylesheet" href="../../../site.css?v=5829782">
+<link rel="stylesheet" href="../../../dist/web/app.css?v=616dbb6">
+<link rel="stylesheet" href="../../../site.css?v=616dbb6">
 </head>
 <body>
 <header class="site-header">
@@ -47,15 +47,18 @@ the seer checks, the witch saves or poisons; by day each living seat speaks
 in turn, then all vote at once. Rules <code>preview/werewolf-rules.js</code>, world
 <code>preview/werewolf-world.js</code>.</p>
 <h2 id="state">State</h2>
-<pre><code>Table { rev, people, names, no, lines, game, ledger }
+<pre><code>Table { rev, people, names, size, no, lines, game, ledger }
 Game  { players, seats: [{ role, alive }], day, phase, step, round, picks, victim,
         saved, poisoned, potions, speaker, order, votes, acted, log, winner,
         since, called: { step, at }, minds: [{ thoughts }] }
-Line  { id, by, text, to, depth, about, game, after }
+Line  { id, by, text, to, depth, about, no }
 </code></pre>
 <ul>
 <li>The table is the world; a game is a change, the dealer&#39;s <code>deal</code>. <code>game</code>
-is the last one, kept for the chat about it.</li>
+is the last one, kept for the chat about it. <code>size</code>: the next game&#39;s
+seats; the people fill them first, AI players the rest, and those sit at
+the table from then on. A line&#39;s <code>no</code> is the last game begun when it was
+said.</li>
 <li>A <code>log</code> entry&#39;s <code>to</code> is the seats that may see it; none, all. The pack,
 <code>to: wolves(game)</code>, is seats, people and agents alike, that <code>view</code> reads.</li>
 <li><code>turn(game)</code> is the moment (<code>day:phase:step round</code>, or the speaker), the
@@ -88,26 +91,27 @@ the night&quot;, how only to the pack and the witch. The night&#39;s step is
 <code>called</code>, not the rules&#39; step. Then its mind, its last try&#39;s why, and the
 chat; once over, all. A member with no seat sees what all see. <code>rules</code> is
 <code>RULES</code>; a persona is its agent&#39;s prompt. <code>actions</code>: what the rules&#39; <code>due</code>
-lets the seat do now; <code>say</code> outside a game; <code>sit</code>, <code>leave</code> between games;
-<code>start { size }</code>, for the opener. No effects.</p>
+lets the seat do now; <code>chat</code> outside a game, for whoever is at the table;
+<code>sit</code>, <code>leave</code> between games; <code>size { size }</code> and <code>start { size }</code>, for the
+opener. No effects.</p>
 <p><strong>Language.</strong> <code>lang</code> (<code>en</code> or <code>zh</code>) is what the AI players speak: the
 room commits <code>lang { lang }</code> as the host when the host&#39;s page comes in
-with another. A Chinese table adds <code>speak(lang)</code> to the rules and seats
-the personas with their Chinese hellos. Each page draws the table, the log
+with another. A Chinese table adds <code>speak(lang)</code> to the rules. Each page draws the table, the log
 and the refusals in its own language (<code>preview/lang.js</code>).</p>
 <p><strong>Tasks.</strong></p>
 <pre><code>turn:&lt;turn&gt;:&lt;seat&gt;  { kind: turn, as: seat, from: [], depth: 0, at: since + TURN, or the call&#39;s end }
 line:&lt;id&gt;           { kind: ask, as: member, from: the line&#39;s people, depth: the line&#39;s }
+hello:&lt;member&gt;      { kind: ask, as: member, from: [], depth: 0 }
 </code></pre>
 <p>A turn task while a seat is in the rules&#39; <code>due(game)</code>, a person&#39;s as an
 agent&#39;s: a person&#39;s is their &quot;your turn&quot;, its <code>at</code> the ring. <code>as</code> gives its
 view and rights, so an AI wolf sees the pack whoever owns it. A line task
 while a line names the member under <code>DEPTH</code>; a person&#39;s line to all is
 listed for one AI player, the one whose last line is oldest, ties in seat
-order. A turn comes first; with no chat during a game, a seat never has a
-turn and a line at once.</p>
-<p>Open: whether chat before a game wakes AI players. In the code it wakes
-none; only chat after one does.</p>
+order. Line and hello tasks are listed only outside a game, for the AI
+players at the table: a hello for one new to it (no line yet, not in the
+last game). A game mutes the chat, so a seat never has a turn and a line at
+once.</p>
 <p><strong>Answers.</strong> The ledger&#39;s. Accepted, a change goes through the rules&#39;
 <code>act</code>: the seat joins <code>acted</code>, and <code>settle</code> ends a phase once no one is
 due, so the barrier is the rules&#39;. Refused (illegal, stale, a turn with no
@@ -123,8 +127,7 @@ task, with its ring; the AI seats run in the room, with their wallet.</p>
 turn&#39;s <code>at</code>: all still due take the fallback. <code>call:&lt;day&gt;:&lt;step&gt;</code>: the
 narrator calls dusk for 3 s, then each night role, alive or not, for
 exactly <code>CALL_MS</code> (8 s), so a call&#39;s length tells nothing; a night turn&#39;s
-<code>at</code> is its call&#39;s end. <code>hello:&lt;seat&gt;</code>: the hellos before the first
-night, one each <code>HELLO_MS</code>.</li>
+<code>at</code> is its call&#39;s end.</li>
 <li><strong>Dealer</strong>, a system member with a script, in the room: after <code>start</code>,
 its task <code>deal:&lt;no&gt;</code>; it commits <code>deal { roles }</code> by
 <code>crypto.getRandomValues</code>; <code>apply</code> checks it shuffles <code>cast(size)</code>.</li>
@@ -153,10 +156,9 @@ the room&#39;s budget and rate, the depth limit; the breaker counts no turn.</p>
 <li>The table keeps <code>call { day, step, at }</code>, <code>since</code> and <code>thoughts</code> beside
 the game, not in it, for <code>called</code>, <code>since</code> and <code>minds</code>; the tasks carry
 the game&#39;s <code>no</code>: <code>turn:&lt;no&gt;:&lt;turn&gt;</code>, <code>line:&lt;no&gt;:&lt;id&gt;</code>,
-<code>call:&lt;no&gt;:&lt;day&gt;:&lt;step&gt;</code>, <code>hello:&lt;no&gt;:&lt;seat&gt;</code>, <code>begin:&lt;no&gt;</code>,
-<code>expire:&lt;no&gt;:&lt;turn&gt;</code>.</li>
+<code>call:&lt;no&gt;:&lt;day&gt;:&lt;step&gt;</code>, <code>expire:&lt;no&gt;:&lt;turn&gt;</code>.</li>
 </ul>
 </main>
-<script type="module" src="../../../site.js?v=5829782"></script>
+<script type="module" src="../../../site.js?v=616dbb6"></script>
 </body>
 </html>

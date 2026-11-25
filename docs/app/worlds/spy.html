@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Who's the Spy</title>
 <link rel="icon" href="../../../build/icon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="../../../dist/web/app.css?v=5829782">
-<link rel="stylesheet" href="../../../site.css?v=5829782">
+<link rel="stylesheet" href="../../../dist/web/app.css?v=616dbb6">
+<link rel="stylesheet" href="../../../site.css?v=616dbb6">
 </head>
 <body>
 <header class="site-header">
@@ -43,20 +43,23 @@
 <p>Who&#39;s the Spy on the <a href="../../runtime/README.html">Blackboard Agent Runtime</a>.
 Each seat gets a secret word, the spies a different one. A round: a clue
 from each living seat in order, a discussion, a vote of all at once; chat
-before and after. The table is a <a href="rooms.html">room</a> on the relay; the
+out of a game. The table is a <a href="rooms.html">room</a> on the relay; the
 <em>opener</em> starts games, friends join by a link. Rules <code>preview/spy-rules.js</code>,
 world <code>preview/spy-world.js</code>, page <code>preview/spy.js</code>.</p>
 <h2 id="state">State</h2>
-<pre><code>{ rev, lang, people, names, players, gameNo, hellos, game, lines, thoughts, since }
+<pre><code>{ rev, lang, people, names, size, players, gameNo, game, lines, thoughts, since }
 game      { seats: [{ role, word, alive }], words, first, round, phase, runoff,
             order, speaker, acted, votes, said, log, winner }
 thoughts  { member → [{ round, kind, text }] }
 </code></pre>
 <p><code>turn(game)</code> names the moment (round, phase, runoff, speaker); lines and
-votes do not move it. <code>lines</code>: the discussion and the chat (<code>game-kit.js</code>).
+votes do not move it. <code>lines</code>: the discussion and the chat (<code>game-kit.js</code>),
+each with the last game begun when it was said. <code>size</code>: the next game&#39;s
+seats; the people fill them first, AI players the rest, and those sit at
+the table from then on.
 <code>since</code>: the <code>at</code> of the change that began the turn. <code>lang</code>: the table&#39;s
 language, <code>en</code> or <code>zh</code>, the host&#39;s page&#39;s (<a href="rooms.html">rooms</a>): the AI
-seats speak it, and the words and hellos are in it. The answer ledger is
+seats speak it, and the words are in it. The answer ledger is
 the generic wrapper&#39;s.</p>
 <h2 id="store">Store</h2>
 <p>The room: it alone holds <code>{ rev, state }</code>, in its storage. Every client,
@@ -74,7 +77,9 @@ fallback(state, task, at)    a silent clue, an abstention, a pass; tries: 3
 its side; who is alive, and the side of each seat voted out; who has voted,
 not for whom; the log; the lines; its last 8 thoughts and the ledger&#39;s why
 for its last try. Once the game is over, everything, all thoughts included.
-<code>past</code> gives the lines since the seat last answered. <code>actions</code>: <code>clue { text }</code>, <code>say { text }</code>, <code>pass</code>, <code>vote { target }</code>, <code>chat { text }</code>.
+<code>past</code> gives the lines since the seat last answered. <code>actions</code>: <code>clue { text }</code>, <code>say { text }</code>, <code>pass</code>, <code>vote { target }</code>, <code>chat { text }</code> (out of a
+game, for whoever is at the table); <code>size { size }</code>, <code>start { size }</code>, for
+the opener.
 <code>rules</code>: <code>RULES</code>, and in Chinese, to speak it. The host&#39;s <code>lang { lang }</code>
 sets the table&#39;s language. A word is said when a clue has it as a word
 of its own, or, in Chinese, anywhere.</p>
@@ -111,10 +116,17 @@ of its own, or, in Chinese, anywhere.</p>
 <td><code>since + TALK</code></td>
 </tr>
 <tr>
+<td>hello</td>
+<td>ask</td>
+<td><code>hello:&lt;member&gt;</code></td>
+<td>out of a game, an AI seat new to the table: no line yet, not in the last game</td>
+<td>none</td>
+</tr>
+<tr>
 <td>chat</td>
 <td>ask</td>
 <td><code>chat:&lt;gameNo&gt;:&lt;line&gt;</code></td>
-<td>a line after the game names it, below <code>DEPTH</code> (2)</td>
+<td>out of a game, a line since the last began names it, below <code>DEPTH</code> (2)</td>
 <td>none</td>
 </tr>
 </tbody></table>
@@ -132,7 +144,7 @@ one run per seat and one per line. It is a <code>turn</code>, as the rules ask
 every seat to take part: the runaway count skips it; the line budget and
 depth limit end it.</li>
 <li>Every voter is due at once: a barrier, tallied once no one is due.</li>
-<li>A person&#39;s line to everyone, after a game, is one chat task, for the
+<li>A person&#39;s line to everyone, out of a game, is one chat task, for the
 first AI seat after the speaker in seat order (the first AI seat, if the
 speaker has none).</li>
 <li>The discussion ends when no one is due: every living seat, people
@@ -146,8 +158,7 @@ the turn moved) is a try, its why in the next view; at 3, <code>fallback</code>.
 failed run, a task the wallet will not start, or nothing on a turn: its
 <code>fallback</code> at once. <code>thinking</code> lands with the change, into <code>thoughts</code>. A
 person&#39;s refused <code>act</code> lands nothing; they see why at once.</p>
-<p><strong>Time.</strong> The clock&#39;s tasks, each with its base: <code>hello:&lt;gameNo&gt;:&lt;seat&gt;</code>
-at <code>start.at</code> plus <code>HELLO_MS</code> each, then <code>begin</code>; <code>expire:&lt;gameNo&gt;:&lt;turn&gt;</code> at
+<p><strong>Time.</strong> The clock&#39;s tasks, each with its base: <code>expire:&lt;gameNo&gt;:&lt;turn&gt;</code> at
 <code>since + TURN</code> (each seat still due takes its <code>fallback</code>); <code>vote-called</code>
 at <code>since + TALK</code>. Each lands only if its turn is still the game&#39;s.</p>
 <h2 id="members-and-controllers">Members and controllers</h2>
@@ -163,9 +174,7 @@ their turns takes its <code>fallback</code>.</p>
 <p>The dealer, a script in the room, has a <code>deal:&lt;gameNo&gt;</code> task on the
 opener&#39;s <code>start { size }</code> and commits <code>dealt</code>: the word pair, in the
 table&#39;s language, which is the spies&#39;, the sides, the first speaker, by <code>cryptoRandom</code>. The clock, the
-room&#39;s alarm, commits its tasks at their <code>at</code>.
-The hello lines come in <code>start</code>, from each AI seat&#39;s persona; the clock
-commits each <code>by</code> itself, <code>as</code> that seat.</p>
+room&#39;s alarm, commits its tasks at their <code>at</code>.</p>
 <h2 id="agent-clients">Agent clients</h2>
 <p>Each AI seat and its wallet run in the room. The renderer: <code>rules</code> and
 <code>content</code> as the prompt, the world&#39;s <code>actions</code> as its only tools. The
@@ -183,6 +192,6 @@ Capacity: one queue per provider and key, in task priority.</p>
 after the model answers, so its change lands that much later.</li>
 </ul>
 </main>
-<script type="module" src="../../../site.js?v=5829782"></script>
+<script type="module" src="../../../site.js?v=616dbb6"></script>
 </body>
 </html>
