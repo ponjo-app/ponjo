@@ -3,68 +3,69 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Poker with AI players · Ponjo</title>
-<meta name="description" content="Play No-Limit Texas Hold'em with three AI players who read the rules, watch the table and decide for themselves when to act and talk. Play chips only, with your own API key.">
+<title data-zh="和 AI 玩家打德州扑克 · Ponjo">Poker with AI players · Ponjo</title>
+<meta name="description" content="Play No-Limit Texas Hold'em with three AI players who read the rules, watch the table and decide for themselves when to act and talk. Play chips only, with your own API key." data-zh-content="和 AI 玩家、朋友一起打无限注德州扑克，只用游戏币。可以用你自己的 API 密钥，也可以用 Ponjo 的。">
 <link rel="icon" href="./build/icon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="./dist/web/app.css?v=6c63f4f">
-<link rel="stylesheet" href="site.css?v=6c63f4f">
-<link rel="stylesheet" href="poker.css?v=6c63f4f">
+<link rel="stylesheet" href="./dist/web/app.css?v=5829782">
+<link rel="stylesheet" href="site.css?v=5829782">
+<link rel="stylesheet" href="poker.css?v=5829782">
 </head>
 <body>
 <header class="site-header">
   <a class="site-brand" href="index.html">Ponjo</a>
-  <nav class="site-nav" aria-label="Pages">
-    <a href="index.html">Download</a>
-    <a href="introduction.html">Introduction</a>
-    <a href="docs/">Docs</a>
+  <nav class="site-nav" aria-label="Pages" data-zh-aria-label="页面">
+    <a href="index.html" data-zh="下载">Download</a>
+    <a href="introduction.html" data-zh="介绍">Introduction</a>
+    <a href="docs/" data-zh="文档">Docs</a>
     <details class="site-drop" name="site-menu">
-      <summary>Development<svg class="pj-icon" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></summary>
+      <summary data-zh="开发">Development<svg class="pj-icon" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></summary>
       <div class="pj-block-menu site-menu">
-        <a href="architecture.html">Architecture</a>
-        <a href="design.html">Design system</a>
-        <a href="avatars.html">Avatar design</a>
+        <a href="architecture.html" data-zh="架构">Architecture</a>
+        <a href="design.html" data-zh="设计系统">Design system</a>
+        <a href="avatars.html" data-zh="头像设计">Avatar design</a>
       </div>
     </details>
     <details class="site-drop" name="site-menu">
-      <summary aria-current="true">Preview<svg class="pj-icon" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></summary>
+      <summary aria-current="true" data-zh="预览">Preview<svg class="pj-icon" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></summary>
       <div class="pj-block-menu site-menu">
-        <a href="preview/">Doc mode</a>
-        <a href="preview/?folder">Folder mode</a>
-        <a href="poker.html" aria-current="page">Poker</a>
-        <a href="werewolf.html">Werewolf</a>
-        <a href="spy.html">Who's the Spy</a>
+        <a href="preview/" data-zh="文档模式">Doc mode</a>
+        <a href="preview/?folder" data-zh="文件夹模式">Folder mode</a>
+        <a href="poker.html" aria-current="page" data-zh="德州扑克">Poker</a>
+        <a href="werewolf.html" data-zh="狼人杀">Werewolf</a>
+        <a href="spy.html" data-zh="谁是卧底">Who's the Spy</a>
       </div>
     </details>
   </nav>
   <span class="pj-spacer"></span>
   <a class="pj-icon-btn" href="https://github.com/ponjo-app/ponjo" aria-label="GitHub" title="GitHub"><svg class="pj-icon" viewBox="0 0 24 24"><path fill="currentColor" stroke="none" d="M12 2C6.48 2 2 6.58 2 12.23c0 4.52 2.87 8.35 6.84 9.7.5.1.68-.22.68-.49l-.01-1.7c-2.78.62-3.37-1.38-3.37-1.38-.46-1.18-1.11-1.5-1.11-1.5-.91-.64.07-.62.07-.62 1 .07 1.53 1.06 1.53 1.06.9 1.57 2.35 1.12 2.92.86.09-.67.35-1.12.64-1.38-2.22-.26-4.56-1.14-4.56-5.07 0-1.12.39-2.04 1.03-2.76-.1-.26-.45-1.3.1-2.71 0 0 .84-.28 2.75 1.05A9.36 9.36 0 0 1 12 6.98c.85 0 1.71.12 2.51.34 1.91-1.33 2.75-1.05 2.75-1.05.55 1.41.2 2.45.1 2.71.64.72 1.03 1.64 1.03 2.76 0 3.94-2.34 4.81-4.57 5.06.36.32.68.94.68 1.9l-.01 2.81c0 .27.18.6.69.49A10.1 10.1 0 0 0 22 12.23C22 6.58 17.52 2 12 2z"/></svg></a>
-  <button class="pj-icon-btn site-theme" type="button" aria-label="Switch theme" title="Switch theme"><svg class="pj-icon site-moon" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"/></svg><svg class="pj-icon site-sun" viewBox="0 0 24 24"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg></button>
+  <button class="pj-icon-btn site-theme" type="button" aria-label="Switch theme" title="Switch theme" data-zh-aria-label="切换主题" data-zh-title="切换主题"><svg class="pj-icon site-moon" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"/></svg><svg class="pj-icon site-sun" viewBox="0 0 24 24"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg></button>
+  <button class="pj-icon-btn site-lang" type="button" aria-label="中文" title="中文" data-zh-aria-label="English" data-zh-title="English"><svg class="pj-icon" viewBox="0 0 24 24"><path d="m5 8 6 6M4 14l6-6 2-3M2 5h12M7 2h1M22 22l-5-10-5 10M14 18h6"/></svg></button>
 </header>
 <main class="pk-page">
-  <section class="pk-room" aria-label="Table">
+  <section class="pk-room" aria-label="Table" data-zh-aria-label="牌桌">
     <div class="pk-session">
       <span class="pk-bank"></span>
       <span class="pj-spacer"></span>
-      <button class="pj-link-button" type="button" data-action="invite">Invite friends</button>
-      <button class="pj-link-button" type="button" data-action="topup">Top up</button>
-      <button class="pj-link-button" type="button" data-action="leave">Leave table</button>
-      <button class="pj-link-button pk-chat-open" type="button" data-action="chat" hidden>Show chat</button>
+      <button class="pj-link-button" type="button" data-action="invite" data-zh="邀请朋友">Invite friends</button>
+      <button class="pj-link-button" type="button" data-action="topup" data-zh="加筹码">Top up</button>
+      <button class="pj-link-button" type="button" data-action="leave" data-zh="离开牌桌">Leave table</button>
+      <button class="pj-link-button pk-chat-open" type="button" data-action="chat" hidden data-zh="显示聊天">Show chat</button>
     </div>
     <div class="pk-table">
       <div class="pk-felt">
         <div class="pk-center">
           <div class="pk-pot" hidden><span class="pk-chip"></span><span class="pk-pot-amount"></span></div>
-          <div class="pk-board" aria-label="Board"></div>
+          <div class="pk-board" aria-label="Board" data-zh-aria-label="公共牌"></div>
         </div>
       </div>
       <div class="pk-seats"></div>
       <span class="pk-street" hidden></span>
-      <span class="pk-puck" title="Dealer button" hidden>D</span>
+      <span class="pk-puck" title="Dealer button" data-zh-title="庄家按钮" hidden>D</span>
     </div>
     <div class="pk-me">
       <div class="pk-mine">
         <div class="pk-pocket">
-          <div class="pk-hole pk-hole-mine" aria-label="Your cards"></div>
+          <div class="pk-hole pk-hole-mine" aria-label="Your cards" data-zh-aria-label="你的手牌"></div>
           <p class="pk-strength"></p>
         </div>
       </div>
@@ -73,112 +74,112 @@
         <p class="pk-turn" role="status"></p>
         <div class="pk-result" hidden>
           <p class="pk-result-text" aria-live="polite"></p>
-          <p class="pk-wait-host" hidden>Waiting for the host to deal the next hand.</p>
+          <p class="pk-wait-host" hidden data-zh="等房主发下一手牌。">Waiting for the host to deal the next hand.</p>
           <div class="pk-between">
-            <button class="pj-primary" type="button" data-action="next">Next hand</button>
-            <button class="pj-secondary" type="button" data-action="thinking">Show their thinking</button>
+            <button class="pj-primary" type="button" data-action="next" data-zh="下一手">Next hand</button>
+            <button class="pj-secondary" type="button" data-action="thinking" data-zh="看看他们的想法">Show their thinking</button>
           </div>
         </div>
         <div class="pk-controls" hidden>
           <div class="pk-sizes" hidden>
             <label class="pk-sizing" for="pk-wager"></label>
-            <button class="pj-secondary" type="button" data-size="min">Min</button>
-            <button class="pj-secondary" type="button" data-size="half">½ pot</button>
-            <button class="pj-secondary" type="button" data-size="pot">Pot</button>
-            <button class="pj-secondary" type="button" data-size="max">All in</button>
+            <button class="pj-secondary" type="button" data-size="min" data-zh="最小">Min</button>
+            <button class="pj-secondary" type="button" data-size="half" data-zh="½ 底池">½ pot</button>
+            <button class="pj-secondary" type="button" data-size="pot" data-zh="底池">Pot</button>
+            <button class="pj-secondary" type="button" data-size="max" data-zh="全下">All in</button>
             <input id="pk-wager" class="pk-slider" type="range">
           </div>
           <div class="pk-buttons">
-            <button class="pj-secondary" type="button" data-action="fold">Fold</button>
-            <button class="pj-primary" type="button" data-action="call">Check</button>
-            <button class="pj-secondary pk-raise" type="button" data-action="raise">Raise</button>
+            <button class="pj-secondary" type="button" data-action="fold" data-zh="弃牌">Fold</button>
+            <button class="pj-primary" type="button" data-action="call" data-zh="过牌">Check</button>
+            <button class="pj-secondary pk-raise" type="button" data-action="raise" data-zh="加注">Raise</button>
           </div>
         </div>
       </div>
     </div>
   </section>
-  <aside class="pk-chat" aria-label="Chat">
+  <aside class="pk-chat" aria-label="Chat" data-zh-aria-label="聊天">
     <div class="pk-chat-head">
-      <h2>Table talk</h2>
-      <button class="pj-icon-btn" type="button" data-action="chat" aria-label="Hide chat" title="Hide chat"><svg class="pj-icon" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+      <h2 data-zh="牌桌闲聊">Table talk</h2>
+      <button class="pj-icon-btn" type="button" data-action="chat" aria-label="Hide chat" title="Hide chat" data-zh-aria-label="隐藏聊天" data-zh-title="隐藏聊天"><svg class="pj-icon" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
     </div>
     <ol class="pk-feed"></ol>
-    <div class="pk-reacts" role="group" aria-label="React">
-      <button type="button" data-react="😂" aria-label="Laugh">😂</button>
-      <button type="button" data-react="😮" aria-label="Wow">😮</button>
-      <button type="button" data-react="😤" aria-label="Annoyed">😤</button>
-      <button type="button" data-react="👍" aria-label="Nice">👍</button>
-      <button type="button" data-react="👏" aria-label="Applause">👏</button>
-      <button type="button" data-react="🔥" aria-label="Fire">🔥</button>
+    <div class="pk-reacts" role="group" aria-label="React" data-zh-aria-label="表情">
+      <button type="button" data-react="😂" aria-label="Laugh" data-zh-aria-label="大笑">😂</button>
+      <button type="button" data-react="😮" aria-label="Wow" data-zh-aria-label="惊讶">😮</button>
+      <button type="button" data-react="😤" aria-label="Annoyed" data-zh-aria-label="不爽">😤</button>
+      <button type="button" data-react="👍" aria-label="Nice" data-zh-aria-label="漂亮">👍</button>
+      <button type="button" data-react="👏" aria-label="Applause" data-zh-aria-label="鼓掌">👏</button>
+      <button type="button" data-react="🔥" aria-label="Fire" data-zh-aria-label="火热">🔥</button>
     </div>
     <form class="pk-say">
-      <input class="pj-input" name="text" placeholder="Message the table" autocomplete="off" maxlength="240" aria-label="Message">
-      <button class="pk-send" type="submit" aria-label="Send" title="Send"><svg class="pj-icon" viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button>
+      <input class="pj-input" name="text" placeholder="Message the table" autocomplete="off" maxlength="240" aria-label="Message" data-zh-placeholder="和牌桌聊几句" data-zh-aria-label="消息">
+      <button class="pk-send" type="submit" aria-label="Send" title="Send" data-zh-aria-label="发送" data-zh-title="发送"><svg class="pj-icon" viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button>
     </form>
-    <p class="pk-fine">Play chips only, no real money. <span class="pk-model"></span> <button class="pj-link-button" type="button" data-action="key">Use your own key</button></p>
+    <p class="pk-fine"><span data-zh="只用游戏筹码，不涉及真钱。">Play chips only, no real money.</span> <span class="pk-model"></span> <button class="pj-link-button" type="button" data-action="key" data-zh="用自己的密钥">Use your own key</button></p>
   </aside>
 </main>
 
 <form class="pj-join pk-buyin" hidden>
   <h1 class="pk-setup-title"></h1>
   <p class="pj-join-text pk-buyin-text"></p>
-  <label class="pk-field pk-name-field" hidden>Your name<input class="pj-input" name="name" maxlength="20" autocomplete="nickname"></label>
+  <label class="pk-field pk-name-field" hidden data-zh="你的名字">Your name<input class="pj-input" name="name" maxlength="20" autocomplete="nickname"></label>
   <div class="pk-buyin-amount">
-    <input class="pk-slider" type="range" name="amount" step="10" aria-label="Amount">
+    <input class="pk-slider" type="range" name="amount" step="10" aria-label="Amount" data-zh-aria-label="金额">
     <output class="pk-buyin-value"></output>
   </div>
   <div class="pk-setup-buttons">
-    <button class="pj-secondary" type="button" data-action="buyin-cancel">Cancel</button>
+    <button class="pj-secondary" type="button" data-action="buyin-cancel" data-zh="取消">Cancel</button>
     <button class="pj-primary" type="submit"></button>
   </div>
 </form>
 
 <form class="pj-join pk-invite" hidden>
-  <h1 class="pk-setup-title">Invite friends</h1>
-  <p class="pj-join-text">Friends who open this link watch the table, then take an empty seat with their own play money. The table stays open while this page does.</p>
-  <label class="pk-field">Your name, as friends see it<input class="pj-input" name="name" maxlength="20" autocomplete="nickname" placeholder="Host"></label>
-  <div class="pk-field">Link
-    <div class="pk-link"><input class="pj-input" name="link" readonly placeholder="Opening the table…" aria-label="Link"><button class="pj-secondary" type="button" data-action="copy">Copy</button></div>
+  <h1 class="pk-setup-title" data-zh="邀请朋友">Invite friends</h1>
+  <p class="pj-join-text" data-zh="打开这个链接的朋友会先观看牌桌，再用自己的游戏币坐进空位。这个页面开着，牌桌就一直在。">Friends who open this link watch the table, then take an empty seat with their own play money. The table stays open while this page does.</p>
+  <label class="pk-field" data-zh="你的名字（朋友看到的）">Your name, as friends see it<input class="pj-input" name="name" maxlength="20" autocomplete="nickname" placeholder="Host" data-zh-placeholder="房主"></label>
+  <div class="pk-field" data-zh="链接">Link
+    <div class="pk-link"><input class="pj-input" name="link" readonly placeholder="Opening the table…" aria-label="Link" data-zh-placeholder="正在开桌…" data-zh-aria-label="链接"><button class="pj-secondary" type="button" data-action="copy" data-zh="复制">Copy</button></div>
   </div>
   <div class="pk-setup-buttons">
-    <button class="pj-secondary pj-danger" type="button" data-action="new-table">New table</button>
+    <button class="pj-secondary pj-danger" type="button" data-action="new-table" data-zh="新开一桌">New table</button>
     <span class="pj-spacer"></span>
-    <button class="pj-primary" type="button" data-action="invite-done">Done</button>
+    <button class="pj-primary" type="button" data-action="invite-done" data-zh="完成">Done</button>
   </div>
 </form>
 
 <form class="pj-join pk-setup" hidden>
-  <h1 class="pk-setup-title">Use your own key</h1>
-  <p class="pj-join-text">Gary, Duke and Penny run on Claude Haiku 5.5, on Ponjo. With your own key, they run on the model you pick.</p>
-  <div class="pj-segmented" role="radiogroup" aria-label="Provider">
+  <h1 class="pk-setup-title" data-zh="用自己的密钥">Use your own key</h1>
+  <p class="pj-join-text" data-zh="Gary、Duke 和 Penny 运行在 Ponjo 的 Claude Haiku 5.5 上。用你自己的密钥，他们就运行在你选的模型上。">Gary, Duke and Penny run on Claude Haiku 5.5, on Ponjo. With your own key, they run on the model you pick.</p>
+  <div class="pj-segmented" role="radiogroup" aria-label="Provider" data-zh-aria-label="提供方">
     <button type="button" role="radio" aria-checked="true" data-provider="anthropic">Anthropic</button>
-    <button type="button" role="radio" aria-checked="false" data-provider="openai">OpenAI-compatible</button>
+    <button type="button" role="radio" aria-checked="false" data-provider="openai" data-zh="OpenAI 兼容">OpenAI-compatible</button>
   </div>
   <label class="pk-field" data-for="openai">Base URL<input class="pj-input" name="endpoint" placeholder="https://api.openai.com/v1" autocomplete="off"></label>
-  <p class="pj-join-text" data-for="openai">A base URL at OpenAI, OpenRouter, Groq, Together, DeepSeek, Mistral, Fireworks, Google's Gemini or Nebius Token Factory: your table calls no other host.</p>
-  <label class="pk-field">API key<input class="pj-input" name="key" type="password" autocomplete="off" required></label>
-  <div class="pk-field" data-for="anthropic">Model
-    <div class="pj-segmented" role="radiogroup" aria-label="Model">
+  <p class="pj-join-text" data-for="openai" data-zh="Base URL 须在 OpenAI、OpenRouter、Groq、Together、DeepSeek、Mistral、Fireworks、Google Gemini 或 Nebius Token Factory：你的牌桌不会调用其他主机。">A base URL at OpenAI, OpenRouter, Groq, Together, DeepSeek, Mistral, Fireworks, Google's Gemini or Nebius Token Factory: your table calls no other host.</p>
+  <label class="pk-field" data-zh="API 密钥">API key<input class="pj-input" name="key" type="password" autocomplete="off" required></label>
+  <div class="pk-field" data-for="anthropic" data-zh="模型">Model
+    <div class="pj-segmented" role="radiogroup" aria-label="Model" data-zh-aria-label="模型">
       <button type="button" role="radio" aria-checked="true" data-model="claude-haiku-5-5">Haiku 5.5</button>
       <button type="button" role="radio" aria-checked="false" data-model="claude-sonnet-5-5">Sonnet 5.5</button>
       <button type="button" role="radio" aria-checked="false" data-model="claude-opus-5-5">Opus 5.5</button>
     </div>
   </div>
-  <label class="pk-field" data-for="openai">Model<input class="pj-input" name="model" placeholder="gpt-5-mini" autocomplete="off"></label>
-  <p class="pj-join-text">Your key stays in this browser. While you play, your table on Ponjo's server holds it in memory only, never stored and never shown to anyone at the table, to call <span data-host>api.anthropic.com</span> for your AI players. Each AI move is one call billed to your key.</p>
+  <label class="pk-field" data-for="openai" data-zh="模型">Model<input class="pj-input" name="model" placeholder="gpt-5-mini" autocomplete="off"></label>
+  <p class="pj-join-text"><span data-zh="你的密钥保存在这个浏览器里。玩的时候，Ponjo 服务器上的牌桌只把它放在内存里，从不存储，也不给桌上任何人看，只用来为你的 AI 玩家调用 ">Your key stays in this browser. While you play, your table on Ponjo's server holds it in memory only, never stored and never shown to anyone at the table, to call </span><span data-host>api.anthropic.com</span><span data-zh="。AI 每走一步就是一次调用，费用记在你的密钥上。"> for your AI players. Each AI move is one call billed to your key.</span></p>
   <p class="pk-error" hidden></p>
   <div class="pk-setup-buttons">
-    <button class="pj-secondary" type="button" data-action="cancel">Cancel</button>
-    <button class="pj-primary" type="submit">Use my key</button>
+    <button class="pj-secondary" type="button" data-action="cancel" data-zh="取消">Cancel</button>
+    <button class="pj-primary" type="submit" data-zh="用我的密钥">Use my key</button>
   </div>
 </form>
 
-<dialog class="pk-thinking" aria-label="Their thinking">
-  <div class="pk-thinking-head"><h2></h2><button class="pj-icon-btn" type="button" data-action="close" aria-label="Close"><svg class="pj-icon" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
+<dialog class="pk-thinking" aria-label="Their thinking" data-zh-aria-label="他们的想法">
+  <div class="pk-thinking-head"><h2></h2><button class="pj-icon-btn" type="button" data-action="close" aria-label="Close" data-zh-aria-label="关闭"><svg class="pj-icon" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
   <div class="pj-trace pk-thinking-body"></div>
 </dialog>
 
-<script type="module" src="preview/poker.js?v=6c63f4f"></script>
-<script type="module" src="site.js?v=6c63f4f"></script>
+<script type="module" src="preview/poker.js?v=5829782"></script>
+<script type="module" src="site.js?v=5829782"></script>
 </body>
 </html>

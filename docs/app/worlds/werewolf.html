@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Werewolf world</title>
 <link rel="icon" href="../../../build/icon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="../../../dist/web/app.css?v=6c63f4f">
-<link rel="stylesheet" href="../../../site.css?v=6c63f4f">
+<link rel="stylesheet" href="../../../dist/web/app.css?v=5829782">
+<link rel="stylesheet" href="../../../site.css?v=5829782">
 </head>
 <body>
 <header class="site-header">
@@ -90,6 +90,11 @@ chat; once over, all. A member with no seat sees what all see. <code>rules</code
 <code>RULES</code>; a persona is its agent&#39;s prompt. <code>actions</code>: what the rules&#39; <code>due</code>
 lets the seat do now; <code>say</code> outside a game; <code>sit</code>, <code>leave</code> between games;
 <code>start { size }</code>, for the opener. No effects.</p>
+<p><strong>Language.</strong> <code>lang</code> (<code>en</code> or <code>zh</code>) is what the AI players speak: the
+room commits <code>lang { lang }</code> as the host when the host&#39;s page comes in
+with another. A Chinese table adds <code>speak(lang)</code> to the rules and seats
+the personas with their Chinese hellos. Each page draws the table, the log
+and the refusals in its own language (<code>preview/lang.js</code>).</p>
 <p><strong>Tasks.</strong></p>
 <pre><code>turn:&lt;turn&gt;:&lt;seat&gt;  { kind: turn, as: seat, from: [], depth: 0, at: since + TURN, or the call&#39;s end }
 line:&lt;id&gt;           { kind: ask, as: member, from: the line&#39;s people, depth: the line&#39;s }
@@ -152,6 +157,6 @@ the game&#39;s <code>no</code>: <code>turn:&lt;no&gt;:&lt;turn&gt;</code>, <code
 <code>expire:&lt;no&gt;:&lt;turn&gt;</code>.</li>
 </ul>
 </main>
-<script type="module" src="../../../site.js?v=6c63f4f"></script>
+<script type="module" src="../../../site.js?v=5829782"></script>
 </body>
 </html>

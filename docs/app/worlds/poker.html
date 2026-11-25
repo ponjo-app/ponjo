@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Poker table</title>
 <link rel="icon" href="../../../build/icon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="../../../dist/web/app.css?v=6c63f4f">
-<link rel="stylesheet" href="../../../site.css?v=6c63f4f">
+<link rel="stylesheet" href="../../../dist/web/app.css?v=5829782">
+<link rel="stylesheet" href="../../../site.css?v=5829782">
 </head>
 <body>
 <header class="site-header">
@@ -47,13 +47,17 @@ world of members on the <a href="../../runtime/README.html">runtime</a>
 seats, dealer and clock run.</p>
 <h2 id="state">State</h2>
 <pre><code>Table { players, slots, names, hand, handNo, button, topUp, joining, leaving,
-        chat, reactions, seats: { id → { thoughts: [{ hand, street, text, action }] } } }
+        chat, reactions, lang, seats: { id → { thoughts: [{ hand, street, text, action }] } } }
 Line  { id, by, as, text, to (whom it names), depth, about, hand, at }
 hand  as in preview/poker-dealer.js, with no deck
 </code></pre>
 <p><code>thoughts</code> is the seat&#39;s state, written by <code>apply</code> from its own runs. The
 answer ledger (answered, tries, why) is the runtime wrapper&#39;s, in the state.
-A visitor&#39;s bankroll is their browser&#39;s, apart from the table.</p>
+A visitor&#39;s bankroll is their browser&#39;s, apart from the table.
+<code>lang</code> is the table&#39;s language, <code>en</code> or <code>zh</code>: the room sets it from the
+opener&#39;s page (<a href="rooms.html">rooms</a>); the AI seats speak it, and say their
+hellos and goodbyes in it. Each page draws the table in its own language,
+the dealer&#39;s lines too.</p>
 <h2 id="store">Store</h2>
 <p>The room holds <code>{ rev, state }</code> and gives each member only <code>read(member)</code>:
 people&#39;s pages, AI seats, the dealer, the clock. <code>wait(member, rev)</code>
@@ -75,8 +79,9 @@ seats&#39; cards and <code>thoughts</code> once the hand is over; for an AI seat
 own <code>thoughts</code> this hand, and why its last try was refused.</li>
 <li><code>actions</code>: on its turn <code>fold</code>, <code>check</code>, <code>call</code>, <code>bet</code>, <code>raise</code>, <code>allin</code>,
 with legal amounts; <code>say</code>, <code>react</code>; people&#39;s <code>sit</code>, <code>topup</code>, <code>leave</code>;
-the opener&#39;s <code>next</code>, <code>add</code>, <code>remove</code>, <code>invite</code>, <code>turnAway</code>.</li>
-<li><code>seen</code>: all presence, to all. <code>rules</code>: <code>RULES</code>, and a persona&#39;s style.</li>
+the opener&#39;s <code>next</code>, <code>add</code>, <code>remove</code>, <code>invite</code>, <code>turnAway</code>, <code>lang</code>.</li>
+<li><code>seen</code>: all presence, to all. <code>rules</code>: <code>RULES</code>, a line to speak the
+table&#39;s language if it is Chinese, and a persona&#39;s style.</li>
 </ul>
 <table>
 <thead>
@@ -205,6 +210,6 @@ want of chips; the first has an <code>at</code>, once the hellos are said.</li>
 after the model answers, so its change lands that much later.</li>
 </ul>
 </main>
-<script type="module" src="../../../site.js?v=6c63f4f"></script>
+<script type="module" src="../../../site.js?v=5829782"></script>
 </body>
 </html>
